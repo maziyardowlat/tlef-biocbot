@@ -1,0 +1,41 @@
+# .github/workflows/deploy.yml
+
+name: Deploy to Staging
+
+on:
+    push:
+        branches:
+            - main
+
+jobs:
+    deploy:
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Setup SSH
+              uses: webfactory/ssh-agent@v0.9.0
+              with:
+                  ssh-private-key: ${{ secrets.DEPLOY_PRIVATE_KEY }}
+
+            - name: Deploy to server
+              run: |
+                  # Add the server's host key using the secret
+                  ssh-keyscan -H ${{ secrets.STAGING_SERVER_IP }} >> ~/.ssh/known_hosts
+
+                  # SSH into the server using the secret
+                  ssh deployer@${{ secrets.STAGING_SERVER_IP }} << 'EOF'
+                    # Navigate to the application directory
+                    cd /var/www/biocbot-staging
+
+                    # Pull the latest code from the main branch
+                    git pull origin main
+
+                    # Install/update npm dependencies
+                    npm install --production
+
+                    # Restart the application service
+                    sudo systemctl restart biocbot-staging
+                  EOF

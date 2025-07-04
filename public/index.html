@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BIOCBOT</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>BIOCBOT</h1>
+            <div id="userInfo" class="user-info"></div>
+        </header>
+
+        <biocbot-app></biocbot-app>
+    </div>
+
+    <!--
+      This script is the entry point for our frontend application.
+      - `type="module"` enables modern JavaScript import/export syntax.
+      - Modules are implicitly "deferred", meaning the script is downloaded in parallel
+        and executed only after the HTML document has been fully parsed. This is
+        great for performance as it doesn't block the page from rendering.
+      - Placing it at the end of `<body>` is a best practice for the same reason.
+    -->
+    <script type="module" src="app.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,25 @@
+.settings-view {
+    padding: 20px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    background-color: #f9f9f9;
+}
+
+.settings-view h3 {
+    margin-top: 0;
+}
+
+.settings-view button {
+    background-color: #6c757d;
+    color: white;
+    padding: 10px 20px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 16px;
+    margin-top: 10px;
+}
+
+.settings-view button:hover {
+    background-color: #5a6268;
+}
