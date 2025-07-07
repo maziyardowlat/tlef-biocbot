@@ -1,6 +1,5 @@
-node_modules/
+# Environment variables
 .env
-.DS_Store
-certs/
-*.crt
-*.pem
+
+# Dependencies
+/node_modules
