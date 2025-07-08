@@ -31,3 +31,7 @@ To run the application in production mode, use the following command:
 ```bash
 npm start
 ```
+
+## Continuius Integration
+
+Pushing to the main branch in this repo will trigger a deploy automatically to the staging server.
