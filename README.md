@@ -1,6 +1,6 @@
 # TLEF BIOCBOT
 
-This is a template Node.js application.
+This is a template Node.js application. Used to help with CI Integration.
 
 ## Configuration
 
