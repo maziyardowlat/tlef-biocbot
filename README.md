@@ -17,7 +17,7 @@ TLEF_BIOCBOT_PORT=8085
 To run the application in development mode, run the following command:
 
 ```bash
-npm 
+npm install --save-dev npm-run-all
 npm run dev
 ```
 
@@ -30,7 +30,6 @@ Any changes to frontend files in the `public` directory will cause the browser t
 To run the application in production mode, use the following command:
 
 ```bash
-npm install --save-dev npm-run-all
 npm start
 ```
 
