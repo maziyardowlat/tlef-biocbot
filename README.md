@@ -30,6 +30,7 @@ Any changes to frontend files in the `public` directory will cause the browser t
 To run the application in production mode, use the following command:
 
 ```bash
+npm install --save-dev npm-run-all
 npm start
 ```
 
