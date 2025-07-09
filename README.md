@@ -17,6 +17,7 @@ TLEF_BIOCBOT_PORT=8085
 To run the application in development mode, run the following command:
 
 ```bash
+npm 
 npm run dev
 ```
 
