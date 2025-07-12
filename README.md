@@ -31,7 +31,14 @@ To run the application in production mode, use the following command:
 ```bash
 npm start
 ```
-
+## MONGODB So far
+So far, this is what I have odne to get it to run, it should say "mongoDB started in the terminal."
+Run the code below, and then you can type npm start and it should work. Feel free to test adding/deleting.
+```
+brew tap mongodb/brew
+brew install mongodb-community@7.0
+brew services start mongodb-community@7.0
+```
 ## Continuius Integration
 
 Pushing to the main branch in this repo will trigger a deploy automatically to the staging server.
