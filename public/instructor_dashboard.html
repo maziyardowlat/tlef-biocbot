@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Instructor Dashboard - BiocBot</title>
+  <link rel="stylesheet" href="styles/style.css">
+</head>
+<body>
+  <div class="dashboard-container">
+    <nav class="sidebar">
+      <div class="sidebar-header">Instructor</div>
+      <a href="instructor_dashboard.html" class="active">Home</a>
+      <a href="course_materials.html">Course Upload</a>
+      <a href="#">Students</a>
+      <a href="reports.html">Reports</a>
+      <a href="settings.html">Settings</a>
+    </nav>
+    <main class="dashboard-main">
+      <h1>Home</h1>
+      <section class="dashboard-card">
+        <div>
+          <b>Course Summary</b><br>
+          BIOC 202<br>
+          Term: 2025 W1, Course Code: BIOC25T1
+        </div>
+        <div class="dashboard-actions">
+          <button>Upload New Material</button>
+          <button>Probe Questions</button>
+        </div>
+      </section>
+      <section class="dashboard-card">
+        <div>
+          <b>Daily Digest</b><br>
+          <span class="blue-link">Total Study Minutes today: 55 min</span><br>
+          <span class="blue-link">Covered topics today: Biology, Heart</span>
+        </div>
+        <div class="dashboard-actions">
+          <b>10 New Flags Today</b><br>
+          <button>Investigate</button>
+        </div>
+      </section>
+      <section class="dashboard-card">
+        <b>Recent Activity</b><br>
+        1. Week_1 lecture uploaded<br>
+        2. Week_3 lecture uploaded<br>
+        <span class="error-text">3. LO_1 not uploaded properly</span><br>
+        <span class="error-text">4. LO_2 not parsed properly</span>
+      </section>
+    </main>
+  </div>
+  <script src="scripts/load-components.js"></script>
+</body>
+</html>
