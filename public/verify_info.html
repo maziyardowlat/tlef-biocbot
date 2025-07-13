@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Verify material - BiocBot</title>
+  <link rel="stylesheet" href="styles/style.css">
+  <style>
+    body {
+      background: #222;
+      margin: 0;
+      font-family: sans-serif;
+    }
+    .verify-modal {
+      background: #fff;
+      border-radius: 16px;
+      max-width: 540px;
+      margin: 60px auto;
+      padding: 48px 40px 32px 40px;
+      box-shadow: 0 2px 16px rgba(0,0,0,0.12);
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .verify-title {
+      font-size: 2rem;
+      font-weight: bold;
+      margin-bottom: 16px;
+    }
+    .verify-divider {
+      border: none;
+      border-top: 2px solid #222;
+      margin: 0 0 24px 0;
+    }
+    .verify-label {
+      font-size: 1.1rem;
+      margin-bottom: 8px;
+      font-weight: 500;
+    }
+    .verify-textarea {
+      width: 100%;
+      min-height: 220px;
+      max-height: 320px;
+      resize: vertical;
+      background: #f5f7fa;
+      border: none;
+      border-radius: 6px;
+      font-size: 1rem;
+      color: #222;
+      padding: 18px 16px;
+      margin-bottom: 32px;
+      overflow-y: auto;
+      box-sizing: border-box;
+    }
+    .verify-divider-bottom {
+      border: none;
+      border-top: 2px solid #222;
+      margin: 24px 0 32px 0;
+    }
+    .verify-btn {
+      padding: 12px 36px;
+      font-size: 1.1rem;
+      border: 2px solid #222;
+      border-radius: 6px;
+      background: #fff;
+      color: #222;
+      font-weight: bold;
+      cursor: pointer;
+      align-self: flex-start;
+      transition: background 0.2s;
+    }
+    .verify-btn:hover {
+      background: #f5f7fa;
+    }
+  </style>
+</head>
+<body>
+  <div class="verify-modal">
+    <div class="verify-title">Verify material</div>
+    <hr class="verify-divider" />
+    <div class="verify-label">Lecture Notes</div>
+    <textarea class="verify-textarea" readonly>
+Lorem ipsum dolor sit amet, consectetur adipiscing elit. Pellentesque euismod, urna eu tincidunt consectetur, nisi nisl aliquam enim, nec ultricies nisi nisl quis nunc. 
+
+1. Lorem ipsum dolor sit amet, consectetur adipiscing elit.
+2. Pellentesque euismod urna eu tincidunt consectetur.
+3. Nisi nisl aliquam enim, nec ultricies nisi nisl quis nunc.
+4. Vestibulum ante ipsum primis in faucibus orci luctus et ultrices posuere cubilia curae.
+5. Integer nec odio. Praesent libero. Sed cursus ante dapibus diam.
+6. Sed nisi. Nulla quis sem at nibh elementum imperdiet.
+7. Duis sagittis ipsum. Praesent mauris. Fusce nec tellus sed augue semper porta.
+8. Mauris massa. Vestibulum lacinia arcu eget nulla.
+    </textarea>
+    <hr class="verify-divider-bottom" />
+    <button class="verify-btn">Confirm</button>
+  </div>
+</body>
+</html> 
