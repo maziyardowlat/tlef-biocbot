@@ -1,8 +1,10 @@
+/* Global light theme for most pages (except sign-in, instructor dashboard, student dashboard, course select) */
 body {
-  background: #222;
-  margin: 0;
-  font-family: sans-serif;
+  background: #f5f7fa;
+  color: #222;
 }
+
+/* Do not override the custom backgrounds for sign-in, instructor_dashboard, student_dashboard, and course_select pages. */
 .dashboard-container {
   display: flex;
   min-height: 100vh;

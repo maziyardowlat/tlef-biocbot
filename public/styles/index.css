@@ -1,8 +1,9 @@
+/* Override for sign-in page: dark background and white text */
 body {
-  background: #222;
-  margin: 0;
-  font-family: sans-serif;
+  background: #222 !important;
+  color: #fff !important;
 }
+
 .signin-container {
   background: #fff;
   border-radius: 20px;
