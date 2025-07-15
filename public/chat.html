@@ -3,166 +3,18 @@
 <head>
   <title>Chat - BiocBot</title>
   <link rel="stylesheet" href="styles/style.css">
-  <style>
-    body {
-      background: #222;
-      margin: 0;
-      font-family: sans-serif;
-    }
-    .dashboard-container {
-      display: flex;
-      min-height: 100vh;
-    }
-    .sidebar {
-      background: #111;
-      color: #fff;
-      width: 160px;
-      padding: 24px 0 0 0;
-      display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-      border-radius: 20px 0 0 20px;
-      min-height: 600px;
-    }
-    .sidebar a {
-      color: #fff;
-      text-decoration: none;
-      padding: 12px 24px;
-      width: 100%;
-      display: block;
-      border-radius: 4px 0 0 4px;
-      margin-bottom: 4px;
-    }
-    .sidebar a.active, .sidebar a:hover {
-      background: #333;
-      font-weight: bold;
-    }
-    .dashboard-main {
-      background: #fff;
-      flex: 1;
-      padding: 48px 0 0 48px;
-      border-radius: 0 20px 20px 0;
-      min-height: 600px;
-      display: flex;
-      flex-direction: column;
-    }
-    .dashboard-title {
-      font-size: 2.8rem;
-      font-weight: bold;
-      margin-bottom: 40px;
-    }
-    .chat-row {
-      display: flex;
-      align-items: flex-start;
-      margin-bottom: 60px;
-      margin-top: 24px;
-    }
-    .chat-avatar {
-      width: 48px;
-      height: 48px;
-      border-radius: 8px;
-      margin-right: 18px;
-      background: #eee;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      overflow: hidden;
-    }
-    .chat-divider {
-      width: 4px;
-      height: 60px;
-      background: #1a237e;
-      margin-right: 18px;
-      border-radius: 2px;
-    }
-    .chat-message {
-      font-size: 1.1rem;
-      color: #222;
-      margin-right: 32px;
-      max-width: 520px;
-    }
-    .chat-menu {
-      font-size: 2rem;
-      color: #222;
-      cursor: pointer;
-      margin-left: 16px;
-      user-select: none;
-    }
-    .chat-input-row {
-      margin-top: auto;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      width: 100%;
-    }
-    .chat-input-box {
-      width: 60%;
-      min-width: 320px;
-      max-width: 700px;
-      margin: 0 auto;
-      display: flex;
-      align-items: center;
-      border: 2px solid #222;
-      border-radius: 10px;
-      padding: 0 16px;
-      background: #fff;
-      margin-bottom: 12px;
-    }
-    .chat-input-box input {
-      border: none;
-      outline: none;
-      font-size: 1.2rem;
-      flex: 1;
-      padding: 18px 0;
-      background: transparent;
-    }
-    .chat-send-btn {
-      background: none;
-      border: none;
-      cursor: pointer;
-      font-size: 2rem;
-      color: #222;
-      margin-left: 8px;
-      display: flex;
-      align-items: center;
-    }
-    .chat-disclaimer {
-      text-align: center;
-      color: #222;
-      font-size: 1.1rem;
-      margin-bottom: 18px;
-    }
-  </style>
 </head>
 <body>
-  <div class="dashboard-container">
-    <nav class="sidebar">
-      <a href="student_dashboard.html">Student</a>
-      <a href="#" class="active">Chat</a>
-      <a href="history.html">History</a>
-    </nav>
-    <main class="dashboard-main">
-      <div class="dashboard-title">BiocBot</div>
-      <div class="chat-row">
-        <div class="chat-avatar">
-          <img src="https://upload.wikimedia.org/wikipedia/commons/8/89/HD_transparent_picture.png" alt="BiocBot" style="width:40px;height:40px;object-fit:cover;">
-        </div>
-        <div class="chat-divider"></div>
-        <div class="chat-message">
-          It’s Week 3 of Biochem — time to move beyond primary structure! Let’s kick off Lecture 6 with a quick pulse check
-        </div>
-        <div class="chat-menu">&#8942;</div>
-      </div>
-      <div class="chat-input-row">
-        <div class="chat-input-box">
-          <input type="text" placeholder="Type a new message here" disabled>
-          <button class="chat-send-btn" disabled>
-            <svg width="32" height="32" viewBox="0 0 24 24"><path fill="none" stroke="#222" stroke-width="2" d="M2 21L23 12L2 3V10L17 12L2 14V21Z"/></svg>
-          </button>
-        </div>
-        <div class="chat-disclaimer">Biobot can make mistakes, do not input personal information</div>
-      </div>
-    </main>
-  </div>
+  <div id="navbar"></div>
+  <main>
+    <h1>Chat Interface</h1>
+    <div id="chat-messages">[Chat Message Bubbles]</div>
+    <div id="chat-input">[Chat Input Field]</div>
+    <div id="mode-toggle">[Mode Toggle (Protégé/Teacher)]</div>
+    <div id="session-summary">[Session Summary Widget]</div>
+    <div id="message-report">[Message Report Menu]</div>
+  </main>
+  <div id="footer"></div>
+  <script src="scripts/load-components.js"></script>
 </body>
 </html>
