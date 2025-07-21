@@ -42,15 +42,17 @@ Create complete, working code that integrates seamlessly into the BiocBot pipeli
 - Use **descriptive, readable variable and function names** (e.g., `isParsed`, `hasChunks`, `handleUpload`).
 - All files should contain proper docblocks and inline comments explaining both *what* and *why*.
 - Assume you're writing for a junior developer — be explanatory, not clever.
+- The frontend should never directly connect to other services/pull from environment files. These connections should be made by the backend, the front-end should make the connection to the backend to retrieve this info.
 ### Security and Robustness
 - Implement guard clauses and early returns where applicable.
 - Sanitize input and fail fast on invalid data (e.g., mime type, chunk dimension mismatch).
 - Return informative errors but avoid leaking internals.
 ### Project Environment
-- **Frontend:** HTML, Vanilla JS, CSS (modular and accessible)
+- **Frontend:** HTML, Vanilla JS, CSS (modular and accessible). 
 - **Backend:** Node.js (Express)
 - **Database:** MongoDB
 - **Embedding:** Ollama with `nomic-embed-text`
+- **File Layout:** The frontend is in public/, the backend in src/ 
 - **Vector Search:** Qdrant
 - **Document Processing:** UBC GenAI Toolkit (document-parsing, chunking, embeddings)
 - ADD IN THE DETAILS FOR THE PARSING/CHUNKING/EMBEDDING (add in the http file for them, readme @ as well)
