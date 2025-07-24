@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BiocBot - Student Chat</title>
+    <link rel="stylesheet" href="../styles/style.css">
+    <link rel="stylesheet" href="../styles/chat.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="logo-container">
+                <h2>BiocBot</h2>
+            </div>
+            <nav class="main-nav">
+                <ul>
+                    <li class="active"><a href="/student"><span class="icon">💬</span> Chat</a></li>
+                    <li><a href="/student/history"><span class="icon">📚</span> Chat History</a></li>
+                    <li><a href="/student/settings"><span class="icon">⚙️</span> Settings</a></li>
+                </ul>
+            </nav>
+            <div class="user-info">
+                <div class="user-avatar">S</div>
+                <div class="user-name">Student Name</div>
+                <div class="user-role">Student - Biology 101</div>
+                <div class="switch-role">
+                    <a href="/">Switch Role</a>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Chat Header -->
+            <header class="chat-header">
+                <h1>Chat with BiocBot</h1>
+                <div class="current-course">
+                    <span class="course-label">Course:</span>
+                    <span class="course-name">Biology 101</span>
+                </div>
+            </header>
+
+            <!-- Chat Messages Container -->
+            <div class="chat-container">
+                <div class="messages" id="chat-messages">
+                    <!-- Welcome Message -->
+                    <div class="message bot-message">
+                        <div class="message-avatar">B</div>
+                        <div class="message-content">
+                            <p>Hello! I'm BiocBot, your AI study assistant for Biology 101. How can I help you today?</p>
+                            <span class="timestamp">Just now</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Chat Input Area -->
+                <div class="chat-input-container">
+                    <form id="chat-form">
+                        <input type="text" id="chat-input" placeholder="Ask me anything about Biology 101...">
+                        <button type="submit" id="send-button">Send</button>
+                    </form>
+                </div>
+            </div>
+        </main>
+    </div>
+    <script src="./scripts/student.js"></script>
+</body>
+</html> 

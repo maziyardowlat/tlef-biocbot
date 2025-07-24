@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings - BiocBot Instructor</title>
+    <link rel="stylesheet" href="../styles/style.css">
+    <link rel="stylesheet" href="../styles/settings.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="logo-container">
+                <h2>BiocBot</h2>
+            </div>
+            <nav class="main-nav">
+                <ul>
+                    <li><a href="/instructor"><span class="icon">📄</span> Documents</a></li>
+                    <li class="active"><a href="/instructor/settings"><span class="icon">⚙️</span> Settings</a></li>
+                </ul>
+            </nav>
+            <div class="user-info">
+                <div class="user-avatar">I</div>
+                <div class="user-name">Instructor Name</div>
+                <div class="user-role">Instructor</div>
+                <div class="switch-role">
+                    <a href="/">Switch Role</a>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <header class="settings-header">
+                <h1>Settings</h1>
+            </header>
+
+            <div class="settings-container">
+                <!-- General Settings -->
+                <section class="settings-section">
+                    <h2>Instructor Settings</h2>
+                    <div class="setting-item">
+                        <label for="user-name">Display Name</label>
+                        <input type="text" id="user-name" value="Instructor Name">
+                    </div>
+                    <div class="setting-item">
+                        <label for="email">Email Address</label>
+                        <input type="email" id="email" value="instructor@example.com">
+                    </div>
+                    <div class="setting-item">
+                        <label for="department">Department</label>
+                        <input type="text" id="department" value="Biochemistry">
+                    </div>
+                </section>
+
+                <!-- Course Settings -->
+                <section class="settings-section">
+                    <h2>Course Settings</h2>
+                    <div class="setting-item">
+                        <label for="default-course">Default Course</label>
+                        <select id="default-course">
+                            <option value="">Select a course</option>
+                            <option value="bioc202" selected>BIOC 202</option>
+                            <option value="bioc303">BIOC 303</option>
+                        </select>
+                    </div>
+                    <div class="setting-item checkbox">
+                        <input type="checkbox" id="auto-process" checked>
+                        <label for="auto-process">Automatically process uploaded documents</label>
+                    </div>
+                    <div class="setting-item checkbox">
+                        <input type="checkbox" id="notify-students" checked>
+                        <label for="notify-students">Notify students when new materials are available</label>
+                    </div>
+                </section>
+
+                <!-- AI Settings -->
+                <section class="settings-section">
+                    <h2>AI Assistant Settings</h2>
+                    <div class="setting-item">
+                        <label for="ai-model">AI Model</label>
+                        <select id="ai-model">
+                            <option value="default" selected>Default</option>
+                            <option value="enhanced">Enhanced (Beta)</option>
+                        </select>
+                    </div>
+                    <div class="setting-item checkbox">
+                        <input type="checkbox" id="enable-citations" checked>
+                        <label for="enable-citations">Enable citations in AI responses</label>
+                    </div>
+                    <div class="setting-item checkbox">
+                        <input type="checkbox" id="allow-student-feedback">
+                        <label for="allow-student-feedback">Allow students to provide feedback on AI responses</label>
+                    </div>
+                </section>
+
+                <!-- Save Button -->
+                <div class="settings-actions">
+                    <button id="save-settings" class="primary-button">Save Settings</button>
+                    <button id="reset-settings" class="secondary-button">Reset to Default</button>
+                </div>
+            </div>
+        </main>
+    </div>
+    <script src="./scripts/settings.js"></script>
+</body>
+</html> 

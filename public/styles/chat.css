@@ -1,0 +1,341 @@
+/* Chat Interface Styles */
+
+.chat-container {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 120px);
+    background-color: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px var(--shadow-color);
+    overflow: hidden;
+}
+
+.messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+}
+
+.message {
+    display: flex;
+    margin-bottom: 20px;
+}
+
+.message-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background-color: var(--accent-color);
+    color: var(--light-text);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 12px;
+    flex-shrink: 0;
+}
+
+.bot-message .message-avatar {
+    background-color: var(--primary-color);
+}
+
+.user-message .message-avatar {
+    background-color: var(--secondary-color);
+}
+
+.message-content {
+    background-color: var(--background-color);
+    padding: 12px 16px;
+    border-radius: 8px;
+    max-width: 80%;
+}
+
+.bot-message .message-content {
+    background-color: var(--background-color);
+}
+
+.user-message .message-content {
+    background-color: var(--primary-color);
+    color: var(--light-text);
+}
+
+.user-message {
+    flex-direction: row-reverse;
+}
+
+.user-message .message-avatar {
+    margin-right: 0;
+    margin-left: 12px;
+}
+
+.message-content p {
+    margin-bottom: 8px;
+}
+
+.message-content .timestamp {
+    font-size: 12px;
+    color: #888;
+    display: block;
+    text-align: right;
+}
+
+.user-message .message-content .timestamp {
+    color: rgba(255, 255, 255, 0.7);
+}
+
+.chat-input-container {
+    padding: 16px;
+    background-color: #f9f9f9;
+    border-top: 1px solid var(--border-color);
+}
+
+#chat-form {
+    display: flex;
+    gap: 10px;
+}
+
+#chat-input {
+    flex: 1;
+    padding: 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    font-size: 14px;
+    outline: none;
+}
+
+#send-button {
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 20px;
+    padding: 0 20px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+#send-button:hover {
+    background-color: var(--accent-color);
+}
+
+/* Source Citation */
+.message-source {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid rgba(0, 0, 0, 0.1);
+    font-size: 12px;
+}
+
+.message-source a {
+    color: var(--info-color);
+    text-decoration: underline;
+}
+
+/* Typing Indicator */
+.typing-indicator {
+    display: flex;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.typing-indicator .message-avatar {
+    background-color: var(--primary-color);
+}
+
+.typing-indicator .dots {
+    display: flex;
+    align-items: center;
+    height: 20px;
+}
+
+.typing-indicator .dot {
+    height: 8px;
+    width: 8px;
+    border-radius: 50%;
+    background-color: #888;
+    margin-right: 4px;
+    animation: typing-animation 1.4s infinite ease-in-out;
+}
+
+.typing-indicator .dot:nth-child(1) {
+    animation-delay: 0s;
+}
+
+.typing-indicator .dot:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.typing-indicator .dot:nth-child(3) {
+    animation-delay: 0.4s;
+    margin-right: 0;
+}
+
+@keyframes typing-animation {
+    0%, 60%, 100% {
+        transform: translateY(0);
+    }
+    30% {
+        transform: translateY(-5px);
+    }
+}
+
+/* Current Course Display */
+.current-course {
+    display: flex;
+    align-items: center;
+    background-color: var(--background-color);
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 14px;
+}
+
+.course-label {
+    font-weight: 500;
+    margin-right: 6px;
+    color: var(--text-color);
+}
+
+.course-name {
+    color: var(--primary-color);
+    font-weight: 600;
+}
+
+.user-role {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.7);
+    margin-top: 4px;
+}
+
+/* Chat History */
+.chat-history-item {
+    padding: 16px;
+    border-bottom: 1px solid var(--border-color);
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.chat-history-item:hover {
+    background-color: rgba(0, 0, 0, 0.02);
+}
+
+.chat-history-item.active {
+    background-color: var(--background-color);
+    border-left: 3px solid var(--primary-color);
+}
+
+.chat-history-item .title {
+    font-weight: 500;
+    margin-bottom: 4px;
+}
+
+.chat-history-item .preview {
+    font-size: 14px;
+    color: #777;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.chat-history-item .date {
+    font-size: 12px;
+    color: #999;
+    margin-top: 6px;
+}
+
+/* History Page Specific Styles */
+.history-container {
+    display: flex;
+    height: calc(100vh - 120px);
+    background-color: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px var(--shadow-color);
+    overflow: hidden;
+}
+
+.chat-history-list {
+    width: 300px;
+    border-right: 1px solid var(--border-color);
+    overflow-y: auto;
+}
+
+.chat-preview-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.preview-header {
+    padding: 16px;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.preview-header h2 {
+    font-size: 18px;
+    font-weight: 500;
+}
+
+.preview-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.preview-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+}
+
+.search-container {
+    width: 300px;
+}
+
+.search-container input {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    font-size: 14px;
+}
+
+.no-messages {
+    text-align: center;
+    color: #888;
+    margin-top: 40px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .chat-container {
+        height: calc(100vh - 180px);
+    }
+
+    .message-content {
+        max-width: 90%;
+    }
+    
+    .current-course {
+        padding: 6px 12px;
+        font-size: 12px;
+    }
+    
+    .history-container {
+        flex-direction: column;
+        height: auto;
+    }
+    
+    .chat-history-list {
+        width: 100%;
+        border-right: none;
+        border-bottom: 1px solid var(--border-color);
+        max-height: 300px;
+    }
+    
+    .chat-preview-panel {
+        height: calc(100vh - 420px);
+    }
+    
+    .search-container {
+        width: 100%;
+    }
+} 
