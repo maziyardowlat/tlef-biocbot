@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BiocBot - Instructor Documents</title>
+    <link rel="stylesheet" href="../styles/style.css">
+    <link rel="stylesheet" href="../styles/documents.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="logo-container">
+                <h2>BiocBot</h2>
+            </div>
+            <nav class="main-nav">
+                <ul>
+                    <li class="active"><a href="/instructor"><span class="icon">📄</span> Documents</a></li>
+                    <li><a href="/instructor/settings"><span class="icon">⚙️</span> Settings</a></li>
+                </ul>
+            </nav>
+            <div class="user-info">
+                <div class="user-avatar">I</div>
+                <div class="user-name">Instructor Name</div>
+                <div class="user-role">Instructor</div>
+                <div class="switch-role">
+                    <a href="/">Switch Role</a>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <header class="documents-header">
+                <h1>BIOC 202</h1>
+                <div class="course-selector">
+                    <select id="course-select">
+                        <option value="bioc202">BIOC 202</option>
+                        <option value="bioc303">BIOC 303</option>
+                    </select>
+                </div>
+            </header>
+
+            <div class="course-subtitle">
+                <p>Course Material</p>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="action-buttons-container">
+                <button class="action-btn with-icon">
+                    <span class="btn-icon">📝</span>
+                    New file, syllabus or practice quiz
+                </button>
+                
+                <button class="action-btn with-icon">
+                    <span class="btn-icon">📂</span>
+                    Bulk upload, structure and organize
+                </button>
+                
+                <button class="action-btn with-icon">
+                    <span class="btn-icon">📊</span>
+                    Create new folder
+                </button>
+            </div>
+
+            <!-- Document Management Tabs -->
+            <div class="document-tabs">
+                <div class="tab-header">
+                    <button class="tab-btn active">All Files</button>
+                    <button class="tab-btn">Syllabus & Schedule</button>
+                    <button class="tab-btn">Lecture Notes</button>
+                    <button class="tab-btn">Practice Quizzes</button>
+                </div>
+
+                <div class="tab-content">
+                    <!-- Accordion Document List -->
+                    <div class="accordion-container">
+                        <!-- Week 1 Accordion -->
+                        <div class="accordion-item">
+                            <div class="accordion-header">
+                                <span class="folder-icon">📁</span>
+                                <span class="folder-name">Week 1</span>
+                                <span class="accordion-toggle">▼</span>
+                            </div>
+                            <div class="accordion-content">
+                                <div class="file-item">
+                                    <span class="file-icon">📄</span>
+                                    <div class="file-info">
+                                        <h3>Introduction to Biochemistry</h3>
+                                        <p>This is a comprehensive introduction to the core principles of biochemistry and molecular biology.</p>
+                                        <span class="status-text">Processed</span>
+                                    </div>
+                                    <div class="file-actions">
+                                        <button class="action-button view">View</button>
+                                        <button class="action-button delete">Delete</button>
+                                    </div>
+                                </div>
+                                <div class="file-item">
+                                    <span class="file-icon">📄</span>
+                                    <div class="file-info">
+                                        <h3>Week 1 Readings</h3>
+                                        <p>Required readings for the first week of the course.</p>
+                                        <span class="status-text">Processed</span>
+                                    </div>
+                                    <div class="file-actions">
+                                        <button class="action-button view">View</button>
+                                        <button class="action-button delete">Delete</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Week 2 Accordion -->
+                        <div class="accordion-item">
+                            <div class="accordion-header">
+                                <span class="folder-icon">📁</span>
+                                <span class="folder-name">Week 2</span>
+                                <span class="accordion-toggle">▶</span>
+                            </div>
+                            <div class="accordion-content collapsed">
+                                <div class="file-item">
+                                    <span class="file-icon">📄</span>
+                                    <div class="file-info">
+                                        <h3>Amino Acids, Peptides, and Proteins</h3>
+                                        <p>The fundamental building blocks of life: structure and properties of amino acids and their polymers.</p>
+                                        <span class="status-text">Processed</span>
+                                    </div>
+                                    <div class="file-actions">
+                                        <button class="action-button view">View</button>
+                                        <button class="action-button delete">Delete</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Week 3 Accordion -->
+                        <div class="accordion-item">
+                            <div class="accordion-header">
+                                <span class="folder-icon">📁</span>
+                                <span class="folder-name">Week 3</span>
+                                <span class="accordion-toggle">▶</span>
+                            </div>
+                            <div class="accordion-content collapsed">
+                                <div class="file-item">
+                                    <span class="file-icon">📄</span>
+                                    <div class="file-info">
+                                        <h3>Enzymes: Basic Concepts and Kinetics</h3>
+                                        <p>Introduction to enzyme structure, function, and kinetics.</p>
+                                        <span class="status-text">Processed</span>
+                                    </div>
+                                    <div class="file-actions">
+                                        <button class="action-button view">View</button>
+                                        <button class="action-button delete">Delete</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Quizzes Accordion -->
+                        <div class="accordion-item">
+                            <div class="accordion-header">
+                                <span class="folder-icon">📁</span>
+                                <span class="folder-name">Quizzes</span>
+                                <span class="accordion-toggle">▶</span>
+                            </div>
+                            <div class="accordion-content collapsed">
+                                <div class="file-item">
+                                    <span class="file-icon">📝</span>
+                                    <div class="file-info">
+                                        <h3>Practice Quiz: Protein Structure</h3>
+                                        <p>Test your understanding of primary, secondary, tertiary, and quaternary protein structures.</p>
+                                        <span class="status-text processing">Processing</span>
+                                    </div>
+                                    <div class="file-actions">
+                                        <button class="action-button view">View</button>
+                                        <button class="action-button delete">Delete</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Upload Section -->
+            <section class="upload-section">
+                <h2>Upload New Material</h2>
+                <div class="upload-container">
+                    <div class="upload-box" id="upload-drop-area">
+                        <div class="upload-icon">📁</div>
+                        <p>Drag and drop files here or</p>
+                        <label for="file-upload" class="upload-button">Browse Files</label>
+                        <input type="file" id="file-upload" multiple accept=".pdf,.docx,.txt" style="display: none;">
+                        <p class="upload-info">Supported formats: PDF, DOCX, TXT</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- File Type Selection -->
+            <div class="file-type-section">
+                <h3>Select File Type</h3>
+                <div class="file-type-options">
+                    <div class="file-type-option">
+                        <input type="radio" id="lecture" name="file-type" checked>
+                        <label for="lecture">Lecture</label>
+                    </div>
+                    <div class="file-type-option">
+                        <input type="radio" id="syllabus" name="file-type">
+                        <label for="syllabus">Syllabus</label>
+                    </div>
+                    <div class="file-type-option">
+                        <input type="radio" id="quiz" name="file-type">
+                        <label for="quiz">Quiz</label>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Week Selection -->
+            <div class="week-selection">
+                <div class="form-group">
+                    <label for="week-select">Week</label>
+                    <select id="week-select">
+                        <option value="">Select...</option>
+                        <option value="1">Week 1</option>
+                        <option value="2">Week 2</option>
+                        <option value="3">Week 3</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="topic-select">Topic</label>
+                    <select id="topic-select">
+                        <option value="">Select...</option>
+                        <option value="intro">Introduction</option>
+                        <option value="proteins">Proteins</option>
+                        <option value="enzymes">Enzymes</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="type-select">Type</label>
+                    <select id="type-select">
+                        <option value="">Select...</option>
+                        <option value="notes">Notes</option>
+                        <option value="slides">Slides</option>
+                        <option value="handout">Handout</option>
+                    </select>
+                </div>
+            </div>
+        </main>
+    </div>
+    <script src="./scripts/instructor.js"></script>
+</body>
+</html> 
