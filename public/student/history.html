@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat History - BiocBot Student</title>
+    <link rel="stylesheet" href="../styles/style.css">
+    <link rel="stylesheet" href="../styles/chat.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="logo-container">
+                <h2>BiocBot</h2>
+            </div>
+            <nav class="main-nav">
+                <ul>
+                    <li><a href="/student"><span class="icon">💬</span> Chat</a></li>
+                    <li class="active"><a href="/student/history"><span class="icon">📚</span> Chat History</a></li>
+                    <li><a href="/student/settings"><span class="icon">⚙️</span> Settings</a></li>
+                </ul>
+            </nav>
+            <div class="user-info">
+                <div class="user-avatar">S</div>
+                <div class="user-name">Student Name</div>
+                <div class="user-role">Student - Biology 101</div>
+                <div class="switch-role">
+                    <a href="/">Switch Role</a>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <header class="chat-header">
+                <h1>Chat History</h1>
+                <div class="search-container">
+                    <input type="text" id="history-search" placeholder="Search chat history...">
+                </div>
+            </header>
+
+            <!-- Chat History List -->
+            <div class="history-container">
+                <div class="chat-history-list">
+                    <div class="chat-history-item">
+                        <div class="title">Protein Structure and Function</div>
+                        <div class="preview">How do proteins fold into their 3D structure and what determines...</div>
+                        <div class="date">Today, 2:30 PM</div>
+                    </div>
+                    
+                    <div class="chat-history-item">
+                        <div class="title">Enzymes and Catalysis</div>
+                        <div class="preview">Can you explain how enzymes lower activation energy?</div>
+                        <div class="date">Yesterday, 4:15 PM</div>
+                    </div>
+                    
+                    <div class="chat-history-item">
+                        <div class="title">DNA Replication</div>
+                        <div class="preview">What are the steps involved in DNA replication and which enzymes...</div>
+                        <div class="date">Oct 15, 2023</div>
+                    </div>
+                    
+                    <div class="chat-history-item">
+                        <div class="title">Cell Membrane Structure</div>
+                        <div class="preview">Explain the fluid mosaic model of the cell membrane.</div>
+                        <div class="date">Oct 12, 2023</div>
+                    </div>
+                    
+                    <div class="chat-history-item">
+                        <div class="title">Photosynthesis Process</div>
+                        <div class="preview">What are the light-dependent and light-independent reactions?</div>
+                        <div class="date">Oct 10, 2023</div>
+                    </div>
+                </div>
+                
+                <!-- Chat Preview Panel -->
+                <div class="chat-preview-panel">
+                    <div class="preview-header">
+                        <h2>Protein Structure and Function</h2>
+                        <div class="preview-actions">
+                            <button class="secondary-button">Continue Chat</button>
+                            <button class="secondary-button">Delete</button>
+                        </div>
+                    </div>
+                    
+                    <div class="preview-messages">
+                        <div class="message user-message">
+                            <div class="message-avatar">S</div>
+                            <div class="message-content">
+                                <p>How do proteins fold into their 3D structure and what determines their final shape?</p>
+                                <span class="timestamp">2:30 PM</span>
+                            </div>
+                        </div>
+                        
+                        <div class="message bot-message">
+                            <div class="message-avatar">B</div>
+                            <div class="message-content">
+                                <p>Protein folding is determined by several factors:</p>
+                                <p>1. <strong>Primary structure:</strong> The sequence of amino acids forms the backbone.</p>
+                                <p>2. <strong>Hydrogen bonding:</strong> Creates secondary structures like alpha helices and beta sheets.</p>
+                                <p>3. <strong>Hydrophobic interactions:</strong> Non-polar amino acids cluster in the center, away from water.</p>
+                                <p>4. <strong>Ionic interactions:</strong> Charged amino acids form salt bridges.</p>
+                                <p>5. <strong>Disulfide bridges:</strong> Covalent bonds between cysteine residues stabilize the structure.</p>
+                                <p>The final 3D structure represents the most energetically favorable conformation.</p>
+                                <div class="message-source">Source: <a href="#">Biology 101 Textbook, Chapter 4: Protein Structure</a></div>
+                                <span class="timestamp">2:31 PM</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    <script src="./scripts/history.js"></script>
+</body>
+</html> 

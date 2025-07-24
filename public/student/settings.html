@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Settings - BiocBot Student</title>
+    <link rel="stylesheet" href="../styles/style.css">
+    <link rel="stylesheet" href="../styles/settings.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="logo-container">
+                <h2>BiocBot</h2>
+            </div>
+            <nav class="main-nav">
+                <ul>
+                    <li><a href="/student"><span class="icon">💬</span> Chat</a></li>
+                    <li><a href="/student/history"><span class="icon">📚</span> Chat History</a></li>
+                    <li class="active"><a href="/student/settings"><span class="icon">⚙️</span> Settings</a></li>
+                </ul>
+            </nav>
+            <div class="user-info">
+                <div class="user-avatar">S</div>
+                <div class="user-name">Student Name</div>
+                <div class="user-role">Student - Biology 101</div>
+                <div class="switch-role">
+                    <a href="/">Switch Role</a>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <header class="settings-header">
+                <h1>Settings</h1>
+            </header>
+
+            <div class="settings-container">
+                <!-- General Settings -->
+                <section class="settings-section">
+                    <h2>Student Settings</h2>
+                    <div class="setting-item">
+                        <label for="user-name">Display Name</label>
+                        <input type="text" id="user-name" value="Student Name">
+                    </div>
+                    <div class="setting-item">
+                        <label for="email">Email Address</label>
+                        <input type="email" id="email" value="student@example.com">
+                    </div>
+                    <div class="setting-item">
+                        <label for="student-id">Student ID</label>
+                        <input type="text" id="student-id" value="12345678">
+                    </div>
+                </section>
+
+                <!-- Course Settings -->
+                <section class="settings-section">
+                    <h2>Course Settings</h2>
+                    <div class="setting-item">
+                        <label for="default-course">Current Course</label>
+                        <select id="default-course">
+                            <option value="bio101" selected>Biology 101</option>
+                            <option value="chem202">Chemistry 202</option>
+                        </select>
+                    </div>
+                    <div class="setting-item checkbox">
+                        <input type="checkbox" id="save-history" checked>
+                        <label for="save-history">Save chat history</label>
+                    </div>
+                    <div class="setting-item checkbox">
+                        <input type="checkbox" id="show-sources" checked>
+                        <label for="show-sources">Show sources in chat responses</label>
+                    </div>
+                </section>
+
+                <!-- Notification Settings -->
+                <section class="settings-section">
+                    <h2>Notification Settings</h2>
+                    <div class="setting-item checkbox">
+                        <input type="checkbox" id="email-notifications" checked>
+                        <label for="email-notifications">Email notifications</label>
+                    </div>
+                    <div class="setting-item checkbox">
+                        <input type="checkbox" id="new-material-notification" checked>
+                        <label for="new-material-notification">Notify when new course materials are available</label>
+                    </div>
+                </section>
+
+                <!-- Save Button -->
+                <div class="settings-actions">
+                    <button id="save-settings" class="primary-button">Save Settings</button>
+                    <button id="reset-settings" class="secondary-button">Reset to Default</button>
+                </div>
+            </div>
+        </main>
+    </div>
+    <script src="./scripts/settings.js"></script>
+</body>
+</html> 

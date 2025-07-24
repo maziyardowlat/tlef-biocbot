@@ -3,13 +3,43 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>tlef-biocbot</title>
+    <title>BiocBot - AI Study Assistant</title>
     <link rel="stylesheet" href="styles/style.css">
+    <link rel="stylesheet" href="styles/login.css">
 </head>
 <body>
-    <h1>Welcome to tlef-biocbot</h1>
-    <p>Message from server: <span id="message">Loading...</span></p>
-    <a href="/settings">Go to Settings</a>
-    <script src="scripts/front-end.js"></script>
+    <div class="login-container">
+        <div class="login-card">
+            <div class="logo">
+                <h1>BiocBot</h1>
+                <p>AI-powered Study Assistant</p>
+            </div>
+            
+            <div class="role-selection">
+                <h2>Select your role</h2>
+                <div class="role-buttons">
+                    <a href="/student" class="role-button student-role">
+                        <div class="role-icon">👨‍🎓</div>
+                        <div class="role-info">
+                            <h3>Student</h3>
+                            <p>Ask questions about course materials</p>
+                        </div>
+                    </a>
+                    <a href="/instructor" class="role-button instructor-role">
+                        <div class="role-icon">👨‍🏫</div>
+                        <div class="role-info">
+                            <h3>Instructor</h3>
+                            <p>Upload and manage course materials</p>
+                        </div>
+                    </a>
+                </div>
+            </div>
+            
+            <div class="login-footer">
+                <p>University of British Columbia</p>
+            </div>
+        </div>
+    </div>
+    <script src="common/scripts/login.js"></script>
 </body>
 </html>
