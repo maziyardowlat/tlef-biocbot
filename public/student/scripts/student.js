@@ -31,9 +31,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 // Add bot response (simulated)
                 const botResponses = [
-                    "I found this information in your Biology 101 materials. The cell is the basic unit of life, and all living organisms are composed of one or more cells.",
-                    "According to your Biology 101 textbook, photosynthesis is the process by which plants convert light energy into chemical energy.",
-                    "Based on the lecture notes for Biology 101, DNA replication is semi-conservative, meaning each new double helix contains one original strand and one new strand.",
+                    "I found this information in your Biology 302 materials. The cell is the basic unit of life, and all living organisms are composed of one or more cells.",
+                    "According to your Biology 302 textbook, photosynthesis is the process by which plants convert light energy into chemical energy.",
+                    "Based on the lecture notes for Biology 302, DNA replication is semi-conservative, meaning each new double helix contains one original strand and one new strand.",
                     "The course material explains that natural selection is the process where organisms better adapted to their environment tend to survive and produce more offspring."
                 ];
                 
@@ -58,20 +58,42 @@ document.addEventListener('DOMContentLoaded', () => {
         const paragraph = document.createElement('p');
         paragraph.textContent = content;
         
-        const timestamp = document.createElement('span');
-        timestamp.classList.add('timestamp');
-        timestamp.textContent = 'Just now';
-        
         contentDiv.appendChild(paragraph);
+        
+        // Add flag button for bot messages
+        if (sender === 'bot') {
+            const actionsDiv = document.createElement('div');
+            actionsDiv.classList.add('message-actions');
+            
+            const flagButton = document.createElement('button');
+            flagButton.classList.add('flag-button');
+            flagButton.onclick = function() { toggleFlagMenu(this); };
+            flagButton.innerHTML = '<span class="three-dots">⋯</span>';
+            
+            const flagMenu = document.createElement('div');
+            flagMenu.classList.add('flag-menu');
+            flagMenu.innerHTML = `
+                <button class="flag-option" onclick="flagMessage(this, 'incorrectness')">Incorrectness</button>
+                <button class="flag-option" onclick="flagMessage(this, 'inappropriate')">Inappropriate</button>
+                <button class="flag-option" onclick="flagMessage(this, 'irrelevant')">Irrelevant</button>
+            `;
+            
+            actionsDiv.appendChild(flagButton);
+            actionsDiv.appendChild(flagMenu);
+            contentDiv.appendChild(actionsDiv);
+        }
         
         // Add source citation if needed
         if (withSource && sender === 'bot') {
             const sourceDiv = document.createElement('div');
             sourceDiv.classList.add('message-source');
-            sourceDiv.innerHTML = 'Source: <a href="#">Biology 101 Textbook, Chapter 3</a>';
+            sourceDiv.innerHTML = 'Source: <a href="#">Biology 302 Textbook, Chapter 3</a>';
             contentDiv.appendChild(sourceDiv);
         }
         
+        const timestamp = document.createElement('span');
+        timestamp.classList.add('timestamp');
+        timestamp.textContent = 'Just now';
         contentDiv.appendChild(timestamp);
         
         messageDiv.appendChild(avatarDiv);
@@ -117,5 +139,147 @@ document.addEventListener('DOMContentLoaded', () => {
         if (typingIndicator) {
             typingIndicator.remove();
         }
+    }
+});
+
+// Global functions for flagging functionality
+
+/**
+ * Toggle the flag menu visibility
+ * @param {HTMLElement} button - The flag button element
+ */
+function toggleFlagMenu(button) {
+    // Close all other open menus first
+    const allMenus = document.querySelectorAll('.flag-menu.show');
+    allMenus.forEach(menu => {
+        if (menu !== button.nextElementSibling) {
+            menu.classList.remove('show');
+        }
+    });
+    
+    // Toggle the clicked menu
+    const menu = button.nextElementSibling;
+    if (menu && menu.classList.contains('flag-menu')) {
+        menu.classList.toggle('show');
+    }
+}
+
+/**
+ * Handle flag message action
+ * @param {HTMLElement} button - The flag option button
+ * @param {string} flagType - The type of flag (incorrectness, inappropriate, irrelevant)
+ */
+function flagMessage(button, flagType) {
+    const menu = button.closest('.flag-menu');
+    const messageContent = menu.closest('.message-content');
+    const messageText = messageContent.querySelector('p').textContent;
+    
+    // Close the menu
+    menu.classList.remove('show');
+    
+    // Send flag to server
+    submitFlag(messageText, flagType);
+    
+    // Replace the message content with thank you message
+    replaceMessageWithThankYou(messageContent, flagType);
+}
+
+/**
+ * Submit flag to server
+ * @param {string} messageText - The flagged message text
+ * @param {string} flagType - The type of flag
+ */
+async function submitFlag(messageText, flagType) {
+    try {
+        const flagData = {
+            messageText: messageText,
+            flagType: flagType,
+            timestamp: new Date().toISOString(),
+            studentId: getCurrentStudentId() // This would come from auth
+        };
+        
+        const response = await fetch('/api/flags', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${getAuthToken()}`
+            },
+            body: JSON.stringify(flagData)
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        console.log('Flag submitted successfully:', result);
+        
+    } catch (error) {
+        console.error('Error submitting flag:', error);
+        // Still show confirmation to user even if server request fails
+    }
+}
+
+/**
+ * Replace the bot message with a thank you message
+ * @param {HTMLElement} messageContent - The message content element
+ * @param {string} flagType - The type of flag that was submitted
+ */
+function replaceMessageWithThankYou(messageContent, flagType) {
+    // Get the paragraph element
+    const paragraph = messageContent.querySelector('p');
+    
+    // Replace the message text
+    paragraph.textContent = `Thank you for reporting this response as "${flagType}". This has been logged and will be reviewed.`;
+    
+    // Add a visual indicator that this message was flagged
+    paragraph.style.color = '#666';
+    paragraph.style.fontStyle = 'italic';
+    
+    // Remove the flag button and menu
+    const actionsDiv = messageContent.querySelector('.message-actions');
+    if (actionsDiv) {
+        actionsDiv.remove();
+    }
+    
+    // Update the timestamp to show when it was flagged
+    const timestamp = messageContent.querySelector('.timestamp');
+    if (timestamp) {
+        timestamp.textContent = 'Flagged just now';
+        timestamp.style.color = '#888';
+    }
+    
+    // Add a subtle background color to indicate the message was flagged
+    messageContent.style.backgroundColor = '#f8f9fa';
+    messageContent.style.border = '1px solid #e9ecef';
+}
+
+/**
+ * Get current student ID (placeholder)
+ * @returns {string} Student ID
+ */
+function getCurrentStudentId() {
+    // This would typically come from JWT token or session
+    // For now, return a placeholder
+    return 'student-123';
+}
+
+/**
+ * Get auth token (placeholder)
+ * @returns {string} Auth token
+ */
+function getAuthToken() {
+    // This would typically come from localStorage or sessionStorage
+    // For now, return a placeholder
+    return 'placeholder-token';
+}
+
+// Close flag menus when clicking outside
+document.addEventListener('click', function(event) {
+    if (!event.target.closest('.message-actions')) {
+        const openMenus = document.querySelectorAll('.flag-menu.show');
+        openMenus.forEach(menu => {
+            menu.classList.remove('show');
+        });
     }
 }); 

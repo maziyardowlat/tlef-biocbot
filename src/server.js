@@ -3,6 +3,7 @@ const express = require('express');
 const path = require('path');
 const exampleRoutes = require('./routes/example/hello');
 const coursesRoutes = require('./routes/courses');
+const flagsRoutes = require('./routes/flags');
 
 const app = express();
 const port = process.env.TLEF_BIOCBOT_PORT || 8080;
@@ -57,6 +58,7 @@ app.get('/documents', (req, res) => {
 // API endpoints
 app.use('/api/example', exampleRoutes);
 app.use('/api/courses', coursesRoutes);
+app.use('/api/flags', flagsRoutes);
 
 app.listen(port, () => {
   console.log(`Server is running on http://localhost:${port}`);
