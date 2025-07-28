@@ -411,4 +411,83 @@
     .search-container {
         width: 100%;
     }
+}
+
+/* Calibration Questions Styles */
+.calibration-question {
+    background-color: #f8f9fa;
+    border-left: 4px solid var(--primary-color);
+}
+
+.calibration-options {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.calibration-option-container {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.calibration-option {
+    background: white;
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    padding: 12px 16px;
+    text-align: left;
+    cursor: pointer;
+    font-size: 14px;
+    color: var(--text-color);
+    transition: all 0.3s ease;
+    font-family: inherit;
+    flex: 1;
+}
+
+.calibration-option:hover {
+    border-color: var(--primary-color);
+    background-color: #f0f4f8;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.calibration-option:active {
+    transform: translateY(0);
+}
+
+.calibration-score-box {
+    width: 24px;
+    height: 24px;
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    background-color: #f8f9fa;
+    flex-shrink: 0;
+}
+
+.mode-result {
+    background-color: #e8f5e8;
+    border-left: 4px solid #28a745;
+}
+
+.mode-result p {
+    margin: 0;
+    line-height: 1.6;
+}
+
+.mode-result strong {
+    color: #28a745;
+}
+
+/* Responsive design for calibration questions */
+@media (max-width: 768px) {
+    .calibration-options {
+        gap: 6px;
+    }
+    
+    .calibration-option {
+        padding: 10px 12px;
+        font-size: 13px;
+    }
 } 

@@ -6,6 +6,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize chat
     console.log('Student chat interface initialized');
     
+    // Show calibration questions on every reload for demo purposes
+    // In production, this would check session or database
+    showCalibrationQuestions();
+    
     // Handle chat form submission
     if (chatForm) {
         chatForm.addEventListener('submit', (e) => {
@@ -282,4 +286,231 @@ document.addEventListener('click', function(event) {
             menu.classList.remove('show');
         });
     }
-}); 
+});
+
+// Calibration Questions functionality
+let currentCalibrationQuestions = [];
+let currentQuestionIndex = 0;
+let studentAnswers = [];
+
+/**
+ * Show calibration questions to determine student mode
+ */
+async function showCalibrationQuestions() {
+    try {
+        // Clear any existing mode for demo purposes
+        localStorage.removeItem('studentMode');
+        
+        // Fetch calibration questions from server
+        const response = await fetch('/api/mode-questions?instructorId=instructor-123');
+        const data = await response.json();
+        
+        if (data.success) {
+            currentCalibrationQuestions = data.data.questions;
+            currentQuestionIndex = 0;
+            studentAnswers = [];
+            
+            // Hide chat input during calibration
+            const chatInputContainer = document.querySelector('.chat-input-container');
+            if (chatInputContainer) {
+                chatInputContainer.style.display = 'none';
+            }
+            
+            // Clear any existing messages except the welcome message
+            const chatMessages = document.getElementById('chat-messages');
+            const welcomeMessage = chatMessages.querySelector('.message:not(.calibration-question):not(.mode-result)');
+            if (welcomeMessage) {
+                chatMessages.innerHTML = '';
+                chatMessages.appendChild(welcomeMessage);
+            }
+            
+            // Show first question
+            showCalibrationQuestion();
+        } else {
+            console.error('Failed to load calibration questions');
+            // If calibration fails, default to tutor mode
+            localStorage.setItem('studentMode', 'tutor');
+        }
+    } catch (error) {
+        console.error('Error loading calibration questions:', error);
+        // Default to tutor mode on error
+        localStorage.setItem('studentMode', 'tutor');
+    }
+}
+
+/**
+ * Show a specific calibration question
+ */
+function showCalibrationQuestion() {
+    if (currentQuestionIndex >= currentCalibrationQuestions.length) {
+        // All questions answered, calculate mode
+        calculateStudentMode();
+        return;
+    }
+    
+    const question = currentCalibrationQuestions[currentQuestionIndex];
+    
+    // Create question message
+    const questionMessage = document.createElement('div');
+    questionMessage.classList.add('message', 'bot-message', 'calibration-question');
+    
+    const avatarDiv = document.createElement('div');
+    avatarDiv.classList.add('message-avatar');
+    avatarDiv.textContent = 'B';
+    
+    const contentDiv = document.createElement('div');
+    contentDiv.classList.add('message-content');
+    
+    const questionText = document.createElement('p');
+    questionText.textContent = `Question ${currentQuestionIndex + 1}: ${question.question}`;
+    contentDiv.appendChild(questionText);
+    
+    // Create options
+    const optionsDiv = document.createElement('div');
+    optionsDiv.classList.add('calibration-options');
+    
+    question.options.forEach((option, index) => {
+        const optionContainer = document.createElement('div');
+        optionContainer.classList.add('calibration-option-container');
+        
+        const optionButton = document.createElement('button');
+        optionButton.classList.add('calibration-option');
+        optionButton.textContent = `${String.fromCharCode(65 + index)}. ${option}`;
+        optionButton.onclick = () => selectCalibrationAnswer(index);
+        
+        const scoreBox = document.createElement('div');
+        scoreBox.classList.add('calibration-score-box');
+        
+        optionContainer.appendChild(optionButton);
+        optionContainer.appendChild(scoreBox);
+        optionsDiv.appendChild(optionContainer);
+    });
+    
+    contentDiv.appendChild(optionsDiv);
+    
+    const timestamp = document.createElement('span');
+    timestamp.classList.add('timestamp');
+    timestamp.textContent = 'Just now';
+    contentDiv.appendChild(timestamp);
+    
+    questionMessage.appendChild(avatarDiv);
+    questionMessage.appendChild(contentDiv);
+    
+    // Add to chat
+    const chatMessages = document.getElementById('chat-messages');
+    chatMessages.appendChild(questionMessage);
+    
+    // Scroll to bottom
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+/**
+ * Handle calibration answer selection
+ * @param {number} answerIndex - Selected answer index
+ */
+function selectCalibrationAnswer(answerIndex) {
+    studentAnswers.push(answerIndex);
+    currentQuestionIndex++;
+    
+    // Show next question or finish
+    if (currentQuestionIndex < currentCalibrationQuestions.length) {
+        showCalibrationQuestion();
+    } else {
+        calculateStudentMode();
+    }
+}
+
+/**
+ * Calculate student mode based on answers
+ */
+async function calculateStudentMode() {
+    try {
+        const response = await fetch('/api/mode-questions/calibrate', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                studentId: getCurrentStudentId(),
+                answers: studentAnswers,
+                instructorId: 'instructor-123'
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            const mode = data.data.mode;
+            const score = data.data.score;
+            
+            // Store mode in localStorage
+            localStorage.setItem('studentMode', mode);
+            
+            // Show mode result message
+            showModeResult(mode, score);
+            
+            // Re-enable chat input
+            const chatInputContainer = document.querySelector('.chat-input-container');
+            if (chatInputContainer) {
+                chatInputContainer.style.display = 'block';
+            }
+            
+        } else {
+            console.error('Failed to calibrate mode');
+            // Default to tutor mode
+            localStorage.setItem('studentMode', 'tutor');
+            showModeResult('tutor', 0);
+        }
+        
+    } catch (error) {
+        console.error('Error calculating mode:', error);
+        // Default to tutor mode
+        localStorage.setItem('studentMode', 'tutor');
+        showModeResult('tutor', 0);
+    }
+}
+
+/**
+ * Show mode result to student
+ * @param {string} mode - Determined mode (tutor or protege)
+ * @param {number} score - Calibration score
+ */
+function showModeResult(mode, score) {
+    const modeMessage = document.createElement('div');
+    modeMessage.classList.add('message', 'bot-message', 'mode-result');
+    
+    const avatarDiv = document.createElement('div');
+    avatarDiv.classList.add('message-avatar');
+    avatarDiv.textContent = 'B';
+    
+    const contentDiv = document.createElement('div');
+    contentDiv.classList.add('message-content');
+    
+    const resultText = document.createElement('p');
+    if (mode === 'protege') {
+        resultText.innerHTML = `🎯 <strong>Protégé Mode Activated!</strong><br>
+        Based on your responses, I'll guide you through questions to help you discover answers yourself. 
+        This mode is designed for students who prefer to learn through guided discovery.`;
+    } else {
+        resultText.innerHTML = `📚 <strong>Tutor Mode Activated!</strong><br>
+        Based on your responses, I'll provide direct answers with detailed explanations. 
+        This mode is designed to give you comprehensive guidance and support.`;
+    }
+    
+    contentDiv.appendChild(resultText);
+    
+    const timestamp = document.createElement('span');
+    timestamp.classList.add('timestamp');
+    timestamp.textContent = 'Just now';
+    contentDiv.appendChild(timestamp);
+    
+    modeMessage.appendChild(avatarDiv);
+    modeMessage.appendChild(contentDiv);
+    
+    // Add to chat
+    const chatMessages = document.getElementById('chat-messages');
+    chatMessages.appendChild(modeMessage);
+    
+    // Scroll to bottom
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+} 
