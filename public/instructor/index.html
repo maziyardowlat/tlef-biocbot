@@ -56,13 +56,13 @@
                 </button>
                 
                 <button class="action-btn with-icon">
-                    <span class="btn-icon">📂</span>
-                    Bulk upload, structure and organize
-                </button>
-                
-                <button class="action-btn with-icon">
                     <span class="btn-icon">📊</span>
                     Create new folder
+                </button>
+                
+                <button class="action-btn with-icon" onclick="openModeQuestionsModal()">
+                    <span class="btn-icon">❓</span>
+                    Mode Calibration Questions
                 </button>
             </div>
 
@@ -79,11 +79,20 @@
                     <!-- Accordion Document List -->
                     <div class="accordion-container">
                         <!-- Week 1 Accordion -->
-                        <div class="accordion-item">
+                        <div class="accordion-item published">
                             <div class="accordion-header">
                                 <span class="folder-icon">📁</span>
                                 <span class="folder-name">Week 1</span>
-                                <span class="accordion-toggle">▼</span>
+                                <div class="header-actions">
+                                    <div class="publish-toggle">
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="publish-week1" checked onchange="togglePublish('Week 1', this.checked)">
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                        <span class="toggle-label">Published</span>
+                                    </div>
+                                    <span class="accordion-toggle">▼</span>
+                                </div>
                             </div>
                             <div class="accordion-content">
                                 <div class="file-item">
@@ -97,6 +106,14 @@
                                         <button class="action-button view">View</button>
                                         <button class="action-button delete">Delete</button>
                                     </div>
+                                </div>
+                                
+                                <!-- Add Content Button -->
+                                <div class="add-content-section">
+                                    <button class="add-content-btn" onclick="openUploadModal('Week 1')">
+                                        <span class="btn-icon">➕</span>
+                                        Add more content to this lecture
+                                    </button>
                                 </div>
                                 <div class="file-item">
                                     <span class="file-icon">📄</span>
@@ -118,7 +135,16 @@
                             <div class="accordion-header">
                                 <span class="folder-icon">📁</span>
                                 <span class="folder-name">Week 2</span>
-                                <span class="accordion-toggle">▶</span>
+                                <div class="header-actions">
+                                    <div class="publish-toggle">
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="publish-week2" onchange="togglePublish('Week 2', this.checked)">
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                        <span class="toggle-label">Published</span>
+                                    </div>
+                                    <span class="accordion-toggle">▶</span>
+                                </div>
                             </div>
                             <div class="accordion-content collapsed">
                                 <div class="file-item">
@@ -133,6 +159,14 @@
                                         <button class="action-button delete">Delete</button>
                                     </div>
                                 </div>
+                                
+                                <!-- Add Content Button -->
+                                <div class="add-content-section">
+                                    <button class="add-content-btn" onclick="openUploadModal('Week 2')">
+                                        <span class="btn-icon">➕</span>
+                                        Add more content to this lecture
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
@@ -141,7 +175,16 @@
                             <div class="accordion-header">
                                 <span class="folder-icon">📁</span>
                                 <span class="folder-name">Week 3</span>
-                                <span class="accordion-toggle">▶</span>
+                                <div class="header-actions">
+                                    <div class="publish-toggle">
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="publish-week3" onchange="togglePublish('Week 3', this.checked)">
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                        <span class="toggle-label">Published</span>
+                                    </div>
+                                    <span class="accordion-toggle">▶</span>
+                                </div>
                             </div>
                             <div class="accordion-content collapsed">
                                 <div class="file-item">
@@ -156,15 +199,32 @@
                                         <button class="action-button delete">Delete</button>
                                     </div>
                                 </div>
+                                
+                                <!-- Add Content Button -->
+                                <div class="add-content-section">
+                                    <button class="add-content-btn" onclick="openUploadModal('Week 3')">
+                                        <span class="btn-icon">➕</span>
+                                        Add more content to this lecture
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
                         <!-- Quizzes Accordion -->
-                        <div class="accordion-item">
+                        <div class="accordion-item published">
                             <div class="accordion-header">
                                 <span class="folder-icon">📁</span>
                                 <span class="folder-name">Quizzes</span>
-                                <span class="accordion-toggle">▶</span>
+                                <div class="header-actions">
+                                    <div class="publish-toggle">
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="publish-quizzes" checked onchange="togglePublish('Quizzes', this.checked)">
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                        <span class="toggle-label">Published</span>
+                                    </div>
+                                    <span class="accordion-toggle">▶</span>
+                                </div>
                             </div>
                             <div class="accordion-content collapsed">
                                 <div class="file-item">
@@ -250,6 +310,164 @@
             </div>
         </main>
     </div>
+    </div>
+    
+    <!-- Upload Modal -->
+    <div id="upload-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Add Content to <span id="modal-lecture-name">Lecture</span></h2>
+                <button class="modal-close" onclick="closeUploadModal()">×</button>
+            </div>
+            
+            <div class="modal-body">
+                <!-- Step 1: Content Type Selection -->
+                <div id="step-1" class="modal-step active">
+                    <h3>What type of content are you uploading?</h3>
+                    <div class="content-type-options">
+                        <button class="content-type-btn" onclick="selectContentType('lecture-notes')">
+                            <span class="type-icon">📝</span>
+                            <div class="type-info">
+                                <h4>Lecture Notes</h4>
+                                <p>PowerPoint slides, PDF notes, or text documents</p>
+                            </div>
+                        </button>
+                        <button class="content-type-btn" onclick="selectContentType('readings')">
+                            <span class="type-icon">📚</span>
+                            <div class="type-info">
+                                <h4>Readings</h4>
+                                <p>Textbook chapters, research papers, or articles</p>
+                            </div>
+                        </button>
+                        <button class="content-type-btn" onclick="selectContentType('practice-quiz')">
+                            <span class="type-icon">❓</span>
+                            <div class="type-info">
+                                <h4>Practice Quiz</h4>
+                                <p>Questions to test understanding of learning objectives</p>
+                            </div>
+                        </button>
+                        <button class="content-type-btn" onclick="selectContentType('syllabus')">
+                            <span class="type-icon">📋</span>
+                            <div class="type-info">
+                                <h4>Syllabus</h4>
+                                <p>Course schedule, learning objectives, or policies</p>
+                            </div>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Step 2: File Upload -->
+                <div id="step-2" class="modal-step">
+                    <h3>Upload your file</h3>
+                    <div class="file-upload-area">
+                        <div class="upload-zone" id="upload-zone">
+                            <span class="upload-icon">📁</span>
+                            <p>Drag and drop your file here, or click to browse</p>
+                            <input type="file" id="file-input" accept=".pdf,.docx,.txt,.ppt,.pptx" style="display: none;">
+                        </div>
+                        <div class="file-info" id="file-info" style="display: none;">
+                            <span class="file-name" id="file-name"></span>
+                            <span class="file-size" id="file-size"></span>
+                        </div>
+                    </div>
+                    <div class="learning-objectives-section">
+                        <h4>Learning Objectives</h4>
+                        <p>What learning objectives does this content address?</p>
+                        <div class="objectives-input">
+                            <textarea id="learning-objectives" placeholder="Enter learning objectives (e.g., 'Students will understand the structure of amino acids and their role in protein synthesis')"></textarea>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Step 3: Content Validation -->
+                <div id="step-3" class="modal-step">
+                    <h3>Review extracted content</h3>
+                    <div class="content-preview">
+                        <div class="preview-section">
+                            <h4>Learning Objectives Identified:</h4>
+                            <ul id="extracted-objectives"></ul>
+                        </div>
+                        <div class="preview-section">
+                            <h4>Key Topics:</h4>
+                            <ul id="extracted-topics"></ul>
+                        </div>
+                        <div class="preview-section">
+                            <h4>Content Summary:</h4>
+                            <p id="content-summary"></p>
+                        </div>
+                    </div>
+                    <div class="validation-actions">
+                        <button class="btn-secondary" onclick="editContent()">Edit Content</button>
+                        <button class="btn-primary" onclick="confirmUpload()">Confirm & Upload</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <div class="step-indicators">
+                    <span class="step-dot active" data-step="1"></span>
+                    <span class="step-dot" data-step="2"></span>
+                    <span class="step-dot" data-step="3"></span>
+                </div>
+                <div class="modal-actions">
+                    <button class="btn-secondary" onclick="closeUploadModal()">Cancel</button>
+                    <button class="btn-primary" id="next-btn" onclick="nextStep()">Next</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Mode Questions Modal -->
+    <div id="mode-questions-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Mode Calibration Questions</h2>
+                <button class="modal-close" onclick="closeModeQuestionsModal()">×</button>
+            </div>
+            
+            <div class="modal-body">
+                <div class="mode-info">
+                    <h3>How Mode Determination Works</h3>
+                    <p>These questions help determine whether a student should receive:</p>
+                    <ul>
+                        <li><strong>Tutor Mode:</strong> Direct answers with explanations (for students who need more guidance)</li>
+                        <li><strong>Protégé Mode:</strong> Guided questions that help students discover answers themselves (for more advanced students)</li>
+                    </ul>
+                </div>
+                
+                <div class="questions-section">
+                    <h3>Calibration Questions</h3>
+                    <p>Students will be asked these questions to determine their mode. You can edit or add new questions.</p>
+                    
+                    <div class="questions-list" id="questions-list">
+                        <!-- Questions will be loaded here -->
+                    </div>
+                    
+                    <button class="btn-secondary" onclick="addNewQuestion()">
+                        <span class="btn-icon">➕</span>
+                        Add New Question
+                    </button>
+                </div>
+                
+                <div class="threshold-section">
+                    <h3>Mode Threshold</h3>
+                    <p>Students need to score at least this percentage to get Protégé mode:</p>
+                    <div class="threshold-input">
+                        <input type="range" id="mode-threshold" min="0" max="100" value="70" step="5">
+                        <span id="threshold-value">70%</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <div class="modal-actions">
+                    <button class="btn-secondary" onclick="closeModeQuestionsModal()">Cancel</button>
+                    <button class="btn-primary" onclick="saveModeQuestions()">Save Questions</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
     <script src="./scripts/instructor.js"></script>
 </body>
 </html> 

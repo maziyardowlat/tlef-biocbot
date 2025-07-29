@@ -24,7 +24,7 @@
             <div class="user-info">
                 <div class="user-avatar">S</div>
                 <div class="user-name">Student Name</div>
-                <div class="user-role">Student - Biology 101</div>
+                <div class="user-role">Student - Biology 302</div>
                 <div class="switch-role">
                     <a href="/">Switch Role</a>
                 </div>
@@ -38,7 +38,7 @@
                 <h1>Chat with BiocBot</h1>
                 <div class="current-course">
                     <span class="course-label">Course:</span>
-                    <span class="course-name">Biology 101</span>
+                    <span class="course-name">Biology 302</span>
                 </div>
             </header>
 
@@ -49,7 +49,17 @@
                     <div class="message bot-message">
                         <div class="message-avatar">B</div>
                         <div class="message-content">
-                            <p>Hello! I'm BiocBot, your AI study assistant for Biology 101. How can I help you today?</p>
+                            <p>Hello! I'm BiocBot, your AI study assistant for Biology 302. How can I help you today?</p>
+                            <div class="message-actions">
+                                <button class="flag-button" onclick="toggleFlagMenu(this)">
+                                    <span class="three-dots">⋯</span>
+                                </button>
+                                <div class="flag-menu">
+                                    <button class="flag-option" onclick="flagMessage(this, 'incorrectness')">Incorrectness</button>
+                                    <button class="flag-option" onclick="flagMessage(this, 'inappropriate')">Inappropriate</button>
+                                    <button class="flag-option" onclick="flagMessage(this, 'irrelevant')">Irrelevant</button>
+                                </div>
+                            </div>
                             <span class="timestamp">Just now</span>
                         </div>
                     </div>
@@ -58,7 +68,7 @@
                 <!-- Chat Input Area -->
                 <div class="chat-input-container">
                     <form id="chat-form">
-                        <input type="text" id="chat-input" placeholder="Ask me anything about Biology 101...">
+                        <input type="text" id="chat-input" placeholder="Ask me anything about Biology 302...">
                         <button type="submit" id="send-button">Send</button>
                     </form>
                 </div>
