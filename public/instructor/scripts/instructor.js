@@ -8,6 +8,9 @@ document.addEventListener('DOMContentLoaded', () => {
     
     console.log('Instructor interface initialized');
     
+    // Check for URL parameters to open modals
+    checkUrlParameters();
+    
     // Handle accordion toggling
     accordionHeaders.forEach(header => {
         header.addEventListener('click', () => {
@@ -307,9 +310,9 @@ function resetModal() {
     selectedContentType = null;
     uploadedFile = null;
     
-    // Reset all steps
-    document.querySelectorAll('.modal-step').forEach(step => {
-        step.classList.remove('active');
+    // Reset step visibility
+    document.querySelectorAll('.modal-step').forEach(stepEl => {
+        stepEl.classList.remove('active');
     });
     document.getElementById('step-1').classList.add('active');
     
@@ -319,24 +322,36 @@ function resetModal() {
     });
     document.querySelector('[data-step="1"]').classList.add('active');
     
+    // Reset button
+    const nextBtn = document.getElementById('next-btn');
+    nextBtn.style.display = 'block';
+    nextBtn.textContent = 'Next';
+    nextBtn.disabled = false;
+    
     // Reset content type selection
     document.querySelectorAll('.content-type-btn').forEach(btn => {
         btn.classList.remove('selected');
     });
     
     // Reset file upload
-    document.getElementById('file-input').value = '';
-    document.getElementById('file-info').style.display = 'none';
-    document.getElementById('upload-zone').innerHTML = `
-        <span class="upload-icon">📁</span>
-        <p>Drag and drop your file here, or click to browse</p>
-    `;
+    const fileInfo = document.getElementById('file-info');
+    if (fileInfo) fileInfo.style.display = 'none';
     
     // Reset learning objectives
-    document.getElementById('learning-objectives').value = '';
+    const learningObjectives = document.getElementById('learning-objectives');
+    if (learningObjectives) learningObjectives.value = '';
     
-    // Update button text
-    document.getElementById('next-btn').textContent = 'Next';
+    // Reset skip checkbox
+    const skipCheckbox = document.getElementById('skip-objectives');
+    if (skipCheckbox) {
+        skipCheckbox.checked = false;
+        const objectivesInput = document.getElementById('objectives-input');
+        if (objectivesInput) objectivesInput.classList.remove('hidden');
+    }
+    
+    // Reset file input
+    const fileInput = document.getElementById('file-input');
+    if (fileInput) fileInput.value = '';
 }
 
 /**
@@ -351,6 +366,9 @@ function selectContentType(contentType) {
         btn.classList.remove('selected');
     });
     event.target.closest('.content-type-btn').classList.add('selected');
+    
+    // Auto-select skip objectives for certain content types
+    autoSelectSkipObjectives(contentType);
 }
 
 /**
@@ -368,11 +386,28 @@ function nextStep() {
             showNotification('Please upload a file', 'error');
             return;
         }
+        
+        // Check if objectives are required (not skipped)
+        const skipCheckbox = document.getElementById('skip-objectives');
         const objectives = document.getElementById('learning-objectives').value.trim();
-        if (!objectives) {
-            showNotification('Please enter learning objectives', 'error');
+        
+        console.log('Skip checkbox checked:', skipCheckbox.checked);
+        console.log('Objectives value:', objectives);
+        
+        // If skip is checked, allow proceeding without objectives
+        if (skipCheckbox.checked) {
+            console.log('Skip is checked, proceeding without objectives');
+            processFileAndShowPreview();
+            goToStep(3);
             return;
         }
+        
+        // If skip is not checked, require objectives
+        if (!objectives) {
+            showNotification('Please enter learning objectives or check "Skip learning objectives"', 'error');
+            return;
+        }
+        
         processFileAndShowPreview();
         goToStep(3);
     }
@@ -493,21 +528,46 @@ async function processFileAndShowPreview() {
         // Simulate API call to process file
         await new Promise(resolve => setTimeout(resolve, 2000));
         
-        // Mock extracted content
-        const extractedObjectives = [
-            'Students will understand the structure of amino acids',
-            'Students will be able to explain protein synthesis',
-            'Students will identify key biochemical pathways'
-        ];
+        // Check if objectives were skipped
+        const skipCheckbox = document.getElementById('skip-objectives');
+        const userObjectives = document.getElementById('learning-objectives').value.trim();
         
-        const extractedTopics = [
-            'Amino acid structure and properties',
-            'Peptide bond formation',
-            'Protein folding and structure',
-            'Enzymatic reactions'
-        ];
+        let extractedObjectives = [];
+        let extractedTopics = [];
+        let contentSummary = '';
         
-        const contentSummary = 'This document covers fundamental concepts in biochemistry, focusing on amino acids, protein structure, and enzymatic reactions. It provides a comprehensive overview suitable for undergraduate students in biochemistry courses.';
+        if (skipCheckbox.checked) {
+            // No learning objectives for this content type
+            extractedObjectives = ['No specific learning objectives - this content provides general information'];
+            extractedTopics = [
+                'Course information and policies',
+                'Schedule and timeline',
+                'General course materials'
+            ];
+            contentSummary = 'This document contains general course information, policies, or administrative content that does not address specific learning objectives.';
+        } else {
+            // Use user-provided objectives or generate mock ones
+            if (userObjectives) {
+                // Split user objectives into individual items
+                extractedObjectives = userObjectives.split('\n').filter(obj => obj.trim()).map(obj => obj.trim());
+            } else {
+                // Generate mock objectives based on content type
+                extractedObjectives = [
+                    'Students will understand the structure of amino acids',
+                    'Students will be able to explain protein synthesis',
+                    'Students will identify key biochemical pathways'
+                ];
+            }
+            
+            extractedTopics = [
+                'Amino acid structure and properties',
+                'Peptide bond formation',
+                'Protein folding and structure',
+                'Enzymatic reactions'
+            ];
+            
+            contentSummary = 'This document covers fundamental concepts in biochemistry, focusing on amino acids, protein structure, and enzymatic reactions. It provides a comprehensive overview suitable for undergraduate students in biochemistry courses.';
+        }
         
         // Update preview
         updateContentPreview(extractedObjectives, extractedTopics, contentSummary);
@@ -944,3 +1004,410 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 }); 
+
+/**
+ * Add a new week to the course structure
+ */
+function addNewWeek() {
+    // Get the current number of weeks by counting existing week accordions
+    // Only count accordions that have "Week" in their folder name
+    const existingWeeks = document.querySelectorAll('.accordion-item');
+    let weekCount = 0;
+    
+    existingWeeks.forEach(item => {
+        const folderName = item.querySelector('.folder-name');
+        if (folderName && folderName.textContent.includes('Week')) {
+            weekCount++;
+        }
+    });
+    
+    const newWeekNumber = weekCount + 1;
+    
+    // Create the new week HTML
+    const newWeekHTML = `
+        <div class="accordion-item" id="week-${newWeekNumber}">
+            <div class="accordion-header">
+                <span class="folder-icon">📁</span>
+                <span class="folder-name">Week ${newWeekNumber}</span>
+                <div class="header-actions">
+                    <div class="publish-toggle">
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="publish-week${newWeekNumber}" onchange="togglePublish('Week ${newWeekNumber}', this.checked)">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span class="toggle-label">Published</span>
+                    </div>
+                    <span class="accordion-toggle">▶</span>
+                </div>
+            </div>
+            <div class="accordion-content collapsed">
+                <!-- Empty content - instructor can add files via the modal -->
+                <div class="add-content-section">
+                    <button class="add-content-btn" onclick="openUploadModal('Week ${newWeekNumber}')">
+                        <span class="btn-icon">➕</span>
+                        Add content to this week
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Insert the new week before the "Add Week" button
+    const addWeekSection = document.querySelector('.add-week-section');
+    const accordionContainer = document.querySelector('.accordion-container');
+    
+    // Create a temporary container to parse the HTML
+    const temp = document.createElement('div');
+    temp.innerHTML = newWeekHTML;
+    const newWeekElement = temp.firstElementChild;
+    
+    // Insert the new week before the add week section
+    accordionContainer.insertBefore(newWeekElement, addWeekSection);
+    
+    // Add event listener to the new accordion header
+    const newHeader = newWeekElement.querySelector('.accordion-header');
+    newHeader.addEventListener('click', () => {
+        const accordionItem = newHeader.parentElement;
+        const content = accordionItem.querySelector('.accordion-content');
+        const toggle = newHeader.querySelector('.accordion-toggle');
+        
+        // Toggle the collapsed class
+        content.classList.toggle('collapsed');
+        
+        // Update the toggle icon
+        if (content.classList.contains('collapsed')) {
+            toggle.textContent = '▶';
+        } else {
+            toggle.textContent = '▼';
+        }
+    });
+    
+    // Show success notification
+    showNotification(`Week ${newWeekNumber} added successfully!`, 'success');
+    
+    // Update the add week button to reflect the new week number
+    const addWeekBtn = document.querySelector('.add-week-btn');
+    addWeekBtn.innerHTML = `
+        <span class="btn-icon">➕</span>
+        Add Week ${newWeekNumber + 1}
+    `;
+}
+
+/**
+ * Delete a file item
+ * @param {HTMLElement} button - The delete button element
+ */
+function deleteFileItem(button) {
+    const fileItem = button.closest('.file-item');
+    const fileName = fileItem.querySelector('h3').textContent;
+    
+    // Show confirmation dialog
+    if (confirm(`Are you sure you want to delete "${fileName}"?`)) {
+        // Remove the file item from the DOM
+        fileItem.remove();
+        
+        // Show success notification
+        showNotification(`"${fileName}" has been deleted successfully!`, 'success');
+    }
+}
+
+/**
+ * View a file item content
+ * @param {HTMLElement} button - The view button element
+ */
+function viewFileItem(button) {
+    const fileItem = button.closest('.file-item');
+    const fileName = fileItem.querySelector('h3').textContent;
+    const fileDescription = fileItem.querySelector('p').textContent;
+    
+    // Generate mock content based on the file name
+    const mockContent = generateMockContent(fileName, fileDescription);
+    
+    // Open the view modal
+    openViewModal(fileName, mockContent);
+}
+
+/**
+ * Generate mock content based on file name
+ * @param {string} fileName - The name of the file
+ * @param {string} description - The file description
+ * @returns {string} Mock content for the file
+ */
+function generateMockContent(fileName, description) {
+    // Generate different content based on the file type/name
+    if (fileName.includes('Introduction')) {
+        return `
+            <h2>Introduction to Biochemistry</h2>
+            <p><strong>Course Overview:</strong> This course provides a comprehensive introduction to the fundamental principles of biochemistry and molecular biology. Students will explore the chemical basis of life, from simple molecules to complex cellular processes.</p>
+            
+            <h3>Learning Objectives:</h3>
+            <ul>
+                <li>Understand the basic principles of biochemistry</li>
+                <li>Identify the four major classes of biomolecules</li>
+                <li>Explain the relationship between structure and function in biological molecules</li>
+                <li>Describe the central dogma of molecular biology</li>
+            </ul>
+            
+            <h3>Key Concepts:</h3>
+            <p><strong>Biomolecules:</strong> The four major classes of biomolecules are carbohydrates, lipids, proteins, and nucleic acids. Each class has distinct chemical properties and biological functions.</p>
+            
+            <p><strong>Metabolism:</strong> The sum of all chemical reactions that occur within a living organism. These reactions are organized into metabolic pathways that convert molecules into other molecules.</p>
+            
+            <p><strong>Enzymes:</strong> Biological catalysts that speed up chemical reactions without being consumed in the process. They are typically proteins that bind specific substrates and lower the activation energy of reactions.</p>
+        `;
+    } else if (fileName.includes('Amino Acids')) {
+        return `
+            <h2>Amino Acids, Peptides, and Proteins</h2>
+            <p><strong>Structure of Amino Acids:</strong> Amino acids are the building blocks of proteins. Each amino acid contains a central carbon atom (α-carbon) bonded to an amino group (-NH₂), a carboxyl group (-COOH), a hydrogen atom, and a unique side chain (R-group).</p>
+            
+            <h3>The 20 Standard Amino Acids:</h3>
+            <p>Amino acids can be classified based on their side chain properties:</p>
+            <ul>
+                <li><strong>Nonpolar (hydrophobic):</strong> Alanine, Valine, Leucine, Isoleucine, Methionine, Phenylalanine, Tryptophan, Proline</li>
+                <li><strong>Polar (hydrophilic):</strong> Serine, Threonine, Cysteine, Asparagine, Glutamine, Tyrosine</li>
+                <li><strong>Charged:</strong> Lysine, Arginine, Histidine (basic); Aspartic acid, Glutamic acid (acidic)</li>
+            </ul>
+            
+            <h3>Peptide Bond Formation:</h3>
+            <p>Peptide bonds are formed through a condensation reaction between the carboxyl group of one amino acid and the amino group of another, releasing a water molecule. This creates a peptide chain with the backbone structure: -N-C-C-N-C-C-</p>
+            
+            <h3>Protein Structure Levels:</h3>
+            <ol>
+                <li><strong>Primary:</strong> Linear sequence of amino acids</li>
+                <li><strong>Secondary:</strong> Local folding patterns (α-helices, β-sheets)</li>
+                <li><strong>Tertiary:</strong> Overall 3D structure of a single polypeptide</li>
+                <li><strong>Quaternary:</strong> Assembly of multiple polypeptide subunits</li>
+            </ol>
+        `;
+    } else if (fileName.includes('Enzymes')) {
+        return `
+            <h2>Enzymes: Basic Concepts and Kinetics</h2>
+            <p><strong>Enzyme Definition:</strong> Enzymes are biological catalysts that accelerate chemical reactions by lowering the activation energy barrier. They are typically proteins (though some RNA molecules can also act as enzymes).</p>
+            
+            <h3>Enzyme-Substrate Interaction:</h3>
+            <p>The enzyme binds to its substrate(s) at the active site, forming an enzyme-substrate complex. This binding is highly specific due to the complementary shape and chemical properties of the active site and substrate.</p>
+            
+            <h3>Michaelis-Menten Kinetics:</h3>
+            <p>The relationship between substrate concentration and reaction rate follows the Michaelis-Menten equation:</p>
+            <p><em>v = Vmax[S] / (Km + [S])</em></p>
+            <ul>
+                <li><strong>Vmax:</strong> Maximum reaction rate when enzyme is saturated</li>
+                <li><strong>Km:</strong> Michaelis constant - substrate concentration at half Vmax</li>
+                <li><strong>[S]:</strong> Substrate concentration</li>
+            </ul>
+            
+            <h3>Factors Affecting Enzyme Activity:</h3>
+            <ul>
+                <li><strong>Temperature:</strong> Activity increases with temperature until denaturation occurs</li>
+                <li><strong>pH:</strong> Enzymes have optimal pH ranges for activity</li>
+                <li><strong>Substrate concentration:</strong> Rate increases with substrate until saturation</li>
+                <li><strong>Enzyme concentration:</strong> Rate is directly proportional to enzyme concentration</li>
+            </ul>
+        `;
+    } else if (fileName.includes('Readings')) {
+        return `
+            <h2>Week 1 Required Readings</h2>
+            <p><strong>Textbook Chapters:</strong></p>
+            <ul>
+                <li>Chapter 1: Introduction to Biochemistry</li>
+                <li>Chapter 2: Water and pH</li>
+                <li>Chapter 3: Amino Acids and Peptides</li>
+            </ul>
+            
+            <h3>Research Papers:</h3>
+            <ol>
+                <li><strong>"The Central Dogma of Molecular Biology"</strong> by Francis Crick (1970)</li>
+                <li><strong>"Structure and Function of Proteins"</strong> by Linus Pauling (1951)</li>
+            </ol>
+            
+            <h3>Key Concepts to Focus On:</h3>
+            <ul>
+                <li>Chemical properties of water and their biological significance</li>
+                <li>pH and buffer systems in biological systems</li>
+                <li>Structure and properties of the 20 standard amino acids</li>
+                <li>Peptide bond formation and protein primary structure</li>
+            </ul>
+            
+            <h3>Study Questions:</h3>
+            <ol>
+                <li>How does the structure of water contribute to its role as a biological solvent?</li>
+                <li>What are the Henderson-Hasselbalch equation and its applications?</li>
+                <li>How do amino acid side chains determine protein structure and function?</li>
+                <li>What is the significance of the peptide bond in protein structure?</li>
+            </ol>
+        `;
+    } else if (fileName.includes('Quiz')) {
+        return `
+            <h2>Practice Quiz: Protein Structure</h2>
+            <p><strong>Instructions:</strong> Answer the following questions to test your understanding of protein structure concepts. This quiz covers primary, secondary, tertiary, and quaternary protein structures.</p>
+            
+            <h3>Question 1:</h3>
+            <p><strong>Which of the following best describes the primary structure of a protein?</strong></p>
+            <ol type="a">
+                <li>The overall 3D shape of the protein</li>
+                <li>The linear sequence of amino acids</li>
+                <li>The local folding patterns like α-helices</li>
+                <li>The assembly of multiple polypeptide chains</li>
+            </ol>
+            <p><strong>Answer:</strong> b) The linear sequence of amino acids</p>
+            
+            <h3>Question 2:</h3>
+            <p><strong>What type of bonds are primarily responsible for maintaining secondary structure?</strong></p>
+            <ol type="a">
+                <li>Peptide bonds</li>
+                <li>Hydrogen bonds</li>
+                <li>Disulfide bonds</li>
+                <li>Ionic bonds</li>
+            </ol>
+            <p><strong>Answer:</strong> b) Hydrogen bonds</p>
+            
+            <h3>Question 3:</h3>
+            <p><strong>Which of the following is NOT a type of secondary structure?</strong></p>
+            <ol type="a">
+                <li>α-helix</li>
+                <li>β-sheet</li>
+                <li>β-turn</li>
+                <li>Random coil</li>
+            </ol>
+            <p><strong>Answer:</strong> d) Random coil (this is a tertiary structure element)</p>
+        `;
+    } else {
+        // Generic content for other files
+        return `
+            <h2>${fileName}</h2>
+            <p><strong>Description:</strong> ${description}</p>
+            
+            <h3>Content Overview:</h3>
+            <p>This document contains important course materials related to ${fileName.toLowerCase()}. The content has been processed and is ready for student access.</p>
+            
+            <h3>Key Topics Covered:</h3>
+            <ul>
+                <li>Fundamental concepts and principles</li>
+                <li>Important definitions and terminology</li>
+                <li>Practical applications and examples</li>
+                <li>Study questions and exercises</li>
+            </ul>
+            
+            <h3>Learning Objectives:</h3>
+            <p>After reviewing this material, students should be able to:</p>
+            <ul>
+                <li>Understand the core concepts presented</li>
+                <li>Apply the knowledge to solve related problems</li>
+                <li>Connect this material to other course topics</li>
+                <li>Demonstrate comprehension through assessments</li>
+            </ul>
+        `;
+    }
+}
+
+/**
+ * Open the view modal with file content
+ * @param {string} fileName - The name of the file
+ * @param {string} content - The content to display
+ */
+function openViewModal(fileName, content) {
+    // Create modal HTML if it doesn't exist
+    let viewModal = document.getElementById('view-modal');
+    if (!viewModal) {
+        viewModal = document.createElement('div');
+        viewModal.id = 'view-modal';
+        viewModal.className = 'modal';
+        viewModal.innerHTML = `
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 id="view-modal-title">View File</h2>
+                    <button class="modal-close" onclick="closeViewModal()">×</button>
+                </div>
+                <div class="modal-body">
+                    <div id="view-modal-content"></div>
+                </div>
+                <div class="modal-footer">
+                    <div class="modal-actions">
+                        <button class="btn-secondary" onclick="closeViewModal()">Close</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(viewModal);
+    }
+    
+    // Update modal content
+    document.getElementById('view-modal-title').textContent = `View: ${fileName}`;
+    document.getElementById('view-modal-content').innerHTML = content;
+    
+    // Show the modal
+    viewModal.classList.add('show');
+}
+
+/**
+ * Close the view modal
+ */
+function closeViewModal() {
+    const modal = document.getElementById('view-modal');
+    if (modal) {
+        modal.classList.remove('show');
+    }
+}
+
+/**
+ * Toggle the learning objectives field visibility
+ */
+function toggleObjectivesField() {
+    const skipCheckbox = document.getElementById('skip-objectives');
+    const objectivesInput = document.getElementById('objectives-input');
+    const learningObjectives = document.getElementById('learning-objectives');
+    
+    console.log('Toggle called, checkbox checked:', skipCheckbox.checked);
+    
+    if (skipCheckbox.checked) {
+        objectivesInput.classList.add('hidden');
+        learningObjectives.value = ''; // Clear the field when hidden
+        console.log('Objectives field hidden');
+    } else {
+        objectivesInput.classList.remove('hidden');
+        console.log('Objectives field shown');
+    }
+}
+
+/**
+ * Test checkbox functionality
+ */
+function testCheckbox() {
+    const skipCheckbox = document.getElementById('skip-objectives');
+    console.log('Checkbox element:', skipCheckbox);
+    console.log('Checkbox checked:', skipCheckbox.checked);
+    console.log('Checkbox value:', skipCheckbox.value);
+}
+
+/**
+ * Auto-select skip objectives for certain content types
+ * @param {string} contentType - The selected content type
+ */
+function autoSelectSkipObjectives(contentType) {
+    const skipCheckbox = document.getElementById('skip-objectives');
+    const objectivesInput = document.getElementById('objectives-input');
+    
+    // Auto-check skip for syllabus and other non-learning content
+    if (contentType === 'syllabus') {
+        skipCheckbox.checked = true;
+        objectivesInput.classList.add('hidden');
+    } else {
+        skipCheckbox.checked = false;
+        objectivesInput.classList.remove('hidden');
+    }
+}
+
+/**
+ * Check URL parameters and open modals accordingly
+ */
+function checkUrlParameters() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const openModal = urlParams.get('openModal');
+
+    if (openModal === 'modeQuestions') {
+        // Small delay to ensure the page is fully loaded
+        setTimeout(() => {
+            openModeQuestionsModal();
+        }, 100);
+    }
+} 

@@ -16,10 +16,11 @@
             </div>
             <nav class="main-nav">
                 <ul>
-                    <li><a href="/instructor/home"><span class="icon">🏠</span> Home</a></li>
-                    <li class="active"><a href="/instructor"><span class="icon">📄</span> Course Upload</a></li>
-                    <li><a href="/instructor/settings"><span class="icon">⚙️</span> Settings</a></li>
                     <li><a href="/instructor/onboarding"><span class="icon">🚀</span> Onboarding</a></li>
+
+                    <li><a href="/instructor/home"><span class="icon">🏠</span> Home</a></li>
+                    <li class="active"><a href="/instructor/documents"><span class="icon">📄</span> Course Upload</a></li>
+                    <li><a href="/instructor/settings"><span class="icon">⚙️</span> Settings</a></li>
                 </ul>
             </nav>
             <div class="user-info">
@@ -50,16 +51,6 @@
 
             <!-- Action Buttons -->
             <div class="action-buttons-container">
-                <button class="action-btn with-icon">
-                    <span class="btn-icon">📝</span>
-                    New file, syllabus or practice quiz
-                </button>
-                
-                <button class="action-btn with-icon">
-                    <span class="btn-icon">📊</span>
-                    Create new folder
-                </button>
-                
                 <button class="action-btn with-icon" onclick="openModeQuestionsModal()">
                     <span class="btn-icon">❓</span>
                     Mode Calibration Questions
@@ -103,8 +94,8 @@
                                         <span class="status-text">Processed</span>
                                     </div>
                                     <div class="file-actions">
-                                        <button class="action-button view">View</button>
-                                        <button class="action-button delete">Delete</button>
+                                        <button class="action-button view" onclick="viewFileItem(this)">View</button>
+                                        <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
                                     </div>
                                 </div>
                                 
@@ -123,8 +114,8 @@
                                         <span class="status-text">Processed</span>
                                     </div>
                                     <div class="file-actions">
-                                        <button class="action-button view">View</button>
-                                        <button class="action-button delete">Delete</button>
+                                        <button class="action-button view" onclick="viewFileItem(this)">View</button>
+                                        <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
                                     </div>
                                 </div>
                             </div>
@@ -155,8 +146,8 @@
                                         <span class="status-text">Processed</span>
                                     </div>
                                     <div class="file-actions">
-                                        <button class="action-button view">View</button>
-                                        <button class="action-button delete">Delete</button>
+                                        <button class="action-button view" onclick="viewFileItem(this)">View</button>
+                                        <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
                                     </div>
                                 </div>
                                 
@@ -195,8 +186,8 @@
                                         <span class="status-text">Processed</span>
                                     </div>
                                     <div class="file-actions">
-                                        <button class="action-button view">View</button>
-                                        <button class="action-button delete">Delete</button>
+                                        <button class="action-button view" onclick="viewFileItem(this)">View</button>
+                                        <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
                                     </div>
                                 </div>
                                 
@@ -208,6 +199,14 @@
                                     </button>
                                 </div>
                             </div>
+                        </div>
+
+                        <!-- Add Week Button -->
+                        <div class="add-week-section">
+                            <button class="add-week-btn" onclick="addNewWeek()">
+                                <span class="btn-icon">➕</span>
+                                Add New Week
+                            </button>
                         </div>
 
                         <!-- Quizzes Accordion -->
@@ -235,8 +234,8 @@
                                         <span class="status-text processing">Processing</span>
                                     </div>
                                     <div class="file-actions">
-                                        <button class="action-button view">View</button>
-                                        <button class="action-button delete">Delete</button>
+                                        <button class="action-button view" onclick="viewFileItem(this)">View</button>
+                                        <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
                                     </div>
                                 </div>
                             </div>
@@ -244,72 +243,7 @@
                     </div>
                 </div>
             </div>
-
-            <!-- Upload Section -->
-            <section class="upload-section">
-                <h2>Upload New Material</h2>
-                <div class="upload-container">
-                    <div class="upload-box" id="upload-drop-area">
-                        <div class="upload-icon">📁</div>
-                        <p>Drag and drop files here or</p>
-                        <label for="file-upload" class="upload-button">Browse Files</label>
-                        <input type="file" id="file-upload" multiple accept=".pdf,.docx,.txt" style="display: none;">
-                        <p class="upload-info">Supported formats: PDF, DOCX, TXT</p>
-                    </div>
-                </div>
-            </section>
-
-            <!-- File Type Selection -->
-            <div class="file-type-section">
-                <h3>Select File Type</h3>
-                <div class="file-type-options">
-                    <div class="file-type-option">
-                        <input type="radio" id="lecture" name="file-type" checked>
-                        <label for="lecture">Lecture</label>
-                    </div>
-                    <div class="file-type-option">
-                        <input type="radio" id="syllabus" name="file-type">
-                        <label for="syllabus">Syllabus</label>
-                    </div>
-                    <div class="file-type-option">
-                        <input type="radio" id="quiz" name="file-type">
-                        <label for="quiz">Quiz</label>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Week Selection -->
-            <div class="week-selection">
-                <div class="form-group">
-                    <label for="week-select">Week</label>
-                    <select id="week-select">
-                        <option value="">Select...</option>
-                        <option value="1">Week 1</option>
-                        <option value="2">Week 2</option>
-                        <option value="3">Week 3</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="topic-select">Topic</label>
-                    <select id="topic-select">
-                        <option value="">Select...</option>
-                        <option value="intro">Introduction</option>
-                        <option value="proteins">Proteins</option>
-                        <option value="enzymes">Enzymes</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="type-select">Type</label>
-                    <select id="type-select">
-                        <option value="">Select...</option>
-                        <option value="notes">Notes</option>
-                        <option value="slides">Slides</option>
-                        <option value="handout">Handout</option>
-                    </select>
-                </div>
-            </div>
         </main>
-    </div>
     </div>
     
     <!-- Upload Modal -->
@@ -373,7 +307,14 @@
                     <div class="learning-objectives-section">
                         <h4>Learning Objectives</h4>
                         <p>What learning objectives does this content address?</p>
-                        <div class="objectives-input">
+                        <div class="objectives-options">
+                            <label class="objectives-checkbox">
+                                <input type="checkbox" id="skip-objectives" onchange="toggleObjectivesField()">
+                                <span class="checkmark"></span>
+                                Skip learning objectives (for syllabus, policies, etc.)
+                            </label>
+                        </div>
+                        <div class="objectives-input" id="objectives-input">
                             <textarea id="learning-objectives" placeholder="Enter learning objectives (e.g., 'Students will understand the structure of amino acids and their role in protein synthesis')"></textarea>
                         </div>
                     </div>

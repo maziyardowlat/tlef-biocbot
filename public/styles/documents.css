@@ -623,7 +623,47 @@
 }
 
 .add-content-btn .btn-icon {
+    margin-right: 8px;
+}
+
+/* Add Week Section */
+.add-week-section {
+    margin: 20px 0;
+    padding: 20px;
+    background-color: #f8f9fa;
+    border: 2px dashed #dee2e6;
+    border-radius: 8px;
+    text-align: center;
+    transition: border-color 0.3s, background-color 0.3s;
+}
+
+.add-week-section:hover {
+    border-color: var(--primary-color);
+    background-color: rgba(74, 111, 165, 0.05);
+}
+
+.add-week-btn {
+    background: none;
+    border: none;
+    color: var(--primary-color);
     font-size: 16px;
+    font-weight: 500;
+    cursor: pointer;
+    padding: 12px 24px;
+    border-radius: 6px;
+    transition: background-color 0.3s, color 0.3s;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.add-week-btn:hover {
+    background-color: var(--primary-color);
+    color: white;
+}
+
+.add-week-btn .btn-icon {
+    font-size: 18px;
 }
 
 /* Modal Styles */
@@ -849,9 +889,61 @@
 }
 
 .learning-objectives-section p {
-    margin: 0 0 12px 0;
+    margin-bottom: 12px;
+    color: #666;
+}
+
+.objectives-options {
+    margin-bottom: 16px;
+}
+
+.objectives-checkbox {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
     font-size: 14px;
     color: #666;
+    gap: 8px;
+}
+
+.objectives-checkbox input[type="checkbox"] {
+    display: none;
+}
+
+.objectives-checkbox .checkmark {
+    width: 18px;
+    height: 18px;
+    border: 2px solid #ddd;
+    border-radius: 3px;
+    position: relative;
+    transition: all 0.3s;
+}
+
+.objectives-checkbox input[type="checkbox"]:checked + .checkmark {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.objectives-checkbox input[type="checkbox"]:checked + .checkmark::after {
+    content: '✓';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+.objectives-input {
+    transition: opacity 0.3s, max-height 0.3s;
+}
+
+.objectives-input.hidden {
+    opacity: 0;
+    max-height: 0;
+    overflow: hidden;
+    pointer-events: none;
 }
 
 .objectives-input textarea {

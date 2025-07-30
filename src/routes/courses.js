@@ -11,25 +11,33 @@ router.use(express.json());
 
 /**
  * POST /api/courses
- * Create a new course for an instructor
+ * Create a new course for an instructor (updated for onboarding)
  */
 router.post('/', async (req, res) => {
     try {
-        const { course, units, instructorId } = req.body;
+        const { course, weeks, lecturesPerWeek, contentTypes, instructorId } = req.body;
         
         // Validate required fields
-        if (!course || !units || !instructorId) {
+        if (!course || !weeks || !lecturesPerWeek || !instructorId) {
             return res.status(400).json({
                 success: false,
-                message: 'Missing required fields: course, units, instructorId'
+                message: 'Missing required fields: course, weeks, lecturesPerWeek, instructorId'
             });
         }
         
-        // Validate units is a positive number
-        if (isNaN(units) || units < 1 || units > 20) {
+        // Validate weeks is a positive number
+        if (isNaN(weeks) || weeks < 1 || weeks > 20) {
             return res.status(400).json({
                 success: false,
-                message: 'Units must be a number between 1 and 20'
+                message: 'Weeks must be a number between 1 and 20'
+            });
+        }
+        
+        // Validate lectures per week
+        if (isNaN(lecturesPerWeek) || lecturesPerWeek < 1 || lecturesPerWeek > 5) {
+            return res.status(400).json({
+                success: false,
+                message: 'Lectures per week must be a number between 1 and 5'
             });
         }
         
@@ -37,16 +45,20 @@ router.post('/', async (req, res) => {
         // 1. Validate instructor permissions
         // 2. Check if course already exists for this instructor
         // 3. Create course in database
-        // 4. Set up initial course structure
+        // 4. Set up initial course structure with weeks
+        // 5. Create folder structure based on content types
         
         // For now, return a mock success response
         const courseData = {
             id: `course-${Date.now()}`,
             name: course,
-            units: parseInt(units),
+            weeks: parseInt(weeks),
+            lecturesPerWeek: parseInt(lecturesPerWeek),
+            contentTypes: contentTypes || [],
             instructorId: instructorId,
             createdAt: new Date().toISOString(),
-            status: 'active'
+            status: 'active',
+            structure: generateCourseStructure(weeks, lecturesPerWeek, contentTypes)
         };
         
         console.log('Course created:', courseData);
@@ -59,6 +71,108 @@ router.post('/', async (req, res) => {
         
     } catch (error) {
         console.error('Error creating course:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error'
+        });
+    }
+});
+
+/**
+ * Generate course structure based on weeks and content types
+ */
+function generateCourseStructure(weeks, lecturesPerWeek, contentTypes) {
+    const structure = {
+        weeks: [],
+        specialFolders: []
+    };
+    
+    // Generate week folders
+    for (let week = 1; week <= weeks; week++) {
+        structure.weeks.push({
+            id: `week-${week}`,
+            name: `Week ${week}`,
+            lectures: lecturesPerWeek,
+            documents: []
+        });
+    }
+    
+    // Generate special folders based on content types
+    if (contentTypes.includes('syllabus')) {
+        structure.specialFolders.push({
+            id: 'syllabus',
+            name: 'Syllabus & Schedule',
+            type: 'syllabus'
+        });
+    }
+    
+    if (contentTypes.includes('practice-quizzes')) {
+        structure.specialFolders.push({
+            id: 'quizzes',
+            name: 'Practice Quizzes',
+            type: 'quiz'
+        });
+    }
+    
+    if (contentTypes.includes('readings')) {
+        structure.specialFolders.push({
+            id: 'readings',
+            name: 'Required Readings',
+            type: 'reading'
+        });
+    }
+    
+    return structure;
+}
+
+/**
+ * POST /api/courses/:courseId/content
+ * Upload content to a specific course
+ */
+router.post('/:courseId/content', async (req, res) => {
+    try {
+        const { courseId } = req.params;
+        const { title, description, week, type, instructorId } = req.body;
+        
+        // Validate required fields
+        if (!title || !week || !type || !instructorId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Missing required fields: title, week, type, instructorId'
+            });
+        }
+        
+        // TODO: In a real implementation, this would:
+        // 1. Validate instructor permissions for this course
+        // 2. Handle file upload (multipart/form-data)
+        // 3. Process document (parse, chunk, embed)
+        // 4. Store in database and vector store
+        // 5. Update course structure
+        
+        const contentData = {
+            id: `content-${Date.now()}`,
+            courseId: courseId,
+            title: title,
+            description: description || '',
+            week: parseInt(week),
+            type: type,
+            instructorId: instructorId,
+            uploadedAt: new Date().toISOString(),
+            status: 'processing',
+            fileSize: req.body.fileSize || 0,
+            fileName: req.body.fileName || ''
+        };
+        
+        console.log('Content uploaded:', contentData);
+        
+        res.status(201).json({
+            success: true,
+            message: 'Content uploaded successfully',
+            data: contentData
+        });
+        
+    } catch (error) {
+        console.error('Error uploading content:', error);
         res.status(500).json({
             success: false,
             message: 'Internal server error'
@@ -91,7 +205,8 @@ router.get('/', async (req, res) => {
             {
                 id: 'course-1',
                 name: 'BIOC 202',
-                units: 12,
+                weeks: 16,
+                lecturesPerWeek: 2,
                 instructorId: instructorId,
                 createdAt: '2024-01-15T10:00:00Z',
                 status: 'active',
@@ -101,7 +216,8 @@ router.get('/', async (req, res) => {
             {
                 id: 'course-2',
                 name: 'BIOC 303',
-                units: 8,
+                weeks: 12,
+                lecturesPerWeek: 3,
                 instructorId: instructorId,
                 createdAt: '2024-01-20T14:30:00Z',
                 status: 'active',
@@ -149,18 +265,24 @@ router.get('/:courseId', async (req, res) => {
         const mockCourse = {
             id: courseId,
             name: 'BIOC 202',
-            units: 12,
+            weeks: 16,
+            lecturesPerWeek: 2,
             instructorId: instructorId,
             createdAt: '2024-01-15T10:00:00Z',
             status: 'active',
             documentCount: 15,
             studentCount: 45,
-            units: [
-                { id: 'unit-1', name: 'Introduction to Biochemistry', documentCount: 3 },
-                { id: 'unit-2', name: 'Protein Structure', documentCount: 4 },
-                { id: 'unit-3', name: 'Enzyme Kinetics', documentCount: 2 },
-                { id: 'unit-4', name: 'Metabolism', documentCount: 6 }
-            ]
+            structure: {
+                weeks: [
+                    { id: 'week-1', name: 'Week 1', lectures: 2, documents: 3 },
+                    { id: 'week-2', name: 'Week 2', lectures: 2, documents: 4 },
+                    { id: 'week-3', name: 'Week 3', lectures: 2, documents: 2 }
+                ],
+                specialFolders: [
+                    { id: 'syllabus', name: 'Syllabus & Schedule', type: 'syllabus' },
+                    { id: 'quizzes', name: 'Practice Quizzes', type: 'quiz' }
+                ]
+            }
         };
         
         res.json({
@@ -184,7 +306,7 @@ router.get('/:courseId', async (req, res) => {
 router.put('/:courseId', async (req, res) => {
     try {
         const { courseId } = req.params;
-        const { name, units, status } = req.body;
+        const { name, weeks, lecturesPerWeek, status } = req.body;
         const instructorId = req.query.instructorId;
         
         if (!instructorId) {
@@ -199,7 +321,7 @@ router.put('/:courseId', async (req, res) => {
         // 2. Update course in database
         // 3. Return updated course data
         
-        console.log('Course updated:', { courseId, name, units, status, instructorId });
+        console.log('Course updated:', { courseId, name, weeks, lecturesPerWeek, status, instructorId });
         
         res.json({
             success: true,

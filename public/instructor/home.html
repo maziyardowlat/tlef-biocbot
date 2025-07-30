@@ -16,10 +16,10 @@
             </div>
             <nav class="main-nav">
                 <ul>
-                    <li class="active"><a href="/instructor/home"><span class="icon">🏠</span> Home</a></li>
-                    <li><a href="/instructor"><span class="icon">📄</span> Course Upload</a></li>
-                    <li><a href="/instructor/settings"><span class="icon">⚙️</span> Settings</a></li>
                     <li><a href="/instructor/onboarding"><span class="icon">🚀</span> Onboarding</a></li>
+                    <li class="active"><a href="/instructor/home"><span class="icon">🏠</span> Home</a></li>
+                    <li><a href="/instructor/documents"><span class="icon">📄</span> Course Upload</a></li>
+                    <li><a href="/instructor/settings"><span class="icon">⚙️</span> Settings</a></li>
                 </ul>
             </nav>
             <div class="user-info">
@@ -109,6 +109,58 @@
         </main>
     </div>
     
+    <!-- Mode Questions Modal -->
+    <div id="mode-questions-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Mode Calibration Questions</h2>
+                <button class="modal-close" onclick="closeModeQuestionsModal()">×</button>
+            </div>
+            
+            <div class="modal-body">
+                <div class="mode-info">
+                    <h3>How Mode Determination Works</h3>
+                    <p>These questions help determine whether a student should receive:</p>
+                    <ul>
+                        <li><strong>Tutor Mode:</strong> Direct answers with explanations (for students who need more guidance)</li>
+                        <li><strong>Protégé Mode:</strong> Guided questions that help students discover answers themselves (for more advanced students)</li>
+                    </ul>
+                </div>
+                
+                <div class="questions-section">
+                    <h3>Calibration Questions</h3>
+                    <p>Students will be asked these questions to determine their mode. You can edit or add new questions.</p>
+                    
+                    <div class="questions-list" id="questions-list">
+                        <!-- Questions will be loaded here -->
+                    </div>
+                    
+                    <button class="btn-secondary" onclick="addNewQuestion()">
+                        <span class="btn-icon">➕</span>
+                        Add New Question
+                    </button>
+                </div>
+                
+                <div class="threshold-section">
+                    <h3>Mode Threshold</h3>
+                    <p>Students need to score at least this percentage to get Protégé mode:</p>
+                    <div class="threshold-input">
+                        <input type="range" id="mode-threshold" min="0" max="100" value="70" step="5">
+                        <span id="threshold-value">70%</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <div class="modal-actions">
+                    <button class="btn-secondary" onclick="closeModeQuestionsModal()">Cancel</button>
+                    <button class="btn-primary" onclick="saveModeQuestions()">Save Questions</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
     <script src="../instructor/scripts/home.js"></script>
+    <script src="../instructor/scripts/instructor.js"></script>
 </body>
 </html> 

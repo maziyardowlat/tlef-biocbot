@@ -1,48 +1,226 @@
 /* Onboarding Page Styles */
 
-.onboarding-header {
-    padding: 30px 40px 20px;
+/* Progress Bar */
+.onboarding-progress {
+    background: white;
     border-bottom: 1px solid var(--border-color);
-    background-color: white;
+    padding: 20px 40px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
 }
 
-.onboarding-header h1 {
-    font-size: 2.5rem;
+.progress-bar {
+    width: 100%;
+    height: 4px;
+    background-color: #e0e0e0;
+    border-radius: 2px;
+    margin-bottom: 15px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background-color: var(--primary-color);
+    border-radius: 2px;
+    transition: width 0.3s ease;
+    width: 25%; /* Start at 25% for first step */
+}
+
+.progress-steps {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.step-indicator {
+    font-size: 0.875rem;
+    color: #666;
+    font-weight: 500;
+    transition: color 0.3s ease;
+}
+
+.step-indicator.active {
+    color: var(--primary-color);
+    font-weight: 600;
+}
+
+.step-indicator.completed {
+    color: var(--success-color);
+}
+
+/* Step Container */
+.onboarding-step {
+    display: none;
+    min-height: calc(100vh - 200px);
+    padding: 40px;
+}
+
+.onboarding-step.active {
+    display: block;
+}
+
+.step-content {
+    max-width: 900px;
+    margin: 0 auto;
+}
+
+/* Step 1: Welcome Styles */
+.welcome-header {
+    text-align: center;
+    margin-bottom: 60px;
+}
+
+.welcome-header h1 {
+    font-size: 3rem;
+    color: var(--text-color);
+    margin-bottom: 15px;
+    font-weight: 700;
+}
+
+.welcome-subtitle {
+    font-size: 1.25rem;
+    color: #666;
+    margin: 0;
+}
+
+.intro-section {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 30px;
+    margin-bottom: 60px;
+}
+
+.feature-card {
+    background: white;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 30px;
+    text-align: center;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.feature-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+}
+
+.feature-icon {
+    font-size: 3rem;
+    margin-bottom: 20px;
+    display: block;
+}
+
+.feature-card h3 {
+    font-size: 1.5rem;
+    color: var(--text-color);
+    margin-bottom: 15px;
+    font-weight: 600;
+}
+
+.feature-card p {
+    color: #666;
+    line-height: 1.6;
+    margin: 0;
+}
+
+.how-it-works {
+    margin-bottom: 60px;
+}
+
+.how-it-works h2 {
+    text-align: center;
+    font-size: 2rem;
+    color: var(--text-color);
+    margin-bottom: 40px;
+    font-weight: 600;
+}
+
+.workflow-steps {
+    display: grid;
+    gap: 30px;
+}
+
+.workflow-step {
+    display: flex;
+    align-items: flex-start;
+    background: white;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 25px;
+}
+
+.workflow-step .step-number {
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background-color: var(--primary-color);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 1.25rem;
+    margin-right: 25px;
+    flex-shrink: 0;
+}
+
+.step-details h4 {
+    font-size: 1.25rem;
     color: var(--text-color);
     margin-bottom: 10px;
     font-weight: 600;
 }
 
-.onboarding-header p {
+.step-details p {
+    color: #666;
+    line-height: 1.6;
+    margin: 0;
+}
+
+/* Step 2: Course Setup Styles */
+.step-header {
+    text-align: center;
+    margin-bottom: 50px;
+}
+
+.step-header h2 {
+    font-size: 2.5rem;
+    color: var(--text-color);
+    margin-bottom: 15px;
+    font-weight: 600;
+}
+
+.step-header p {
     font-size: 1.1rem;
     color: #666;
     margin: 0;
 }
 
-.onboarding-container {
-    padding: 40px;
-    max-width: 800px;
+.setup-form {
+    max-width: 600px;
     margin: 0 auto;
 }
 
-.onboarding-section {
+.form-section {
     background: white;
-    border-radius: 8px;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
     padding: 30px;
     margin-bottom: 30px;
-    box-shadow: 0 2px 4px var(--shadow-color);
 }
 
-.onboarding-section h2 {
-    font-size: 1.8rem;
+.form-section h3 {
+    font-size: 1.5rem;
     color: var(--text-color);
     margin-bottom: 25px;
     font-weight: 600;
 }
 
-/* Form Styles */
-.onboarding-form {
-    max-width: 400px;
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
 }
 
 .form-group {
@@ -57,7 +235,9 @@
     font-weight: 500;
 }
 
-.form-group select {
+.form-group input,
+.form-group select,
+.form-group textarea {
     width: 100%;
     padding: 12px 16px;
     border: 1px solid #ddd;
@@ -65,150 +245,435 @@
     font-size: 1rem;
     background-color: #f8f9fa;
     color: var(--text-color);
-    cursor: pointer;
     transition: border-color 0.3s ease, background-color 0.3s ease;
 }
 
-.form-group select:focus {
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
     outline: none;
     border-color: var(--primary-color);
     background-color: white;
     box-shadow: 0 0 0 3px rgba(74, 111, 165, 0.1);
 }
 
-.form-group select:hover {
-    border-color: var(--secondary-color);
+.form-group textarea {
+    min-height: 100px;
+    resize: vertical;
 }
 
-.form-actions {
-    margin-top: 30px;
+.content-types {
+    display: grid;
+    gap: 15px;
 }
 
-.form-actions .primary-button {
-    padding: 12px 24px;
-    font-size: 1rem;
-    font-weight: 500;
-    border: 1px solid var(--primary-color);
-    background-color: var(--primary-color);
-    color: white;
-    border-radius: 6px;
+.checkbox-label {
+    display: flex;
+    align-items: center;
     cursor: pointer;
-    transition: background-color 0.3s ease, border-color 0.3s ease;
+    padding: 15px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    transition: border-color 0.3s ease, background-color 0.3s ease;
 }
 
-.form-actions .primary-button:hover {
-    background-color: var(--accent-color);
-    border-color: var(--accent-color);
+.checkbox-label:hover {
+    border-color: var(--primary-color);
+    background-color: #f8f9fa;
 }
 
-.form-actions .primary-button:focus {
-    outline: none;
-    box-shadow: 0 0 0 3px rgba(74, 111, 165, 0.2);
+.checkbox-label input[type="checkbox"] {
+    display: none;
 }
 
-/* Steps Container */
-.steps-container {
+.checkmark {
+    width: 20px;
+    height: 20px;
+    border: 2px solid #ddd;
+    border-radius: 4px;
+    margin-right: 15px;
+    position: relative;
+    transition: border-color 0.3s ease, background-color 0.3s ease;
+}
+
+.checkbox-label input[type="checkbox"]:checked + .checkmark {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.checkbox-label input[type="checkbox"]:checked + .checkmark::after {
+    content: '✓';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+    font-size: 12px;
+    font-weight: bold;
+}
+
+/* Step 3: Structure Preview Styles */
+.structure-preview {
+    background: white;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 30px;
+    margin-bottom: 30px;
+}
+
+.preview-header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.preview-header h3 {
+    font-size: 1.8rem;
+    color: var(--text-color);
+    margin-bottom: 10px;
+    font-weight: 600;
+}
+
+.preview-header p {
+    color: #666;
+    margin: 0;
+}
+
+.folder-structure {
+    display: grid;
+    gap: 15px;
+    margin-bottom: 30px;
+}
+
+.folder-item {
+    display: flex;
+    align-items: center;
+    padding: 15px 20px;
+    background: #f8f9fa;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+}
+
+.folder-icon {
+    font-size: 1.5rem;
+    margin-right: 15px;
+}
+
+.folder-name {
+    font-weight: 500;
+    color: var(--text-color);
+}
+
+.structure-actions {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+}
+
+/* Step 4: Upload Styles */
+.upload-guide {
+    max-width: 700px;
+    margin: 0 auto;
+}
+
+.upload-section {
+    background: white;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 30px;
+    margin-bottom: 30px;
+}
+
+.upload-section h3 {
+    font-size: 1.5rem;
+    color: var(--text-color);
+    margin-bottom: 20px;
+    font-weight: 600;
+}
+
+.upload-options {
     display: grid;
     gap: 20px;
 }
 
-.step-item {
+.upload-option {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     padding: 20px;
     border: 1px solid var(--border-color);
     border-radius: 8px;
-    background-color: #f8f9fa;
-    transition: border-color 0.3s ease, background-color 0.3s ease;
+    transition: border-color 0.3s ease;
 }
 
-.step-item:hover {
+.upload-option:hover {
     border-color: var(--primary-color);
-    background-color: white;
 }
 
-.step-number {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    background-color: var(--primary-color);
-    color: white;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: bold;
-    font-size: 1.1rem;
+.option-icon {
+    font-size: 2rem;
     margin-right: 20px;
-    flex-shrink: 0;
 }
 
-.step-content h3 {
-    font-size: 1.2rem;
+.option-content h4 {
+    font-size: 1.1rem;
     color: var(--text-color);
-    margin-bottom: 8px;
+    margin-bottom: 5px;
     font-weight: 600;
 }
 
-.step-content p {
+.option-content p {
     color: #666;
     margin: 0;
-    line-height: 1.5;
+}
+
+.file-upload-area {
+    border: 2px dashed #ddd;
+    border-radius: 8px;
+    padding: 40px;
+    text-align: center;
+    transition: border-color 0.3s ease;
+}
+
+.file-upload-area:hover {
+    border-color: var(--primary-color);
+}
+
+.upload-zone {
+    cursor: pointer;
+}
+
+.upload-icon {
+    font-size: 3rem;
+    margin-bottom: 15px;
+    display: block;
+}
+
+.upload-zone p {
+    color: #666;
+    margin-bottom: 20px;
+}
+
+.browse-btn {
+    padding: 12px 24px;
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 500;
+    transition: background-color 0.3s ease;
+}
+
+.browse-btn:hover {
+    background-color: var(--accent-color);
+}
+
+.file-info {
+    margin-top: 20px;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 6px;
+}
+
+.file-name {
+    font-weight: 500;
+    color: var(--text-color);
+    display: block;
+    margin-bottom: 5px;
+}
+
+.file-size {
+    color: #666;
+    font-size: 0.875rem;
+}
+
+.content-details {
+    display: grid;
+    gap: 20px;
+}
+
+/* Step 5: Completion Styles */
+.completion-header {
+    text-align: center;
+    margin-bottom: 50px;
+}
+
+.completion-icon {
+    font-size: 4rem;
+    margin-bottom: 20px;
+    display: block;
+}
+
+.completion-header h2 {
+    font-size: 2.5rem;
+    color: var(--text-color);
+    margin-bottom: 15px;
+    font-weight: 600;
+}
+
+.completion-header p {
+    font-size: 1.1rem;
+    color: #666;
+    margin: 0;
+}
+
+.next-steps {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 30px;
+    margin-bottom: 50px;
+}
+
+.next-step-card {
+    background: white;
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    padding: 30px;
+    text-align: center;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.next-step-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+}
+
+.step-icon {
+    font-size: 2.5rem;
+    margin-bottom: 20px;
+    display: block;
+}
+
+.next-step-card h3 {
+    font-size: 1.3rem;
+    color: var(--text-color);
+    margin-bottom: 15px;
+    font-weight: 600;
+}
+
+.next-step-card p {
+    color: #666;
+    line-height: 1.6;
+    margin-bottom: 20px;
+}
+
+/* Button Styles */
+.step-actions {
+    display: flex;
+    gap: 15px;
+    justify-content: center;
+    margin-top: 40px;
+}
+
+.btn-primary,
+.btn-secondary {
+    padding: 12px 24px;
+    font-size: 1rem;
+    font-weight: 500;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border: none;
+}
+
+.btn-primary {
+    background-color: var(--primary-color);
+    color: white;
+    border: 1px solid var(--primary-color);
+}
+
+.btn-primary:hover {
+    background-color: var(--accent-color);
+    border-color: var(--accent-color);
+}
+
+.btn-secondary {
+    background-color: white;
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+}
+
+.btn-secondary:hover {
+    background-color: #f8f9fa;
+    border-color: var(--primary-color);
+}
+
+.completion-actions {
+    text-align: center;
 }
 
 /* Responsive Design */
 @media (max-width: 768px) {
-    .onboarding-container {
+    .onboarding-step {
         padding: 20px;
     }
     
-    .onboarding-section {
-        padding: 20px;
+    .welcome-header h1 {
+        font-size: 2.5rem;
     }
     
-    .onboarding-header {
-        padding: 20px;
+    .intro-section {
+        grid-template-columns: 1fr;
     }
     
-    .onboarding-header h1 {
-        font-size: 2rem;
+    .form-row {
+        grid-template-columns: 1fr;
     }
     
-    .step-item {
+    .workflow-step {
         flex-direction: column;
         text-align: center;
     }
     
-    .step-number {
+    .workflow-step .step-number {
         margin-right: 0;
         margin-bottom: 15px;
+    }
+    
+    .step-actions {
+        flex-direction: column;
+    }
+    
+    .next-steps {
+        grid-template-columns: 1fr;
+    }
+    
+    .progress-steps {
+        font-size: 0.75rem;
     }
 }
 
 /* Accessibility Enhancements */
-.form-group select:focus-visible {
+.btn-primary:focus-visible,
+.btn-secondary:focus-visible {
     outline: 2px solid var(--primary-color);
     outline-offset: 2px;
 }
 
-.form-actions .primary-button:focus-visible {
+.form-group input:focus-visible,
+.form-group select:focus-visible,
+.form-group textarea:focus-visible {
     outline: 2px solid var(--primary-color);
     outline-offset: 2px;
 }
 
-/* Loading State */
-.form-actions .primary-button:disabled {
-    background-color: #ccc;
-    border-color: #ccc;
+/* Loading States */
+.btn-primary:disabled,
+.btn-secondary:disabled {
+    opacity: 0.6;
     cursor: not-allowed;
 }
 
-/* Success State */
-.form-group.success select {
+/* Success/Error States */
+.form-group.success input,
+.form-group.success select,
+.form-group.success textarea {
     border-color: var(--success-color);
 }
 
-/* Error State */
-.form-group.error select {
+.form-group.error input,
+.form-group.error select,
+.form-group.error textarea {
     border-color: var(--danger-color);
 }
 

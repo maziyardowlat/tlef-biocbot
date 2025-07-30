@@ -16,10 +16,10 @@
             </div>
             <nav class="main-nav">
                 <ul>
+                    <li><a href="/instructor/onboarding"><span class="icon">🚀</span> Onboarding</a></li>
                     <li><a href="/instructor/home"><span class="icon">🏠</span> Home</a></li>
-                    <li><a href="/instructor"><span class="icon">📄</span> Course Upload</a></li>
+                    <li><a href="/instructor/documents"><span class="icon">📄</span> Course Upload</a></li>
                     <li><a href="/instructor/settings"><span class="icon">⚙️</span> Settings</a></li>
-                    <li class="active"><a href="/instructor/onboarding"><span class="icon">🚀</span> Onboarding</a></li>
                 </ul>
             </nav>
             <div class="user-info">
@@ -34,94 +34,349 @@
 
         <!-- Main Content Area -->
         <main class="main-content">
-            <header class="onboarding-header">
-                <h1>Welcome to BiocBot</h1>
-                <p>Let's get your course set up for AI-powered learning</p>
-            </header>
+            <!-- Progress Bar -->
+            <div class="onboarding-progress">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progress-fill"></div>
+                </div>
+                <div class="progress-steps">
+                    <span class="step-indicator active" data-step="1">Welcome</span>
+                    <span class="step-indicator" data-step="2">Course Setup</span>
+                    <span class="step-indicator" data-step="3">Content Structure</span>
+                    <span class="step-indicator" data-step="4">First Upload</span>
+                </div>
+            </div>
 
-            <div class="onboarding-container">
-                <!-- Course Selection Form -->
-                <section class="onboarding-section">
-                    <h2>Select Course</h2>
-                    <form id="course-setup-form" class="onboarding-form">
-                        <div class="form-group">
-                            <label for="course-select">Courses</label>
-                            <select id="course-select" name="course" required>
-                                <option value="">Select a course</option>
-                                <option value="BIOC 202">BIOC 202</option>
-                                <option value="BIOC 303">BIOC 303</option>
-                                <option value="BIOC 301">BIOC 301</option>
-                                <option value="BIOC 302">BIOC 302</option>
-                            </select>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="units-count">How many units?</label>
-                            <select id="units-count" name="units" required>
-                                <option value="">Numerical value</option>
-                                <option value="1">1</option>
-                                <option value="2">2</option>
-                                <option value="3">3</option>
-                                <option value="4">4</option>
-                                <option value="5">5</option>
-                                <option value="6">6</option>
-                                <option value="7">7</option>
-                                <option value="8">8</option>
-                                <option value="9">9</option>
-                                <option value="10">10</option>
-                                <option value="11">11</option>
-                                <option value="12">12</option>
-                                <option value="13">13</option>
-                                <option value="14">14</option>
-                                <option value="15">15</option>
-                                <option value="16">16</option>
-                            </select>
-                        </div>
-                        
-                        <div class="form-actions">
-                            <button type="submit" class="primary-button">Create Course</button>
-                        </div>
-                    </form>
-                </section>
+            <!-- Step 1: Welcome & Introduction -->
+            <div id="step-1" class="onboarding-step active">
+                <div class="step-content">
+                    <div class="welcome-header">
+                        <h1>Welcome to BiocBot! 🤖</h1>
+                        <p class="welcome-subtitle">Your AI-powered teaching assistant</p>
+                    </div>
 
-                <!-- Onboarding Steps -->
-                <section class="onboarding-section">
-                    <h2>Next Steps</h2>
-                    <div class="steps-container">
-                        <div class="step-item">
-                            <div class="step-number">1</div>
-                            <div class="step-content">
-                                <h3>Upload Course Materials</h3>
-                                <p>Upload your syllabus, lecture notes, and practice materials</p>
-                            </div>
+                    <div class="intro-section">
+                        <div class="feature-card">
+                            <div class="feature-icon">📚</div>
+                            <h3>Smart Content Management</h3>
+                            <p>Upload your course materials and let AI organize them into searchable, structured content that students can easily navigate.</p>
                         </div>
-                        <div class="step-item">
-                            <div class="step-number">2</div>
-                            <div class="step-content">
-                                <h3>Organize Content</h3>
-                                <p>Structure your materials into units and topics</p>
-                            </div>
+
+                        <div class="feature-card">
+                            <div class="feature-icon">💬</div>
+                            <h3>AI-Powered Q&A</h3>
+                            <p>Students can ask questions about your course content and get instant, accurate answers based on your uploaded materials.</p>
                         </div>
-                        <div class="step-item">
-                            <div class="step-number">3</div>
-                            <div class="step-content">
-                                <h3>Configure AI Settings</h3>
-                                <p>Set up AI responses and student interaction preferences</p>
-                            </div>
+
+                        <div class="feature-card">
+                            <div class="feature-icon">🎯</div>
+                            <h3>Adaptive Learning</h3>
+                            <p>BiocBot adapts to each student's learning style, providing personalized guidance and support throughout their learning journey.</p>
                         </div>
-                        <div class="step-item">
-                            <div class="step-number">4</div>
-                            <div class="step-content">
-                                <h3>Launch to Students</h3>
-                                <p>Publish your course and let students start learning</p>
+
+                        <div class="feature-card">
+                            <div class="feature-icon">📊</div>
+                            <h3>Learning Analytics</h3>
+                            <p>Track student engagement, identify common questions, and understand how your content is being used to improve your teaching.</p>
+                        </div>
+                    </div>
+
+                    <div class="how-it-works">
+                        <h2>How BiocBot Works</h2>
+                        <div class="workflow-steps">
+                            <div class="workflow-step">
+                                <div class="step-number">1</div>
+                                <div class="step-details">
+                                    <h4>Upload Your Materials</h4>
+                                    <p>Upload PDFs, DOCX files, or text documents containing your lecture notes, readings, and course materials.</p>
+                                </div>
+                            </div>
+                            <div class="workflow-step">
+                                <div class="step-number">2</div>
+                                <div class="step-details">
+                                    <h4>AI Processing</h4>
+                                    <p>Our AI automatically parses, chunks, and embeds your content into a searchable knowledge base.</p>
+                                </div>
+                            </div>
+                            <div class="workflow-step">
+                                <div class="step-number">3</div>
+                                <div class="step-details">
+                                    <h4>Student Interaction</h4>
+                                    <p>Students can ask questions and receive accurate, contextual answers based on your course content.</p>
+                                </div>
+                            </div>
+                            <div class="workflow-step">
+                                <div class="step-number">4</div>
+                                <div class="step-details">
+                                    <h4>Continuous Improvement</h4>
+                                    <p>Monitor usage patterns and student feedback to continuously improve your course materials.</p>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </section>
+
+                    <div class="step-actions">
+                        <button class="btn-primary" onclick="nextStep()">Get Started</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 2: Course Setup -->
+            <div id="step-2" class="onboarding-step">
+                <div class="step-content">
+                    <div class="step-header">
+                        <h2>Let's Set Up Your Course</h2>
+                        <p>Tell us about your course structure so we can organize your content effectively.</p>
+                    </div>
+
+                    <form id="course-setup-form" class="setup-form">
+                        <div class="form-section">
+                            <h3>Course Information</h3>
+                            <div class="form-group">
+                                <label for="course-select">Select Your Course</label>
+                                <select id="course-select" name="course" required>
+                                    <option value="">Choose a course...</option>
+                                    <option value="BIOC 202">BIOC 202 - Introduction to Biochemistry</option>
+                                    <option value="BIOC 303">BIOC 303 - Advanced Biochemistry</option>
+                                    <option value="BIOC 301">BIOC 301 - Molecular Biology</option>
+                                    <option value="BIOC 302">BIOC 302 - Cell Biology</option>
+                                    <option value="custom">Other (Custom Course)</option>
+                                </select>
+                            </div>
+
+                            <div id="custom-course-section" class="form-group" style="display: none;">
+                                <label for="custom-course-name">Course Name</label>
+                                <input type="text" id="custom-course-name" name="customCourseName" placeholder="e.g., BIOC 401 - Special Topics">
+                            </div>
+                        </div>
+
+                        <div class="form-section">
+                            <h3>Course Structure</h3>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="weeks-count">Number of Weeks</label>
+                                    <select id="weeks-count" name="weeks" required>
+                                        <option value="">Select...</option>
+                                        <option value="8">8 weeks</option>
+                                        <option value="10">10 weeks</option>
+                                        <option value="12">12 weeks</option>
+                                        <option value="13">13 weeks</option>
+                                        <option value="14">14 weeks</option>
+                                        <option value="15">15 weeks</option>
+                                        <option value="16">16 weeks</option>
+                                    </select>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="lectures-per-week">Lectures per Week</label>
+                                    <select id="lectures-per-week" name="lecturesPerWeek" required>
+                                        <option value="">Select...</option>
+                                        <option value="1">1 lecture</option>
+                                        <option value="2">2 lectures</option>
+                                        <option value="3">3 lectures</option>
+                                        <option value="4">4 lectures</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-section">
+                            <h3>Content Types</h3>
+                            <p>What types of content will you be uploading? (You can add more later)</p>
+                            <div class="content-types">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" name="contentTypes" value="lecture-notes" checked>
+                                    <span class="checkmark"></span>
+                                    Lecture Notes & Slides
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" name="contentTypes" value="readings">
+                                    <span class="checkmark"></span>
+                                    Required Readings
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" name="contentTypes" value="practice-quizzes">
+                                    <span class="checkmark"></span>
+                                    Practice Quizzes
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" name="contentTypes" value="syllabus">
+                                    <span class="checkmark"></span>
+                                    Syllabus & Schedule
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="step-actions">
+                            <button type="button" class="btn-secondary" onclick="previousStep()">Back</button>
+                            <button type="submit" class="btn-primary">Create Course Structure</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Step 3: Content Structure Preview -->
+            <div id="step-3" class="onboarding-step">
+                <div class="step-content">
+                    <div class="step-header">
+                        <h2>Your Course Structure</h2>
+                        <p>Here's how your content will be organized. You can modify this structure later.</p>
+                    </div>
+
+                    <div class="structure-preview">
+                        <div class="preview-header">
+                            <h3 id="preview-course-name">BIOC 202</h3>
+                            <p id="preview-course-structure">16 weeks, 2 lectures per week</p>
+                        </div>
+
+                        <div class="folder-structure" id="folder-structure">
+                            <!-- Folders will be generated here -->
+                        </div>
+
+                        <div class="structure-actions">
+                            <button class="btn-secondary" onclick="editStructure()">Edit Structure</button>
+                            <button class="btn-primary" onclick="confirmStructure()">This Looks Good</button>
+                        </div>
+                    </div>
+
+                    <div class="step-actions">
+                        <button type="button" class="btn-secondary" onclick="previousStep()">Back</button>
+                        <button type="button" class="btn-primary" onclick="nextStep()">Continue</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 4: First Content Upload -->
+            <div id="step-4" class="onboarding-step">
+                <div class="step-content">
+                    <div class="step-header">
+                        <h2>Upload Your First Content</h2>
+                        <p>Let's get started by uploading your first lecture or course material.</p>
+                    </div>
+
+                    <div class="upload-guide">
+                        <div class="upload-section">
+                            <h3>What to Upload</h3>
+                            <div class="upload-options">
+                                <div class="upload-option">
+                                    <div class="option-icon">📝</div>
+                                    <div class="option-content">
+                                        <h4>Lecture Notes</h4>
+                                        <p>PowerPoint slides, PDF notes, or text documents</p>
+                                    </div>
+                                </div>
+                                <div class="upload-option">
+                                    <div class="option-icon">📚</div>
+                                    <div class="option-content">
+                                        <h4>Readings</h4>
+                                        <p>Textbook chapters, research papers, or articles</p>
+                                    </div>
+                                </div>
+                                <div class="upload-option">
+                                    <div class="option-icon">📋</div>
+                                    <div class="option-content">
+                                        <h4>Syllabus</h4>
+                                        <p>Course schedule, learning objectives, or policies</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="upload-section">
+                            <h3>Upload Your File</h3>
+                            <div class="file-upload-area" id="file-upload-area">
+                                <div class="upload-zone">
+                                    <div class="upload-icon">📁</div>
+                                    <p>Drag and drop your file here, or click to browse</p>
+                                    <input type="file" id="file-input" accept=".pdf,.docx,.txt,.ppt,.pptx" style="display: none;">
+                                    <button class="browse-btn" onclick="document.getElementById('file-input').click()">Browse Files</button>
+                                </div>
+                                <div class="file-info" id="file-info" style="display: none;">
+                                    <span class="file-name" id="file-name"></span>
+                                    <span class="file-size" id="file-size"></span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="upload-section">
+                            <h3>Content Details</h3>
+                            <div class="content-details">
+                                <div class="form-group">
+                                    <label for="content-title">Title</label>
+                                    <input type="text" id="content-title" placeholder="e.g., Introduction to Biochemistry">
+                                </div>
+                                <div class="form-group">
+                                    <label for="content-description">Description</label>
+                                    <textarea id="content-description" placeholder="Brief description of this content..."></textarea>
+                                </div>
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label for="content-week">Week</label>
+                                        <select id="content-week">
+                                            <option value="">Select week...</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="content-type">Type</label>
+                                        <select id="content-type">
+                                            <option value="lecture">Lecture</option>
+                                            <option value="reading">Reading</option>
+                                            <option value="syllabus">Syllabus</option>
+                                            <option value="quiz">Quiz</option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="step-actions">
+                        <button type="button" class="btn-secondary" onclick="previousStep()">Back</button>
+                        <button type="button" class="btn-primary" onclick="uploadContent()">Upload & Continue</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Step 5: Completion -->
+            <div id="step-5" class="onboarding-step">
+                <div class="step-content">
+                    <div class="completion-header">
+                        <div class="completion-icon">🎉</div>
+                        <h2>You're All Set!</h2>
+                        <p>Your course is ready to go. Here's what you can do next:</p>
+                    </div>
+
+                    <div class="next-steps">
+                        <div class="next-step-card">
+                            <div class="step-icon">📄</div>
+                            <h3>Upload More Content</h3>
+                            <p>Add more lectures, readings, and materials to your course.</p>
+                            <button class="btn-primary" onclick="goToDocuments()">Go to Documents</button>
+                        </div>
+
+                        <div class="next-step-card">
+                            <div class="step-icon">⚙️</div>
+                            <h3>Configure Settings</h3>
+                            <p>Set up AI preferences, student access, and course settings.</p>
+                            <button class="btn-secondary" onclick="goToSettings()">Go to Settings</button>
+                        </div>
+
+                        <div class="next-step-card">
+                            <div class="step-icon">📊</div>
+                            <h3>View Dashboard</h3>
+                            <p>See an overview of your course and student activity.</p>
+                            <button class="btn-secondary" onclick="goToHome()">Go to Home</button>
+                        </div>
+                    </div>
+
+                    <div class="completion-actions">
+                        <button class="btn-primary" onclick="finishOnboarding()">Finish Onboarding</button>
+                    </div>
+                </div>
             </div>
         </main>
     </div>
     
-    <script src="../instructor/scripts/onboarding.js"></script>
+    <script src="./scripts/onboarding.js"></script>
 </body>
 </html> 
