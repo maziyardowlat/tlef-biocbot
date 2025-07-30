@@ -59,8 +59,8 @@ function handleUploadMaterial() {
  */
 function handleProbeQuestions() {
     console.log('Navigate to probe questions page');
-    // TODO: Navigate to probe questions page when implemented
-    showInfoMessage('Probe Questions feature coming soon!');
+    // Navigate to documents page and open mode questions modal
+    window.location.href = '/instructor/documents?openModal=modeQuestions';
 }
 
 /**

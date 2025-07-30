@@ -31,9 +31,11 @@ app.get('/student/settings', (req, res) => {
     res.sendFile(path.join(__dirname, '../public/student/settings.html'));
 });
 
-// Instructor routes
+// Instructor routes - redirect to onboarding by default
 app.get('/instructor', (req, res) => {
-    res.sendFile(path.join(__dirname, '../public/instructor/index.html'));
+    // Check if onboarding is complete (in a real app, this would check database)
+    // For now, always redirect to onboarding
+    res.redirect('/instructor/onboarding');
 });
 
 app.get('/instructor/settings', (req, res) => {
@@ -48,13 +50,17 @@ app.get('/instructor/home', (req, res) => {
     res.sendFile(path.join(__dirname, '../public/instructor/home.html'));
 });
 
+app.get('/instructor/documents', (req, res) => {
+    res.sendFile(path.join(__dirname, '../public/instructor/index.html'));
+});
+
 // Legacy routes (redirect to new structure)
 app.get('/settings', (req, res) => {
     res.redirect('/student/settings');
 });
 
 app.get('/documents', (req, res) => {
-    res.redirect('/instructor');
+    res.redirect('/instructor/documents');
 });
 
 // API endpoints
