@@ -16,10 +16,10 @@
             </div>
             <nav class="main-nav">
                 <ul>
-                    <li><a href="/instructor/onboarding"><span class="icon">🚀</span> Onboarding</a></li>
-                    <li><a href="/instructor/home"><span class="icon">🏠</span> Home</a></li>
-                    <li><a href="/instructor/documents"><span class="icon">📄</span> Course Upload</a></li>
-                    <li><a href="/instructor/settings"><span class="icon">⚙️</span> Settings</a></li>
+                    <li><a href="/instructor/onboarding">Onboarding</a></li>
+                    <li><a href="/instructor/home">Home</a></li>
+                    <li><a href="/instructor/documents">Course Upload</a></li>
+                    <li><a href="/instructor/settings">Settings</a></li>
                 </ul>
             </nav>
             <div class="user-info">
@@ -50,34 +50,30 @@
             <div id="step-1" class="onboarding-step active">
                 <div class="step-content">
                     <div class="welcome-header">
-                        <h1>Welcome to BiocBot! 🤖</h1>
+                        <h1>Welcome to BiocBot!</h1>
                         <p class="welcome-subtitle">Your AI-powered teaching assistant</p>
                     </div>
 
                     <div class="intro-section">
-                        <div class="feature-card">
-                            <div class="feature-icon">📚</div>
-                            <h3>Smart Content Management</h3>
-                            <p>Upload your course materials and let AI organize them into searchable, structured content that students can easily navigate.</p>
-                        </div>
+
 
                         <div class="feature-card">
-                            <div class="feature-icon">💬</div>
-                            <h3>AI-Powered Q&A</h3>
-                            <p>Students can ask questions about your course content and get instant, accurate answers based on your uploaded materials.</p>
+                            <h3>Placeholder</h3>
+                            <p>Placeholder</p>
                         </div>
-
                         <div class="feature-card">
-                            <div class="feature-icon">🎯</div>
-                            <h3>Adaptive Learning</h3>
-                            <p>BiocBot adapts to each student's learning style, providing personalized guidance and support throughout their learning journey.</p>
+                            <h3>Placeholder</h3>
+                            <p>Placeholder</p>
                         </div>
-
                         <div class="feature-card">
-                            <div class="feature-icon">📊</div>
-                            <h3>Learning Analytics</h3>
-                            <p>Track student engagement, identify common questions, and understand how your content is being used to improve your teaching.</p>
+                            <h3>Placeholder</h3>
+                            <p>Placeholder</p>
                         </div>
+                        <div class="feature-card">
+                            <h3>Placeholder</h3>
+                            <p>Placeholder</p>
+                        </div>
+                        
                     </div>
 
                     <div class="how-it-works">
@@ -102,13 +98,6 @@
                                 <div class="step-details">
                                     <h4>Student Interaction</h4>
                                     <p>Students can ask questions and receive accurate, contextual answers based on your course content.</p>
-                                </div>
-                            </div>
-                            <div class="workflow-step">
-                                <div class="step-number">4</div>
-                                <div class="step-details">
-                                    <h4>Continuous Improvement</h4>
-                                    <p>Monitor usage patterns and student feedback to continuously improve your course materials.</p>
                                 </div>
                             </div>
                         </div>
@@ -184,9 +173,9 @@
                         <div class="upload-section">
                             <h3>Upload Your File</h3>
                             <div class="file-upload-area" id="file-upload-area">
-                                <div class="upload-zone">
-                                    <div class="upload-icon">📁</div>
-                                    <p>Drag and drop your file here, or click to browse</p>
+                                                            <div class="upload-zone">
+                                <div class="upload-icon"></div>
+                                <p>Drag and drop your file here, or click to browse</p>
                                     <input type="file" id="file-input" accept=".pdf,.docx,.txt,.ppt,.pptx" style="display: none;">
                                     <button class="browse-btn" onclick="document.getElementById('file-input').click()">Browse Files</button>
                                 </div>
@@ -227,28 +216,25 @@
             <div id="step-4" class="onboarding-step">
                 <div class="step-content">
                     <div class="completion-header">
-                        <div class="completion-icon">🎉</div>
                         <h2>You're All Set!</h2>
                         <p>Your course is ready to go. Here's what you can do next:</p>
                     </div>
 
                     <div class="next-steps">
                         <div class="next-step-card">
-                            <div class="step-icon">📄</div>
+                            <div class="step-icon"></div>
                             <h3>Upload More Content</h3>
                             <p>Add more lectures, readings, and materials to your course.</p>
                             <button class="btn-primary" onclick="goToDocuments()">Go to Documents</button>
                         </div>
 
                         <div class="next-step-card">
-                            <div class="step-icon">⚙️</div>
                             <h3>Configure Settings</h3>
                             <p>Set up AI preferences, student access, and course settings.</p>
                             <button class="btn-secondary" onclick="goToSettings()">Go to Settings</button>
                         </div>
 
                         <div class="next-step-card">
-                            <div class="step-icon">📊</div>
                             <h3>View Dashboard</h3>
                             <p>See an overview of your course and student activity.</p>
                             <button class="btn-secondary" onclick="goToHome()">Go to Home</button>

@@ -118,6 +118,29 @@
     color: var(--danger-color);
 }
 
+.status-text {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.status-text.processed {
+    background-color: rgba(40, 167, 69, 0.1);
+    color: var(--success-color);
+}
+
+.status-text.processing {
+    background-color: rgba(255, 193, 7, 0.1);
+    color: var(--warning-color);
+}
+
+.status-text.failed, .status-text.not-uploaded {
+    background-color: rgba(220, 53, 69, 0.1);
+    color: var(--danger-color);
+}
+
 .action-button {
     padding: 4px 10px;
     font-size: 12px;
@@ -586,44 +609,51 @@
     }
 } 
 
-/* Add Content Button Styles */
+/* Add Content Button */
 .add-content-section {
     margin-top: 20px;
-    padding: 15px;
-    border: 2px dashed var(--border-color);
-    border-radius: 8px;
-    text-align: center;
-    background-color: #f8f9fa;
-    transition: all 0.3s ease;
-}
-
-.add-content-section:hover {
-    border-color: var(--primary-color);
-    background-color: #f0f4f8;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    border: none;
+    background-color: transparent;
+    padding: 0;
 }
 
 .add-content-btn {
-    background: none;
-    border: none;
-    color: var(--primary-color);
-    font-size: 14px;
-    cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 8px;
-    padding: 8px 16px;
+    padding: 10px 16px;
+    background-color: #f0f4f8;
+    border: 1px dashed #ccd4e0;
     border-radius: 6px;
-    transition: all 0.3s ease;
+    cursor: pointer;
+    font-size: 14px;
+    color: var(--primary-color);
+    transition: all 0.2s ease;
+    width: 100%;
 }
 
 .add-content-btn:hover {
-    background-color: var(--primary-color);
-    color: white;
+    background-color: #e6ebf2;
+    border-color: var(--primary-color);
 }
 
-.add-content-btn .btn-icon {
-    margin-right: 8px;
+.add-content-btn.additional-material {
+    background-color: #f8f9fa;
+    border-color: #e0e0e0;
+    color: #666;
+    display: flex; /* Ensure it's displayed as flex */
+    visibility: visible; /* Make sure it's visible */
+    opacity: 1; /* Ensure full opacity */
+}
+
+.add-content-btn.additional-material:hover {
+    background-color: #f0f0f0;
+    border-color: #999;
+    color: #333;
 }
 
 /* Add Week Section */
@@ -771,53 +801,6 @@
 .modal-actions {
     display: flex;
     gap: 12px;
-}
-
-/* Content Type Selection */
-.content-type-options {
-    display: grid;
-    gap: 16px;
-    margin-top: 20px;
-}
-
-.content-type-btn {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    padding: 20px;
-    border: 2px solid var(--border-color);
-    border-radius: 8px;
-    background: white;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    text-align: left;
-}
-
-.content-type-btn:hover {
-    border-color: var(--primary-color);
-    background-color: #f8f9fa;
-}
-
-.content-type-btn.selected {
-    border-color: var(--primary-color);
-    background-color: #f0f4f8;
-}
-
-.type-icon {
-    font-size: 24px;
-    flex-shrink: 0;
-}
-
-.type-info h4 {
-    margin: 0 0 4px 0;
-    font-size: 16px;
-    color: var(--text-color);
-}
-
-.type-info p {
-    margin: 0;
-    font-size: 14px;
-    color: #666;
 }
 
 /* File Upload */
@@ -1330,6 +1313,8 @@
     border: 1px solid #e0e0e0;
     border-radius: 8px;
     overflow: hidden;
+    position: relative; /* Add positioning context */
+    z-index: 1; /* Ensure proper stacking */
 }
 
 .section-header {
@@ -1342,6 +1327,8 @@
     cursor: pointer;
     user-select: none;
     transition: background-color 0.2s ease;
+    position: relative; /* Add positioning context */
+    z-index: 2; /* Higher than the section content */
 }
 
 .section-header:hover {
@@ -1367,6 +1354,9 @@
 .section-content {
     padding: 16px;
     background-color: #fff;
+    display: block; /* Ensure content is displayed by default */
+    position: relative; /* Add positioning context */
+    z-index: 1; /* Lower than the header */
 }
 
 .section-content.collapsed {
@@ -1453,6 +1443,72 @@
 
 .save-btn:hover {
     background-color: #45a049;
+}
+
+/* Content Type Selection */
+.content-type-options {
+    display: grid;
+    gap: 16px;
+    margin-top: 20px;
+}
+
+.content-type-btn {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 20px;
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    background: white;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-align: left;
+}
+
+.content-type-btn:hover {
+    border-color: var(--primary-color);
+    background-color: #f8f9fa;
+}
+
+.content-type-btn.selected {
+    border-color: var(--primary-color);
+    background-color: #f0f4f8;
+}
+
+.type-icon {
+    font-size: 24px;
+    flex-shrink: 0;
+}
+
+.type-info h4 {
+    margin: 0 0 4px 0;
+    font-size: 16px;
+    color: var(--text-color);
+}
+
+.type-info p {
+    margin: 0;
+    font-size: 14px;
+    color: #666;
+}
+
+/* Content Type Header */
+.content-type-header {
+    margin-bottom: 15px;
+    padding: 8px 12px;
+    background-color: #f8f9fa;
+    border-radius: 6px;
+    border-left: 4px solid var(--primary-color);
+}
+
+.content-type-header p {
+    margin: 0;
+    font-size: 14px;
+    color: #555;
+}
+
+.content-type-header strong {
+    color: #333;
 }
 
 /* Course Materials and Probing Questions */
