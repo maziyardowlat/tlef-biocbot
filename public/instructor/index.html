@@ -51,21 +51,11 @@
 
             <!-- Action Buttons -->
             <div class="action-buttons-container">
-                <button class="action-btn with-icon" onclick="openModeQuestionsModal()">
-                    <span class="btn-icon">❓</span>
-                    Mode Calibration Questions
-                </button>
+                <!-- Mode calibration now handled within each week's calibration quiz -->
             </div>
 
             <!-- Document Management Tabs -->
             <div class="document-tabs">
-                <div class="tab-header">
-                    <button class="tab-btn active">All Files</button>
-                    <button class="tab-btn">Syllabus & Schedule</button>
-                    <button class="tab-btn">Lecture Notes</button>
-                    <button class="tab-btn">Practice Quizzes</button>
-                </div>
-
                 <div class="tab-content">
                     <!-- Accordion Document List -->
                     <div class="accordion-container">
@@ -86,36 +76,99 @@
                                 </div>
                             </div>
                             <div class="accordion-content">
-                                <div class="file-item">
-                                    <span class="file-icon">📄</span>
-                                    <div class="file-info">
-                                        <h3>Introduction to Biochemistry</h3>
-                                        <p>This is a comprehensive introduction to the core principles of biochemistry and molecular biology.</p>
-                                        <span class="status-text">Processed</span>
+                                <!-- Learning Objectives Section -->
+                                <div class="unit-section learning-objectives-section">
+                                    <div class="section-header">
+                                        <h3>Learning Objectives</h3>
+                                        <button class="toggle-section">▼</button>
                                     </div>
-                                    <div class="file-actions">
-                                        <button class="action-button view" onclick="viewFileItem(this)">View</button>
-                                        <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
+                                    <div class="section-content">
+                                        <div class="objectives-list" id="objectives-list-week1">
+                                            <div class="objective-display-item">
+                                                <span class="objective-text">Understand the basic principles of biochemistry and its role in living systems</span>
+                                                <button class="remove-objective" onclick="removeObjective(this)">×</button>
+                                            </div>
+                                            <div class="objective-display-item">
+                                                <span class="objective-text">Identify the four major classes of biomolecules and their functions</span>
+                                                <button class="remove-objective" onclick="removeObjective(this)">×</button>
+                                            </div>
+                                            <div class="objective-display-item">
+                                                <span class="objective-text">Explain the relationship between structure and function in biological molecules</span>
+                                                <button class="remove-objective" onclick="removeObjective(this)">×</button>
+                                            </div>
+                                        </div>
+                                        <div class="objective-input-container">
+                                            <input type="text" id="objective-input-week1" class="objective-input" placeholder="Enter learning objective...">
+                                            <button class="add-objective-btn-inline" onclick="addObjectiveFromInput('Week 1')">+</button>
+                                        </div>
+                                        <div class="save-objectives">
+                                            <button class="save-btn" onclick="saveObjectives('Week 1')">Save Learning Objectives</button>
+                                        </div>
                                     </div>
                                 </div>
                                 
-                                <!-- Add Content Button -->
-                                <div class="add-content-section">
-                                    <button class="add-content-btn" onclick="openUploadModal('Week 1')">
-                                        <span class="btn-icon">➕</span>
-                                        Add more content to this lecture
-                                    </button>
-                                </div>
-                                <div class="file-item">
-                                    <span class="file-icon">📄</span>
-                                    <div class="file-info">
-                                        <h3>Week 1 Readings</h3>
-                                        <p>Required readings for the first week of the course.</p>
-                                        <span class="status-text">Processed</span>
+                                <!-- Course Materials Section -->
+                                <div class="unit-section course-materials-section">
+                                    <div class="section-header">
+                                        <h3>Course Materials</h3>
+                                        <button class="toggle-section">▼</button>
                                     </div>
-                                    <div class="file-actions">
-                                        <button class="action-button view" onclick="viewFileItem(this)">View</button>
-                                        <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
+                                    <div class="section-content">
+                                        <div class="file-item">
+                                            <span class="file-icon">📄</span>
+                                            <div class="file-info">
+                                                <h3>Introduction to Biochemistry</h3>
+                                                <p>This is a comprehensive introduction to the core principles of biochemistry and molecular biology.</p>
+                                                <span class="status-text">Processed</span>
+                                            </div>
+                                            <div class="file-actions">
+                                                <button class="action-button view" onclick="viewFileItem(this)">View</button>
+                                                <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
+                                            </div>
+                                        </div>
+                                        <div class="file-item">
+                                            <span class="file-icon">📄</span>
+                                            <div class="file-info">
+                                                <h3>Week 1 Readings</h3>
+                                                <p>Required readings for the first week of the course.</p>
+                                                <span class="status-text">Processed</span>
+                                            </div>
+                                            <div class="file-actions">
+                                                <button class="action-button view" onclick="viewFileItem(this)">View</button>
+                                                <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Add Content Button -->
+                                        <div class="add-content-section">
+                                            <button class="add-content-btn" onclick="openUploadModal('Week 1')">
+                                                <span class="btn-icon">➕</span>
+                                                Add more content to this lecture
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Probing Questions Section -->
+                                <div class="unit-section probing-questions-section">
+                                    <div class="section-header">
+                                        <h3>Probing Questions</h3>
+                                        <button class="toggle-section">▼</button>
+                                    </div>
+                                    <div class="section-content">
+                                        <div class="file-item">
+                                            <span class="file-icon">📝</span>
+                                            <div class="file-info">
+                                                <h3>Week 1 Calibration Quiz: Introduction to Biochemistry</h3>
+                                                <p>Calibration questions to determine teaching mode for biochemistry fundamentals.</p>
+                                                <span class="status-text">Processed</span>
+                                            </div>
+                                            <div class="file-actions">
+                                                <button class="action-button view" onclick="viewFileItem(this)">View</button>
+                                                <button class="action-button configure" onclick="openCalibrationModal('Week 1', 'Introduction to Biochemistry')">Configure</button>
+                                                <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -138,25 +191,88 @@
                                 </div>
                             </div>
                             <div class="accordion-content collapsed">
-                                <div class="file-item">
-                                    <span class="file-icon">📄</span>
-                                    <div class="file-info">
-                                        <h3>Amino Acids, Peptides, and Proteins</h3>
-                                        <p>The fundamental building blocks of life: structure and properties of amino acids and their polymers.</p>
-                                        <span class="status-text">Processed</span>
+                                <!-- Learning Objectives Section -->
+                                <div class="unit-section learning-objectives-section">
+                                    <div class="section-header">
+                                        <h3>Learning Objectives</h3>
+                                        <button class="toggle-section">▼</button>
                                     </div>
-                                    <div class="file-actions">
-                                        <button class="action-button view" onclick="viewFileItem(this)">View</button>
-                                        <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
+                                    <div class="section-content">
+                                        <div class="objectives-list" id="objectives-list-week2">
+                                            <div class="objective-display-item">
+                                                <span class="objective-text">Describe the structure and properties of the 20 standard amino acids</span>
+                                                <button class="remove-objective" onclick="removeObjective(this)">×</button>
+                                            </div>
+                                            <div class="objective-display-item">
+                                                <span class="objective-text">Explain peptide bond formation and the primary structure of proteins</span>
+                                                <button class="remove-objective" onclick="removeObjective(this)">×</button>
+                                            </div>
+                                            <div class="objective-display-item">
+                                                <span class="objective-text">Analyze the different levels of protein structure and their significance</span>
+                                                <button class="remove-objective" onclick="removeObjective(this)">×</button>
+                                            </div>
+                                        </div>
+                                        <div class="objective-input-container">
+                                            <input type="text" id="objective-input-week2" class="objective-input" placeholder="Enter learning objective...">
+                                            <button class="add-objective-btn-inline" onclick="addObjectiveFromInput('Week 2')">+</button>
+                                        </div>
+                                        <div class="save-objectives">
+                                            <button class="save-btn" onclick="saveObjectives('Week 2')">Save Learning Objectives</button>
+                                        </div>
                                     </div>
                                 </div>
                                 
-                                <!-- Add Content Button -->
-                                <div class="add-content-section">
-                                    <button class="add-content-btn" onclick="openUploadModal('Week 2')">
-                                        <span class="btn-icon">➕</span>
-                                        Add more content to this lecture
-                                    </button>
+                                <!-- Course Materials Section -->
+                                <div class="unit-section course-materials-section">
+                                    <div class="section-header">
+                                        <h3>Course Materials</h3>
+                                        <button class="toggle-section">▼</button>
+                                    </div>
+                                    <div class="section-content">
+                                        <div class="file-item">
+                                            <span class="file-icon">📄</span>
+                                            <div class="file-info">
+                                                <h3>Amino Acids, Peptides, and Proteins</h3>
+                                                <p>The fundamental building blocks of life: structure and properties of amino acids and their polymers.</p>
+                                                <span class="status-text">Processed</span>
+                                            </div>
+                                            <div class="file-actions">
+                                                <button class="action-button view" onclick="viewFileItem(this)">View</button>
+                                                <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Add Content Button -->
+                                        <div class="add-content-section">
+                                            <button class="add-content-btn" onclick="openUploadModal('Week 2')">
+                                                <span class="btn-icon">➕</span>
+                                                Add more content to this lecture
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Probing Questions Section -->
+                                <div class="unit-section probing-questions-section">
+                                    <div class="section-header">
+                                        <h3>Probing Questions</h3>
+                                        <button class="toggle-section">▼</button>
+                                    </div>
+                                    <div class="section-content">
+                                        <div class="file-item">
+                                            <span class="file-icon">📝</span>
+                                            <div class="file-info">
+                                                <h3>Week 2 Calibration Quiz: Amino Acids and Proteins</h3>
+                                                <p>Calibration questions to determine teaching mode for protein structure topics.</p>
+                                                <span class="status-text">Processed</span>
+                                            </div>
+                                            <div class="file-actions">
+                                                <button class="action-button view" onclick="viewFileItem(this)">View</button>
+                                                <button class="action-button configure" onclick="openCalibrationModal('Week 2', 'Amino Acids and Proteins')">Configure</button>
+                                                <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -178,25 +294,88 @@
                                 </div>
                             </div>
                             <div class="accordion-content collapsed">
-                                <div class="file-item">
-                                    <span class="file-icon">📄</span>
-                                    <div class="file-info">
-                                        <h3>Enzymes: Basic Concepts and Kinetics</h3>
-                                        <p>Introduction to enzyme structure, function, and kinetics.</p>
-                                        <span class="status-text">Processed</span>
+                                <!-- Learning Objectives Section -->
+                                <div class="unit-section learning-objectives-section">
+                                    <div class="section-header">
+                                        <h3>Learning Objectives</h3>
+                                        <button class="toggle-section">▼</button>
                                     </div>
-                                    <div class="file-actions">
-                                        <button class="action-button view" onclick="viewFileItem(this)">View</button>
-                                        <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
+                                    <div class="section-content">
+                                        <div class="objectives-list" id="objectives-list-week3">
+                                            <div class="objective-display-item">
+                                                <span class="objective-text">Define enzymes and explain their role as biological catalysts</span>
+                                                <button class="remove-objective" onclick="removeObjective(this)">×</button>
+                                            </div>
+                                            <div class="objective-display-item">
+                                                <span class="objective-text">Describe the Michaelis-Menten model of enzyme kinetics</span>
+                                                <button class="remove-objective" onclick="removeObjective(this)">×</button>
+                                            </div>
+                                            <div class="objective-display-item">
+                                                <span class="objective-text">Analyze factors affecting enzyme activity and their biological significance</span>
+                                                <button class="remove-objective" onclick="removeObjective(this)">×</button>
+                                            </div>
+                                        </div>
+                                        <div class="objective-input-container">
+                                            <input type="text" id="objective-input-week3" class="objective-input" placeholder="Enter learning objective...">
+                                            <button class="add-objective-btn-inline" onclick="addObjectiveFromInput('Week 3')">+</button>
+                                        </div>
+                                        <div class="save-objectives">
+                                            <button class="save-btn" onclick="saveObjectives('Week 3')">Save Learning Objectives</button>
+                                        </div>
                                     </div>
                                 </div>
                                 
-                                <!-- Add Content Button -->
-                                <div class="add-content-section">
-                                    <button class="add-content-btn" onclick="openUploadModal('Week 3')">
-                                        <span class="btn-icon">➕</span>
-                                        Add more content to this lecture
-                                    </button>
+                                <!-- Course Materials Section -->
+                                <div class="unit-section course-materials-section">
+                                    <div class="section-header">
+                                        <h3>Course Materials</h3>
+                                        <button class="toggle-section">▼</button>
+                                    </div>
+                                    <div class="section-content">
+                                        <div class="file-item">
+                                            <span class="file-icon">📄</span>
+                                            <div class="file-info">
+                                                <h3>Enzymes: Basic Concepts and Kinetics</h3>
+                                                <p>Introduction to enzyme structure, function, and kinetics.</p>
+                                                <span class="status-text">Processed</span>
+                                            </div>
+                                            <div class="file-actions">
+                                                <button class="action-button view" onclick="viewFileItem(this)">View</button>
+                                                <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Add Content Button -->
+                                        <div class="add-content-section">
+                                            <button class="add-content-btn" onclick="openUploadModal('Week 3')">
+                                                <span class="btn-icon">➕</span>
+                                                Add more content to this lecture
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Probing Questions Section -->
+                                <div class="unit-section probing-questions-section">
+                                    <div class="section-header">
+                                        <h3>Probing Questions</h3>
+                                        <button class="toggle-section">▼</button>
+                                    </div>
+                                    <div class="section-content">
+                                        <div class="file-item">
+                                            <span class="file-icon">📝</span>
+                                            <div class="file-info">
+                                                <h3>Week 3 Calibration Quiz: Enzyme Kinetics</h3>
+                                                <p>Calibration questions to determine teaching mode for enzyme topics.</p>
+                                                <span class="status-text">Processed</span>
+                                            </div>
+                                            <div class="file-actions">
+                                                <button class="action-button view" onclick="viewFileItem(this)">View</button>
+                                                <button class="action-button configure" onclick="openCalibrationModal('Week 3', 'Enzyme Kinetics')">Configure</button>
+                                                <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
+                                            </div>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -207,38 +386,6 @@
                                 <span class="btn-icon">➕</span>
                                 Add New Week
                             </button>
-                        </div>
-
-                        <!-- Quizzes Accordion -->
-                        <div class="accordion-item published">
-                            <div class="accordion-header">
-                                <span class="folder-icon">📁</span>
-                                <span class="folder-name">Quizzes</span>
-                                <div class="header-actions">
-                                    <div class="publish-toggle">
-                                        <label class="toggle-switch">
-                                            <input type="checkbox" id="publish-quizzes" checked onchange="togglePublish('Quizzes', this.checked)">
-                                            <span class="toggle-slider"></span>
-                                        </label>
-                                        <span class="toggle-label">Published</span>
-                                    </div>
-                                    <span class="accordion-toggle">▶</span>
-                                </div>
-                            </div>
-                            <div class="accordion-content collapsed">
-                                <div class="file-item">
-                                    <span class="file-icon">📝</span>
-                                    <div class="file-info">
-                                        <h3>Practice Quiz: Protein Structure</h3>
-                                        <p>Test your understanding of primary, secondary, tertiary, and quaternary protein structures.</p>
-                                        <span class="status-text processing">Processing</span>
-                                    </div>
-                                    <div class="file-actions">
-                                        <button class="action-button view" onclick="viewFileItem(this)">View</button>
-                                        <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
-                                    </div>
-                                </div>
-                            </div>
                         </div>
                     </div>
                 </div>
@@ -358,12 +505,12 @@
         </div>
     </div>
     
-    <!-- Mode Questions Modal -->
-    <div id="mode-questions-modal" class="modal">
+    <!-- Calibration Quiz Modal -->
+    <div id="calibration-modal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2>Mode Calibration Questions</h2>
-                <button class="modal-close" onclick="closeModeQuestionsModal()">×</button>
+                <h2><span id="calibration-week">Week</span> Calibration Questions: <span id="calibration-topic">Topic</span></h2>
+                <button class="modal-close" onclick="closeCalibrationModal()">×</button>
             </div>
             
             <div class="modal-body">
@@ -377,8 +524,8 @@
                 </div>
                 
                 <div class="questions-section">
-                    <h3>Calibration Questions</h3>
-                    <p>Students will be asked these questions to determine their mode. You can edit or add new questions.</p>
+                    <h3>Calibration Questions for <span id="calibration-topic-questions">this topic</span></h3>
+                    <p>Students will be asked these questions to determine their mode for this specific topic. You can edit or add new questions.</p>
                     
                     <div class="questions-list" id="questions-list">
                         <!-- Questions will be loaded here -->
@@ -392,7 +539,7 @@
                 
                 <div class="threshold-section">
                     <h3>Mode Threshold</h3>
-                    <p>Students need to score at least this percentage to get Protégé mode:</p>
+                    <p>Students need to score at least this percentage to get Protégé mode for this topic:</p>
                     <div class="threshold-input">
                         <input type="range" id="mode-threshold" min="0" max="100" value="70" step="5">
                         <span id="threshold-value">70%</span>
@@ -402,12 +549,13 @@
             
             <div class="modal-footer">
                 <div class="modal-actions">
-                    <button class="btn-secondary" onclick="closeModeQuestionsModal()">Cancel</button>
-                    <button class="btn-primary" onclick="saveModeQuestions()">Save Questions</button>
+                    <button class="btn-secondary" onclick="closeCalibrationModal()">Cancel</button>
+                    <button class="btn-primary" onclick="saveCalibrationQuestions()">Save Questions</button>
                 </div>
             </div>
         </div>
     </div>
+    
     
     <script src="./scripts/instructor.js"></script>
 </body>
