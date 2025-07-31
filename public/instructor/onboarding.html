@@ -42,8 +42,7 @@
                 <div class="progress-steps">
                     <span class="step-indicator active" data-step="1">Welcome</span>
                     <span class="step-indicator" data-step="2">Course Setup</span>
-                    <span class="step-indicator" data-step="3">Content Structure</span>
-                    <span class="step-indicator" data-step="4">First Upload</span>
+                    <span class="step-indicator" data-step="3">First Upload</span>
                 </div>
             </div>
 
@@ -155,133 +154,33 @@
                             <div class="form-row">
                                 <div class="form-group">
                                     <label for="weeks-count">Number of Weeks</label>
-                                    <select id="weeks-count" name="weeks" required>
-                                        <option value="">Select...</option>
-                                        <option value="8">8 weeks</option>
-                                        <option value="10">10 weeks</option>
-                                        <option value="12">12 weeks</option>
-                                        <option value="13">13 weeks</option>
-                                        <option value="14">14 weeks</option>
-                                        <option value="15">15 weeks</option>
-                                        <option value="16">16 weeks</option>
-                                    </select>
+                                    <input type="number" id="weeks-count" name="weeks" min="1" max="20" placeholder="e.g., 12" required>
                                 </div>
 
                                 <div class="form-group">
                                     <label for="lectures-per-week">Lectures per Week</label>
-                                    <select id="lectures-per-week" name="lecturesPerWeek" required>
-                                        <option value="">Select...</option>
-                                        <option value="1">1 lecture</option>
-                                        <option value="2">2 lectures</option>
-                                        <option value="3">3 lectures</option>
-                                        <option value="4">4 lectures</option>
-                                    </select>
+                                    <input type="number" id="lectures-per-week" name="lecturesPerWeek" min="1" max="5" placeholder="e.g., 2" required>
                                 </div>
-                            </div>
-                        </div>
-
-                        <div class="form-section">
-                            <h3>Content Types</h3>
-                            <p>What types of content will you be uploading? (You can add more later)</p>
-                            <div class="content-types">
-                                <label class="checkbox-label">
-                                    <input type="checkbox" name="contentTypes" value="lecture-notes" checked>
-                                    <span class="checkmark"></span>
-                                    Lecture Notes & Slides
-                                </label>
-                                <label class="checkbox-label">
-                                    <input type="checkbox" name="contentTypes" value="readings">
-                                    <span class="checkmark"></span>
-                                    Required Readings
-                                </label>
-                                <label class="checkbox-label">
-                                    <input type="checkbox" name="contentTypes" value="practice-quizzes">
-                                    <span class="checkmark"></span>
-                                    Practice Quizzes
-                                </label>
-                                <label class="checkbox-label">
-                                    <input type="checkbox" name="contentTypes" value="syllabus">
-                                    <span class="checkmark"></span>
-                                    Syllabus & Schedule
-                                </label>
                             </div>
                         </div>
 
                         <div class="step-actions">
                             <button type="button" class="btn-secondary" onclick="previousStep()">Back</button>
-                            <button type="submit" class="btn-primary">Create Course Structure</button>
+                            <button type="submit" class="btn-primary">Continue to Upload</button>
                         </div>
                     </form>
                 </div>
             </div>
 
-            <!-- Step 3: Content Structure Preview -->
+            <!-- Step 3: First Content Upload -->
             <div id="step-3" class="onboarding-step">
                 <div class="step-content">
                     <div class="step-header">
-                        <h2>Your Course Structure</h2>
-                        <p>Here's how your content will be organized. You can modify this structure later.</p>
-                    </div>
-
-                    <div class="structure-preview">
-                        <div class="preview-header">
-                            <h3 id="preview-course-name">BIOC 202</h3>
-                            <p id="preview-course-structure">16 weeks, 2 lectures per week</p>
-                        </div>
-
-                        <div class="folder-structure" id="folder-structure">
-                            <!-- Folders will be generated here -->
-                        </div>
-
-                        <div class="structure-actions">
-                            <button class="btn-secondary" onclick="editStructure()">Edit Structure</button>
-                            <button class="btn-primary" onclick="confirmStructure()">This Looks Good</button>
-                        </div>
-                    </div>
-
-                    <div class="step-actions">
-                        <button type="button" class="btn-secondary" onclick="previousStep()">Back</button>
-                        <button type="button" class="btn-primary" onclick="nextStep()">Continue</button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Step 4: First Content Upload -->
-            <div id="step-4" class="onboarding-step">
-                <div class="step-content">
-                    <div class="step-header">
                         <h2>Upload Your First Content</h2>
-                        <p>Let's get started by uploading your first lecture or course material.</p>
+                        <p>Let's get started by uploading your first Week 1 material.</p>
                     </div>
 
                     <div class="upload-guide">
-                        <div class="upload-section">
-                            <h3>What to Upload</h3>
-                            <div class="upload-options">
-                                <div class="upload-option">
-                                    <div class="option-icon">📝</div>
-                                    <div class="option-content">
-                                        <h4>Lecture Notes</h4>
-                                        <p>PowerPoint slides, PDF notes, or text documents</p>
-                                    </div>
-                                </div>
-                                <div class="upload-option">
-                                    <div class="option-icon">📚</div>
-                                    <div class="option-content">
-                                        <h4>Readings</h4>
-                                        <p>Textbook chapters, research papers, or articles</p>
-                                    </div>
-                                </div>
-                                <div class="upload-option">
-                                    <div class="option-icon">📋</div>
-                                    <div class="option-content">
-                                        <h4>Syllabus</h4>
-                                        <p>Course schedule, learning objectives, or policies</p>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-
                         <div class="upload-section">
                             <h3>Upload Your File</h3>
                             <div class="file-upload-area" id="file-upload-area">
@@ -309,36 +208,23 @@
                                     <label for="content-description">Description</label>
                                     <textarea id="content-description" placeholder="Brief description of this content..."></textarea>
                                 </div>
-                                <div class="form-row">
-                                    <div class="form-group">
-                                        <label for="content-week">Week</label>
-                                        <select id="content-week">
-                                            <option value="">Select week...</option>
-                                        </select>
-                                    </div>
-                                    <div class="form-group">
-                                        <label for="content-type">Type</label>
-                                        <select id="content-type">
-                                            <option value="lecture">Lecture</option>
-                                            <option value="reading">Reading</option>
-                                            <option value="syllabus">Syllabus</option>
-                                            <option value="quiz">Quiz</option>
-                                        </select>
-                                    </div>
+                                <div class="form-group">
+                                    <label>Week & Content Type</label>
+                                    <p style="color: #666; font-size: 0.9rem; margin: 0.5rem 0;">This content will be added to <strong>Week 1</strong> as <strong>Lecture Material</strong></p>
                                 </div>
                             </div>
                         </div>
-                    </div>
 
-                    <div class="step-actions">
-                        <button type="button" class="btn-secondary" onclick="previousStep()">Back</button>
-                        <button type="button" class="btn-primary" onclick="uploadContent()">Upload & Continue</button>
+                        <div class="step-actions">
+                            <button type="button" class="btn-secondary" onclick="previousStep()">Back</button>
+                            <button type="button" class="btn-primary" onclick="uploadContent()">Upload & Complete</button>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Step 5: Completion -->
-            <div id="step-5" class="onboarding-step">
+            <!-- Step 4: Completion -->
+            <div id="step-4" class="onboarding-step">
                 <div class="step-content">
                     <div class="completion-header">
                         <div class="completion-icon">🎉</div>

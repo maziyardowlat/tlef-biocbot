@@ -6,7 +6,7 @@
 // Global state for onboarding
 let onboardingState = {
     currentStep: 1,
-    totalSteps: 5,
+    totalSteps: 4,
     courseData: {},
     uploadedFile: null,
     createdCourseId: null
@@ -122,40 +122,28 @@ async function handleCourseSetup(event) {
             document.getElementById('custom-course-name').value : 
             formData.get('course'),
         weeks: parseInt(formData.get('weeks')),
-        lecturesPerWeek: parseInt(formData.get('lecturesPerWeek')),
-        contentTypes: Array.from(form.querySelectorAll('input[name="contentTypes"]:checked'))
-            .map(input => input.value)
+        lecturesPerWeek: parseInt(formData.get('lecturesPerWeek'))
     };
     
     // Disable submit button and show loading
     submitButton.disabled = true;
-    submitButton.textContent = 'Creating Course Structure...';
+    submitButton.textContent = 'Creating course...';
     
     try {
-        // Mock API call
+        // Mock API call to create course
         const response = await mockCreateCourse(onboardingState.courseData);
+        onboardingState.createdCourseId = response.courseId;
         
-        if (response.success) {
-            // Store the created course ID
-            onboardingState.createdCourseId = response.data.id;
-            
-            // Generate folder structure preview
-            generateFolderStructure();
-            
-            // Move to next step
-            nextStep();
-            
-        } else {
-            showErrorMessage(response.message || 'Failed to create course structure');
-        }
+        // Move to next step (first upload)
+        nextStep();
         
     } catch (error) {
         console.error('Error creating course:', error);
-        showErrorMessage('Failed to create course structure. Please try again.');
+        showNotification('Error creating course. Please try again.', 'error');
     } finally {
         // Re-enable submit button
         submitButton.disabled = false;
-        submitButton.textContent = 'Create Course Structure';
+        submitButton.textContent = 'Continue to Upload';
     }
 }
 
@@ -168,17 +156,12 @@ async function mockCreateCourse(courseData) {
     
     // Return mock response
     return {
-        success: true,
-        message: 'Course created successfully',
-        data: {
-            id: `course-${Date.now()}`,
-            name: courseData.course,
-            weeks: courseData.weeks,
-            lecturesPerWeek: courseData.lecturesPerWeek,
-            contentTypes: courseData.contentTypes,
-            createdAt: new Date().toISOString(),
-            status: 'active'
-        }
+        courseId: `course-${Date.now()}`,
+        name: courseData.course,
+        weeks: courseData.weeks,
+        lecturesPerWeek: courseData.lecturesPerWeek,
+        createdAt: new Date().toISOString(),
+        status: 'active'
     };
 }
 
@@ -187,8 +170,8 @@ async function mockCreateCourse(courseData) {
  */
 function validateCourseSetup() {
     const courseSelect = document.getElementById('course-select');
-    const weeksSelect = document.getElementById('weeks-count');
-    const lecturesSelect = document.getElementById('lectures-per-week');
+    const weeksInput = document.getElementById('weeks-count');
+    const lecturesInput = document.getElementById('lectures-per-week');
     
     let isValid = true;
     
@@ -207,101 +190,21 @@ function validateCourseSetup() {
         }
     }
     
-    // Validate weeks selection
-    if (!weeksSelect.value) {
-        showFieldError(weeksSelect, 'Please select the number of weeks');
+    // Validate weeks input
+    const weeks = parseInt(weeksInput.value);
+    if (!weeks || weeks < 1 || weeks > 20) {
+        showFieldError(weeksInput, 'Please enter a valid number of weeks (1-20)');
         isValid = false;
     }
     
-    // Validate lectures per week
-    if (!lecturesSelect.value) {
-        showFieldError(lecturesSelect, 'Please select lectures per week');
+    // Validate lectures per week input
+    const lectures = parseInt(lecturesInput.value);
+    if (!lectures || lectures < 1 || lectures > 5) {
+        showFieldError(lecturesInput, 'Please enter a valid number of lectures per week (1-5)');
         isValid = false;
     }
     
     return isValid;
-}
-
-/**
- * Generate folder structure preview
- */
-function generateFolderStructure() {
-    const folderStructure = document.getElementById('folder-structure');
-    const previewCourseName = document.getElementById('preview-course-name');
-    const previewCourseStructure = document.getElementById('preview-course-structure');
-    
-    if (!folderStructure || !onboardingState.courseData) return;
-    
-    // Update preview headers
-    if (previewCourseName) {
-        previewCourseName.textContent = onboardingState.courseData.course;
-    }
-    
-    if (previewCourseStructure) {
-        previewCourseStructure.textContent = 
-            `${onboardingState.courseData.weeks} weeks, ${onboardingState.courseData.lecturesPerWeek} lecture${onboardingState.courseData.lecturesPerWeek > 1 ? 's' : ''} per week`;
-    }
-    
-    // Generate folder items
-    folderStructure.innerHTML = '';
-    
-    for (let week = 1; week <= onboardingState.courseData.weeks; week++) {
-        const folderItem = document.createElement('div');
-        folderItem.className = 'folder-item';
-        folderItem.innerHTML = `
-            <span class="folder-icon">📁</span>
-            <span class="folder-name">Week ${week}</span>
-        `;
-        folderStructure.appendChild(folderItem);
-    }
-    
-    // Add special folders based on content types
-    if (onboardingState.courseData.contentTypes.includes('syllabus')) {
-        const syllabusFolder = document.createElement('div');
-        syllabusFolder.className = 'folder-item';
-        syllabusFolder.innerHTML = `
-            <span class="folder-icon">📋</span>
-            <span class="folder-name">Syllabus & Schedule</span>
-        `;
-        folderStructure.appendChild(syllabusFolder);
-    }
-    
-    if (onboardingState.courseData.contentTypes.includes('practice-quizzes')) {
-        const quizFolder = document.createElement('div');
-        quizFolder.className = 'folder-item';
-        quizFolder.innerHTML = `
-            <span class="folder-icon">❓</span>
-            <span class="folder-name">Practice Quizzes</span>
-        `;
-        folderStructure.appendChild(quizFolder);
-    }
-    
-    if (onboardingState.courseData.contentTypes.includes('readings')) {
-        const readingsFolder = document.createElement('div');
-        readingsFolder.className = 'folder-item';
-        readingsFolder.innerHTML = `
-            <span class="folder-icon">📚</span>
-            <span class="folder-name">Required Readings</span>
-        `;
-        folderStructure.appendChild(readingsFolder);
-    }
-}
-
-/**
- * Populate week options for content upload
- */
-function populateWeekOptions() {
-    const contentWeek = document.getElementById('content-week');
-    if (!contentWeek || !onboardingState.courseData.weeks) return;
-    
-    contentWeek.innerHTML = '<option value="">Select week...</option>';
-    
-    for (let week = 1; week <= onboardingState.courseData.weeks; week++) {
-        const option = document.createElement('option');
-        option.value = week;
-        option.textContent = `Week ${week}`;
-        contentWeek.appendChild(option);
-    }
 }
 
 /**
@@ -382,18 +285,15 @@ function formatFileSize(bytes) {
 }
 
 /**
- * Upload content and continue
+ * Handle content upload
  */
 async function uploadContent() {
     const contentTitle = document.getElementById('content-title');
     const contentDescription = document.getElementById('content-description');
-    const contentWeek = document.getElementById('content-week');
-    const contentType = document.getElementById('content-type');
-    const uploadButton = document.querySelector('button[onclick="uploadContent()"]');
     
-    // Validate required fields
+    // Basic validation
     if (!onboardingState.uploadedFile) {
-        showErrorMessage('Please select a file to upload');
+        showNotification('Please upload a file first', 'error');
         return;
     }
     
@@ -402,49 +302,41 @@ async function uploadContent() {
         return;
     }
     
-    if (!contentWeek.value) {
-        showFieldError(contentWeek, 'Please select a week for this content');
-        return;
-    }
-    
     // Disable upload button and show loading
+    const uploadButton = document.querySelector('.btn-primary[onclick="uploadContent()"]');
     if (uploadButton) {
         uploadButton.disabled = true;
         uploadButton.textContent = 'Uploading...';
     }
     
     try {
-        // Prepare upload data
+        // Prepare upload data - automatically Week 1, lecture type
         const uploadData = {
             title: contentTitle.value.trim(),
             description: contentDescription.value.trim(),
-            week: contentWeek.value,
-            type: contentType.value,
+            week: 1, // Automatically Week 1
+            type: 'lecture', // Automatically lecture type
             fileName: onboardingState.uploadedFile.name,
-            fileSize: onboardingState.uploadedFile.size
+            fileSize: onboardingState.uploadedFile.size,
+            courseId: onboardingState.createdCourseId
         };
         
         // Mock upload API call
         const response = await mockUploadContent(uploadData);
         
-        if (response.success) {
-            showSuccessMessage('Content uploaded successfully!');
-            
-            // Move to completion step
-            nextStep();
-            
-        } else {
-            showErrorMessage(response.message || 'Failed to upload content');
-        }
+        showNotification('Content uploaded successfully!', 'success');
+        
+        // Move to completion step
+        nextStep();
         
     } catch (error) {
         console.error('Error uploading content:', error);
-        showErrorMessage('Failed to upload content. Please try again.');
+        showNotification('Failed to upload content. Please try again.', 'error');
     } finally {
         // Re-enable upload button
         if (uploadButton) {
             uploadButton.disabled = false;
-            uploadButton.textContent = 'Upload & Continue';
+            uploadButton.textContent = 'Upload & Complete';
         }
     }
 }
@@ -458,35 +350,27 @@ async function mockUploadContent(uploadData) {
     
     // Return mock response
     return {
-        success: true,
-        message: 'Content uploaded successfully',
-        data: {
-            id: `content-${Date.now()}`,
-            title: uploadData.title,
-            description: uploadData.description,
-            week: uploadData.week,
-            type: uploadData.type,
-            fileName: uploadData.fileName,
-            fileSize: uploadData.fileSize,
-            uploadedAt: new Date().toISOString(),
-            status: 'processing'
-        }
+        contentId: `content-${Date.now()}`,
+        title: uploadData.title,
+        description: uploadData.description,
+        week: uploadData.week,
+        type: uploadData.type,
+        fileName: uploadData.fileName,
+        fileSize: uploadData.fileSize,
+        courseId: uploadData.courseId,
+        uploadedAt: new Date().toISOString(),
+        status: 'processed'
     };
 }
 
 /**
- * Navigation functions
+ * Navigate to next step
  */
 function nextStep() {
     if (onboardingState.currentStep < onboardingState.totalSteps) {
         onboardingState.currentStep++;
         showStep(onboardingState.currentStep);
         updateProgressBar();
-        
-        // Populate week options when reaching step 4
-        if (onboardingState.currentStep === 4) {
-            populateWeekOptions();
-        }
     }
 }
 
@@ -536,39 +420,9 @@ function updateProgressBar() {
 }
 
 /**
- * Structure preview functions
- */
-function editStructure() {
-    // Go back to step 2
-    onboardingState.currentStep = 2;
-    showStep(2);
-    updateProgressBar();
-}
-
-function confirmStructure() {
-    nextStep();
-}
-
-/**
  * Completion functions
  */
-function goToDocuments() {
-    window.location.href = '/instructor';
-}
-
-function goToSettings() {
-    window.location.href = '/instructor/settings';
-}
-
-function goToHome() {
-    window.location.href = '/instructor/home';
-}
-
 function finishOnboarding() {
-    // Mark onboarding as complete (store in localStorage or send to backend)
-    localStorage.setItem('onboardingComplete', 'true');
-    
-    // Redirect to documents page
     window.location.href = '/instructor/documents';
 }
 
