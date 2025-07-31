@@ -153,6 +153,16 @@
     color: white;
 }
 
+.action-button.upload {
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+}
+
+.action-button.upload:hover {
+    background-color: var(--accent-color);
+}
+
 .action-button.delete {
     background-color: var(--danger-color);
     color: white;
@@ -374,13 +384,14 @@
 }
 
 .accordion-content {
-    max-height: 1000px;
     overflow: hidden;
-    transition: max-height 0.3s ease-in-out;
+    padding: 16px;
+    transition: max-height 0.3s ease-in-out, padding 0.3s ease-in-out;
 }
 
 .accordion-content.collapsed {
-    max-height: 0;
+    max-height: 0 !important;
+    padding: 0 16px;
 }
 
 .file-item {
@@ -707,12 +718,12 @@
     height: 100%;
     background-color: rgba(0, 0, 0, 0.5);
     backdrop-filter: blur(4px);
+    align-items: center;
+    justify-content: center;
 }
 
 .modal.show {
     display: flex;
-    align-items: center;
-    justify-content: center;
 }
 
 .modal-content {
@@ -1213,62 +1224,78 @@
     border-color: #c3e6cb;
 }
 
+/* Update Threshold */
 .threshold-section {
+    margin-top: 20px;
+    padding: 16px;
     background-color: #f8f9fa;
-    padding: 20px;
-    border-radius: 8px;
-}
-
-.threshold-section h3 {
-    margin: 0 0 8px 0;
-    font-size: 16px;
-    color: var(--text-color);
-}
-
-.threshold-section p {
-    margin: 0 0 16px 0;
-    font-size: 14px;
-    color: #666;
+    border-radius: 6px;
 }
 
 .threshold-input {
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 12px;
+    margin-top: 8px;
 }
 
-.threshold-input input[type="range"] {
+#mode-threshold {
     flex: 1;
-    height: 6px;
-    border-radius: 3px;
-    background: #ddd;
-    outline: none;
-    -webkit-appearance: none;
-}
-
-.threshold-input input[type="range"]::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background: var(--primary-color);
-    cursor: pointer;
-}
-
-.threshold-input input[type="range"]::-moz-range-thumb {
-    width: 20px;
-    height: 20px;
-    border-radius: 50%;
-    background: var(--primary-color);
-    cursor: pointer;
-    border: none;
 }
 
 #threshold-value {
-    font-weight: 600;
+    font-weight: bold;
     color: var(--primary-color);
     min-width: 40px;
+}
+
+/* Generate Questions Styles */
+.generate-questions-container {
+    margin: 18px 0;
+    padding: 16px;
+    background-color: #f8fbff;
+    border: 1px solid #e3f2fd;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.generate-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 4px rgba(102, 126, 234, 0.2);
+}
+
+.generate-btn:hover {
+    background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+    box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+    transform: translateY(-1px);
+}
+
+.generate-btn:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px rgba(102, 126, 234, 0.2);
+}
+
+.generate-btn .btn-icon {
+    font-size: 16px;
+}
+
+.generate-help-text {
+    margin: 8px 0 0 0;
+    font-size: 12px;
+    color: #6c757d;
+    font-style: italic;
 }
 
 /* Responsive Design */
@@ -1365,7 +1392,7 @@
 
 /* Learning Objectives */
 .objectives-list {
-    margin: 16px 0;
+    margin: 18px 0;
     max-height: 300px;
     overflow-y: auto;
 }
@@ -1373,7 +1400,7 @@
 .objective-input-container {
     display: flex;
     align-items: center;
-    margin-bottom: 16px;
+    margin: 18px 0;
 }
 
 .objective-input {
@@ -1429,6 +1456,7 @@
 .save-objectives {
     display: flex;
     justify-content: flex-end;
+    margin-top: 18px;
 }
 
 .save-btn {
@@ -1515,4 +1543,134 @@
 .course-materials-section .file-item,
 .probing-questions-section .file-item {
     margin-bottom: 12px;
+} 
+
+/* Simple Upload Modal Styles */
+.upload-section {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.file-upload-container {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.upload-file-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 16px 24px;
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    min-height: 56px;
+}
+
+.upload-file-btn:hover {
+    background-color: var(--accent-color);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(74, 111, 165, 0.3);
+}
+
+.upload-file-btn .upload-icon {
+    font-size: 20px;
+}
+
+.input-section {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.input-section label {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-color);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    background-color: #f8f9fa;
+    padding: 8px 12px;
+    border-radius: 4px;
+    border-left: 4px solid var(--primary-color);
+}
+
+.input-section input[type="url"] {
+    width: 100%;
+    padding: 12px 16px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 14px;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.input-section input[type="url"]:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(74, 111, 165, 0.1);
+}
+
+.input-section input[type="text"] {
+    width: 100%;
+    padding: 12px 16px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 14px;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.input-section input[type="text"]:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(74, 111, 165, 0.1);
+}
+
+.input-section textarea {
+    width: 100%;
+    padding: 12px 16px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    font-size: 14px;
+    font-family: inherit;
+    resize: vertical;
+    min-height: 120px;
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.input-section textarea:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(74, 111, 165, 0.1);
+}
+
+/* File info display */
+.file-info {
+    margin-top: 12px;
+    padding: 12px 16px;
+    background-color: #f8f9fa;
+    border-radius: 6px;
+    border: 1px solid #e9ecef;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.file-name {
+    font-weight: 500;
+    color: var(--text-color);
+    flex: 1;
+}
+
+.file-size {
+    font-size: 12px;
+    color: #666;
+    margin-left: 12px;
 } 

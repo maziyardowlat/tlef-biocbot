@@ -600,3 +600,177 @@
         padding: 1.5rem;
     }
 } 
+
+/* Week1 Accordion Onboarding Overrides */
+.onboarding-accordion {
+    width: 100%;
+    max-width: none;
+    margin: 0;
+}
+
+/* Override onboarding step constraints for accordion step */
+#step-3.onboarding-step {
+    max-width: none;
+    padding: 0;
+    margin: 0;
+    width: 100vw;
+    margin-left: calc(-50vw + 50%);
+}
+
+#step-3 .step-content {
+    max-width: none;
+    width: 100%;
+    margin: 0;
+    padding: 2rem;
+    box-shadow: none;
+    border-radius: 0;
+    background: #f8f9fa;
+}
+
+/* Ensure full width for step header */
+#step-3 .step-header {
+    max-width: 1200px;
+    margin: 0 auto 2rem auto;
+    padding: 0 2rem;
+}
+
+/* Ensure accordion has proper spacing */
+#step-3 .accordion-container {
+    width: 100%;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 2rem;
+}
+
+#step-3 .accordion-item {
+    margin-bottom: 0;
+}
+
+/* Match instructor page accordion content spacing */
+#step-3 .accordion-content {
+    padding: 1.5rem;
+}
+
+#step-3 .unit-section {
+    margin-bottom: 1.5rem;
+}
+
+/* Ensure sections have proper width */
+#step-3 .section-content {
+    width: 100%;
+}
+
+/* Full width step actions */
+#step-3 .step-actions {
+    max-width: 1200px;
+    margin: 2rem auto 0 auto;
+    padding: 2rem;
+}
+
+/* Responsive adjustments for accordion in onboarding */
+@media (max-width: 1200px) {
+    #step-3 .accordion-container,
+    #step-3 .step-header,
+    #step-3 .step-actions {
+        padding: 0 1rem;
+    }
+}
+
+@media (max-width: 768px) {
+    #step-3.onboarding-step {
+        padding: 0;
+        width: 100vw;
+        margin-left: calc(-50vw + 50%);
+    }
+    
+    #step-3 .step-content {
+        padding: 1rem;
+    }
+    
+    #step-3 .accordion-container,
+    #step-3 .step-header,
+    #step-3 .step-actions {
+        padding: 0 0.5rem;
+    }
+    
+    #step-3 .accordion-content {
+        padding: 1rem;
+    }
+}
+
+/* Fix file-item display in onboarding */
+#step-3 .file-item {
+    display: flex !important;
+    align-items: flex-start;
+    padding: 15px;
+    border-bottom: 1px solid #e0e0e0;
+    background-color: white;
+    margin-bottom: 10px;
+    border-radius: 6px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+#step-3 .file-info {
+    flex: 1;
+    display: block !important;
+    visibility: visible !important;
+}
+
+#step-3 .file-info h3 {
+    margin: 0 0 5px;
+    font-size: 16px;
+    font-weight: 500;
+    color: #333;
+    display: block !important;
+}
+
+#step-3 .file-info p {
+    margin: 0 0 10px;
+    font-size: 14px;
+    color: #666;
+    display: block !important;
+}
+
+#step-3 .status-text {
+    display: inline-block !important;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 500;
+    background-color: rgba(220, 53, 69, 0.1);
+    color: #dc3545;
+}
+
+#step-3 .file-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-left: 15px;
+}
+
+#step-3 .action-button {
+    padding: 6px 12px;
+    font-size: 12px;
+    border-radius: 4px;
+    border: none;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+#step-3 .action-button.upload {
+    background-color: #4a6fa5;
+    color: white;
+}
+
+#step-3 .action-button.upload:hover {
+    background-color: #3d5a91;
+}
+
+#step-3 .action-button.delete {
+    background-color: #dc3545;
+    color: white;
+}
+
+#step-3 .action-button.delete:hover {
+    background-color: #c82333;
+} 
