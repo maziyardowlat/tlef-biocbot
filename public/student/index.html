@@ -50,17 +50,21 @@
                         <div class="message-avatar">B</div>
                         <div class="message-content">
                             <p>Hello! I'm BiocBot, your AI study assistant for Biology 302. How can I help you today?</p>
-                            <div class="message-actions">
-                                <button class="flag-button" onclick="toggleFlagMenu(this)">
-                                    <span class="three-dots">⋯</span>
-                                </button>
-                                <div class="flag-menu">
-                                    <button class="flag-option" onclick="flagMessage(this, 'incorrectness')">Incorrectness</button>
-                                    <button class="flag-option" onclick="flagMessage(this, 'inappropriate')">Inappropriate</button>
-                                    <button class="flag-option" onclick="flagMessage(this, 'irrelevant')">Irrelevant</button>
+                            <div class="message-footer">
+                                <div class="message-footer-right">
+                                    <span class="timestamp">Just now</span>
+                                    <div class="message-flag-container">
+                                        <button class="flag-button" onclick="toggleFlagMenu(this)">
+                                            <span class="three-dots">⋯</span>
+                                        </button>
+                                        <div class="flag-menu">
+                                            <button class="flag-option" onclick="flagMessage(this, 'incorrectness')">Incorrectness</button>
+                                            <button class="flag-option" onclick="flagMessage(this, 'inappropriate')">Inappropriate</button>
+                                            <button class="flag-option" onclick="flagMessage(this, 'irrelevant')">Irrelevant</button>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
-                            <span class="timestamp">Just now</span>
                         </div>
                     </div>
                 </div>
@@ -68,9 +72,25 @@
                 <!-- Chat Input Area -->
                 <div class="chat-input-container">
                     <form id="chat-form">
-                        <input type="text" id="chat-input" placeholder="Ask me anything about Biology 302...">
+                        <input type="text" id="chat-input" placeholder="">
                         <button type="submit" id="send-button">Send</button>
                     </form>
+                    <div class="chat-footer">
+                        <div class="chat-disclaimer">
+                            BiocBot can make mistakes. Verify important information with your course materials and instructor. Don't share personal information.
+                        </div>
+                        <!-- Mode Toggle -->
+                        <div class="mode-toggle-container">
+                            <div class="mode-toggle">
+                                <span class="mode-label protege-label">Protégé</span>
+                                <div class="toggle-switch">
+                                    <input type="checkbox" id="mode-toggle-checkbox" checked>
+                                    <label for="mode-toggle-checkbox" class="toggle-slider"></label>
+                                </div>
+                                <span class="mode-label tutor-label active">Tutor</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </main>

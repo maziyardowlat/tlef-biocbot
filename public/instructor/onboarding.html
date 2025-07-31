@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Onboarding - BiocBot Instructor</title>
     <link rel="stylesheet" href="../styles/style.css">
+    <link rel="stylesheet" href="../styles/documents.css">
     <link rel="stylesheet" href="../styles/onboarding.css">
 </head>
 <body>
@@ -42,7 +43,7 @@
                 <div class="progress-steps">
                     <span class="step-indicator active" data-step="1">Welcome</span>
                     <span class="step-indicator" data-step="2">Course Setup</span>
-                    <span class="step-indicator" data-step="3">First Upload</span>
+                    <span class="step-indicator" data-step="3">Week 1 Setup</span>
                 </div>
             </div>
 
@@ -124,11 +125,10 @@
                                 <label for="course-select">Select Your Course</label>
                                 <select id="course-select" name="course" required>
                                     <option value="">Choose a course...</option>
-                                    <option value="BIOC 202">BIOC 202 - Introduction to Biochemistry</option>
-                                    <option value="BIOC 303">BIOC 303 - Advanced Biochemistry</option>
-                                    <option value="BIOC 301">BIOC 301 - Molecular Biology</option>
-                                    <option value="BIOC 302">BIOC 302 - Cell Biology</option>
-                                    <option value="custom">Other (Custom Course)</option>
+                                    <option value="BIOC 202">BIOC 202</option>
+                                    <option value="BIOC 301">BIOC 301</option>
+                                    <option value="BIOC 302">BIOC 302</option>
+                                    <option value="BIOC 303">BIOC 303</option>
                                 </select>
                             </div>
 
@@ -165,88 +165,180 @@
             <div id="step-3" class="onboarding-step">
                 <div class="step-content">
                     <div class="step-header">
-                        <h2>Upload Your First Content</h2>
-                        <p>Let's get started by uploading your first Week 1 material.</p>
+                        <h2>Set Up Your First Week</h2>
+                        <p>Complete your Week 1 setup with learning objectives, course materials, and probing questions.</p>
                     </div>
 
-                    <div class="upload-guide">
-                        <div class="upload-section">
-                            <h3>Upload Your File</h3>
-                            <div class="file-upload-area" id="file-upload-area">
-                                                            <div class="upload-zone">
-                                <div class="upload-icon"></div>
-                                <p>Drag and drop your file here, or click to browse</p>
-                                    <input type="file" id="file-input" accept=".pdf,.docx,.txt,.ppt,.pptx" style="display: none;">
-                                    <button class="browse-btn" onclick="document.getElementById('file-input').click()">Browse Files</button>
+                    <!-- Week 1 Accordion for Onboarding -->
+                    <div class="accordion-container onboarding-accordion">
+                        <div class="accordion-item published">
+                            <div class="accordion-header">  
+                                <span class="folder-name">Week 1</span>
+                                <div class="header-actions">
+                                    <div class="publish-toggle">
+                                        <label class="toggle-switch">
+                                            <input type="checkbox" id="publish-week1" checked onchange="togglePublish('Week 1', this.checked)">
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                        <span class="toggle-label">Published</span>
+                                    </div>
+                                    <span class="accordion-toggle">▼</span>
                                 </div>
-                                <div class="file-info" id="file-info" style="display: none;">
-                                    <span class="file-name" id="file-name"></span>
-                                    <span class="file-size" id="file-size"></span>
+                            </div>
+                            <div class="accordion-content">
+                                <!-- Learning Objectives Section -->
+                                <div class="unit-section learning-objectives-section">
+                                    <div class="section-header">
+                                        <h3>Learning Objectives</h3>
+                                        <button class="toggle-section">▼</button>
+                                    </div>
+                                    <div class="section-content">
+                                        <div class="objectives-list" id="objectives-list-week1">
+                                            <!-- Objectives will be added here -->
+                                        </div>
+                                        <div class="objective-input-container">
+                                            <input type="text" id="objective-input-week1" class="objective-input" placeholder="Enter learning objective...">
+                                            <button class="add-objective-btn-inline" onclick="addObjectiveFromInput('Week 1')">+</button>
+                                        </div>
+                                        <div class="save-objectives">
+                                            <button class="save-btn" onclick="saveObjectives('Week 1')">Save Learning Objectives</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Course Materials Section -->
+                                <div class="unit-section course-materials-section">
+                                    <div class="section-header">
+                                        <h3>Course Materials</h3>
+                                        <button class="toggle-section">▼</button>
+                                    </div>
+                                    <div class="section-content">
+                                        <div class="content-type-header">
+                                            <p><strong>Required Materials:</strong> *Lecture Notes and *Practice Questions/Tutorial are mandatory</p>
+                                        </div>
+                                        <div class="file-item">
+                                            <div class="file-info">
+                                                <h3>*Lecture Notes - Week 1</h3>
+                                                <p>Placeholder for required lecture notes. Please upload content.</p>
+                                                <span class="status-text">Not Uploaded</span>
+                                            </div>
+                                            <div class="file-actions">
+                                                <button class="action-button upload" onclick="openUploadModal('Week 1', 'lecture-notes')">Upload</button>
+                                                <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
+                                            </div>
+                                        </div>
+                                        <div class="file-item">
+                                            <div class="file-info">
+                                                <h3>*Practice Questions/Tutorial</h3>
+                                                <p>Placeholder for required practice questions. Please upload content.</p>
+                                                <span class="status-text">Not Uploaded</span>
+                                            </div>
+                                            <div class="file-actions">
+                                                <button class="action-button upload" onclick="openUploadModal('Week 1', 'practice-quiz')">Upload</button>
+                                                <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
+                                            </div>
+                                        </div>
+                                        <!-- Add Content Button -->
+                                        <div class="add-content-section">
+                                            <button class="add-content-btn additional-material" onclick="openUploadModal('Week 1', 'additional')">
+                                                <span class="btn-icon">➕</span>
+                                                Add Additional Material
+                                            </button>
+                                        </div>
+                                        <div class="save-objectives">
+                                            <button class="save-btn" onclick="confirmCourseMaterials('Week 1')">Confirm Course Materials</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Probing Questions Section -->
+                                <div class="unit-section probing-questions-section">
+                                    <div class="section-header">
+                                        <h3>Probing Questions</h3>
+                                        <button class="toggle-section">▼</button>
+                                    </div>
+                                    <div class="section-content">
+                                        <div class="objectives-list" id="questions-list-week1">
+                                            <!-- Questions will be added here -->
+                                        </div>
+                                        <div class="generate-questions-container">
+                                            <button class="generate-btn" onclick="generateProbingQuestions('Week 1')">
+                                                Generate Probing Questions
+                                            </button>
+                                            <p class="generate-help-text">Let AI generate probing questions based on your uploaded course materials</p>
+                                        </div>
+                                        <div class="objective-input-container">
+                                            <input type="text" id="question-input-week1" class="objective-input" placeholder="Enter probing question...">
+                                            <button class="add-objective-btn-inline" onclick="addQuestionFromInput('Week 1')">+</button>
+                                        </div>
+                                        <div class="save-objectives">
+                                            <button class="save-btn" onclick="saveQuestions('Week 1')">Save Probing Questions</button>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
-
-                        <div class="upload-section">
-                            <h3>Content Details</h3>
-                            <div class="content-details">
-                                <div class="form-group">
-                                    <label for="content-title">Title</label>
-                                    <input type="text" id="content-title" placeholder="e.g., Introduction to Biochemistry">
-                                </div>
-                                <div class="form-group">
-                                    <label for="content-description">Description</label>
-                                    <textarea id="content-description" placeholder="Brief description of this content..."></textarea>
-                                </div>
-                                <div class="form-group">
-                                    <label>Week & Content Type</label>
-                                    <p style="color: #666; font-size: 0.9rem; margin: 0.5rem 0;">This content will be added to <strong>Week 1</strong> as <strong>Lecture Material</strong></p>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="step-actions">
-                            <button type="button" class="btn-secondary" onclick="previousStep()">Back</button>
-                            <button type="button" class="btn-primary" onclick="uploadContent()">Upload & Complete</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Step 4: Completion -->
-            <div id="step-4" class="onboarding-step">
-                <div class="step-content">
-                    <div class="completion-header">
-                        <h2>You're All Set!</h2>
-                        <p>Your course is ready to go. Here's what you can do next:</p>
                     </div>
 
-                    <div class="next-steps">
-                        <div class="next-step-card">
-                            <div class="step-icon"></div>
-                            <h3>Upload More Content</h3>
-                            <p>Add more lectures, readings, and materials to your course.</p>
-                            <button class="btn-primary" onclick="goToDocuments()">Go to Documents</button>
-                        </div>
-
-                        <div class="next-step-card">
-                            <h3>Configure Settings</h3>
-                            <p>Set up AI preferences, student access, and course settings.</p>
-                            <button class="btn-secondary" onclick="goToSettings()">Go to Settings</button>
-                        </div>
-
-                        <div class="next-step-card">
-                            <h3>View Dashboard</h3>
-                            <p>See an overview of your course and student activity.</p>
-                            <button class="btn-secondary" onclick="goToHome()">Go to Home</button>
-                        </div>
-                    </div>
-
-                    <div class="completion-actions">
-                        <button class="btn-primary" onclick="finishOnboarding()">Finish Onboarding</button>
+                    <div class="step-actions">
+                        <button type="button" class="btn-secondary" onclick="previousStep()">Back</button>
+                        <button type="button" class="btn-primary" onclick="completeWeek1Setup()">Complete Week 1 & Continue</button>
                     </div>
                 </div>
             </div>
         </main>
+    </div>
+    
+    <!-- Upload Modal -->
+    <div id="upload-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-title">Upload Content</h2>
+                <button class="modal-close" onclick="closeUploadModal()">×</button>
+            </div>
+            
+            <div class="modal-body">
+                <div class="upload-section">
+                    <!-- File Upload Button -->
+                    <div class="file-upload-container">
+                        <button class="upload-file-btn" onclick="triggerFileInput()">
+                            <span class="upload-icon">📁</span>
+                            <span>Upload Summarized/Expert notes</span>
+                        </button>
+                        <input type="file" id="file-input" accept=".pdf,.docx,.txt,.ppt,.pptx" style="display: none;">
+                        <div class="file-info" id="file-info" style="display: none;">
+                            <span class="file-name" id="file-name"></span>
+                            <span class="file-size" id="file-size"></span>
+                        </div>
+                    </div>
+
+                    <!-- Name Input (only for additional material) -->
+                    <div class="input-section" id="name-input-section" style="display: none;">
+                        <label for="material-name">Material Name</label>
+                        <input type="text" id="material-name" placeholder="Enter a name for this additional material..." />
+                    </div>
+
+                    <!-- URL Input -->
+                    <div class="input-section">
+                        <label for="url-input">URL INPUT</label>
+                        <input type="url" id="url-input" placeholder="Enter URL to import content from web..." />
+                    </div>
+
+                    <!-- Text Area -->
+                    <div class="input-section">
+                        <label for="text-input">Text area</label>
+                        <textarea id="text-input" rows="8" placeholder="Enter or paste your content directly here..."></textarea>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <div class="modal-actions">
+                    <button class="btn-secondary" onclick="closeUploadModal()">Cancel</button>
+                    <button class="btn-primary" id="upload-btn" onclick="handleUpload()">Upload</button>
+                </div>
+            </div>
+        </div>
     </div>
     
     <script src="./scripts/onboarding.js"></script>

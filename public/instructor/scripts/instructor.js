@@ -7,11 +7,52 @@ document.addEventListener('DOMContentLoaded', () => {
     const accordionHeaders = document.querySelectorAll('.accordion-header');
     const sectionHeaders = document.querySelectorAll('.section-header');
     
+    // Make sure all "Add Additional Material" buttons are visible
+    const additionalMaterialButtons = document.querySelectorAll('.add-content-btn.additional-material');
+    additionalMaterialButtons.forEach(button => {
+        button.style.display = 'flex';
+        button.style.visibility = 'visible';
+        button.style.opacity = '1';
+    });
+    
+    // Add click outside modal to close functionality
+    document.addEventListener('click', (e) => {
+        const uploadModal = document.getElementById('upload-modal');
+        const calibrationModal = document.getElementById('calibration-modal');
+        const viewModal = document.getElementById('view-modal');
+        
+        // Close upload modal if clicking outside
+        if (uploadModal && uploadModal.classList.contains('show') && e.target === uploadModal) {
+            closeUploadModal();
+        }
+        
+        // Close calibration modal if clicking outside
+        if (calibrationModal && calibrationModal.classList.contains('show') && e.target === calibrationModal) {
+            closeCalibrationModal();
+        }
+        
+        // Close view modal if clicking outside
+        if (viewModal && viewModal.classList.contains('show') && e.target === viewModal) {
+            closeViewModal();
+        }
+    });
+    
     // Initialize section headers to be clickable
     sectionHeaders.forEach(header => {
         header.addEventListener('click', (e) => {
-            toggleSection(header);
+            toggleSection(header, e);
         });
+        
+        // Make sure toggle icon matches initial state
+        const sectionContent = header.nextElementSibling;
+        const toggleIcon = header.querySelector('.toggle-section');
+        if (sectionContent && toggleIcon) {
+            if (sectionContent.classList.contains('collapsed')) {
+                toggleIcon.textContent = '▶';
+            } else {
+                toggleIcon.textContent = '▼';
+            }
+        }
     });
     
     console.log('Instructor interface initialized');
@@ -31,15 +72,8 @@ document.addEventListener('DOMContentLoaded', () => {
             const content = accordionItem.querySelector('.accordion-content');
             const toggle = header.querySelector('.accordion-toggle');
             
-            // Toggle the collapsed class
-            content.classList.toggle('collapsed');
-            
-            // Update the toggle icon
-            if (content.classList.contains('collapsed')) {
-                toggle.textContent = '▶';
-            } else {
-                toggle.textContent = '▼';
-            }
+            // Use the improved toggle function
+            toggleAccordionDynamic(content, toggle);
         });
     });
     
@@ -144,11 +178,11 @@ document.addEventListener('DOMContentLoaded', () => {
         fileItem.className = 'file-item';
         
         // Determine icon based on file type
-        let fileIcon = '📄';
+        let fileIcon = '';
         if (file.name.toLowerCase().includes('quiz')) {
-            fileIcon = '📝';
+            fileIcon = '';
         } else if (file.name.toLowerCase().includes('syllabus')) {
-            fileIcon = '📋';
+            fileIcon = '';
         }
         
         fileItem.innerHTML = `
@@ -211,7 +245,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             accordionItem.innerHTML = `
                 <div class="accordion-header">
-                    <span class="folder-icon">📁</span>
+                    <span class="folder-icon"></span>
                     <span class="folder-name">${weekName}</span>
                     <span class="accordion-toggle">▶</span>
                 </div>
@@ -291,27 +325,82 @@ function showNotification(message, type = 'info') {
 }
 
 // Modal functionality for content upload
-let currentStep = 1;
-let selectedContentType = null;
 let uploadedFile = null;
-let currentLectureName = null;
+let currentWeek = null;
+let currentContentType = null;
 
 /**
- * Open the upload modal
- * @param {string} lectureName - Name of the lecture/week
+ * Open the upload modal for a specific week and content type
+ * @param {string} week - The week identifier (e.g., 'Week 1')
+ * @param {string} contentType - The content type ('lecture-notes', 'practice-quiz', 'additional', etc.)
  */
-function openUploadModal(lectureName) {
-    currentLectureName = lectureName;
-    document.getElementById('modal-lecture-name').textContent = lectureName;
-    document.getElementById('upload-modal').classList.add('show');
+function openUploadModal(week, contentType = '') {
+    currentWeek = week;
+    currentContentType = contentType;
+    
+    // Set dynamic modal title based on content type
+    const modalTitle = document.getElementById('modal-title');
+    const uploadFileBtn = document.querySelector('.upload-file-btn span:last-child');
+    const nameInputSection = document.getElementById('name-input-section');
+    let title = 'Upload Content';
+    let buttonText = 'Upload Content';
+    
+    switch (contentType) {
+        case 'lecture-notes':
+            title = 'Upload Lecture Notes';
+            buttonText = 'Upload Lecture Notes';
+            break;
+        case 'practice-quiz':
+            title = 'Upload Practice Questions/Tutorial';
+            buttonText = 'Upload Practice Questions';
+            break;
+        case 'readings':
+            title = 'Upload Readings';
+            buttonText = 'Upload Readings';
+            break;
+        case 'syllabus':
+            title = 'Upload Syllabus';
+            buttonText = 'Upload Syllabus';
+            break;
+        case 'additional':
+            title = 'Upload Additional Material';
+            buttonText = 'Upload Additional Material';
+            break;
+        default:
+            title = `Upload Content for ${week}`;
+            buttonText = 'Upload Content';
+    }
+    
+    modalTitle.textContent = title;
+    if (uploadFileBtn) {
+        uploadFileBtn.textContent = buttonText;
+    }
+    
+    // Show/hide name input section based on content type
+    if (nameInputSection) {
+        if (contentType === 'additional') {
+            nameInputSection.style.display = 'flex';
+        } else {
+            nameInputSection.style.display = 'none';
+        }
+    }
+    
+    // Reset the modal to initial state
     resetModal();
+    
+    // Show the modal
+    const modal = document.getElementById('upload-modal');
+    modal.style.display = '';
+    modal.classList.add('show');
 }
 
 /**
  * Close the upload modal
  */
 function closeUploadModal() {
-    document.getElementById('upload-modal').classList.remove('show');
+    const modal = document.getElementById('upload-modal');
+    modal.classList.remove('show');
+    modal.style.display = 'none';
     resetModal();
 }
 
@@ -319,183 +408,42 @@ function closeUploadModal() {
  * Reset modal to initial state
  */
 function resetModal() {
-    currentStep = 1;
-    selectedContentType = null;
     uploadedFile = null;
     
-    // Reset step visibility
-    document.querySelectorAll('.modal-step').forEach(stepEl => {
-        stepEl.classList.remove('active');
-    });
-    document.getElementById('step-1').classList.add('active');
-    
-    // Reset step indicators
-    document.querySelectorAll('.step-dot').forEach(dot => {
-        dot.classList.remove('active');
-    });
-    document.querySelector('[data-step="1"]').classList.add('active');
-    
-    // Reset button
-    const nextBtn = document.getElementById('next-btn');
-    nextBtn.style.display = 'block';
-    nextBtn.textContent = 'Next';
-    nextBtn.disabled = false;
-    
-    // Reset content type selection
-    document.querySelectorAll('.content-type-btn').forEach(btn => {
-        btn.classList.remove('selected');
-    });
-    
-    // Reset file upload
+    // Reset file input and info
+    const fileInput = document.getElementById('file-input');
     const fileInfo = document.getElementById('file-info');
-    if (fileInfo) fileInfo.style.display = 'none';
+    const urlInput = document.getElementById('url-input');
+    const textInput = document.getElementById('text-input');
+    const materialName = document.getElementById('material-name');
+    const uploadFileBtn = document.querySelector('.upload-file-btn span:last-child');
     
-    // Reset learning objectives
-    const learningObjectives = document.getElementById('learning-objectives');
-    if (learningObjectives) learningObjectives.value = '';
-    
-    // Reset skip checkbox
-    const skipCheckbox = document.getElementById('skip-objectives');
-    if (skipCheckbox) {
-        skipCheckbox.checked = false;
-        const objectivesInput = document.getElementById('objectives-input');
-        if (objectivesInput) objectivesInput.classList.remove('hidden');
-    }
-    
-    // Reset file input
-    const fileInput = document.getElementById('file-input');
     if (fileInput) fileInput.value = '';
-}
-
-/**
- * Select content type
- * @param {string} contentType - The selected content type
- */
-function selectContentType(contentType) {
-    selectedContentType = contentType;
+    if (fileInfo) fileInfo.style.display = 'none';
+    if (urlInput) urlInput.value = '';
+    if (textInput) textInput.value = '';
+    if (materialName) materialName.value = '';
     
-    // Update visual selection
-    document.querySelectorAll('.content-type-btn').forEach(btn => {
-        btn.classList.remove('selected');
-    });
-    event.target.closest('.content-type-btn').classList.add('selected');
+    // Reset upload file button text to default
+    if (uploadFileBtn) {
+        uploadFileBtn.textContent = 'Upload Content';
+    }
     
-    // Auto-select skip objectives for certain content types
-    autoSelectSkipObjectives(contentType);
-}
-
-/**
- * Go to next step in modal
- */
-function nextStep() {
-    if (currentStep === 1) {
-        if (!selectedContentType) {
-            showNotification('Please select a content type', 'error');
-            return;
-        }
-        goToStep(2);
-    } else if (currentStep === 2) {
-        if (!uploadedFile) {
-            showNotification('Please upload a file', 'error');
-            return;
-        }
-        
-        // Check if objectives are required (not skipped)
-        const skipCheckbox = document.getElementById('skip-objectives');
-        const objectives = document.getElementById('learning-objectives').value.trim();
-        
-        console.log('Skip checkbox checked:', skipCheckbox.checked);
-        console.log('Objectives value:', objectives);
-        
-        // If skip is checked, allow proceeding without objectives
-        if (skipCheckbox.checked) {
-            console.log('Skip is checked, proceeding without objectives');
-            processFileAndShowPreview();
-            goToStep(3);
-            return;
-        }
-        
-        // If skip is not checked, require objectives
-        if (!objectives) {
-            showNotification('Please enter learning objectives or check "Skip learning objectives"', 'error');
-            return;
-        }
-        
-        processFileAndShowPreview();
-        goToStep(3);
+    // Reset upload button text
+    const uploadBtn = document.getElementById('upload-btn');
+    if (uploadBtn) {
+        uploadBtn.textContent = 'Upload';
+        uploadBtn.disabled = false;
     }
 }
 
 /**
- * Go to specific step
- * @param {number} step - Step number to go to
+ * Trigger file input when upload button is clicked
  */
-function goToStep(step) {
-    currentStep = step;
-    
-    // Update step visibility
-    document.querySelectorAll('.modal-step').forEach(stepEl => {
-        stepEl.classList.remove('active');
-    });
-    document.getElementById(`step-${step}`).classList.add('active');
-    
-    // Update step indicators
-    document.querySelectorAll('.step-dot').forEach(dot => {
-        dot.classList.remove('active');
-    });
-    document.querySelector(`[data-step="${step}"]`).classList.add('active');
-    
-    // Update button text
-    const nextBtn = document.getElementById('next-btn');
-    if (step === 3) {
-        nextBtn.style.display = 'none';
-    } else {
-        nextBtn.style.display = 'block';
-        nextBtn.textContent = step === 2 ? 'Process & Review' : 'Next';
-    }
-}
-
-/**
- * Setup file upload functionality
- */
-document.addEventListener('DOMContentLoaded', function() {
-    const uploadZone = document.getElementById('upload-zone');
+function triggerFileInput() {
     const fileInput = document.getElementById('file-input');
-    
-    if (uploadZone && fileInput) {
-        // Click to upload
-        uploadZone.addEventListener('click', () => {
-            fileInput.click();
-        });
-        
-        // Drag and drop
-        uploadZone.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            uploadZone.classList.add('dragover');
-        });
-        
-        uploadZone.addEventListener('dragleave', (e) => {
-            e.preventDefault();
-            uploadZone.classList.remove('dragover');
-        });
-        
-        uploadZone.addEventListener('drop', (e) => {
-            e.preventDefault();
-            uploadZone.classList.remove('dragover');
-            const files = e.dataTransfer.files;
-            if (files.length > 0) {
-                handleFileUpload(files[0]);
-            }
-        });
-        
-        // File input change
-        fileInput.addEventListener('change', (e) => {
-            if (e.target.files.length > 0) {
-                handleFileUpload(e.target.files[0]);
-            }
-        });
-    }
-});
+    fileInput.click();
+}
 
 /**
  * Handle file upload
@@ -509,12 +457,173 @@ function handleFileUpload(file) {
     document.getElementById('file-size').textContent = formatFileSize(file.size);
     document.getElementById('file-info').style.display = 'flex';
     
-    // Update upload zone
-    document.getElementById('upload-zone').innerHTML = `
-        <span class="upload-icon">✅</span>
-        <p>File uploaded: ${file.name}</p>
-    `;
+    showNotification(`File "${file.name}" selected successfully`, 'success');
 }
+
+/**
+ * Handle the main upload action
+ */
+async function handleUpload() {
+    const urlInput = document.getElementById('url-input').value.trim();
+    const textInput = document.getElementById('text-input').value.trim();
+    const materialNameInput = document.getElementById('material-name').value.trim();
+    const uploadBtn = document.getElementById('upload-btn');
+    
+    // Check if at least one input method is provided
+    if (!uploadedFile && !urlInput && !textInput) {
+        showNotification('Please provide content via file upload, URL, or direct text input', 'error');
+        return;
+    }
+    
+    // Disable upload button and show loading state
+    uploadBtn.textContent = 'Uploading...';
+    uploadBtn.disabled = true;
+    
+    try {
+        // Simulate upload delay
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // Create content item based on what was provided
+        let contentDescription = '';
+        let fileName = '';
+        
+        if (uploadedFile) {
+            fileName = uploadedFile.name;
+            contentDescription = `Uploaded file: ${uploadedFile.name}`;
+        } else if (urlInput) {
+            fileName = `Content from URL`;
+            contentDescription = `Imported from: ${urlInput}`;
+        } else if (textInput) {
+            fileName = `Direct text input`;
+            contentDescription = `Direct text content (${textInput.length} characters)`;
+        }
+        
+        // Generate proper file name based on content type
+        switch (currentContentType) {
+            case 'lecture-notes':
+                fileName = `*Lecture Notes - ${currentWeek}`;
+                break;
+            case 'practice-quiz':
+                fileName = `*Practice Questions/Tutorial - ${currentWeek}`;
+                break;
+            case 'readings':
+                fileName = `Readings - ${currentWeek}`;
+                break;
+            case 'syllabus':
+                fileName = `Syllabus - ${currentWeek}`;
+                break;
+            case 'additional':
+                // Use custom name if provided, otherwise use default
+                if (materialNameInput) {
+                    fileName = materialNameInput;
+                    contentDescription = `Additional Material: ${materialNameInput}`;
+                } else {
+                    fileName = `Additional Material - ${currentWeek}`;
+                }
+                break;
+            default:
+                fileName = fileName || `Content - ${currentWeek}`;
+        }
+        
+        // Add the content to the appropriate week
+        addContentToWeek(currentWeek, fileName, contentDescription);
+        
+        // Close modal and show success
+        closeUploadModal();
+        showNotification('Content uploaded and processed successfully!', 'success');
+        
+    } catch (error) {
+        console.error('Error uploading content:', error);
+        showNotification('Error uploading content. Please try again.', 'error');
+        
+        // Re-enable upload button
+        uploadBtn.textContent = 'Upload';
+        uploadBtn.disabled = false;
+    }
+}
+
+/**
+ * Add content to a specific week
+ * @param {string} week - The week identifier
+ * @param {string} fileName - The file name to display
+ * @param {string} description - The file description
+ */
+function addContentToWeek(week, fileName, description) {
+    // Find the week accordion item
+    const weekAccordion = findElementsContainingText('.accordion-item .folder-name', week)[0].closest('.accordion-item');
+    
+    if (!weekAccordion) {
+        console.error('Could not find week accordion for', week);
+        return;
+    }
+    
+    // Find existing file item to replace or create new one
+    const courseMaterialsContent = weekAccordion.querySelector('.course-materials-section .section-content');
+    let targetFileItem = null;
+    
+    // Check if we're replacing an existing placeholder
+    const existingItems = courseMaterialsContent.querySelectorAll('.file-item');
+    existingItems.forEach(item => {
+        const title = item.querySelector('.file-info h3').textContent;
+        if ((currentContentType === 'lecture-notes' && title.includes('*Lecture Notes')) ||
+            (currentContentType === 'practice-quiz' && title.includes('*Practice Questions/Tutorial'))) {
+            targetFileItem = item;
+        }
+    });
+    
+    if (targetFileItem) {
+        // Update existing item
+        targetFileItem.querySelector('.file-info h3').textContent = fileName;
+        targetFileItem.querySelector('.file-info p').textContent = description;
+        targetFileItem.querySelector('.status-text').textContent = 'Processed';
+        targetFileItem.querySelector('.status-text').className = 'status-text processed';
+        
+        // Update action button to view instead of upload
+        const uploadButton = targetFileItem.querySelector('.action-button.upload');
+        if (uploadButton) {
+            uploadButton.textContent = 'View';
+            uploadButton.className = 'action-button view';
+            uploadButton.onclick = () => viewFileItem(uploadButton);
+        }
+    } else {
+        // Create new file item
+        const fileItem = document.createElement('div');
+        fileItem.className = 'file-item';
+        fileItem.innerHTML = `
+            <span class="file-icon">📄</span>
+            <div class="file-info">
+                <h3>${fileName}</h3>
+                <p>${description}</p>
+                <span class="status-text processed">Processed</span>
+            </div>
+            <div class="file-actions">
+                <button class="action-button view" onclick="viewFileItem(this)">View</button>
+                <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
+            </div>
+        `;
+        
+        // Insert before the add content section
+        const addContentSection = courseMaterialsContent.querySelector('.add-content-section');
+        if (addContentSection) {
+            courseMaterialsContent.insertBefore(fileItem, addContentSection);
+        } else {
+            courseMaterialsContent.appendChild(fileItem);
+        }
+    }
+}
+
+// Update the existing file upload event listener
+document.addEventListener('DOMContentLoaded', function() {
+    const fileInput = document.getElementById('file-input');
+    
+    if (fileInput) {
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                handleFileUpload(e.target.files[0]);
+            }
+        });
+    }
+});
 
 /**
  * Format file size
@@ -529,167 +638,9 @@ function formatFileSize(bytes) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
-/**
- * Process file and show preview
- */
-async function processFileAndShowPreview() {
-    // Show loading state
-    document.getElementById('next-btn').textContent = 'Processing...';
-    document.getElementById('next-btn').disabled = true;
-    
-    try {
-        // Simulate API call to process file
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        // Check if objectives were skipped
-        const skipCheckbox = document.getElementById('skip-objectives');
-        const userObjectives = document.getElementById('learning-objectives').value.trim();
-        
-        let extractedObjectives = [];
-        let extractedTopics = [];
-        let contentSummary = '';
-        
-        if (skipCheckbox.checked) {
-            // No learning objectives for this content type
-            extractedObjectives = ['No specific learning objectives - this content provides general information'];
-            extractedTopics = [
-                'Course information and policies',
-                'Schedule and timeline',
-                'General course materials'
-            ];
-            contentSummary = 'This document contains general course information, policies, or administrative content that does not address specific learning objectives.';
-        } else {
-            // Use user-provided objectives or generate mock ones
-            if (userObjectives) {
-                // Split user objectives into individual items
-                extractedObjectives = userObjectives.split('\n').filter(obj => obj.trim()).map(obj => obj.trim());
-            } else {
-                // Generate mock objectives based on content type
-                extractedObjectives = [
-                    'Students will understand the structure of amino acids',
-                    'Students will be able to explain protein synthesis',
-                    'Students will identify key biochemical pathways'
-                ];
-            }
-            
-            extractedTopics = [
-                'Amino acid structure and properties',
-                'Peptide bond formation',
-                'Protein folding and structure',
-                'Enzymatic reactions'
-            ];
-            
-            contentSummary = 'This document covers fundamental concepts in biochemistry, focusing on amino acids, protein structure, and enzymatic reactions. It provides a comprehensive overview suitable for undergraduate students in biochemistry courses.';
-        }
-        
-        // Update preview
-        updateContentPreview(extractedObjectives, extractedTopics, contentSummary);
-        
-    } catch (error) {
-        console.error('Error processing file:', error);
-        showNotification('Error processing file. Please try again.', 'error');
-    } finally {
-        document.getElementById('next-btn').disabled = false;
-    }
-}
+// Old modal functions removed - using simple modal now
 
-/**
- * Update content preview
- * @param {Array} objectives - Extracted learning objectives
- * @param {Array} topics - Extracted key topics
- * @param {string} summary - Content summary
- */
-function updateContentPreview(objectives, topics, summary) {
-    const objectivesList = document.getElementById('extracted-objectives');
-    const topicsList = document.getElementById('extracted-topics');
-    const summaryEl = document.getElementById('content-summary');
-    
-    objectivesList.innerHTML = objectives.map(obj => `<li>${obj}</li>`).join('');
-    topicsList.innerHTML = topics.map(topic => `<li>${topic}</li>`).join('');
-    summaryEl.textContent = summary;
-}
-
-/**
- * Edit content (go back to step 2)
- */
-function editContent() {
-    goToStep(2);
-}
-
-/**
- * Confirm and upload content
- */
-async function confirmUpload() {
-    try {
-        // Show loading state
-        const confirmBtn = event.target;
-        confirmBtn.textContent = 'Uploading...';
-        confirmBtn.disabled = true;
-        
-        // Simulate API call
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        
-        // Add to accordion
-        addContentToAccordion();
-        
-        // Close modal and show success
-        closeUploadModal();
-        showNotification('Content uploaded successfully!', 'success');
-        
-    } catch (error) {
-        console.error('Error uploading content:', error);
-        showNotification('Error uploading content. Please try again.', 'error');
-    } finally {
-        const confirmBtn = document.querySelector('.btn-primary');
-        if (confirmBtn) {
-            confirmBtn.textContent = 'Confirm & Upload';
-            confirmBtn.disabled = false;
-        }
-    }
-}
-
-/**
- * Add content to accordion
- */
-function addContentToAccordion() {
-    // Find the accordion for the current lecture
-    const accordionItems = document.querySelectorAll('.accordion-item');
-    let targetAccordion = null;
-    
-    for (let item of accordionItems) {
-        const folderName = item.querySelector('.folder-name').textContent;
-        if (folderName === currentLectureName) {
-            targetAccordion = item.querySelector('.accordion-content');
-            break;
-        }
-    }
-    
-    if (targetAccordion) {
-        // Create new file item
-        const fileItem = document.createElement('div');
-        fileItem.className = 'file-item';
-        fileItem.innerHTML = `
-            <span class="file-icon">📄</span>
-            <div class="file-info">
-                <h3>${uploadedFile.name}</h3>
-                <p>${selectedContentType} - ${new Date().toLocaleDateString()}</p>
-                <span class="status-text">Processed</span>
-            </div>
-            <div class="file-actions">
-                <button class="action-button view">View</button>
-                <button class="action-button delete">Delete</button>
-            </div>
-        `;
-        
-        // Insert before the add content section
-        const addContentSection = targetAccordion.querySelector('.add-content-section');
-        if (addContentSection) {
-            targetAccordion.insertBefore(fileItem, addContentSection);
-        } else {
-            targetAccordion.appendChild(fileItem);
-        }
-    }
-}
+// Old confirmUpload and addContentToAccordion functions removed - replaced with addContentToWeek
 
 /**
  * Toggle publish status for a lecture/week
@@ -992,7 +943,7 @@ function addNewWeek() {
     const newWeekHTML = `
         <div class="accordion-item" id="week-${newWeekNumber}">
             <div class="accordion-header">
-                <span class="folder-icon">📁</span>
+                <span class="folder-icon"></span>
                 <span class="folder-name">Week ${newWeekNumber}</span>
                 <div class="header-actions">
                     <div class="publish-toggle">
@@ -1033,12 +984,39 @@ function addNewWeek() {
                         <button class="toggle-section">▼</button>
                     </div>
                     <div class="section-content">
-                        <!-- Empty content - instructor can add files via the modal -->
+                        <div class="file-item">
+                            <span class="file-icon"></span>
+                            <div class="file-info">
+                                <h3>*Lecture Notes - Week ${newWeekNumber}</h3>
+                                <p>Placeholder for required lecture notes. Please upload content.</p>
+                                <span class="status-text">Not Uploaded</span>
+                            </div>
+                            <div class="file-actions">
+                                <button class="action-button upload" onclick="openUploadModal('Week ${newWeekNumber}', 'lecture-notes')">Upload</button>
+                                <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
+                            </div>
+                        </div>
+                        <div class="file-item">
+                            <span class="file-icon"></span>
+                            <div class="file-info">
+                                <h3>*Practice Questions/Tutorial</h3>
+                                <p>Placeholder for required practice questions. Please upload content.</p>
+                                <span class="status-text">Not Uploaded</span>
+                            </div>
+                            <div class="file-actions">
+                                <button class="action-button upload" onclick="openUploadModal('Week ${newWeekNumber}', 'practice-quiz')">Upload</button>
+                                <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
+                            </div>
+                        </div>
+                        <!-- Add Content Button -->
                         <div class="add-content-section">
-                            <button class="add-content-btn" onclick="openUploadModal('Week ${newWeekNumber}')">
-                                <span class="btn-icon">➕</span>
-                                Add content to this week
+                            <button class="add-content-btn additional-material" onclick="openUploadModal('Week ${newWeekNumber}', 'additional')">
+                                <span class="btn-icon">+</span>
+                                Add Additional Material
                             </button>
+                        </div>
+                        <div class="save-objectives">
+                            <button class="save-btn" onclick="confirmCourseMaterials('Week ${newWeekNumber}')">Confirm Course Materials</button>
                         </div>
                     </div>
                 </div>
@@ -1050,7 +1028,22 @@ function addNewWeek() {
                         <button class="toggle-section">▼</button>
                     </div>
                     <div class="section-content">
-                        <p>No probing questions added yet. Configure a calibration quiz for this week.</p>
+                        <div class="objectives-list" id="questions-list-week${newWeekNumber}">
+                            <!-- Questions will be added here -->
+                        </div>
+                        <div class="generate-questions-container">
+                            <button class="generate-btn" onclick="generateProbingQuestions('Week ${newWeekNumber}')">
+                                Generate Probing Questions
+                            </button>
+                            <p class="generate-help-text">Let AI  based on your uploaded course materials</p>
+                        </div>
+                        <div class="objective-input-container">
+                            <input type="text" id="question-input-week${newWeekNumber}" class="objective-input" placeholder="Enter probing question...">
+                            <button class="add-objective-btn-inline" onclick="addQuestionFromInput('Week ${newWeekNumber}')">+</button>
+                        </div>
+                        <div class="save-objectives">
+                            <button class="save-btn" onclick="saveQuestions('Week ${newWeekNumber}')">Save Probing Questions</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -1071,20 +1064,18 @@ function addNewWeek() {
     
     // Add event listener to the new accordion header
     const newHeader = newWeekElement.querySelector('.accordion-header');
-    newHeader.addEventListener('click', () => {
+    newHeader.addEventListener('click', (e) => {
+        // Don't toggle if clicking on the toggle switch
+        if (e.target.closest('.publish-toggle')) {
+            return;
+        }
+        
         const accordionItem = newHeader.parentElement;
         const content = accordionItem.querySelector('.accordion-content');
         const toggle = newHeader.querySelector('.accordion-toggle');
         
-        // Toggle the collapsed class
-        content.classList.toggle('collapsed');
-        
-        // Update the toggle icon
-        if (content.classList.contains('collapsed')) {
-            toggle.textContent = '▶';
-        } else {
-            toggle.textContent = '▼';
-        }
+        // Use the improved toggle function
+        toggleAccordionDynamic(content, toggle);
     });
     
     // Show success notification
@@ -1093,15 +1084,15 @@ function addNewWeek() {
     // Add event listeners to the new section headers
     const newSectionHeaders = newWeekElement.querySelectorAll('.section-header');
     newSectionHeaders.forEach(header => {
-        header.addEventListener('click', () => {
-            toggleSection(header);
+        header.addEventListener('click', (e) => {
+            toggleSection(header, e);
         });
     });
     
     // Update the add week button to reflect the new week number
     const addWeekBtn = document.querySelector('.add-week-btn');
     addWeekBtn.innerHTML = `
-        <span class="btn-icon">➕</span>
+        <span class="btn-icon">+</span>
         Add Week ${newWeekNumber + 1}
     `;
 }
@@ -1349,6 +1340,7 @@ function openViewModal(fileName, content) {
     document.getElementById('view-modal-content').innerHTML = content;
     
     // Show the modal
+    viewModal.style.display = ''; // Clear any inline display style
     viewModal.classList.add('show');
 }
 
@@ -1359,56 +1351,12 @@ function closeViewModal() {
     const modal = document.getElementById('view-modal');
     if (modal) {
         modal.classList.remove('show');
+        // Ensure modal is hidden even if class removal doesn't work
+        modal.style.display = 'none';
     }
 }
 
-/**
- * Toggle the learning objectives field visibility
- */
-function toggleObjectivesField() {
-    const skipCheckbox = document.getElementById('skip-objectives');
-    const objectivesInput = document.getElementById('objectives-input');
-    const learningObjectives = document.getElementById('learning-objectives');
-    
-    console.log('Toggle called, checkbox checked:', skipCheckbox.checked);
-    
-    if (skipCheckbox.checked) {
-        objectivesInput.classList.add('hidden');
-        learningObjectives.value = ''; // Clear the field when hidden
-        console.log('Objectives field hidden');
-    } else {
-        objectivesInput.classList.remove('hidden');
-        console.log('Objectives field shown');
-    }
-}
-
-/**
- * Test checkbox functionality
- */
-function testCheckbox() {
-    const skipCheckbox = document.getElementById('skip-objectives');
-    console.log('Checkbox element:', skipCheckbox);
-    console.log('Checkbox checked:', skipCheckbox.checked);
-    console.log('Checkbox value:', skipCheckbox.value);
-}
-
-/**
- * Auto-select skip objectives for certain content types
- * @param {string} contentType - The selected content type
- */
-function autoSelectSkipObjectives(contentType) {
-    const skipCheckbox = document.getElementById('skip-objectives');
-    const objectivesInput = document.getElementById('objectives-input');
-    
-    // Auto-check skip for syllabus and other non-learning content
-    if (contentType === 'syllabus') {
-        skipCheckbox.checked = true;
-        objectivesInput.classList.add('hidden');
-    } else {
-        skipCheckbox.checked = false;
-        objectivesInput.classList.remove('hidden');
-    }
-}
+// Old learning objectives functions removed - not used in simple modal
 
 /**
  * Check URL parameters and open modals accordingly
@@ -1437,7 +1385,9 @@ function openCalibrationModal(week, topic) {
     document.getElementById('calibration-topic-questions').textContent = topic;
     
     // Show the modal
-    document.getElementById('calibration-modal').classList.add('show');
+    const modal = document.getElementById('calibration-modal');
+    modal.style.display = ''; // Clear any inline display style
+    modal.classList.add('show');
     
     // Load questions specific to this week/topic
     loadCalibrationQuestions(week);
@@ -1450,6 +1400,8 @@ function closeCalibrationModal() {
     const modal = document.getElementById('calibration-modal');
     if (modal) {
         modal.classList.remove('show');
+        // Ensure modal is hidden even if class removal doesn't work
+        modal.style.display = 'none';
     }
 }
 
@@ -1628,8 +1580,14 @@ async function saveCalibrationQuestions() {
 /**
  * Toggle a section's visibility
  * @param {HTMLElement} headerElement - The section header element
+ * @param {Event} e - The event object
  */
-function toggleSection(headerElement) {
+function toggleSection(headerElement, e) {
+    // If an event was passed, prevent it from bubbling up
+    if (e) {
+        e.stopPropagation();
+    }
+    
     // If the clicked element is not the section header itself, find the closest section header
     const sectionHeader = headerElement.classList.contains('section-header') ? 
                           headerElement : headerElement.closest('.section-header');
@@ -1738,6 +1696,256 @@ async function saveObjectives(week) {
 }
 
 /**
+ * Confirm course materials for a week
+ * @param {string} week - The week identifier (e.g., 'Week 1')
+ */
+async function confirmCourseMaterials(week) {
+    // Find the week element using our custom helper function
+    const folderElement = findElementsContainingText('.accordion-item .folder-name', week)[0];
+    const weekElement = folderElement.closest('.accordion-item');
+    const fileItems = weekElement.querySelectorAll('.course-materials-section .file-item');
+    
+    // Check if mandatory materials are present
+    let hasLectureNotes = false;
+    let hasPracticeQuestions = false;
+    
+    fileItems.forEach(item => {
+        const title = item.querySelector('.file-info h3').textContent;
+        if (title.includes('*Lecture Notes')) {
+            hasLectureNotes = true;
+        }
+        if (title.includes('*Practice Questions/Tutorial')) {
+            hasPracticeQuestions = true;
+        }
+    });
+    
+    // Validate mandatory materials
+    if (!hasLectureNotes || !hasPracticeQuestions) {
+        let missingItems = [];
+        if (!hasLectureNotes) missingItems.push('Lecture Notes');
+        if (!hasPracticeQuestions) missingItems.push('Practice Questions/Tutorial');
+        
+        showNotification(`Missing mandatory materials: ${missingItems.join(', ')}. Please add them before confirming.`, 'error');
+        return;
+    }
+    
+    try {
+        // In a real implementation, this would save to the server
+        const response = await fetch('/api/course-materials/confirm', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                week: week,
+                instructorId: getCurrentInstructorId()
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to confirm course materials');
+        }
+        
+        showNotification(`Course materials for ${week} confirmed successfully!`, 'success');
+        
+    } catch (error) {
+        console.error('Error confirming course materials:', error);
+        // For demo purposes, still show success
+        showNotification(`Course materials for ${week} confirmed successfully! (Demo mode)`, 'success');
+    }
+}
+
+/**
+ * Add a new probing question from the input field
+ * @param {string} week - The week identifier (e.g., 'Week 1')
+ */
+function addQuestionFromInput(week) {
+    // Find the week element using our custom helper function
+    const folderElement = findElementsContainingText('.accordion-item .folder-name', week)[0];
+    const weekElement = folderElement.closest('.accordion-item');
+    const inputField = weekElement.querySelector(`#question-input-${week.toLowerCase().replace(/\s+/g, '')}`);
+    const questionText = inputField.value.trim();
+    
+    if (!questionText) {
+        showNotification('Please enter a probing question.', 'error');
+        return;
+    }
+    
+    // Get the questions list
+    const questionsList = weekElement.querySelector(`#questions-list-${week.toLowerCase().replace(/\s+/g, '')}`);
+    
+    // Create new question display item
+    const questionItem = document.createElement('div');
+    questionItem.className = 'objective-display-item';
+    questionItem.innerHTML = `
+        <span class="objective-text">${questionText}</span>
+        <button class="remove-objective" onclick="removeQuestion(this)">×</button>
+    `;
+    
+    // Add to the list
+    questionsList.appendChild(questionItem);
+    
+    // Clear the input field
+    inputField.value = '';
+    inputField.focus();
+}
+
+/**
+ * Remove a probing question
+ * @param {HTMLElement} button - The remove button element
+ */
+function removeQuestion(button) {
+    const questionItem = button.closest('.objective-display-item');
+    questionItem.remove();
+}
+
+/**
+ * Save probing questions for a week
+ * @param {string} week - The week identifier (e.g., 'Week 1')
+ */
+async function saveQuestions(week) {
+    // Find the week element using our custom helper function
+    const folderElement = findElementsContainingText('.accordion-item .folder-name', week)[0];
+    const weekElement = folderElement.closest('.accordion-item');
+    const questionItems = weekElement.querySelectorAll('.probing-questions-section .objective-text');
+    
+    // Collect all questions
+    const questions = Array.from(questionItems).map(item => item.textContent.trim()).filter(value => value);
+    
+    if (questions.length === 0) {
+        showNotification('Please add at least one probing question.', 'error');
+        return;
+    }
+    
+    try {
+        // In a real implementation, this would save to the server
+        const response = await fetch('/api/probing-questions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                week: week,
+                questions: questions,
+                instructorId: getCurrentInstructorId()
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to save probing questions');
+        }
+        
+        showNotification(`Probing questions for ${week} saved successfully!`, 'success');
+        
+    } catch (error) {
+        console.error('Error saving probing questions:', error);
+        // For demo purposes, still show success
+        showNotification(`Probing questions for ${week} saved successfully! (Demo mode)`, 'success');
+    }
+}
+
+/**
+ * Generate probing questions based on uploaded course materials
+ * @param {string} week - The week identifier (e.g., 'Week 1')
+ */
+async function generateProbingQuestions(week) {
+    console.log('Generating probing questions for:', week);
+    
+    const weekElement = findElementsContainingText('.accordion-item .folder-name', week)[0].closest('.accordion-item');
+    const fileItems = weekElement.querySelectorAll('.course-materials-section .file-item');
+    
+    // Check if there are uploaded materials
+    let hasMaterials = false;
+    fileItems.forEach(item => {
+        const statusText = item.querySelector('.status-text').textContent;
+        console.log('Found file item with status:', statusText);
+        if (statusText === 'Processed') {
+            hasMaterials = true;
+        }
+    });
+
+    // For demo purposes, allow generation even without processed materials
+    if (!hasMaterials) {
+        showNotification('Generating probing questions based on general course content (no specific materials uploaded)...', 'info');
+    } else {
+        showNotification('Generating probing questions based on uploaded materials...', 'info');
+    }
+
+    try {
+        // In a real implementation, this would call an AI API with the course materials
+        // For now, we'll simulate a delay and generate some mock questions
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        // Generate mock probing questions based on the week
+        const mockQuestions = generateMockProbingQuestions(week);
+        console.log('Generated questions:', mockQuestions);
+        
+        // Get the questions list for this week
+        const questionsList = weekElement.querySelector(`#questions-list-${week.toLowerCase().replace(/\s+/g, '')}`);
+        console.log('Questions list element:', questionsList);
+        
+        if (!questionsList) {
+            console.error('Could not find questions list element for', week);
+            showNotification('Error: Could not find questions list container.', 'error');
+            return;
+        }
+        
+        // Add each generated question to the list
+        mockQuestions.forEach(questionText => {
+            const questionItem = document.createElement('div');
+            questionItem.className = 'objective-display-item';
+            questionItem.innerHTML = `
+                <span class="objective-text">${questionText}</span>
+                <button class="remove-objective" onclick="removeQuestion(this)">×</button>
+            `;
+            questionsList.appendChild(questionItem);
+        });
+
+        showNotification(`${mockQuestions.length} probing questions generated successfully!`, 'success');
+
+    } catch (error) {
+        console.error('Error generating probing questions:', error);
+        showNotification('Failed to generate probing questions. Please try again.', 'error');
+    }
+}
+
+/**
+ * Generate mock probing questions based on the week
+ * @param {string} week - The week identifier (e.g., 'Week 1')
+ * @returns {Array<string>} Array of probing question texts
+ */
+function generateMockProbingQuestions(week) {
+    const questionSets = {
+        'Week 1': [
+            "Can you explain the relationship between water's molecular structure and its role as a biological solvent?",
+            "How do buffer systems maintain pH homeostasis in living organisms?",
+            "What would happen to cellular processes if amino acids couldn't form peptide bonds?",
+            "How does the amphipathic nature of phospholipids contribute to membrane formation?"
+        ],
+        'Week 2': [
+            "Can you predict how a change in pH would affect protein structure and function?",
+            "How do you think the R-groups of amino acids influence protein folding patterns?",
+            "What role do chaperone proteins play in preventing misfolded proteins?",
+            "How might protein denaturation affect enzymatic activity in cells?"
+        ],
+        'Week 3': [
+            "Can you explain why enzymes are more efficient than inorganic catalysts?",
+            "How would competitive inhibition affect the Michaelis-Menten kinetics curve?",
+            "What factors would you consider when designing an enzyme for industrial use?",
+            "How do allosteric enzymes provide regulatory control in metabolic pathways?"
+        ]
+    };
+
+    // Return questions for the specific week, or default questions
+    return questionSets[week] || [
+        "Can you connect the concepts from this week to previous material?",
+        "How would you apply these principles to solve a real-world problem?",
+        "What questions would you ask to deepen understanding of this topic?",
+        "How do these concepts relate to current research in the field?"
+    ];
+}
+
+/**
  * Helper function to find elements containing specific text
  * @param {string} selector - CSS selector for elements to search within
  * @param {string} text - Text to search for
@@ -1767,4 +1975,51 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
     });
-}); 
+});
+
+/**
+ * Toggle accordion with dynamic height calculation
+ * @param {HTMLElement} content - The accordion content element
+ * @param {HTMLElement} toggle - The toggle icon element
+ */
+function toggleAccordionDynamic(content, toggle) {
+    const isCollapsed = content.classList.contains('collapsed');
+    
+    if (isCollapsed) {
+        // Expanding: first remove collapsed class, measure height, then animate
+        content.classList.remove('collapsed');
+        
+        // Force a reflow to get the actual height
+        const height = content.scrollHeight;
+        
+        // Set max-height for smooth transition
+        content.style.maxHeight = height + 'px';
+        
+        // Update toggle icon
+        toggle.textContent = '▼';
+        
+        // Clean up after transition
+        setTimeout(() => {
+            content.style.maxHeight = 'none';
+        }, 300);
+        
+    } else {
+        // Collapsing: set height first, then add collapsed class
+        const height = content.scrollHeight;
+        content.style.maxHeight = height + 'px';
+        
+        // Force reflow
+        content.offsetHeight;
+        
+        // Add collapsed class for transition
+        content.classList.add('collapsed');
+        
+        // Update toggle icon
+        toggle.textContent = '▶';
+        
+        // Clean up after transition
+        setTimeout(() => {
+            content.style.maxHeight = '';
+        }, 300);
+    }
+} 

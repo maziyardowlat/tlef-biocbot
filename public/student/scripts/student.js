@@ -64,11 +64,29 @@ document.addEventListener('DOMContentLoaded', () => {
         
         contentDiv.appendChild(paragraph);
         
-        // Add flag button for bot messages
+        // Create message footer for bottom elements
+        const footerDiv = document.createElement('div');
+        footerDiv.classList.add('message-footer');
+        
+        // Add source citation if needed
+        if (withSource && sender === 'bot') {
+            const sourceDiv = document.createElement('div');
+            sourceDiv.classList.add('message-source');
+            sourceDiv.innerHTML = 'Source: <a href="#">Biology 302 Textbook, Chapter 3</a>';
+            footerDiv.appendChild(sourceDiv);
+        }
+        
+        // Create right side container for timestamp and flag button
+        const rightContainer = document.createElement('div');
+        rightContainer.classList.add('message-footer-right');
+        
+        const timestamp = document.createElement('span');
+        timestamp.classList.add('timestamp');
+        timestamp.textContent = 'Just now';
+        rightContainer.appendChild(timestamp);
+        
+        // Add flag button for bot messages in footer
         if (sender === 'bot') {
-            const actionsDiv = document.createElement('div');
-            actionsDiv.classList.add('message-actions');
-            
             const flagButton = document.createElement('button');
             flagButton.classList.add('flag-button');
             flagButton.onclick = function() { toggleFlagMenu(this); };
@@ -82,23 +100,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 <button class="flag-option" onclick="flagMessage(this, 'irrelevant')">Irrelevant</button>
             `;
             
-            actionsDiv.appendChild(flagButton);
-            actionsDiv.appendChild(flagMenu);
-            contentDiv.appendChild(actionsDiv);
+            const flagContainer = document.createElement('div');
+            flagContainer.classList.add('message-flag-container');
+            flagContainer.appendChild(flagButton);
+            flagContainer.appendChild(flagMenu);
+            rightContainer.appendChild(flagContainer);
         }
         
-        // Add source citation if needed
-        if (withSource && sender === 'bot') {
-            const sourceDiv = document.createElement('div');
-            sourceDiv.classList.add('message-source');
-            sourceDiv.innerHTML = 'Source: <a href="#">Biology 302 Textbook, Chapter 3</a>';
-            contentDiv.appendChild(sourceDiv);
-        }
+        footerDiv.appendChild(rightContainer);
         
-        const timestamp = document.createElement('span');
-        timestamp.classList.add('timestamp');
-        timestamp.textContent = 'Just now';
-        contentDiv.appendChild(timestamp);
+        contentDiv.appendChild(footerDiv);
         
         messageDiv.appendChild(avatarDiv);
         messageDiv.appendChild(contentDiv);
@@ -241,9 +252,9 @@ function replaceMessageWithThankYou(messageContent, flagType) {
     paragraph.style.fontStyle = 'italic';
     
     // Remove the flag button and menu
-    const actionsDiv = messageContent.querySelector('.message-actions');
-    if (actionsDiv) {
-        actionsDiv.remove();
+    const flagContainer = messageContent.querySelector('.message-flag-container');
+    if (flagContainer) {
+        flagContainer.remove();
     }
     
     // Update the timestamp to show when it was flagged
@@ -280,7 +291,7 @@ function getAuthToken() {
 
 // Close flag menus when clicking outside
 document.addEventListener('click', function(event) {
-    if (!event.target.closest('.message-actions')) {
+    if (!event.target.closest('.message-flag-container')) {
         const openMenus = document.querySelectorAll('.flag-menu.show');
         openMenus.forEach(menu => {
             menu.classList.remove('show');
@@ -316,6 +327,12 @@ async function showCalibrationQuestions() {
                 chatInputContainer.style.display = 'none';
             }
             
+            // Hide mode toggle during calibration
+            const modeToggleContainer = document.querySelector('.mode-toggle-container');
+            if (modeToggleContainer) {
+                modeToggleContainer.style.display = 'none';
+            }
+            
             // Clear any existing messages except the welcome message
             const chatMessages = document.getElementById('chat-messages');
             const welcomeMessage = chatMessages.querySelector('.message:not(.calibration-question):not(.mode-result)');
@@ -330,11 +347,31 @@ async function showCalibrationQuestions() {
             console.error('Failed to load calibration questions');
             // If calibration fails, default to tutor mode
             localStorage.setItem('studentMode', 'tutor');
+            
+            // Show chat input and mode toggle if calibration fails to load
+            const chatInputContainer = document.querySelector('.chat-input-container');
+            if (chatInputContainer) {
+                chatInputContainer.style.display = 'block';
+            }
+            const modeToggleContainer = document.querySelector('.mode-toggle-container');
+            if (modeToggleContainer) {
+                modeToggleContainer.style.display = 'block';
+            }
         }
     } catch (error) {
         console.error('Error loading calibration questions:', error);
         // Default to tutor mode on error
         localStorage.setItem('studentMode', 'tutor');
+        
+        // Show chat input and mode toggle on error
+        const chatInputContainer = document.querySelector('.chat-input-container');
+        if (chatInputContainer) {
+            chatInputContainer.style.display = 'block';
+        }
+        const modeToggleContainer = document.querySelector('.mode-toggle-container');
+        if (modeToggleContainer) {
+            modeToggleContainer.style.display = 'block';
+        }
     }
 }
 
@@ -455,11 +492,27 @@ async function calculateStudentMode() {
                 chatInputContainer.style.display = 'block';
             }
             
+            // Show mode toggle when chat is available
+            const modeToggleContainer = document.querySelector('.mode-toggle-container');
+            if (modeToggleContainer) {
+                modeToggleContainer.style.display = 'block';
+            }
+            
         } else {
             console.error('Failed to calibrate mode');
             // Default to tutor mode
             localStorage.setItem('studentMode', 'tutor');
             showModeResult('tutor', 0);
+            
+            // Show mode toggle and chat input on error
+            const chatInputContainer = document.querySelector('.chat-input-container');
+            if (chatInputContainer) {
+                chatInputContainer.style.display = 'block';
+            }
+            const modeToggleContainer = document.querySelector('.mode-toggle-container');
+            if (modeToggleContainer) {
+                modeToggleContainer.style.display = 'block';
+            }
         }
         
     } catch (error) {
@@ -467,6 +520,16 @@ async function calculateStudentMode() {
         // Default to tutor mode
         localStorage.setItem('studentMode', 'tutor');
         showModeResult('tutor', 0);
+        
+        // Show mode toggle and chat input on error
+        const chatInputContainer = document.querySelector('.chat-input-container');
+        if (chatInputContainer) {
+            chatInputContainer.style.display = 'block';
+        }
+        const modeToggleContainer = document.querySelector('.mode-toggle-container');
+        if (modeToggleContainer) {
+            modeToggleContainer.style.display = 'block';
+        }
     }
 }
 
@@ -488,13 +551,11 @@ function showModeResult(mode, score) {
     
     const resultText = document.createElement('p');
     if (mode === 'protege') {
-        resultText.innerHTML = `🎯 <strong>Protégé Mode Activated!</strong><br>
-        Based on your responses, I'll guide you through questions to help you discover answers yourself. 
-        This mode is designed for students who prefer to learn through guided discovery.`;
+        resultText.innerHTML = `<strong>BiocBot is in protégé mode</strong><br>
+        Thanks for your responses to these initial questions. This lecture we learned about cellular processes and reactions. What questions do you have about these topics?`;
     } else {
-                    resultText.innerHTML = `<strong>Tutor Mode Activated!</strong><br>
-        Based on your responses, I'll provide direct answers with detailed explanations. 
-        This mode is designed to give you comprehensive guidance and support.`;
+        resultText.innerHTML = `<strong>BiocBot is in tutor mode</strong><br>
+        Thanks for your responses to these initial questions. This lecture we learned about cellular processes and reactions. What questions do you have about these topics?`;
     }
     
     contentDiv.appendChild(resultText);
