@@ -5,6 +5,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const documentFilter = document.getElementById('document-filter');
     const courseSelect = document.getElementById('course-select');
     const accordionHeaders = document.querySelectorAll('.accordion-header');
+    const sectionHeaders = document.querySelectorAll('.section-header');
+    
+    // Initialize section headers to be clickable
+    sectionHeaders.forEach(header => {
+        header.addEventListener('click', (e) => {
+            toggleSection(header);
+        });
+    });
     
     console.log('Instructor interface initialized');
     
@@ -13,7 +21,12 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // Handle accordion toggling
     accordionHeaders.forEach(header => {
-        header.addEventListener('click', () => {
+        header.addEventListener('click', (e) => {
+            // Don't toggle if clicking on the toggle switch
+            if (e.target.closest('.publish-toggle')) {
+                return;
+            }
+            
             const accordionItem = header.parentElement;
             const content = accordionItem.querySelector('.accordion-content');
             const toggle = header.querySelector('.accordion-toggle');
@@ -768,18 +781,14 @@ let questionCounter = 1;
  * Open the mode questions modal
  */
 function openModeQuestionsModal() {
-    document.getElementById('mode-questions-modal').classList.add('show');
-    loadModeQuestions();
+    openCalibrationModal('Week 1', 'Introduction to Biochemistry');
 }
 
 /**
  * Close the mode questions modal
  */
 function closeModeQuestionsModal() {
-    const modal = document.getElementById('mode-questions-modal');
-    if (modal) {
-        modal.classList.remove('show');
-    }
+    closeCalibrationModal();
 }
 
 /**
@@ -946,51 +955,7 @@ function updateQuestionOption(index, optionIndex, value) {
  * Save mode questions
  */
 async function saveModeQuestions() {
-    const threshold = document.getElementById('mode-threshold').value;
-    
-    // Validate questions
-    for (let i = 0; i < currentQuestions.length; i++) {
-        const question = currentQuestions[i];
-        if (!question.question.trim()) {
-            showNotification(`Question ${i + 1} cannot be empty.`, 'error');
-            return;
-        }
-        
-        for (let j = 0; j < question.options.length; j++) {
-            if (!question.options[j].trim()) {
-                showNotification(`Question ${i + 1}, Option ${j + 1} cannot be empty.`, 'error');
-                return;
-            }
-        }
-    }
-    
-    try {
-        // In a real implementation, this would save to the server
-        const response = await fetch('/api/mode-questions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                questions: currentQuestions,
-                threshold: parseInt(threshold),
-                instructorId: getCurrentInstructorId()
-            })
-        });
-        
-        if (!response.ok) {
-            throw new Error('Failed to save questions');
-        }
-        
-        showNotification('Mode questions saved successfully!', 'success');
-        closeModeQuestionsModal();
-        
-    } catch (error) {
-        console.error('Error saving mode questions:', error);
-        // For demo purposes, still close the modal and show success
-        showNotification('Mode questions saved successfully! (Demo mode)', 'success');
-        closeModeQuestionsModal();
-    }
+    saveCalibrationQuestions();
 }
 
 // Setup threshold slider
@@ -1041,12 +1006,52 @@ function addNewWeek() {
                 </div>
             </div>
             <div class="accordion-content collapsed">
-                <!-- Empty content - instructor can add files via the modal -->
-                <div class="add-content-section">
-                    <button class="add-content-btn" onclick="openUploadModal('Week ${newWeekNumber}')">
-                        <span class="btn-icon">➕</span>
-                        Add content to this week
-                    </button>
+                <!-- Learning Objectives Section -->
+                <div class="unit-section learning-objectives-section">
+                    <div class="section-header">
+                        <h3>Learning Objectives</h3>
+                        <button class="toggle-section">▼</button>
+                    </div>
+                    <div class="section-content">
+                        <div class="objectives-list" id="objectives-list-week${newWeekNumber}">
+                            <!-- Objectives will be added here -->
+                        </div>
+                        <div class="objective-input-container">
+                            <input type="text" id="objective-input-week${newWeekNumber}" class="objective-input" placeholder="Enter learning objective...">
+                            <button class="add-objective-btn-inline" onclick="addObjectiveFromInput('Week ${newWeekNumber}')">+</button>
+                        </div>
+                        <div class="save-objectives">
+                            <button class="save-btn" onclick="saveObjectives('Week ${newWeekNumber}')">Save Learning Objectives</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Course Materials Section -->
+                <div class="unit-section course-materials-section">
+                    <div class="section-header">
+                        <h3>Course Materials</h3>
+                        <button class="toggle-section">▼</button>
+                    </div>
+                    <div class="section-content">
+                        <!-- Empty content - instructor can add files via the modal -->
+                        <div class="add-content-section">
+                            <button class="add-content-btn" onclick="openUploadModal('Week ${newWeekNumber}')">
+                                <span class="btn-icon">➕</span>
+                                Add content to this week
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Probing Questions Section -->
+                <div class="unit-section probing-questions-section">
+                    <div class="section-header">
+                        <h3>Probing Questions</h3>
+                        <button class="toggle-section">▼</button>
+                    </div>
+                    <div class="section-content">
+                        <p>No probing questions added yet. Configure a calibration quiz for this week.</p>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1084,6 +1089,14 @@ function addNewWeek() {
     
     // Show success notification
     showNotification(`Week ${newWeekNumber} added successfully!`, 'success');
+    
+    // Add event listeners to the new section headers
+    const newSectionHeaders = newWeekElement.querySelectorAll('.section-header');
+    newSectionHeaders.forEach(header => {
+        header.addEventListener('click', () => {
+            toggleSection(header);
+        });
+    });
     
     // Update the add week button to reflect the new week number
     const addWeekBtn = document.querySelector('.add-week-btn');
@@ -1411,3 +1424,347 @@ function checkUrlParameters() {
         }, 100);
     }
 } 
+
+/**
+ * Open the calibration modal for a specific week
+ * @param {string} week - The week (e.g., 'Week 1')
+ * @param {string} topic - The topic name (e.g., 'Introduction to Biochemistry')
+ */
+function openCalibrationModal(week, topic) {
+    // Set the week and topic in the modal
+    document.getElementById('calibration-week').textContent = week;
+    document.getElementById('calibration-topic').textContent = topic;
+    document.getElementById('calibration-topic-questions').textContent = topic;
+    
+    // Show the modal
+    document.getElementById('calibration-modal').classList.add('show');
+    
+    // Load questions specific to this week/topic
+    loadCalibrationQuestions(week);
+}
+
+/**
+ * Close the calibration modal
+ */
+function closeCalibrationModal() {
+    const modal = document.getElementById('calibration-modal');
+    if (modal) {
+        modal.classList.remove('show');
+    }
+}
+
+/**
+ * Load calibration questions for a specific week
+ * @param {string} week - The week identifier (e.g., 'Week 1')
+ */
+async function loadCalibrationQuestions(week) {
+    try {
+        // In a real implementation, this would fetch questions specific to the week
+        // For now, we'll use mock data with week-specific content
+        let mockQuestions;
+        
+        if (week === 'Week 1') {
+            mockQuestions = [
+                {
+                    id: 1,
+                    question: "What is the primary focus of biochemistry?",
+                    options: [
+                        "The study of plant life",
+                        "The study of chemical processes in living organisms",
+                        "The study of ecosystems",
+                        "The study of microorganisms"
+                    ],
+                    correctAnswer: 1
+                },
+                {
+                    id: 2,
+                    question: "Which of the following is a major biomolecule studied in biochemistry?",
+                    options: [
+                        "Silicon",
+                        "Proteins",
+                        "Plastic",
+                        "Petroleum"
+                    ],
+                    correctAnswer: 1
+                }
+            ];
+        } else if (week === 'Week 2') {
+            mockQuestions = [
+                {
+                    id: 1,
+                    question: "What is the basic building block of proteins?",
+                    options: [
+                        "Nucleotides",
+                        "Amino acids",
+                        "Fatty acids",
+                        "Monosaccharides"
+                    ],
+                    correctAnswer: 1
+                },
+                {
+                    id: 2,
+                    question: "Which level of protein structure refers to the overall 3D arrangement?",
+                    options: [
+                        "Primary structure",
+                        "Secondary structure",
+                        "Tertiary structure",
+                        "Quaternary structure"
+                    ],
+                    correctAnswer: 2
+                }
+            ];
+        } else if (week === 'Week 3') {
+            mockQuestions = [
+                {
+                    id: 1,
+                    question: "What do enzymes primarily do in biochemical reactions?",
+                    options: [
+                        "Slow down reactions",
+                        "Speed up reactions",
+                        "Stop reactions",
+                        "Reverse reactions"
+                    ],
+                    correctAnswer: 1
+                },
+                {
+                    id: 2,
+                    question: "In enzyme kinetics, what does Km represent?",
+                    options: [
+                        "Maximum reaction rate",
+                        "Substrate concentration at half maximum velocity",
+                        "Enzyme concentration",
+                        "Inhibition constant"
+                    ],
+                    correctAnswer: 1
+                }
+            ];
+        } else {
+            // Default questions
+            mockQuestions = [
+                {
+                    id: 1,
+                    question: "Sample question for " + week,
+                    options: [
+                        "Option A",
+                        "Option B",
+                        "Option C",
+                        "Option D"
+                    ],
+                    correctAnswer: 1
+                }
+            ];
+        }
+        
+        currentQuestions = mockQuestions;
+        questionCounter = mockQuestions.length + 1;
+        renderQuestions();
+        
+        // Load threshold - in a real implementation, this would be specific to the week
+        const threshold = 70;
+        document.getElementById('mode-threshold').value = threshold;
+        document.getElementById('threshold-value').textContent = threshold + '%';
+        
+    } catch (error) {
+        console.error('Error loading calibration questions:', error);
+        showNotification('Error loading questions. Please try again.', 'error');
+    }
+}
+
+/**
+ * Save calibration questions for the current week
+ */
+async function saveCalibrationQuestions() {
+    const threshold = document.getElementById('mode-threshold').value;
+    const week = document.getElementById('calibration-week').textContent;
+    const topic = document.getElementById('calibration-topic').textContent;
+    
+    // Validate questions
+    for (let i = 0; i < currentQuestions.length; i++) {
+        const question = currentQuestions[i];
+        if (!question.question.trim()) {
+            showNotification(`Question ${i + 1} cannot be empty.`, 'error');
+            return;
+        }
+        
+        for (let j = 0; j < question.options.length; j++) {
+            if (!question.options[j].trim()) {
+                showNotification(`Question ${i + 1}, Option ${j + 1} cannot be empty.`, 'error');
+                return;
+            }
+        }
+    }
+    
+    try {
+        // In a real implementation, this would save to the server with the week identifier
+        const response = await fetch('/api/calibration-questions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                week: week,
+                topic: topic,
+                questions: currentQuestions,
+                threshold: parseInt(threshold),
+                instructorId: getCurrentInstructorId()
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to save questions');
+        }
+        
+        showNotification(`Calibration questions for ${week}: ${topic} saved successfully!`, 'success');
+        closeCalibrationModal();
+        
+    } catch (error) {
+        console.error('Error saving calibration questions:', error);
+        // For demo purposes, still close the modal and show success
+        showNotification(`Calibration questions for ${week}: ${topic} saved successfully! (Demo mode)`, 'success');
+        closeCalibrationModal();
+    }
+} 
+
+/**
+ * Toggle a section's visibility
+ * @param {HTMLElement} headerElement - The section header element
+ */
+function toggleSection(headerElement) {
+    // If the clicked element is not the section header itself, find the closest section header
+    const sectionHeader = headerElement.classList.contains('section-header') ? 
+                          headerElement : headerElement.closest('.section-header');
+    
+    const sectionContent = sectionHeader.nextElementSibling;
+    const toggleIcon = sectionHeader.querySelector('.toggle-section');
+    
+    // Toggle the collapsed class
+    sectionContent.classList.toggle('collapsed');
+    
+    // Update the toggle icon
+    if (sectionContent.classList.contains('collapsed')) {
+        toggleIcon.textContent = '▶';
+    } else {
+        toggleIcon.textContent = '▼';
+    }
+}
+
+/**
+ * Add a new learning objective from the input field
+ * @param {string} week - The week identifier (e.g., 'Week 1')
+ */
+function addObjectiveFromInput(week) {
+    // Find the week element using our custom helper function
+    const folderElement = findElementsContainingText('.accordion-item .folder-name', week)[0];
+    const weekElement = folderElement.closest('.accordion-item');
+    const inputField = weekElement.querySelector(`#objective-input-${week.toLowerCase().replace(/\s+/g, '')}`);
+    const objectiveText = inputField.value.trim();
+    
+    if (!objectiveText) {
+        showNotification('Please enter a learning objective.', 'error');
+        return;
+    }
+    
+    // Get the objectives list
+    const objectivesList = weekElement.querySelector(`#objectives-list-${week.toLowerCase().replace(/\s+/g, '')}`);
+    
+    // Create new objective display item
+    const objectiveItem = document.createElement('div');
+    objectiveItem.className = 'objective-display-item';
+    objectiveItem.innerHTML = `
+        <span class="objective-text">${objectiveText}</span>
+        <button class="remove-objective" onclick="removeObjective(this)">×</button>
+    `;
+    
+    // Add to the list
+    objectivesList.appendChild(objectiveItem);
+    
+    // Clear the input field
+    inputField.value = '';
+    inputField.focus();
+}
+
+/**
+ * Remove a learning objective
+ * @param {HTMLElement} button - The remove button element
+ */
+function removeObjective(button) {
+    const objectiveItem = button.closest('.objective-display-item');
+    objectiveItem.remove();
+}
+
+/**
+ * Save learning objectives for a week
+ * @param {string} week - The week identifier (e.g., 'Week 1')
+ */
+async function saveObjectives(week) {
+    // Find the week element using our custom helper function
+    const folderElement = findElementsContainingText('.accordion-item .folder-name', week)[0];
+    const weekElement = folderElement.closest('.accordion-item');
+    const objectiveItems = weekElement.querySelectorAll('.objective-text');
+    
+    // Collect all objectives
+    const objectives = Array.from(objectiveItems).map(item => item.textContent.trim()).filter(value => value);
+    
+    if (objectives.length === 0) {
+        showNotification('Please add at least one learning objective.', 'error');
+        return;
+    }
+    
+    try {
+        // In a real implementation, this would save to the server
+        const response = await fetch('/api/learning-objectives', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                week: week,
+                objectives: objectives,
+                instructorId: getCurrentInstructorId()
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to save learning objectives');
+        }
+        
+        showNotification(`Learning objectives for ${week} saved successfully!`, 'success');
+        
+    } catch (error) {
+        console.error('Error saving learning objectives:', error);
+        // For demo purposes, still show success
+        showNotification(`Learning objectives for ${week} saved successfully! (Demo mode)`, 'success');
+    }
+}
+
+/**
+ * Helper function to find elements containing specific text
+ * @param {string} selector - CSS selector for elements to search within
+ * @param {string} text - Text to search for
+ * @param {boolean} caseSensitive - Whether the search should be case sensitive
+ * @returns {Array} - Array of matching elements
+ */
+function findElementsContainingText(selector, text, caseSensitive = false) {
+    const elements = Array.from(document.querySelectorAll(selector));
+    return elements.filter(element => {
+        const elementText = element.textContent;
+        if (caseSensitive) {
+            return elementText.includes(text);
+        } else {
+            return elementText.toUpperCase().includes(text.toUpperCase());
+        }
+    });
+}
+
+// Initialize sections when DOM is loaded
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize all sections to be expanded by default
+    document.querySelectorAll('.section-content').forEach(section => {
+        if (!section.classList.contains('collapsed')) {
+            const toggleButton = section.previousElementSibling.querySelector('.toggle-section');
+            if (toggleButton) {
+                toggleButton.textContent = '▼';
+            }
+        }
+    });
+}); 
