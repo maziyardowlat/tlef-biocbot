@@ -492,7 +492,7 @@ function showModeResult(mode, score) {
         Based on your responses, I'll guide you through questions to help you discover answers yourself. 
         This mode is designed for students who prefer to learn through guided discovery.`;
     } else {
-        resultText.innerHTML = `📚 <strong>Tutor Mode Activated!</strong><br>
+                    resultText.innerHTML = `<strong>Tutor Mode Activated!</strong><br>
         Based on your responses, I'll provide direct answers with detailed explanations. 
         This mode is designed to give you comprehensive guidance and support.`;
     }
