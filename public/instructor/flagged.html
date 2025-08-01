@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BiocBot - Flagged Content</title>
+    <link rel="stylesheet" href="../styles/style.css">
+    <link rel="stylesheet" href="../styles/flagged.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="logo-container">
+                <h2>BiocBot</h2>
+            </div>
+            <nav class="main-nav">
+                <ul>
+                    <li><a href="/instructor/onboarding">Onboarding</a></li>
+                    <li><a href="/instructor/home">Home</a></li>
+                    <li><a href="/instructor/documents">Course Upload</a></li>
+                    <li class="active"><a href="/instructor/flagged">Flagged Content</a></li>
+                    <li><a href="/instructor/settings">Settings</a></li>
+                </ul>
+            </nav>
+            <div class="user-info">
+                <div class="user-avatar">I</div>
+                <div class="user-name">Instructor Name</div>
+                <div class="user-role">Instructor</div>
+                <div class="switch-role">
+                    <a href="/">Switch Role</a>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <header class="flagged-header">
+                <h1>Flagged Content</h1>
+                <div class="course-selector">
+                    <select id="course-select">
+                        <option value="bioc202">BIOC 202</option>
+                        <option value="bioc303">BIOC 303</option>
+                    </select>
+                </div>
+            </header>
+
+            <div class="flagged-subtitle">
+                <p>Review and moderate student-flagged responses</p>
+            </div>
+
+            <!-- Filter Controls -->
+            <div class="filter-controls">
+                <div class="filter-group">
+                    <label for="flag-type-filter">Filter by reason:</label>
+                    <select id="flag-type-filter">
+                        <option value="all">All Flags</option>
+                        <option value="incorrectness">Incorrect</option>
+                        <option value="inappropriate">Inappropriate</option>
+                        <option value="irrelevant">Irrelevant</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="status-filter">Status:</label>
+                    <select id="status-filter">
+                        <option value="pending">Pending Review</option>
+                        <option value="all">All Status</option>
+                        <option value="approved">Approved</option>
+                        <option value="rejected">Dismissed</option>
+                    </select>
+                </div>
+                <button id="refresh-flags" class="refresh-btn">Refresh</button>
+            </div>
+
+            <!-- Statistics Summary -->
+            <div class="flag-stats">
+                <div class="stat-card">
+                    <div class="stat-number" id="total-flags">0</div>
+                    <div class="stat-label">Total Flags</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="pending-flags">0</div>
+                    <div class="stat-label">Pending Review</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="today-flags">0</div>
+                    <div class="stat-label">Today</div>
+                </div>
+            </div>
+
+            <!-- Flagged Content List -->
+            <div class="flagged-content-container">
+                <div id="loading-state" class="loading-message">
+                    <p>Loading flagged content...</p>
+                </div>
+                
+                <div id="empty-state" class="empty-message" style="display: none;">
+                    <p>No flagged content found matching your filters.</p>
+                </div>
+
+                <div id="flagged-list" class="flagged-list">
+                    <!-- Flagged items will be populated here by JavaScript -->
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="scripts/flagged.js"></script>
+</body>
+</html>
