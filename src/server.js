@@ -54,6 +54,10 @@ app.get('/instructor/documents', (req, res) => {
     res.sendFile(path.join(__dirname, '../public/instructor/index.html'));
 });
 
+app.get('/instructor/flagged', (req, res) => {
+    res.sendFile(path.join(__dirname, '../public/instructor/flagged.html'));
+});
+
 // Legacy routes (redirect to new structure)
 app.get('/settings', (req, res) => {
     res.redirect('/student/settings');
