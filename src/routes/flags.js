@@ -100,7 +100,7 @@ router.get('/', async (req, res) => {
                 status: 'pending',
                 createdAt: '2024-01-15T10:30:00Z',
                 courseId: 'course-1',
-                courseName: 'Biology 202'
+                courseName: 'BIOC 202'
             },
             {
                 id: 'flag-2',
@@ -111,7 +111,7 @@ router.get('/', async (req, res) => {
                 status: 'pending',
                 createdAt: '2024-01-15T11:15:00Z',
                 courseId: 'course-1',
-                courseName: 'Biology 202'
+                courseName: 'BIOC 202'
             }
         ];
         
