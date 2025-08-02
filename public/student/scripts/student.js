@@ -10,6 +10,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // In production, this would check session or database
     showCalibrationQuestions();
     
+    // Initialize mode toggle functionality
+    initializeModeToggle();
+    
     // Handle chat form submission
     if (chatForm) {
         chatForm.addEventListener('submit', (e) => {
@@ -347,6 +350,7 @@ async function showCalibrationQuestions() {
             console.error('Failed to load calibration questions');
             // If calibration fails, default to tutor mode
             localStorage.setItem('studentMode', 'tutor');
+            updateModeToggleUI('tutor');
             
             // Show chat input and mode toggle if calibration fails to load
             const chatInputContainer = document.querySelector('.chat-input-container');
@@ -362,6 +366,7 @@ async function showCalibrationQuestions() {
         console.error('Error loading calibration questions:', error);
         // Default to tutor mode on error
         localStorage.setItem('studentMode', 'tutor');
+        updateModeToggleUI('tutor');
         
         // Show chat input and mode toggle on error
         const chatInputContainer = document.querySelector('.chat-input-container');
@@ -483,6 +488,9 @@ async function calculateStudentMode() {
             // Store mode in localStorage
             localStorage.setItem('studentMode', mode);
             
+            // Update mode toggle UI to reflect the determined mode
+            updateModeToggleUI(mode);
+            
             // Show mode result message
             showModeResult(mode, score);
             
@@ -502,6 +510,7 @@ async function calculateStudentMode() {
             console.error('Failed to calibrate mode');
             // Default to tutor mode
             localStorage.setItem('studentMode', 'tutor');
+            updateModeToggleUI('tutor');
             showModeResult('tutor', 0);
             
             // Show mode toggle and chat input on error
@@ -519,6 +528,7 @@ async function calculateStudentMode() {
         console.error('Error calculating mode:', error);
         // Default to tutor mode
         localStorage.setItem('studentMode', 'tutor');
+        updateModeToggleUI('tutor');
         showModeResult('tutor', 0);
         
         // Show mode toggle and chat input on error
@@ -574,4 +584,101 @@ function showModeResult(mode, score) {
     
     // Scroll to bottom
     chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+/**
+ * Show mode toggle result to student (different from calibration result)
+ * @param {string} mode - Current mode (tutor or protege)
+ */
+function showModeToggleResult(mode) {
+    const modeMessage = document.createElement('div');
+    modeMessage.classList.add('message', 'bot-message', 'mode-toggle-result');
+    
+    const avatarDiv = document.createElement('div');
+    avatarDiv.classList.add('message-avatar');
+    avatarDiv.textContent = 'B';
+    
+    const contentDiv = document.createElement('div');
+    contentDiv.classList.add('message-content');
+    
+    const resultText = document.createElement('p');
+    if (mode === 'protege') {
+        resultText.innerHTML = `<strong>BiocBot is now in protégé mode</strong><br>
+        I'm ready to be your study partner! Ask me questions about the course material and I'll help you explore topics together.`;
+    } else {
+        resultText.innerHTML = `<strong>BiocBot is now in tutor mode</strong><br>
+        I'm ready to guide your learning! I can help explain concepts, provide examples, and answer your questions about the course material.`;
+    }
+    
+    contentDiv.appendChild(resultText);
+    
+    const timestamp = document.createElement('span');
+    timestamp.classList.add('timestamp');
+    timestamp.textContent = 'Just now';
+    contentDiv.appendChild(timestamp);
+    
+    modeMessage.appendChild(avatarDiv);
+    modeMessage.appendChild(contentDiv);
+    
+    // Add to chat
+    const chatMessages = document.getElementById('chat-messages');
+    chatMessages.appendChild(modeMessage);
+    
+    // Scroll to bottom
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+/**
+ * Initialize mode toggle functionality
+ */
+function initializeModeToggle() {
+    const modeToggleCheckbox = document.getElementById('mode-toggle-checkbox');
+    const protegeLabel = document.querySelector('.protege-label');
+    const tutorLabel = document.querySelector('.tutor-label');
+    
+    if (!modeToggleCheckbox) return;
+    
+    // Set initial mode from localStorage or default to tutor
+    const currentMode = localStorage.getItem('studentMode') || 'tutor';
+    updateModeToggleUI(currentMode);
+    
+    // Add event listener for mode toggle
+    modeToggleCheckbox.addEventListener('change', function() {
+        const newMode = this.checked ? 'tutor' : 'protege';
+        
+        // Update localStorage
+        localStorage.setItem('studentMode', newMode);
+        
+        // Update UI
+        updateModeToggleUI(newMode);
+        
+        // Show mode confirmation popup
+        showModeToggleResult(newMode);
+        
+        console.log(`Mode switched to: ${newMode}`);
+    });
+}
+
+/**
+ * Update the mode toggle UI to reflect current mode
+ * @param {string} mode - Current mode (tutor or protege)
+ */
+function updateModeToggleUI(mode) {
+    const modeToggleCheckbox = document.getElementById('mode-toggle-checkbox');
+    const protegeLabel = document.querySelector('.protege-label');
+    const tutorLabel = document.querySelector('.tutor-label');
+    
+    if (!modeToggleCheckbox || !protegeLabel || !tutorLabel) return;
+    
+    if (mode === 'tutor') {
+        // Checkbox checked = tutor mode
+        modeToggleCheckbox.checked = true;
+        tutorLabel.classList.add('active');
+        protegeLabel.classList.remove('active');
+    } else {
+        // Checkbox unchecked = protégé mode
+        modeToggleCheckbox.checked = false;
+        protegeLabel.classList.add('active');
+        tutorLabel.classList.remove('active');
+    }
 } 
