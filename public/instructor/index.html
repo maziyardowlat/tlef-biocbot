@@ -141,28 +141,46 @@
                                     </div>
                                 </div>
                                 
-                                <!-- Probing Questions Section -->
-                                <div class="unit-section probing-questions-section">
+                                <!-- Assessment Questions Section -->
+                                <div class="unit-section assessment-questions-section">
                                     <div class="section-header">
-                                        <h3>Probing Questions</h3>
+                                        <h3>Assessment Questions</h3>
                                         <button class="toggle-section">▼</button>
                                     </div>
                                     <div class="section-content">
-                                        <div class="objectives-list" id="questions-list-week1">
-                                            <!-- Questions will be added here -->
+                                        <div class="assessment-info">
+                                            <p><strong>Assessment Settings:</strong> Create questions to determine student readiness for tutor/protégé mode</p>
                                         </div>
-                                        <div class="generate-questions-container">
-                                            <button class="generate-btn" onclick="generateProbingQuestions('Week 1')">
-                                                Generate Probing Questions
+                                        
+                                        <!-- Pass Threshold Setting -->
+                                        <div class="threshold-setting">
+                                            <label for="pass-threshold-week1">Questions required to pass:</label>
+                                            <input type="number" id="pass-threshold-week1" min="1" max="10" value="2" class="threshold-input">
+                                            <span class="threshold-help">out of total questions</span>
+                                        </div>
+                                        
+                                        <!-- Questions List -->
+                                        <div class="questions-list" id="assessment-questions-week1">
+                                            <!-- Assessment questions will be displayed here -->
+                                            <div class="no-questions-message">
+                                                <p>No assessment questions created yet. Click "Add Question" to get started.</p>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Action Buttons -->
+                                        <div class="assessment-actions">
+                                            <button class="add-question-btn" onclick="openQuestionModal('Week 1')">
+                                                <span class="btn-icon">➕</span>
+                                                Add Question
                                             </button>
-                                            <p class="generate-help-text">Let AI generate probing questions based on your uploaded course materials</p>
+                                            <button class="generate-ai-btn" id="generate-ai-week1" onclick="generateAIQuestions('Week 1')" disabled>
+                                                <span class="btn-icon">🤖</span>
+                                                Generate with AI
+                                            </button>
                                         </div>
-                                        <div class="objective-input-container">
-                                            <input type="text" id="question-input-week1" class="objective-input" placeholder="Enter probing question...">
-                                            <button class="add-objective-btn-inline" onclick="addQuestionFromInput('Week 1')">+</button>
-                                        </div>
-                                        <div class="save-objectives">
-                                            <button class="save-btn" onclick="saveQuestions('Week 1')">Save Probing Questions</button>
+                                        
+                                        <div class="save-assessment">
+                                            <button class="save-btn" onclick="saveAssessment('Week 1')">Save Assessment</button>
                                         </div>
                                     </div>
                                 </div>
@@ -250,28 +268,46 @@
                                     </div>
                                 </div>
                                 
-                                <!-- Probing Questions Section -->
-                                <div class="unit-section probing-questions-section">
+                                <!-- Assessment Questions Section -->
+                                <div class="unit-section assessment-questions-section">
                                     <div class="section-header">
-                                        <h3>Probing Questions</h3>
+                                        <h3>Assessment Questions</h3>
                                         <button class="toggle-section">▼</button>
                                     </div>
                                     <div class="section-content">
-                                        <div class="objectives-list" id="questions-list-week2">
-                                            <!-- Questions will be added here -->
+                                        <div class="assessment-info">
+                                            <p><strong>Assessment Settings:</strong> Create questions to determine student readiness for tutor/protégé mode</p>
                                         </div>
-                                        <div class="generate-questions-container">
-                                            <button class="generate-btn" onclick="generateProbingQuestions('Week 2')">
-                                                Generate Probing Questions
+                                        
+                                        <!-- Pass Threshold Setting -->
+                                        <div class="threshold-setting">
+                                            <label for="pass-threshold-week2">Questions required to pass:</label>
+                                            <input type="number" id="pass-threshold-week2" min="1" max="10" value="2" class="threshold-input">
+                                            <span class="threshold-help">out of total questions</span>
+                                        </div>
+                                        
+                                        <!-- Questions List -->
+                                        <div class="questions-list" id="assessment-questions-week2">
+                                            <!-- Assessment questions will be displayed here -->
+                                            <div class="no-questions-message">
+                                                <p>No assessment questions created yet. Click "Add Question" to get started.</p>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Action Buttons -->
+                                        <div class="assessment-actions">
+                                            <button class="add-question-btn" onclick="openQuestionModal('Week 2')">
+                                                <span class="btn-icon">➕</span>
+                                                Add Question
                                             </button>
-                                            <p class="generate-help-text">Let AI generate probing questions based on your uploaded course materials</p>
+                                            <button class="generate-ai-btn" id="generate-ai-week2" onclick="generateAIQuestions('Week 2')" disabled>
+                                                <span class="btn-icon">🤖</span>
+                                                Generate with AI
+                                            </button>
                                         </div>
-                                        <div class="objective-input-container">
-                                            <input type="text" id="question-input-week2" class="objective-input" placeholder="Enter probing question...">
-                                            <button class="add-objective-btn-inline" onclick="addQuestionFromInput('Week 2')">+</button>
-                                        </div>
-                                        <div class="save-objectives">
-                                            <button class="save-btn" onclick="saveQuestions('Week 2')">Save Probing Questions</button>
+                                        
+                                        <div class="save-assessment">
+                                            <button class="save-btn" onclick="saveAssessment('Week 2')">Save Assessment</button>
                                         </div>
                                     </div>
                                 </div>
@@ -360,28 +396,46 @@
                                     </div>
                                 </div>
                                 
-                                <!-- Probing Questions Section -->
-                                <div class="unit-section probing-questions-section">
+                                <!-- Assessment Questions Section -->
+                                <div class="unit-section assessment-questions-section">
                                     <div class="section-header">
-                                        <h3>Probing Questions</h3>
+                                        <h3>Assessment Questions</h3>
                                         <button class="toggle-section">▼</button>
                                     </div>
                                     <div class="section-content">
-                                        <div class="objectives-list" id="questions-list-week3">
-                                            <!-- Questions will be added here -->
+                                        <div class="assessment-info">
+                                            <p><strong>Assessment Settings:</strong> Create questions to determine student readiness for tutor/protégé mode</p>
                                         </div>
-                                        <div class="generate-questions-container">
-                                            <button class="generate-btn" onclick="generateProbingQuestions('Week 3')">
-                                                Generate Probing Questions
+                                        
+                                        <!-- Pass Threshold Setting -->
+                                        <div class="threshold-setting">
+                                            <label for="pass-threshold-week3">Questions required to pass:</label>
+                                            <input type="number" id="pass-threshold-week3" min="1" max="10" value="2" class="threshold-input">
+                                            <span class="threshold-help">out of total questions</span>
+                                        </div>
+                                        
+                                        <!-- Questions List -->
+                                        <div class="questions-list" id="assessment-questions-week3">
+                                            <!-- Assessment questions will be displayed here -->
+                                            <div class="no-questions-message">
+                                                <p>No assessment questions created yet. Click "Add Question" to get started.</p>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Action Buttons -->
+                                        <div class="assessment-actions">
+                                            <button class="add-question-btn" onclick="openQuestionModal('Week 3')">
+                                                <span class="btn-icon">➕</span>
+                                                Add Question
                                             </button>
-                                            <p class="generate-help-text">Let AI generate probing questions based on your uploaded course materials</p>
+                                            <button class="generate-ai-btn" id="generate-ai-week3" onclick="generateAIQuestions('Week 3')" disabled>
+                                                <span class="btn-icon">🤖</span>
+                                                Generate with AI
+                                            </button>
                                         </div>
-                                        <div class="objective-input-container">
-                                            <input type="text" id="question-input-week3" class="objective-input" placeholder="Enter probing question...">
-                                            <button class="add-objective-btn-inline" onclick="addQuestionFromInput('Week 3')">+</button>
-                                        </div>
-                                        <div class="save-objectives">
-                                            <button class="save-btn" onclick="saveQuestions('Week 3')">Save Probing Questions</button>
+                                        
+                                        <div class="save-assessment">
+                                            <button class="save-btn" onclick="saveAssessment('Week 3')">Save Assessment</button>
                                         </div>
                                     </div>
                                 </div>
@@ -401,6 +455,100 @@
         </main>
     </div>
     
+    <!-- Question Creation Modal -->
+    <div id="question-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Create Assessment Question</h2>
+                <button class="modal-close" onclick="closeQuestionModal()">×</button>
+            </div>
+            
+            <div class="modal-body">
+                <div class="question-form">
+                    <!-- Question Type Selection -->
+                    <div class="form-section">
+                        <label for="question-type">Question Type</label>
+                        <select id="question-type" onchange="updateQuestionForm()">
+                            <option value="">Select question type...</option>
+                            <option value="true-false">True/False</option>
+                            <option value="multiple-choice">Multiple Choice</option>
+                            <option value="short-answer">Short Answer</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Question Text -->
+                    <div class="form-section">
+                        <label for="question-text">Question</label>
+                        <textarea id="question-text" rows="3" placeholder="Enter your question..."></textarea>
+                    </div>
+                    
+                    <!-- True/False Answer -->
+                    <div class="form-section" id="tf-answer-section" style="display: none;">
+                        <label>Correct Answer</label>
+                        <div class="radio-group">
+                            <label class="radio-option">
+                                <input type="radio" name="tf-answer" value="true">
+                                <span>True</span>
+                            </label>
+                            <label class="radio-option">
+                                <input type="radio" name="tf-answer" value="false">
+                                <span>False</span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <!-- Multiple Choice Options -->
+                    <div class="form-section" id="mcq-answer-section" style="display: none;">
+                        <label>Answer Options</label>
+                        <div class="mcq-options">
+                            <div class="mcq-option">
+                                <input type="text" placeholder="Option A" class="mcq-input" data-option="A">
+                                <label class="radio-option">
+                                    <input type="radio" name="mcq-correct" value="A">
+                                    <span class="correct-label">Correct</span>
+                                </label>
+                            </div>
+                            <div class="mcq-option">
+                                <input type="text" placeholder="Option B" class="mcq-input" data-option="B">
+                                <label class="radio-option">
+                                    <input type="radio" name="mcq-correct" value="B">
+                                    <span class="correct-label">Correct</span>
+                                </label>
+                            </div>
+                            <div class="mcq-option">
+                                <input type="text" placeholder="Option C" class="mcq-input" data-option="C">
+                                <label class="radio-option">
+                                    <input type="radio" name="mcq-correct" value="C">
+                                    <span class="correct-label">Correct</span>
+                                </label>
+                            </div>
+                            <div class="mcq-option">
+                                <input type="text" placeholder="Option D" class="mcq-input" data-option="D">
+                                <label class="radio-option">
+                                    <input type="radio" name="mcq-correct" value="D">
+                                    <span class="correct-label">Correct</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Short Answer Expected -->
+                    <div class="form-section" id="sa-answer-section" style="display: none;">
+                        <label for="sa-answer">Expected Answer/Key Points</label>
+                        <textarea id="sa-answer" rows="3" placeholder="Describe the expected answer or key points..."></textarea>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <div class="modal-actions">
+                    <button class="btn-secondary" onclick="closeQuestionModal()">Cancel</button>
+                    <button class="btn-primary" onclick="saveQuestion()">Save Question</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Upload Modal -->
     <div id="upload-modal" class="modal">
         <div class="modal-content">

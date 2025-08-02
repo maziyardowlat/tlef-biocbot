@@ -20,6 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const uploadModal = document.getElementById('upload-modal');
         const calibrationModal = document.getElementById('calibration-modal');
         const viewModal = document.getElementById('view-modal');
+        const questionModal = document.getElementById('question-modal');
         
         // Close upload modal if clicking outside
         if (uploadModal && uploadModal.classList.contains('show') && e.target === uploadModal) {
@@ -34,6 +35,17 @@ document.addEventListener('DOMContentLoaded', () => {
         // Close view modal if clicking outside
         if (viewModal && viewModal.classList.contains('show') && e.target === viewModal) {
             closeViewModal();
+        }
+        
+        // Close question modal if clicking outside
+        if (questionModal && questionModal.classList.contains('show') && e.target === questionModal) {
+            closeQuestionModal();
+        }
+        
+        // Close AI generation modal if clicking outside
+        const aiGenerationModal = document.getElementById('ai-generation-modal');
+        if (aiGenerationModal && aiGenerationModal.classList.contains('show') && e.target === aiGenerationModal) {
+            closeAIGenerationModal();
         }
     });
     
@@ -290,6 +302,12 @@ document.addEventListener('DOMContentLoaded', () => {
             showNotification(`Showing ${button.textContent.trim()} view`, 'info');
         });
     });
+    
+    // Initialize assessment system
+    initializeAssessmentSystem();
+    
+    // Start monitoring lecture notes status changes
+    monitorLectureNotesStatus();
 });
 
 // Global function to show notification
@@ -2022,4 +2040,579 @@ function toggleAccordionDynamic(content, toggle) {
             content.style.maxHeight = '';
         }, 300);
     }
+}
+
+// ==========================================
+// Assessment Questions Functionality
+// ==========================================
+
+// Global variables for assessment questions
+let assessmentQuestions = {
+    'Week 1': [],
+    'Week 2': [],
+    'Week 3': []
+};
+
+/**
+ * Open the question creation modal
+ * @param {string} week - Week identifier (e.g., 'Week 1')
+ */
+function openQuestionModal(week) {
+    currentWeek = week;
+    const modal = document.getElementById('question-modal');
+    if (modal) {
+        modal.classList.add('show');
+        // Reset form
+        resetQuestionForm();
+    }
+}
+
+/**
+ * Close the question creation modal
+ */
+function closeQuestionModal() {
+    const modal = document.getElementById('question-modal');
+    if (modal) {
+        modal.classList.remove('show');
+        resetQuestionForm();
+    }
+}
+
+/**
+ * Reset the question form to initial state
+ */
+function resetQuestionForm() {
+    document.getElementById('question-type').value = '';
+    document.getElementById('question-text').value = '';
+    
+    // Hide all answer sections
+    document.getElementById('tf-answer-section').style.display = 'none';
+    document.getElementById('mcq-answer-section').style.display = 'none';
+    document.getElementById('sa-answer-section').style.display = 'none';
+    
+    // Clear radio buttons
+    const radioButtons = document.querySelectorAll('input[type="radio"]');
+    radioButtons.forEach(radio => radio.checked = false);
+    
+    // Clear MCQ inputs
+    const mcqInputs = document.querySelectorAll('.mcq-input');
+    mcqInputs.forEach(input => input.value = '');
+    
+    // Clear short answer
+    document.getElementById('sa-answer').value = '';
+}
+
+/**
+ * Update question form based on selected question type
+ */
+function updateQuestionForm() {
+    const questionType = document.getElementById('question-type').value;
+    
+    // Hide all sections first
+    document.getElementById('tf-answer-section').style.display = 'none';
+    document.getElementById('mcq-answer-section').style.display = 'none';
+    document.getElementById('sa-answer-section').style.display = 'none';
+    
+    // Show relevant section
+    if (questionType === 'true-false') {
+        document.getElementById('tf-answer-section').style.display = 'block';
+    } else if (questionType === 'multiple-choice') {
+        document.getElementById('mcq-answer-section').style.display = 'block';
+        // Add event listeners for MCQ inputs
+        setupMCQValidation();
+    } else if (questionType === 'short-answer') {
+        document.getElementById('sa-answer-section').style.display = 'block';
+    }
+}
+
+/**
+ * Setup validation for multiple choice inputs
+ */
+function setupMCQValidation() {
+    const mcqInputs = document.querySelectorAll('.mcq-input');
+    const radioButtons = document.querySelectorAll('input[name="mcq-correct"]');
+    
+    // Clear all radio buttons initially
+    radioButtons.forEach(radio => {
+        radio.checked = false;
+        radio.disabled = true;
+    });
+    
+    // Add event listeners to inputs
+    mcqInputs.forEach(input => {
+        input.addEventListener('input', function() {
+            const option = this.dataset.option;
+            const radioButton = document.querySelector(`input[name="mcq-correct"][value="${option}"]`);
+            
+            if (this.value.trim()) {
+                radioButton.disabled = false;
+            } else {
+                radioButton.disabled = true;
+                radioButton.checked = false;
+            }
+        });
+    });
+}
+
+/**
+ * Save the created question
+ */
+function saveQuestion() {
+    const questionType = document.getElementById('question-type').value;
+    const questionText = document.getElementById('question-text').value.trim();
+    
+    // Validation
+    if (!questionType) {
+        alert('Please select a question type.');
+        return;
+    }
+    
+    if (!questionText) {
+        alert('Please enter a question.');
+        return;
+    }
+    
+    let question = {
+        id: Date.now(), // Simple ID generation
+        type: questionType,
+        question: questionText
+    };
+    
+    // Get answer based on type
+    if (questionType === 'true-false') {
+        const tfAnswer = document.querySelector('input[name="tf-answer"]:checked');
+        if (!tfAnswer) {
+            alert('Please select the correct answer (True/False).');
+            return;
+        }
+        question.answer = tfAnswer.value;
+    } else if (questionType === 'multiple-choice') {
+        // Get all options
+        const options = {};
+        const mcqInputs = document.querySelectorAll('.mcq-input');
+        let hasOptions = false;
+        let hasCorrectAnswer = false;
+        
+        mcqInputs.forEach(input => {
+            if (input.value.trim()) {
+                options[input.dataset.option] = input.value.trim();
+                hasOptions = true;
+                
+                // Check if this option is selected as correct
+                const radioButton = input.parentElement.querySelector('input[name="mcq-correct"]');
+                if (radioButton && radioButton.checked) {
+                    hasCorrectAnswer = true;
+                }
+            }
+        });
+        
+        if (!hasOptions) {
+            alert('Please enter at least one answer option.');
+            return;
+        }
+        
+        if (!hasCorrectAnswer) {
+            alert('Please select the correct answer for the options you have entered.');
+            return;
+        }
+        
+        const correctAnswer = document.querySelector('input[name="mcq-correct"]:checked');
+        question.options = options;
+        question.answer = correctAnswer.value;
+    } else if (questionType === 'short-answer') {
+        const saAnswer = document.getElementById('sa-answer').value.trim();
+        if (!saAnswer) {
+            alert('Please provide expected answer or key points.');
+            return;
+        }
+        question.answer = saAnswer;
+    }
+    
+    // Add question to the week's assessment
+    if (!assessmentQuestions[currentWeek]) {
+        assessmentQuestions[currentWeek] = [];
+    }
+    assessmentQuestions[currentWeek].push(question);
+    
+    // Update the display
+    updateQuestionsDisplay(currentWeek);
+    
+    // Close modal
+    closeQuestionModal();
+    
+    // Check if we should enable AI generation
+    checkAIGenerationAvailability(currentWeek);
+}
+
+/**
+ * Update the questions display for a week
+ * @param {string} week - Week identifier
+ */
+function updateQuestionsDisplay(week) {
+    const questionsContainer = document.getElementById(`assessment-questions-${week.toLowerCase().replace(' ', '')}`);
+    if (!questionsContainer) return;
+    
+    const questions = assessmentQuestions[week] || [];
+    
+    if (questions.length === 0) {
+        questionsContainer.innerHTML = `
+            <div class="no-questions-message">
+                <p>No assessment questions created yet. Click "Add Question" to get started.</p>
+            </div>
+        `;
+        return;
+    }
+    
+    let html = '';
+    questions.forEach((question, index) => {
+        html += `
+            <div class="question-item" data-question-id="${question.id}">
+                <div class="question-header">
+                    <span class="question-type-badge ${question.type}">${getQuestionTypeLabel(question.type)}</span>
+                    <span class="question-number">Question ${index + 1}</span>
+                    <button class="delete-question-btn" onclick="deleteQuestion('${week}', ${question.id})">×</button>
+                </div>
+                <div class="question-content">
+                    <p class="question-text">${question.question}</p>
+                    ${getQuestionAnswerDisplay(question)}
+                </div>
+            </div>
+        `;
+    });
+    
+    questionsContainer.innerHTML = html;
+    
+    // Update pass threshold max value
+    const thresholdInput = document.getElementById(`pass-threshold-${week.toLowerCase().replace(' ', '')}`);
+    if (thresholdInput) {
+        thresholdInput.max = questions.length;
+        if (parseInt(thresholdInput.value) > questions.length) {
+            thresholdInput.value = questions.length;
+        }
+    }
+}
+
+/**
+ * Get question type label for display
+ * @param {string} type - Question type
+ * @returns {string} Display label
+ */
+function getQuestionTypeLabel(type) {
+    switch (type) {
+        case 'true-false': return 'T/F';
+        case 'multiple-choice': return 'MCQ';
+        case 'short-answer': return 'SA';
+        default: return type;
+    }
+}
+
+/**
+ * Get question answer display HTML
+ * @param {object} question - Question object
+ * @returns {string} HTML string
+ */
+function getQuestionAnswerDisplay(question) {
+    if (question.type === 'true-false') {
+        return `<p class="answer-preview"><strong>Answer:</strong> ${question.answer === 'true' ? 'True' : 'False'}</p>`;
+    } else if (question.type === 'multiple-choice') {
+        let optionsHtml = '';
+        Object.entries(question.options).forEach(([key, value]) => {
+            const isCorrect = key === question.answer;
+            optionsHtml += `<span class="mcq-option-preview ${isCorrect ? 'correct' : ''}">${key}) ${value}</span>`;
+        });
+        return `<div class="mcq-preview">${optionsHtml}</div>`;
+    } else if (question.type === 'short-answer') {
+        return `<p class="answer-preview"><strong>Expected:</strong> ${question.answer}</p>`;
+    }
+    return '';
+}
+
+/**
+ * Delete a question
+ * @param {string} week - Week identifier
+ * @param {number} questionId - Question ID
+ */
+function deleteQuestion(week, questionId) {
+    if (confirm('Are you sure you want to delete this question?')) {
+        assessmentQuestions[week] = assessmentQuestions[week].filter(q => q.id !== questionId);
+        updateQuestionsDisplay(week);
+        checkAIGenerationAvailability(week);
+    }
+}
+
+/**
+ * Generate AI questions for a week
+ * @param {string} week - Week identifier
+ */
+function generateAIQuestions(week) {
+    // Check if lecture notes are uploaded
+    if (!checkLectureNotesUploaded(week)) {
+        alert('Please upload lecture notes before generating AI questions.');
+        return;
+    }
+    
+    // Show AI generation type selection modal
+    showAIGenerationModal(week);
+}
+
+/**
+ * Show AI generation type selection modal
+ * @param {string} week - Week identifier
+ */
+function showAIGenerationModal(week) {
+    // Create modal HTML
+    const modalHTML = `
+        <div id="ai-generation-modal" class="modal show">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Generate AI Questions</h2>
+                    <button class="modal-close" onclick="closeAIGenerationModal()">×</button>
+                </div>
+                <div class="modal-body">
+                    <p style="margin-bottom: 0.5rem; color: #666; font-size: 14px;">Select the type of questions you want AI to generate:</p>
+                    <div class="ai-question-types">
+                        <label class="ai-type-option">
+                            <input type="radio" name="ai-question-type" value="true-false" checked>
+                            <span>True/False Questions</span>
+                        </label>
+                        <label class="ai-type-option">
+                            <input type="radio" name="ai-question-type" value="multiple-choice">
+                            <span>Multiple Choice Questions</span>
+                        </label>
+                        <label class="ai-type-option">
+                            <input type="radio" name="ai-question-type" value="short-answer">
+                            <span>Short Answer Questions</span>
+                        </label>
+                    </div>
+                    <div class="ai-question-count">
+                        <label for="ai-question-count">Number of questions to generate:</label>
+                        <input type="number" id="ai-question-count" min="1" max="10" value="3">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <div class="modal-actions">
+                        <button class="btn-secondary" onclick="closeAIGenerationModal()">Cancel</button>
+                        <button class="btn-primary" onclick="confirmAIGeneration('${week}')">Generate</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Add modal to page
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+}
+
+/**
+ * Close AI generation modal
+ */
+function closeAIGenerationModal() {
+    const modal = document.getElementById('ai-generation-modal');
+    if (modal) {
+        modal.remove();
+    }
+}
+
+/**
+ * Confirm AI generation and create questions
+ * @param {string} week - Week identifier
+ */
+function confirmAIGeneration(week) {
+    const selectedType = document.querySelector('input[name="ai-question-type"]:checked');
+    const questionCount = parseInt(document.getElementById('ai-question-count').value);
+    
+    if (!selectedType) {
+        alert('Please select a question type.');
+        return;
+    }
+    
+    if (!questionCount || questionCount < 1 || questionCount > 10) {
+        alert('Please enter a valid number of questions (1-10).');
+        return;
+    }
+    
+    // Generate AI questions based on type
+    const aiQuestions = generateAIQuestionsByType(selectedType.value, questionCount, week);
+    
+    // Add AI questions to the week
+    if (!assessmentQuestions[week]) {
+        assessmentQuestions[week] = [];
+    }
+    assessmentQuestions[week].push(...aiQuestions);
+    
+    // Update display
+    updateQuestionsDisplay(week);
+    
+    // Close modal
+    closeAIGenerationModal();
+    
+    alert(`Generated ${aiQuestions.length} AI questions for ${week}.`);
+}
+
+/**
+ * Generate AI questions based on selected type
+ * @param {string} type - Question type
+ * @param {number} count - Number of questions
+ * @param {string} week - Week identifier
+ * @returns {Array} Array of generated questions
+ */
+function generateAIQuestionsByType(type, count, week) {
+    const questions = [];
+    
+    // Generate specific type
+    for (let i = 0; i < count; i++) {
+        questions.push(createAIQuestion(type, week));
+    }
+    
+    return questions;
+}
+
+/**
+ * Create a single AI question
+ * @param {string} type - Question type
+ * @param {string} week - Week identifier
+ * @returns {Object} Question object
+ */
+function createAIQuestion(type, week) {
+    const baseId = Date.now() + Math.random();
+    
+    if (type === 'true-false') {
+        return {
+            id: baseId,
+            type: 'true-false',
+            question: `Based on the lecture notes for ${week}, this concept is essential for understanding the course material.`,
+            answer: Math.random() > 0.5 ? 'true' : 'false'
+        };
+    } else if (type === 'multiple-choice') {
+        return {
+            id: baseId,
+            type: 'multiple-choice',
+            question: `According to the ${week} lecture notes, which of the following is most accurate?`,
+            options: {
+                'A': 'Option A based on lecture content',
+                'B': 'Option B based on lecture content',
+                'C': 'Option C based on lecture content',
+                'D': 'Option D based on lecture content'
+            },
+            answer: ['A', 'B', 'C', 'D'][Math.floor(Math.random() * 4)]
+        };
+    } else if (type === 'short-answer') {
+        return {
+            id: baseId,
+            type: 'short-answer',
+            question: `Explain a key concept from the ${week} lecture notes and its significance.`,
+            answer: 'Students should demonstrate understanding by explaining the concept clearly and showing its relevance to the course material.'
+        };
+    }
+}
+
+/**
+ * Check if lecture notes are uploaded for a week
+ * @param {string} week - Week identifier
+ * @returns {boolean} True if lecture notes are uploaded
+ */
+function checkLectureNotesUploaded(week) {
+    // Look for lecture notes status in the week
+    const weekLower = week.toLowerCase().replace(' ', '');
+    const lectureNotesElement = document.querySelector(`[onclick*="'${week}'"][onclick*="lecture-notes"]`);
+    
+    if (lectureNotesElement) {
+        // Check if there's a "Processed" status nearby
+        const parentItem = lectureNotesElement.closest('.file-item');
+        if (parentItem) {
+            const statusElement = parentItem.querySelector('.status-text');
+            return statusElement && statusElement.textContent === 'Processed';
+        }
+    }
+    
+    return false; // Default to false for now
+}
+
+/**
+ * Monitor lecture notes status changes and update AI button
+ * This function should be called whenever file status changes
+ */
+function monitorLectureNotesStatus() {
+    // Set up a mutation observer to watch for status changes
+    const observer = new MutationObserver(function(mutations) {
+        mutations.forEach(function(mutation) {
+            if (mutation.type === 'childList' || mutation.type === 'characterData') {
+                // Check all weeks for status changes
+                ['Week 1', 'Week 2', 'Week 3'].forEach(week => {
+                    checkAIGenerationAvailability(week);
+                });
+            }
+        });
+    });
+    
+    // Observe the entire document for changes
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+        characterData: true
+    });
+}
+
+/**
+ * Check AI generation availability and update button state
+ * @param {string} week - Week identifier
+ */
+function checkAIGenerationAvailability(week) {
+    const weekLower = week.toLowerCase().replace(' ', '');
+    const aiButton = document.getElementById(`generate-ai-${weekLower}`);
+    
+    if (aiButton) {
+        const lectureNotesUploaded = checkLectureNotesUploaded(week);
+        aiButton.disabled = !lectureNotesUploaded;
+        
+        if (lectureNotesUploaded) {
+            aiButton.title = 'Generate questions using AI based on uploaded lecture notes';
+        } else {
+            aiButton.title = 'Upload lecture notes first to enable AI generation';
+        }
+    }
+}
+
+/**
+ * Save assessment settings for a week
+ * @param {string} week - Week identifier
+ */
+function saveAssessment(week) {
+    const weekLower = week.toLowerCase().replace(' ', '');
+    const thresholdInput = document.getElementById(`pass-threshold-${weekLower}`);
+    const threshold = parseInt(thresholdInput.value);
+    const questions = assessmentQuestions[week] || [];
+    
+    if (questions.length === 0) {
+        alert('Please add at least one question before saving the assessment.');
+        return;
+    }
+    
+    if (threshold > questions.length) {
+        alert(`Pass threshold cannot be greater than the total number of questions (${questions.length}).`);
+        return;
+    }
+    
+    // Save assessment data (this would normally go to backend)
+    const assessmentData = {
+        week: week,
+        questions: questions,
+        passThreshold: threshold,
+        totalQuestions: questions.length,
+        savedAt: new Date().toISOString()
+    };
+    
+    console.log('Saving assessment:', assessmentData);
+    
+    // Show success message
+    alert(`Assessment saved for ${week}!\nTotal Questions: ${questions.length}\nPass Threshold: ${threshold}`);
+}
+
+// Initialize assessment system - this will be called from the main DOMContentLoaded listener
+function initializeAssessmentSystem() {
+    // Initialize questions display for all weeks
+    ['Week 1', 'Week 2', 'Week 3'].forEach(week => {
+        updateQuestionsDisplay(week);
+        checkAIGenerationAvailability(week);
+    });
 } 
