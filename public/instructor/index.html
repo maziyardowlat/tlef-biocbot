@@ -173,10 +173,6 @@
                                                 <span class="btn-icon">➕</span>
                                                 Add Question
                                             </button>
-                                            <button class="generate-ai-btn" id="generate-ai-week1" onclick="generateAIQuestions('Week 1')" disabled>
-                                                <span class="btn-icon">🤖</span>
-                                                Generate with AI
-                                            </button>
                                         </div>
                                         
                                         <div class="save-assessment">
@@ -299,10 +295,6 @@
                                             <button class="add-question-btn" onclick="openQuestionModal('Week 2')">
                                                 <span class="btn-icon">➕</span>
                                                 Add Question
-                                            </button>
-                                            <button class="generate-ai-btn" id="generate-ai-week2" onclick="generateAIQuestions('Week 2')" disabled>
-                                                <span class="btn-icon">🤖</span>
-                                                Generate with AI
                                             </button>
                                         </div>
                                         
@@ -428,10 +420,6 @@
                                                 <span class="btn-icon">➕</span>
                                                 Add Question
                                             </button>
-                                            <button class="generate-ai-btn" id="generate-ai-week3" onclick="generateAIQuestions('Week 3')" disabled>
-                                                <span class="btn-icon">🤖</span>
-                                                Generate with AI
-                                            </button>
                                         </div>
                                         
                                         <div class="save-assessment">
@@ -543,6 +531,10 @@
             <div class="modal-footer">
                 <div class="modal-actions">
                     <button class="btn-secondary" onclick="closeQuestionModal()">Cancel</button>
+                    <button class="btn-ai" id="ai-generate-btn" onclick="generateAIQuestionContent()" style="display: none;">
+                        <span class="ai-icon">🤖</span>
+                        Generate with AI
+                    </button>
                     <button class="btn-primary" onclick="saveQuestion()">Save Question</button>
                 </div>
             </div>
