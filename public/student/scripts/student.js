@@ -260,6 +260,18 @@ function replaceMessageWithThankYou(messageContent, flagType) {
         flagContainer.remove();
     }
     
+    // Remove calibration question options (if this is a calibration question)
+    const calibrationOptions = messageContent.querySelector('.calibration-options');
+    if (calibrationOptions) {
+        calibrationOptions.remove();
+    }
+    
+    // Remove short answer input (if this is a short answer question)
+    const shortAnswerContainer = messageContent.querySelector('.calibration-short-answer');
+    if (shortAnswerContainer) {
+        shortAnswerContainer.remove();
+    }
+    
     // Update the timestamp to show when it was flagged
     const timestamp = messageContent.querySelector('.timestamp');
     if (timestamp) {
@@ -315,53 +327,58 @@ async function showCalibrationQuestions() {
         // Clear any existing mode for demo purposes
         localStorage.removeItem('studentMode');
         
-        // Fetch calibration questions from server
-        const response = await fetch('/api/mode-questions?instructorId=instructor-123');
-        const data = await response.json();
+        // Define the 3 calibration questions (T/F, MCQ, Short Answer)
+        currentCalibrationQuestions = [
+            {
+                type: 'true-false',
+                question: 'The cell is the basic unit of life.',
+                options: ['True', 'False'],
+                correctAnswer: 0 // True
+            },
+            {
+                type: 'multiple-choice',
+                question: 'Which of the following is NOT a function of the cell membrane?',
+                options: [
+                    'Regulating what enters and exits the cell',
+                    'Protecting the cell from its environment',
+                    'Producing energy through photosynthesis',
+                    'Maintaining cell shape and structure'
+                ],
+                correctAnswer: 2 // C - Producing energy through photosynthesis
+            },
+            {
+                type: 'short-answer',
+                question: 'Explain the difference between prokaryotic and eukaryotic cells in one sentence.',
+                correctAnswer: 'Prokaryotic cells lack a nucleus and membrane-bound organelles, while eukaryotic cells have both a nucleus and membrane-bound organelles.'
+            }
+        ];
         
-        if (data.success) {
-            currentCalibrationQuestions = data.data.questions;
-            currentQuestionIndex = 0;
-            studentAnswers = [];
-            
-            // Hide chat input during calibration
-            const chatInputContainer = document.querySelector('.chat-input-container');
-            if (chatInputContainer) {
-                chatInputContainer.style.display = 'none';
-            }
-            
-            // Hide mode toggle during calibration
-            const modeToggleContainer = document.querySelector('.mode-toggle-container');
-            if (modeToggleContainer) {
-                modeToggleContainer.style.display = 'none';
-            }
-            
-            // Clear any existing messages except the welcome message
-            const chatMessages = document.getElementById('chat-messages');
-            const welcomeMessage = chatMessages.querySelector('.message:not(.calibration-question):not(.mode-result)');
-            if (welcomeMessage) {
-                chatMessages.innerHTML = '';
-                chatMessages.appendChild(welcomeMessage);
-            }
-            
-            // Show first question
-            showCalibrationQuestion();
-        } else {
-            console.error('Failed to load calibration questions');
-            // If calibration fails, default to tutor mode
-            localStorage.setItem('studentMode', 'tutor');
-            updateModeToggleUI('tutor');
-            
-            // Show chat input and mode toggle if calibration fails to load
-            const chatInputContainer = document.querySelector('.chat-input-container');
-            if (chatInputContainer) {
-                chatInputContainer.style.display = 'block';
-            }
-            const modeToggleContainer = document.querySelector('.mode-toggle-container');
-            if (modeToggleContainer) {
-                modeToggleContainer.style.display = 'block';
-            }
+        currentQuestionIndex = 0;
+        studentAnswers = [];
+        
+        // Hide chat input during calibration
+        const chatInputContainer = document.querySelector('.chat-input-container');
+        if (chatInputContainer) {
+            chatInputContainer.style.display = 'none';
         }
+        
+        // Hide mode toggle during calibration
+        const modeToggleContainer = document.querySelector('.mode-toggle-container');
+        if (modeToggleContainer) {
+            modeToggleContainer.style.display = 'none';
+        }
+        
+        // Clear any existing messages except the welcome message
+        const chatMessages = document.getElementById('chat-messages');
+        const welcomeMessage = chatMessages.querySelector('.message:not(.calibration-question):not(.mode-result)');
+        if (welcomeMessage) {
+            chatMessages.innerHTML = '';
+            chatMessages.appendChild(welcomeMessage);
+        }
+        
+        // Show first question
+        showCalibrationQuestion();
+        
     } catch (error) {
         console.error('Error loading calibration questions:', error);
         // Default to tutor mode on error
@@ -395,6 +412,7 @@ function showCalibrationQuestion() {
     // Create question message
     const questionMessage = document.createElement('div');
     questionMessage.classList.add('message', 'bot-message', 'calibration-question');
+    questionMessage.id = `calibration-question-${currentQuestionIndex}`; // Unique ID for each question
     
     const avatarDiv = document.createElement('div');
     avatarDiv.classList.add('message-avatar');
@@ -407,33 +425,102 @@ function showCalibrationQuestion() {
     questionText.textContent = `Question ${currentQuestionIndex + 1}: ${question.question}`;
     contentDiv.appendChild(questionText);
     
-    // Create options
-    const optionsDiv = document.createElement('div');
-    optionsDiv.classList.add('calibration-options');
+    // Handle different question types
+    if (question.type === 'true-false') {
+        // Create True/False options
+        const optionsDiv = document.createElement('div');
+        optionsDiv.classList.add('calibration-options');
+        
+        question.options.forEach((option, index) => {
+            const optionContainer = document.createElement('div');
+            optionContainer.classList.add('calibration-option-container');
+            
+            const optionButton = document.createElement('button');
+            optionButton.classList.add('calibration-option');
+            optionButton.textContent = option;
+            optionButton.onclick = () => selectCalibrationAnswer(index, currentQuestionIndex);
+            
+            optionContainer.appendChild(optionButton);
+            optionsDiv.appendChild(optionContainer);
+        });
+        
+        contentDiv.appendChild(optionsDiv);
+        
+    } else if (question.type === 'multiple-choice') {
+        // Create Multiple Choice options
+        const optionsDiv = document.createElement('div');
+        optionsDiv.classList.add('calibration-options');
+        
+        question.options.forEach((option, index) => {
+            const optionContainer = document.createElement('div');
+            optionContainer.classList.add('calibration-option-container');
+            
+            const optionButton = document.createElement('button');
+            optionButton.classList.add('calibration-option');
+            optionButton.textContent = `${String.fromCharCode(65 + index)}. ${option}`;
+            optionButton.onclick = () => selectCalibrationAnswer(index, currentQuestionIndex);
+            
+            optionContainer.appendChild(optionButton);
+            optionsDiv.appendChild(optionContainer);
+        });
+        
+        contentDiv.appendChild(optionsDiv);
+        
+    } else if (question.type === 'short-answer') {
+        // Create Short Answer input
+        const answerContainer = document.createElement('div');
+        answerContainer.classList.add('calibration-short-answer');
+        
+        const answerInput = document.createElement('textarea');
+        answerInput.classList.add('calibration-answer-input');
+        answerInput.placeholder = 'Type your answer here...';
+        answerInput.rows = 3;
+        
+        const submitButton = document.createElement('button');
+        submitButton.classList.add('calibration-submit-btn');
+        submitButton.textContent = 'Submit Answer';
+        submitButton.onclick = () => submitShortAnswer(answerInput.value, currentQuestionIndex);
+        
+        answerContainer.appendChild(answerInput);
+        answerContainer.appendChild(submitButton);
+        contentDiv.appendChild(answerContainer);
+    }
     
-    question.options.forEach((option, index) => {
-        const optionContainer = document.createElement('div');
-        optionContainer.classList.add('calibration-option-container');
-        
-        const optionButton = document.createElement('button');
-        optionButton.classList.add('calibration-option');
-        optionButton.textContent = `${String.fromCharCode(65 + index)}. ${option}`;
-        optionButton.onclick = () => selectCalibrationAnswer(index);
-        
-        const scoreBox = document.createElement('div');
-        scoreBox.classList.add('calibration-score-box');
-        
-        optionContainer.appendChild(optionButton);
-        optionContainer.appendChild(scoreBox);
-        optionsDiv.appendChild(optionContainer);
-    });
+    // Create message footer for timestamp and flag button
+    const footerDiv = document.createElement('div');
+    footerDiv.classList.add('message-footer');
     
-    contentDiv.appendChild(optionsDiv);
+    // Create right side container for timestamp and flag button
+    const rightContainer = document.createElement('div');
+    rightContainer.classList.add('message-footer-right');
     
     const timestamp = document.createElement('span');
     timestamp.classList.add('timestamp');
     timestamp.textContent = 'Just now';
-    contentDiv.appendChild(timestamp);
+    rightContainer.appendChild(timestamp);
+    
+    // Add flag button for calibration questions
+    const flagButton = document.createElement('button');
+    flagButton.classList.add('flag-button');
+    flagButton.onclick = function() { toggleFlagMenu(this); };
+    flagButton.innerHTML = '<span class="three-dots">⋯</span>';
+    
+    const flagMenu = document.createElement('div');
+    flagMenu.classList.add('flag-menu');
+    flagMenu.innerHTML = `
+        <button class="flag-option" onclick="flagMessage(this, 'incorrectness')">Incorrectness</button>
+        <button class="flag-option" onclick="flagMessage(this, 'inappropriate')">Inappropriate</button>
+        <button class="flag-option" onclick="flagMessage(this, 'irrelevant')">Irrelevant</button>
+    `;
+    
+    const flagContainer = document.createElement('div');
+    flagContainer.classList.add('message-flag-container');
+    flagContainer.appendChild(flagButton);
+    flagContainer.appendChild(flagMenu);
+    rightContainer.appendChild(flagContainer);
+    
+    footerDiv.appendChild(rightContainer);
+    contentDiv.appendChild(footerDiv);
     
     questionMessage.appendChild(avatarDiv);
     questionMessage.appendChild(contentDiv);
@@ -449,17 +536,94 @@ function showCalibrationQuestion() {
 /**
  * Handle calibration answer selection
  * @param {number} answerIndex - Selected answer index
+ * @param {number} questionIndex - The question index this answer belongs to
  */
-function selectCalibrationAnswer(answerIndex) {
-    studentAnswers.push(answerIndex);
-    currentQuestionIndex++;
+function selectCalibrationAnswer(answerIndex, questionIndex) {
+    // Store the answer
+    studentAnswers[questionIndex] = answerIndex;
     
-    // Show next question or finish
-    if (currentQuestionIndex < currentCalibrationQuestions.length) {
-        showCalibrationQuestion();
-    } else {
-        calculateStudentMode();
+    // Disable all options to prevent changing answers
+    const questionMessage = document.getElementById(`calibration-question-${questionIndex}`);
+    if (questionMessage) {
+        const options = questionMessage.querySelectorAll('.calibration-option');
+        options.forEach((option, index) => {
+            // Disable all options
+            option.disabled = true;
+            option.style.cursor = 'not-allowed';
+            
+            // Highlight the selected answer
+            if (index === answerIndex) {
+                option.classList.add('selected');
+                option.style.backgroundColor = 'var(--primary-color)';
+                option.style.color = 'white';
+                option.style.borderColor = 'var(--primary-color)';
+            } else {
+                option.classList.remove('selected');
+                option.style.backgroundColor = '#f8f9fa';
+                option.style.color = '#999';
+                option.style.borderColor = '#ddd';
+            }
+        });
     }
+    
+    // Automatically proceed to next question after a short delay
+    setTimeout(() => {
+        currentQuestionIndex++;
+        
+        // Show next question or finish
+        if (currentQuestionIndex < currentCalibrationQuestions.length) {
+            showCalibrationQuestion();
+        } else {
+            calculateStudentMode();
+        }
+    }, 1000); // 1 second delay to show the selected answer
+}
+
+/**
+ * Handle short answer submission
+ * @param {string} answer - Student's short answer
+ * @param {number} questionIndex - The question index this answer belongs to
+ */
+function submitShortAnswer(answer, questionIndex) {
+    if (!answer.trim()) {
+        alert('Please enter an answer before submitting.');
+        return;
+    }
+    
+    // Store the answer
+    studentAnswers[questionIndex] = answer;
+    
+    // Disable the input and submit button to show it's been answered
+    const questionMessage = document.getElementById(`calibration-question-${questionIndex}`);
+    if (questionMessage) {
+        const answerInput = questionMessage.querySelector('.calibration-answer-input');
+        const submitButton = questionMessage.querySelector('.calibration-submit-btn');
+        
+        if (answerInput) {
+            answerInput.disabled = true;
+            answerInput.style.backgroundColor = '#f8f9fa';
+            answerInput.style.borderColor = 'var(--primary-color)';
+        }
+        
+        if (submitButton) {
+            submitButton.disabled = true;
+            submitButton.textContent = 'Answer Submitted';
+            submitButton.style.backgroundColor = 'var(--primary-color)';
+            submitButton.style.opacity = '0.7';
+        }
+    }
+    
+    // Automatically proceed to next question after a short delay
+    setTimeout(() => {
+        currentQuestionIndex++;
+        
+        // Show next question or finish
+        if (currentQuestionIndex < currentCalibrationQuestions.length) {
+            showCalibrationQuestion();
+        } else {
+            calculateStudentMode();
+        }
+    }, 1000); // 1 second delay to show the submitted answer
 }
 
 /**
@@ -467,71 +631,63 @@ function selectCalibrationAnswer(answerIndex) {
  */
 async function calculateStudentMode() {
     try {
-        const response = await fetch('/api/mode-questions/calibrate', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                studentId: getCurrentStudentId(),
-                answers: studentAnswers,
-                instructorId: 'instructor-123'
-            })
-        });
+        // Calculate scores for each question type
+        let tfCorrect = false;
+        let mcqCorrect = false;
+        let shortAnswerProvided = false;
         
-        const data = await response.json();
+        // Check T/F question (first question)
+        if (studentAnswers.length > 0) {
+            tfCorrect = (studentAnswers[0] === currentCalibrationQuestions[0].correctAnswer);
+        }
         
-        if (data.success) {
-            const mode = data.data.mode;
-            const score = data.data.score;
-            
-            // Store mode in localStorage
-            localStorage.setItem('studentMode', mode);
-            
-            // Update mode toggle UI to reflect the determined mode
-            updateModeToggleUI(mode);
-            
-            // Show mode result message
-            showModeResult(mode, score);
-            
-            // Re-enable chat input
-            const chatInputContainer = document.querySelector('.chat-input-container');
-            if (chatInputContainer) {
-                chatInputContainer.style.display = 'block';
-            }
-            
-            // Show mode toggle when chat is available
-            const modeToggleContainer = document.querySelector('.mode-toggle-container');
-            if (modeToggleContainer) {
-                modeToggleContainer.style.display = 'block';
-            }
-            
-        } else {
-            console.error('Failed to calibrate mode');
-            // Default to tutor mode
-            localStorage.setItem('studentMode', 'tutor');
-            updateModeToggleUI('tutor');
-            showModeResult('tutor', 0);
-            
-            // Show mode toggle and chat input on error
-            const chatInputContainer = document.querySelector('.chat-input-container');
-            if (chatInputContainer) {
-                chatInputContainer.style.display = 'block';
-            }
-            const modeToggleContainer = document.querySelector('.mode-toggle-container');
-            if (modeToggleContainer) {
-                modeToggleContainer.style.display = 'block';
-            }
+        // Check MCQ question (second question)
+        if (studentAnswers.length > 1) {
+            mcqCorrect = (studentAnswers[1] === currentCalibrationQuestions[1].correctAnswer);
+        }
+        
+        // Check Short Answer question (third question)
+        if (studentAnswers.length > 2) {
+            shortAnswerProvided = (studentAnswers[2] && studentAnswers[2].trim().length > 0);
+        }
+        
+        // Determine mode: Protégé if both T/F and MCQ are correct, otherwise Tutor
+        const mode = (tfCorrect && mcqCorrect) ? 'protege' : 'tutor';
+        const score = {
+            tfCorrect: tfCorrect,
+            mcqCorrect: mcqCorrect,
+            shortAnswerProvided: shortAnswerProvided,
+            totalCorrect: (tfCorrect ? 1 : 0) + (mcqCorrect ? 1 : 0) + (shortAnswerProvided ? 1 : 0)
+        };
+        
+        // Store mode in localStorage
+        localStorage.setItem('studentMode', mode);
+        
+        // Update mode toggle UI to reflect the determined mode
+        updateModeToggleUI(mode);
+        
+        // Show mode result message
+        showModeResult(mode, score);
+        
+        // Re-enable chat input
+        const chatInputContainer = document.querySelector('.chat-input-container');
+        if (chatInputContainer) {
+            chatInputContainer.style.display = 'block';
+        }
+        
+        // Re-enable mode toggle
+        const modeToggleContainer = document.querySelector('.mode-toggle-container');
+        if (modeToggleContainer) {
+            modeToggleContainer.style.display = 'block';
         }
         
     } catch (error) {
         console.error('Error calculating mode:', error);
-        // Default to tutor mode
+        // Default to tutor mode on error
         localStorage.setItem('studentMode', 'tutor');
         updateModeToggleUI('tutor');
-        showModeResult('tutor', 0);
         
-        // Show mode toggle and chat input on error
+        // Re-enable chat input and mode toggle
         const chatInputContainer = document.querySelector('.chat-input-container');
         if (chatInputContainer) {
             chatInputContainer.style.display = 'block';
@@ -546,7 +702,7 @@ async function calculateStudentMode() {
 /**
  * Show mode result to student
  * @param {string} mode - Determined mode (tutor or protege)
- * @param {number} score - Calibration score
+ * @param {object} score - Calibration score object
  */
 function showModeResult(mode, score) {
     const modeMessage = document.createElement('div');
@@ -562,10 +718,10 @@ function showModeResult(mode, score) {
     const resultText = document.createElement('p');
     if (mode === 'protege') {
         resultText.innerHTML = `<strong>BiocBot is in protégé mode</strong><br>
-        Thanks for your responses to these initial questions. This lecture we learned about cellular processes and reactions. What questions do you have about these topics?`;
+        Great job! You answered both the True/False and Multiple Choice questions correctly. I'm ready to be your study partner and help you explore topics together. What questions do you have about cellular processes and reactions?`;
     } else {
         resultText.innerHTML = `<strong>BiocBot is in tutor mode</strong><br>
-        Thanks for your responses to these initial questions. This lecture we learned about cellular processes and reactions. What questions do you have about these topics?`;
+        Thanks for your responses! I'm here to guide your learning and help explain concepts clearly. What questions do you have about cellular processes and reactions?`;
     }
     
     contentDiv.appendChild(resultText);

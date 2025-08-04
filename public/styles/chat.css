@@ -608,6 +608,64 @@ input:checked + .toggle-slider:before {
     box-shadow: 0 0 0 8px rgba(var(--primary-color-rgb, 74, 144, 226), 0.1);
 }
 
+/* Short Answer Input Styles */
+.calibration-short-answer {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 12px;
+}
+
+.calibration-answer-input {
+    width: 100%;
+    min-height: 80px;
+    padding: 12px;
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    font-size: 14px;
+    font-family: inherit;
+    resize: vertical;
+    outline: none;
+    transition: border-color 0.3s ease;
+}
+
+.calibration-answer-input:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(var(--primary-color-rgb, 74, 144, 226), 0.1);
+}
+
+.calibration-submit-btn {
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 12px 20px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    align-self: flex-start;
+}
+
+.calibration-submit-btn:hover {
+    background-color: var(--accent-color);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.calibration-submit-btn:active {
+    transform: translateY(0);
+}
+
+
+
+/* Selected option styles */
+.calibration-option.selected {
+    background-color: var(--primary-color) !important;
+    color: white !important;
+    border-color: var(--primary-color) !important;
+}
+
 /* Responsive design for calibration questions */
 @media (max-width: 768px) {
     .calibration-options {
@@ -618,6 +676,23 @@ input:checked + .toggle-slider:before {
         padding: 10px 12px;
         font-size: 13px;
     }
+    
+    .calibration-short-answer {
+        gap: 10px;
+    }
+    
+    .calibration-answer-input {
+        min-height: 60px;
+        padding: 10px;
+        font-size: 13px;
+    }
+    
+    .calibration-submit-btn {
+        padding: 10px 16px;
+        font-size: 13px;
+    }
+    
+
     
     .chat-footer {
         flex-direction: column;

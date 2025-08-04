@@ -41,12 +41,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (questionModal && questionModal.classList.contains('show') && e.target === questionModal) {
             closeQuestionModal();
         }
-        
-        // Close AI generation modal if clicking outside
-        const aiGenerationModal = document.getElementById('ai-generation-modal');
-        if (aiGenerationModal && aiGenerationModal.classList.contains('show') && e.target === aiGenerationModal) {
-            closeAIGenerationModal();
-        }
     });
     
     // Initialize section headers to be clickable
@@ -2100,6 +2094,13 @@ function resetQuestionForm() {
     
     // Clear short answer
     document.getElementById('sa-answer').value = '';
+    
+    // Hide AI generation button
+    const aiButton = document.getElementById('ai-generate-btn');
+    if (aiButton) {
+        aiButton.style.display = 'none';
+        aiButton.disabled = false;
+    }
 }
 
 /**
@@ -2123,6 +2124,9 @@ function updateQuestionForm() {
     } else if (questionType === 'short-answer') {
         document.getElementById('sa-answer-section').style.display = 'block';
     }
+    
+    // Check if AI generation should be available
+    checkAIGenerationInModal();
 }
 
 /**
@@ -2344,167 +2348,9 @@ function deleteQuestion(week, questionId) {
  * Generate AI questions for a week
  * @param {string} week - Week identifier
  */
-function generateAIQuestions(week) {
-    // Check if lecture notes are uploaded
-    if (!checkLectureNotesUploaded(week)) {
-        alert('Please upload lecture notes before generating AI questions.');
-        return;
-    }
-    
-    // Show AI generation type selection modal
-    showAIGenerationModal(week);
-}
+// AI generation is now handled within the question modal via generateAIQuestionContent()
 
-/**
- * Show AI generation type selection modal
- * @param {string} week - Week identifier
- */
-function showAIGenerationModal(week) {
-    // Create modal HTML
-    const modalHTML = `
-        <div id="ai-generation-modal" class="modal show">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h2>Generate AI Questions</h2>
-                    <button class="modal-close" onclick="closeAIGenerationModal()">×</button>
-                </div>
-                <div class="modal-body">
-                    <p style="margin-bottom: 0.5rem; color: #666; font-size: 14px;">Select the type of questions you want AI to generate:</p>
-                    <div class="ai-question-types">
-                        <label class="ai-type-option">
-                            <input type="radio" name="ai-question-type" value="true-false" checked>
-                            <span>True/False Questions</span>
-                        </label>
-                        <label class="ai-type-option">
-                            <input type="radio" name="ai-question-type" value="multiple-choice">
-                            <span>Multiple Choice Questions</span>
-                        </label>
-                        <label class="ai-type-option">
-                            <input type="radio" name="ai-question-type" value="short-answer">
-                            <span>Short Answer Questions</span>
-                        </label>
-                    </div>
-                    <div class="ai-question-count">
-                        <label for="ai-question-count">Number of questions to generate:</label>
-                        <input type="number" id="ai-question-count" min="1" max="10" value="3">
-                    </div>
-                </div>
-                <div class="modal-footer">
-                    <div class="modal-actions">
-                        <button class="btn-secondary" onclick="closeAIGenerationModal()">Cancel</button>
-                        <button class="btn-primary" onclick="confirmAIGeneration('${week}')">Generate</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    // Add modal to page
-    document.body.insertAdjacentHTML('beforeend', modalHTML);
-}
-
-/**
- * Close AI generation modal
- */
-function closeAIGenerationModal() {
-    const modal = document.getElementById('ai-generation-modal');
-    if (modal) {
-        modal.remove();
-    }
-}
-
-/**
- * Confirm AI generation and create questions
- * @param {string} week - Week identifier
- */
-function confirmAIGeneration(week) {
-    const selectedType = document.querySelector('input[name="ai-question-type"]:checked');
-    const questionCount = parseInt(document.getElementById('ai-question-count').value);
-    
-    if (!selectedType) {
-        alert('Please select a question type.');
-        return;
-    }
-    
-    if (!questionCount || questionCount < 1 || questionCount > 10) {
-        alert('Please enter a valid number of questions (1-10).');
-        return;
-    }
-    
-    // Generate AI questions based on type
-    const aiQuestions = generateAIQuestionsByType(selectedType.value, questionCount, week);
-    
-    // Add AI questions to the week
-    if (!assessmentQuestions[week]) {
-        assessmentQuestions[week] = [];
-    }
-    assessmentQuestions[week].push(...aiQuestions);
-    
-    // Update display
-    updateQuestionsDisplay(week);
-    
-    // Close modal
-    closeAIGenerationModal();
-    
-    alert(`Generated ${aiQuestions.length} AI questions for ${week}.`);
-}
-
-/**
- * Generate AI questions based on selected type
- * @param {string} type - Question type
- * @param {number} count - Number of questions
- * @param {string} week - Week identifier
- * @returns {Array} Array of generated questions
- */
-function generateAIQuestionsByType(type, count, week) {
-    const questions = [];
-    
-    // Generate specific type
-    for (let i = 0; i < count; i++) {
-        questions.push(createAIQuestion(type, week));
-    }
-    
-    return questions;
-}
-
-/**
- * Create a single AI question
- * @param {string} type - Question type
- * @param {string} week - Week identifier
- * @returns {Object} Question object
- */
-function createAIQuestion(type, week) {
-    const baseId = Date.now() + Math.random();
-    
-    if (type === 'true-false') {
-        return {
-            id: baseId,
-            type: 'true-false',
-            question: `Based on the lecture notes for ${week}, this concept is essential for understanding the course material.`,
-            answer: Math.random() > 0.5 ? 'true' : 'false'
-        };
-    } else if (type === 'multiple-choice') {
-        return {
-            id: baseId,
-            type: 'multiple-choice',
-            question: `According to the ${week} lecture notes, which of the following is most accurate?`,
-            options: {
-                'A': 'Option A based on lecture content',
-                'B': 'Option B based on lecture content',
-                'C': 'Option C based on lecture content',
-                'D': 'Option D based on lecture content'
-            },
-            answer: ['A', 'B', 'C', 'D'][Math.floor(Math.random() * 4)]
-        };
-    } else if (type === 'short-answer') {
-        return {
-            id: baseId,
-            type: 'short-answer',
-            question: `Explain a key concept from the ${week} lecture notes and its significance.`,
-            answer: 'Students should demonstrate understanding by explaining the concept clearly and showing its relevance to the course material.'
-        };
-    }
-}
+// createAIQuestion function removed - replaced by createAIQuestionContent for modal use
 
 /**
  * Check if lecture notes are uploaded for a week
@@ -2554,10 +2400,161 @@ function monitorLectureNotesStatus() {
 }
 
 /**
+ * Check AI generation availability in the question modal
+ */
+function checkAIGenerationInModal() {
+    const questionType = document.getElementById('question-type').value;
+    const aiButton = document.getElementById('ai-generate-btn');
+    
+    if (!questionType) {
+        // No question type selected, hide AI button
+        aiButton.style.display = 'none';
+        return;
+    }
+    
+    // Check if lecture notes are uploaded for the current week
+    if (!checkLectureNotesUploaded(currentWeek)) {
+        // Lecture notes not uploaded, disable AI button
+        aiButton.style.display = 'flex';
+        aiButton.disabled = true;
+        aiButton.title = 'Please upload lecture notes before generating AI questions.';
+        return;
+    }
+    
+    // Lecture notes uploaded and question type selected, enable AI button
+    aiButton.style.display = 'flex';
+    aiButton.disabled = false;
+    aiButton.title = 'Generate AI question based on uploaded lecture notes.';
+}
+
+/**
+ * Generate AI content for the current question in the modal
+ */
+function generateAIQuestionContent() {
+    const questionType = document.getElementById('question-type').value;
+    
+    if (!questionType) {
+        alert('Please select a question type first.');
+        return;
+    }
+    
+    if (!checkLectureNotesUploaded(currentWeek)) {
+        alert('Please upload lecture notes before generating AI questions.');
+        return;
+    }
+    
+    // Show loading state
+    const aiButton = document.getElementById('ai-generate-btn');
+    const originalText = aiButton.innerHTML;
+    aiButton.innerHTML = '<span class="ai-icon">⏳</span> Generating...';
+    aiButton.disabled = true;
+    
+    // Generate AI content based on type
+    const aiContent = createAIQuestionContent(questionType, currentWeek);
+    
+    // Populate form fields with AI content
+    populateFormWithAIContent(aiContent);
+    
+    // Restore button state
+    aiButton.innerHTML = originalText;
+    aiButton.disabled = false;
+}
+
+/**
+ * Create AI question content for the modal
+ * @param {string} type - Question type
+ * @param {string} week - Week identifier
+ * @returns {Object} AI content object
+ */
+function createAIQuestionContent(type, week) {
+    if (type === 'true-false') {
+        return {
+            question: `Based on the ${week} lecture notes, this concept is essential for understanding the course material.`,
+            answer: Math.random() > 0.5 ? 'true' : 'false'
+        };
+    } else if (type === 'multiple-choice') {
+        return {
+            question: `According to the ${week} lecture notes, which of the following is most accurate?`,
+            options: {
+                'A': 'Option A based on lecture content',
+                'B': 'Option B based on lecture content', 
+                'C': 'Option C based on lecture content',
+                'D': 'Option D based on lecture content'
+            },
+            answer: ['A', 'B', 'C', 'D'][Math.floor(Math.random() * 4)]
+        };
+    } else if (type === 'short-answer') {
+        return {
+            question: `Explain a key concept from the ${week} lecture notes and its significance.`,
+            answer: 'Students should demonstrate understanding by explaining the concept clearly and showing its relevance to the course material.'
+        };
+    }
+}
+
+/**
+ * Populate form fields with AI-generated content
+ * @param {Object} aiContent - AI-generated content
+ */
+function populateFormWithAIContent(aiContent) {
+    // Set question text
+    document.getElementById('question-text').value = aiContent.question;
+    
+    // Set answer based on type
+    const questionType = document.getElementById('question-type').value;
+    
+    if (questionType === 'true-false') {
+        // Set radio button
+        const radioButton = document.querySelector(`input[name="tf-answer"][value="${aiContent.answer}"]`);
+        if (radioButton) {
+            radioButton.checked = true;
+        }
+    } else if (questionType === 'multiple-choice') {
+        // Set MCQ options
+        Object.keys(aiContent.options).forEach(option => {
+            const input = document.querySelector(`.mcq-input[data-option="${option}"]`);
+            if (input) {
+                input.value = aiContent.options[option];
+            }
+        });
+        
+        // Enable all radio buttons since we have content
+        const radioButtons = document.querySelectorAll('input[name="mcq-correct"]');
+        radioButtons.forEach(radio => {
+            radio.disabled = false;
+        });
+        
+        // Set correct answer
+        const correctRadio = document.querySelector(`input[name="mcq-correct"][value="${aiContent.answer}"]`);
+        if (correctRadio) {
+            correctRadio.checked = true;
+        }
+        
+        // Force enable all radio buttons again after a short delay
+        setTimeout(() => {
+            const radioButtons = document.querySelectorAll('input[name="mcq-correct"]');
+            radioButtons.forEach(radio => {
+                radio.disabled = false;
+            });
+            
+            // Re-set the correct answer
+            const correctRadio = document.querySelector(`input[name="mcq-correct"][value="${aiContent.answer}"]`);
+            if (correctRadio) {
+                correctRadio.checked = true;
+            }
+        }, 50);
+    } else if (questionType === 'short-answer') {
+        // Set short answer
+        document.getElementById('sa-answer').value = aiContent.answer;
+    }
+}
+
+/**
  * Check AI generation availability and update button state
  * @param {string} week - Week identifier
  */
 function checkAIGenerationAvailability(week) {
+    // This function is now primarily used for external AI generation buttons
+    // The modal AI generation is handled by checkAIGenerationInModal()
     const weekLower = week.toLowerCase().replace(' ', '');
     const aiButton = document.getElementById(`generate-ai-${weekLower}`);
     
