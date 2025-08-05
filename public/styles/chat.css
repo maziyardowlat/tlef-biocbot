@@ -666,6 +666,8 @@ input:checked + .toggle-slider:before {
     border-color: var(--primary-color) !important;
 }
 
+
+
 /* Responsive design for calibration questions */
 @media (max-width: 768px) {
     .calibration-options {

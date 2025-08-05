@@ -260,18 +260,6 @@ function replaceMessageWithThankYou(messageContent, flagType) {
         flagContainer.remove();
     }
     
-    // Remove calibration question options (if this is a calibration question)
-    const calibrationOptions = messageContent.querySelector('.calibration-options');
-    if (calibrationOptions) {
-        calibrationOptions.remove();
-    }
-    
-    // Remove short answer input (if this is a short answer question)
-    const shortAnswerContainer = messageContent.querySelector('.calibration-short-answer');
-    if (shortAnswerContainer) {
-        shortAnswerContainer.remove();
-    }
-    
     // Update the timestamp to show when it was flagged
     const timestamp = messageContent.querySelector('.timestamp');
     if (timestamp) {
@@ -283,6 +271,8 @@ function replaceMessageWithThankYou(messageContent, flagType) {
     messageContent.style.backgroundColor = '#f8f9fa';
     messageContent.style.border = '1px solid #e9ecef';
 }
+
+
 
 /**
  * Get current student ID (placeholder)
@@ -486,11 +476,11 @@ function showCalibrationQuestion() {
         contentDiv.appendChild(answerContainer);
     }
     
-    // Create message footer for timestamp and flag button
+    // Create message footer for timestamp only (no flag button for calibration questions)
     const footerDiv = document.createElement('div');
     footerDiv.classList.add('message-footer');
     
-    // Create right side container for timestamp and flag button
+    // Create right side container for timestamp only
     const rightContainer = document.createElement('div');
     rightContainer.classList.add('message-footer-right');
     
@@ -498,26 +488,6 @@ function showCalibrationQuestion() {
     timestamp.classList.add('timestamp');
     timestamp.textContent = 'Just now';
     rightContainer.appendChild(timestamp);
-    
-    // Add flag button for calibration questions
-    const flagButton = document.createElement('button');
-    flagButton.classList.add('flag-button');
-    flagButton.onclick = function() { toggleFlagMenu(this); };
-    flagButton.innerHTML = '<span class="three-dots">⋯</span>';
-    
-    const flagMenu = document.createElement('div');
-    flagMenu.classList.add('flag-menu');
-    flagMenu.innerHTML = `
-        <button class="flag-option" onclick="flagMessage(this, 'incorrectness')">Incorrectness</button>
-        <button class="flag-option" onclick="flagMessage(this, 'inappropriate')">Inappropriate</button>
-        <button class="flag-option" onclick="flagMessage(this, 'irrelevant')">Irrelevant</button>
-    `;
-    
-    const flagContainer = document.createElement('div');
-    flagContainer.classList.add('message-flag-container');
-    flagContainer.appendChild(flagButton);
-    flagContainer.appendChild(flagMenu);
-    rightContainer.appendChild(flagContainer);
     
     footerDiv.appendChild(rightContainer);
     contentDiv.appendChild(footerDiv);
