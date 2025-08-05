@@ -239,7 +239,7 @@ async function submitFlag(messageText, flagType) {
 }
 
 /**
- * Replace the bot message with a thank you message and session options
+ * Replace the bot message with a thank you message
  * @param {HTMLElement} messageContent - The message content element
  * @param {string} flagType - The type of flag that was submitted
  */
@@ -260,21 +260,6 @@ function replaceMessageWithThankYou(messageContent, flagType) {
         flagContainer.remove();
     }
     
-    // Check if this is a calibration question
-    const isCalibrationQuestion = messageContent.closest('.calibration-question') !== null;
-    
-    // Remove calibration question options (if this is a calibration question)
-    const calibrationOptions = messageContent.querySelector('.calibration-options');
-    if (calibrationOptions) {
-        calibrationOptions.remove();
-    }
-    
-    // Remove short answer input (if this is a short answer question)
-    const shortAnswerContainer = messageContent.querySelector('.calibration-short-answer');
-    if (shortAnswerContainer) {
-        shortAnswerContainer.remove();
-    }
-    
     // Update the timestamp to show when it was flagged
     const timestamp = messageContent.querySelector('.timestamp');
     if (timestamp) {
@@ -285,89 +270,9 @@ function replaceMessageWithThankYou(messageContent, flagType) {
     // Add a subtle background color to indicate the message was flagged
     messageContent.style.backgroundColor = '#f8f9fa';
     messageContent.style.border = '1px solid #e9ecef';
-    
-    // Only add session options for calibration questions to prevent soft locking
-    if (isCalibrationQuestion) {
-        addSessionOptions(messageContent);
-    }
 }
 
-/**
- * Add session options to the flagged message to prevent soft locking
- * @param {HTMLElement} messageContent - The message content element
- */
-function addSessionOptions(messageContent) {
-    // Create session options container
-    const sessionOptionsContainer = document.createElement('div');
-    sessionOptionsContainer.classList.add('session-options-container');
-    
-    // Create the options text
-    const optionsText = document.createElement('p');
-    optionsText.classList.add('session-options-text');
-    optionsText.textContent = 'To continue your session, choose a mode:';
-    
-    // Create the buttons container
-    const buttonsContainer = document.createElement('div');
-    buttonsContainer.classList.add('session-options-buttons');
-    
-    // Create protégé button
-    const protegeButton = document.createElement('button');
-    protegeButton.classList.add('session-option-btn', 'protege-btn');
-    protegeButton.textContent = 'Start as Protégé';
-    protegeButton.onclick = () => startSessionAsMode('protege');
-    
-    // Create tutor button
-    const tutorButton = document.createElement('button');
-    tutorButton.classList.add('session-option-btn', 'tutor-btn');
-    tutorButton.textContent = 'Start as Tutor';
-    tutorButton.onclick = () => startSessionAsMode('tutor');
-    
-    // Add buttons to container
-    buttonsContainer.appendChild(protegeButton);
-    buttonsContainer.appendChild(tutorButton);
-    
-    // Add text and buttons to main container
-    sessionOptionsContainer.appendChild(optionsText);
-    sessionOptionsContainer.appendChild(buttonsContainer);
-    
-    // Add to message content
-    messageContent.appendChild(sessionOptionsContainer);
-}
 
-/**
- * Start session with the selected mode
- * @param {string} mode - The mode to start with (protege or tutor)
- */
-function startSessionAsMode(mode) {
-    // Store the selected mode
-    localStorage.setItem('studentMode', mode);
-    
-    // Update mode toggle UI
-    updateModeToggleUI(mode);
-    
-    // Show chat input if it's hidden
-    const chatInputContainer = document.querySelector('.chat-input-container');
-    if (chatInputContainer) {
-        chatInputContainer.style.display = 'block';
-    }
-    
-    // Show mode toggle if it's hidden
-    const modeToggleContainer = document.querySelector('.mode-toggle-container');
-    if (modeToggleContainer) {
-        modeToggleContainer.style.display = 'block';
-    }
-    
-    // Show mode confirmation message
-    showModeToggleResult(mode);
-    
-    // Remove session options from all flagged messages
-    const sessionOptionsContainers = document.querySelectorAll('.session-options-container');
-    sessionOptionsContainers.forEach(container => {
-        container.remove();
-    });
-    
-    console.log(`Session started as: ${mode}`);
-}
 
 /**
  * Get current student ID (placeholder)
@@ -571,11 +476,11 @@ function showCalibrationQuestion() {
         contentDiv.appendChild(answerContainer);
     }
     
-    // Create message footer for timestamp and flag button
+    // Create message footer for timestamp only (no flag button for calibration questions)
     const footerDiv = document.createElement('div');
     footerDiv.classList.add('message-footer');
     
-    // Create right side container for timestamp and flag button
+    // Create right side container for timestamp only
     const rightContainer = document.createElement('div');
     rightContainer.classList.add('message-footer-right');
     
@@ -583,26 +488,6 @@ function showCalibrationQuestion() {
     timestamp.classList.add('timestamp');
     timestamp.textContent = 'Just now';
     rightContainer.appendChild(timestamp);
-    
-    // Add flag button for calibration questions
-    const flagButton = document.createElement('button');
-    flagButton.classList.add('flag-button');
-    flagButton.onclick = function() { toggleFlagMenu(this); };
-    flagButton.innerHTML = '<span class="three-dots">⋯</span>';
-    
-    const flagMenu = document.createElement('div');
-    flagMenu.classList.add('flag-menu');
-    flagMenu.innerHTML = `
-        <button class="flag-option" onclick="flagMessage(this, 'incorrectness')">Incorrectness</button>
-        <button class="flag-option" onclick="flagMessage(this, 'inappropriate')">Inappropriate</button>
-        <button class="flag-option" onclick="flagMessage(this, 'irrelevant')">Irrelevant</button>
-    `;
-    
-    const flagContainer = document.createElement('div');
-    flagContainer.classList.add('message-flag-container');
-    flagContainer.appendChild(flagButton);
-    flagContainer.appendChild(flagMenu);
-    rightContainer.appendChild(flagContainer);
     
     footerDiv.appendChild(rightContainer);
     contentDiv.appendChild(footerDiv);
