@@ -60,14 +60,14 @@
                 <div class="tab-content">
                     <!-- Accordion Document List -->
                     <div class="accordion-container">
-                        <!-- Week 1 Accordion -->
+                        <!-- Unit 1 Accordion -->
                         <div class="accordion-item published">
                             <div class="accordion-header">  
-                                <span class="folder-name">Week 1</span>
+                                <span class="folder-name">Unit 1</span>
                                 <div class="header-actions">
                                     <div class="publish-toggle">
                                         <label class="toggle-switch">
-                                            <input type="checkbox" id="publish-week1"  onchange="togglePublish('Week 1', this.checked)">
+                                            <input type="checkbox" id="publish-unit1"  onchange="togglePublish('Unit 1', this.checked)">
                                             <span class="toggle-slider"></span>
                                         </label>
                                         <span class="toggle-label">Published</span>
@@ -83,15 +83,15 @@
                                         <button class="toggle-section">▼</button>
                                     </div>
                                     <div class="section-content">
-                                        <div class="objectives-list" id="objectives-list-week1">
+                                        <div class="objectives-list" id="objectives-list-unit1">
                                             <!-- Objectives will be added here -->
                                         </div>
                                         <div class="objective-input-container">
-                                            <input type="text" id="objective-input-week1" class="objective-input" placeholder="Enter learning objective...">
-                                            <button class="add-objective-btn-inline" onclick="addObjectiveFromInput('Week 1')">+</button>
+                                            <input type="text" id="objective-input-unit1" class="objective-input" placeholder="Enter learning objective...">
+                                            <button class="add-objective-btn-inline" onclick="addObjectiveFromInput('Unit 1')">+</button>
                                         </div>
                                         <div class="save-objectives">
-                                            <button class="save-btn" onclick="saveObjectives('Week 1')">Save Learning Objectives</button>
+                                            <button class="save-btn" onclick="saveObjectives('Unit 1')">Save Learning Objectives</button>
                                         </div>
                                     </div>
                                 </div>
@@ -108,12 +108,12 @@
                                         </div>
                                         <div class="file-item">
                                             <div class="file-info">
-                                                <h3>*Lecture Notes - Week 1</h3>
+                                                <h3>*Lecture Notes - Unit 1</h3>
                                                 <p>Placeholder for required lecture notes. Please upload content.</p>
                                                 <span class="status-text">Not Uploaded</span>
                                             </div>
                                             <div class="file-actions">
-                                                <button class="action-button upload" onclick="openUploadModal('Week 1', 'lecture-notes')">Upload</button>
+                                                <button class="action-button upload" onclick="openUploadModal('Unit 1', 'lecture-notes')">Upload</button>
                                                 <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
                                             </div>
                                         </div>
@@ -124,19 +124,19 @@
                                                 <span class="status-text">Not Uploaded</span>
                                             </div>
                                             <div class="file-actions">
-                                                <button class="action-button upload" onclick="openUploadModal('Week 1', 'practice-quiz')">Upload</button>
+                                                <button class="action-button upload" onclick="openUploadModal('Unit 1', 'practice-quiz')">Upload</button>
                                                 <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
                                             </div>
                                         </div>
                                         <!-- Add Content Button -->
                                         <div class="add-content-section">
-                                            <button class="add-content-btn additional-material" onclick="openUploadModal('Week 1', 'additional')">
+                                            <button class="add-content-btn additional-material" onclick="openUploadModal('Unit 1', 'additional')">
                                                 <span class="btn-icon">➕</span>
                                                 Add Additional Material
                                             </button>
                                         </div>
                                         <div class="save-objectives">
-                                            <button class="save-btn" onclick="confirmCourseMaterials('Week 1')">Confirm Course Materials</button>
+                                            <button class="save-btn" onclick="confirmCourseMaterials('Unit 1')">Confirm Course Materials</button>
                                         </div>
                                     </div>
                                 </div>
@@ -154,13 +154,13 @@
                                         
                                         <!-- Pass Threshold Setting -->
                                         <div class="threshold-setting">
-                                            <label for="pass-threshold-week1">Questions required to pass:</label>
-                                            <input type="number" id="pass-threshold-week1" min="1" max="10" value="2" class="threshold-input">
+                                            <label for="pass-threshold-unit1">Questions required to pass:</label>
+                                            <input type="number" id="pass-threshold-unit1" min="1" max="10" value="2" class="threshold-input">
                                             <span class="threshold-help">out of total questions</span>
                                         </div>
                                         
                                         <!-- Questions List -->
-                                        <div class="questions-list" id="assessment-questions-week1">
+                                        <div class="questions-list" id="assessment-questions-unit1">
                                             <!-- Assessment questions will be displayed here -->
                                             <div class="no-questions-message">
                                                 <p>No assessment questions created yet. Click "Add Question" to get started.</p>
@@ -169,28 +169,28 @@
                                         
                                         <!-- Action Buttons -->
                                         <div class="assessment-actions">
-                                            <button class="add-question-btn" onclick="openQuestionModal('Week 1')">
+                                            <button class="add-question-btn" onclick="openQuestionModal('Unit 1')">
                                                 <span class="btn-icon">➕</span>
                                                 Add Question
                                             </button>
                                         </div>
                                         
                                         <div class="save-assessment">
-                                            <button class="save-btn" onclick="saveAssessment('Week 1')">Save Assessment</button>
+                                            <button class="save-btn" onclick="saveAssessment('Unit 1')">Save Assessment</button>
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Week 2 Accordion -->
+                        <!-- Unit 2 Accordion -->
                         <div class="accordion-item">
                             <div class="accordion-header">
-                                <span class="folder-name">Week 2</span>
+                                <span class="folder-name">Unit 2</span>
                                 <div class="header-actions">
                                     <div class="publish-toggle">
                                         <label class="toggle-switch">
-                                            <input type="checkbox" id="publish-week2" onchange="togglePublish('Week 2', this.checked)">
+                                            <input type="checkbox" id="publish-unit2" onchange="togglePublish('Unit 2', this.checked)">
                                             <span class="toggle-slider"></span>
                                         </label>
                                         <span class="toggle-label">Published</span>
@@ -206,15 +206,15 @@
                                         <button class="toggle-section">▼</button>
                                     </div>
                                     <div class="section-content">
-                                        <div class="objectives-list" id="objectives-list-week2">
+                                        <div class="objectives-list" id="objectives-list-unit2">
                                             <!-- Objectives will be added here -->
                                         </div>
                                         <div class="objective-input-container">
-                                            <input type="text" id="objective-input-week2" class="objective-input" placeholder="Enter learning objective...">
-                                            <button class="add-objective-btn-inline" onclick="addObjectiveFromInput('Week 2')">+</button>
+                                            <input type="text" id="objective-input-unit2" class="objective-input" placeholder="Enter learning objective...">
+                                            <button class="add-objective-btn-inline" onclick="addObjectiveFromInput('Unit 2')">+</button>
                                         </div>
                                         <div class="save-objectives">
-                                            <button class="save-btn" onclick="saveObjectives('Week 2')">Save Learning Objectives</button>
+                                            <button class="save-btn" onclick="saveObjectives('Unit 2')">Save Learning Objectives</button>
                                         </div>
                                     </div>
                                 </div>
@@ -231,12 +231,12 @@
                                         </div>
                                         <div class="file-item">
                                             <div class="file-info">
-                                                <h3>*Lecture Notes - Week 2</h3>
+                                                <h3>*Lecture Notes - Unit 2</h3>
                                                 <p>Placeholder for required lecture notes. Please upload content.</p>
                                                 <span class="status-text">Not Uploaded</span>
                                             </div>
                                             <div class="file-actions">
-                                                <button class="action-button upload" onclick="openUploadModal('Week 2', 'lecture-notes')">Upload</button>
+                                                <button class="action-button upload" onclick="openUploadModal('Unit 2', 'lecture-notes')">Upload</button>
                                                 <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
                                             </div>
                                         </div>
@@ -247,19 +247,19 @@
                                                 <span class="status-text">Not Uploaded</span>
                                             </div>
                                             <div class="file-actions">
-                                                <button class="action-button upload" onclick="openUploadModal('Week 2', 'practice-quiz')">Upload</button>
+                                                <button class="action-button upload" onclick="openUploadModal('Unit 2', 'practice-quiz')">Upload</button>
                                                 <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
                                             </div>
                                         </div>
                                         <!-- Add Content Button -->
                                         <div class="add-content-section">
-                                            <button class="add-content-btn additional-material" onclick="openUploadModal('Week 2', 'additional')">
+                                            <button class="add-content-btn additional-material" onclick="openUploadModal('Unit 2', 'additional')">
                                                 <span class="btn-icon">➕</span>
                                                 Add Additional Material
                                             </button>
                                         </div>
                                         <div class="save-objectives">
-                                            <button class="save-btn" onclick="confirmCourseMaterials('Week 2')">Confirm Course Materials</button>
+                                            <button class="save-btn" onclick="confirmCourseMaterials('Unit 2')">Confirm Course Materials</button>
                                         </div>
                                     </div>
                                 </div>
@@ -277,13 +277,13 @@
                                         
                                         <!-- Pass Threshold Setting -->
                                         <div class="threshold-setting">
-                                            <label for="pass-threshold-week2">Questions required to pass:</label>
-                                            <input type="number" id="pass-threshold-week2" min="1" max="10" value="2" class="threshold-input">
+                                            <label for="pass-threshold-unit2">Questions required to pass:</label>
+                                            <input type="number" id="pass-threshold-unit2" min="1" max="10" value="2" class="threshold-input">
                                             <span class="threshold-help">out of total questions</span>
                                         </div>
                                         
                                         <!-- Questions List -->
-                                        <div class="questions-list" id="assessment-questions-week2">
+                                        <div class="questions-list" id="assessment-questions-unit2">
                                             <!-- Assessment questions will be displayed here -->
                                             <div class="no-questions-message">
                                                 <p>No assessment questions created yet. Click "Add Question" to get started.</p>
@@ -292,28 +292,28 @@
                                         
                                         <!-- Action Buttons -->
                                         <div class="assessment-actions">
-                                            <button class="add-question-btn" onclick="openQuestionModal('Week 2')">
+                                            <button class="add-question-btn" onclick="openQuestionModal('Unit 2')">
                                                 <span class="btn-icon">➕</span>
                                                 Add Question
                                             </button>
                                         </div>
                                         
                                         <div class="save-assessment">
-                                            <button class="save-btn" onclick="saveAssessment('Week 2')">Save Assessment</button>
+                                            <button class="save-btn" onclick="saveAssessment('Unit 2')">Save Assessment</button>
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Week 3 Accordion -->
+                        <!-- Unit 3 Accordion -->
                         <div class="accordion-item">
                             <div class="accordion-header">          
-                                <span class="folder-name">Week 3</span>
+                                <span class="folder-name">Unit 3</span>
                                 <div class="header-actions">
                                     <div class="publish-toggle">
                                         <label class="toggle-switch">
-                                            <input type="checkbox" id="publish-week3" onchange="togglePublish('Week 3', this.checked)">
+                                            <input type="checkbox" id="publish-unit3" onchange="togglePublish('Unit 3', this.checked)">
                                             <span class="toggle-slider"></span>
                                         </label>
                                         <span class="toggle-label">Published</span>
@@ -329,15 +329,15 @@
                                         <button class="toggle-section">▼</button>
                                     </div>
                                     <div class="section-content">
-                                        <div class="objectives-list" id="objectives-list-week3">
+                                        <div class="objectives-list" id="objectives-list-unit3">
                                             <!-- Objectives will be added here -->
                                         </div>
                                         <div class="objective-input-container">
-                                            <input type="text" id="objective-input-week3" class="objective-input" placeholder="Enter learning objective...">
-                                            <button class="add-objective-btn-inline" onclick="addObjectiveFromInput('Week 3')">+</button>
+                                            <input type="text" id="objective-input-unit3" class="objective-input" placeholder="Enter learning objective...">
+                                            <button class="add-objective-btn-inline" onclick="addObjectiveFromInput('Unit 3')">+</button>
                                         </div>
                                         <div class="save-objectives">
-                                            <button class="save-btn" onclick="saveObjectives('Week 3')">Save Learning Objectives</button>
+                                            <button class="save-btn" onclick="saveObjectives('Unit 3')">Save Learning Objectives</button>
                                         </div>
                                     </div>
                                 </div>
@@ -354,12 +354,12 @@
                                         </div>
                                         <div class="file-item">
                                             <div class="file-info">
-                                                <h3>*Lecture Notes - Week 3</h3>
+                                                <h3>*Lecture Notes - Unit 3</h3>
                                                 <p>Placeholder for required lecture notes. Please upload content.</p>
                                                 <span class="status-text">Not Uploaded</span>
                                             </div>
                                             <div class="file-actions">
-                                                <button class="action-button upload" onclick="openUploadModal('Week 3', 'lecture-notes')">Upload</button>
+                                                <button class="action-button upload" onclick="openUploadModal('Unit 3', 'lecture-notes')">Upload</button>
                                                 <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
                                             </div>
                                         </div>
@@ -371,19 +371,19 @@
                                                 <span class="status-text">Not Uploaded</span>
                                             </div>
                                             <div class="file-actions">
-                                                <button class="action-button upload" onclick="openUploadModal('Week 3', 'practice-quiz')">Upload</button>
+                                                <button class="action-button upload" onclick="openUploadModal('Unit 3', 'practice-quiz')">Upload</button>
                                                 <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
                                             </div>
                                         </div>
                                         <!-- Add Content Button -->
                                         <div class="add-content-section">
-                                            <button class="add-content-btn additional-material" onclick="openUploadModal('Week 3', 'additional')">
+                                            <button class="add-content-btn additional-material" onclick="openUploadModal('Unit 3', 'additional')">
                                                 <span class="btn-icon">➕</span>
                                                 Add Additional Material
                                             </button>
                                         </div>
                                         <div class="save-objectives">
-                                            <button class="save-btn" onclick="confirmCourseMaterials('Week 3')">Confirm Course Materials</button>
+                                            <button class="save-btn" onclick="confirmCourseMaterials('Unit 3')">Confirm Course Materials</button>
                                         </div>
                                     </div>
                                 </div>
@@ -401,13 +401,13 @@
                                         
                                         <!-- Pass Threshold Setting -->
                                         <div class="threshold-setting">
-                                            <label for="pass-threshold-week3">Questions required to pass:</label>
-                                            <input type="number" id="pass-threshold-week3" min="1" max="10" value="2" class="threshold-input">
+                                            <label for="pass-threshold-unit3">Questions required to pass:</label>
+                                            <input type="number" id="pass-threshold-unit3" min="1" max="10" value="2" class="threshold-input">
                                             <span class="threshold-help">out of total questions</span>
                                         </div>
                                         
                                         <!-- Questions List -->
-                                        <div class="questions-list" id="assessment-questions-week3">
+                                        <div class="questions-list" id="assessment-questions-unit3">
                                             <!-- Assessment questions will be displayed here -->
                                             <div class="no-questions-message">
                                                 <p>No assessment questions created yet. Click "Add Question" to get started.</p>
@@ -416,25 +416,25 @@
                                         
                                         <!-- Action Buttons -->
                                         <div class="assessment-actions">
-                                            <button class="add-question-btn" onclick="openQuestionModal('Week 3')">
+                                            <button class="add-question-btn" onclick="openQuestionModal('Unit 3')">
                                                 <span class="btn-icon">➕</span>
                                                 Add Question
                                             </button>
                                         </div>
                                         
                                         <div class="save-assessment">
-                                            <button class="save-btn" onclick="saveAssessment('Week 3')">Save Assessment</button>
+                                            <button class="save-btn" onclick="saveAssessment('Unit 3')">Save Assessment</button>
                                         </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- Add Week Button -->
-                        <div class="add-week-section">
-                            <button class="add-week-btn" onclick="addNewWeek()">
+                        <!-- Add Unit Button -->
+                        <div class="add-unit-section">
+                            <button class="add-unit-btn" onclick="addNewUnit()">
                                 <span class="btn-icon">➕</span>
-                                Add New Week
+                                Add New Unit
                             </button>
                         </div>
                     </div>
@@ -597,7 +597,7 @@
     <div id="calibration-modal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2><span id="calibration-week">Week</span> Calibration Questions: <span id="calibration-topic">Topic</span></h2>
+                <h2><span id="calibration-unit">Unit</span> Calibration Questions: <span id="calibration-topic">Topic</span></h2>
                 <button class="modal-close" onclick="closeCalibrationModal()">×</button>
             </div>
             
