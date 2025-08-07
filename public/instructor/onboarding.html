@@ -6,7 +6,7 @@
     <title>Onboarding - BiocBot Instructor</title>
     <link rel="stylesheet" href="../styles/style.css">
     <link rel="stylesheet" href="../styles/documents.css">
-    <link rel="stylesheet" href="../styles/onboarding.css">
+    <link rel="stylesheet" href="./styles/onboarding.css">
 </head>
 <body>
     <div class="app-container">
@@ -57,8 +57,6 @@
                     </div>
 
                     <div class="intro-section">
-
-
                         <div class="feature-card">
                             <h3>Placeholder</h3>
                             <p>Placeholder</p>
@@ -75,7 +73,6 @@
                             <h3>Placeholder</h3>
                             <p>Placeholder</p>
                         </div>
-                        
                     </div>
 
                     <div class="how-it-works">
@@ -159,134 +156,161 @@
 
                         <div class="step-actions">
                             <button type="button" class="btn-secondary" onclick="previousStep()">Back</button>
-                            <button type="submit" class="btn-primary">Continue to Upload</button>
+                            <button type="submit" class="btn-primary">Continue to Unit Setup</button>
                         </div>
                     </form>
                 </div>
             </div>
 
-            <!-- Step 3: First Content Upload -->
+            <!-- Step 3: Guided Unit 1 Setup -->
             <div id="step-3" class="onboarding-step">
                 <div class="step-content">
                     <div class="step-header">
                         <h2>Set Up Your First Unit</h2>
-                        <p>Complete your Unit 1 setup with learning objectives, course materials, and probing questions.</p>
+                        <p>Let's walk through setting up Unit 1 step by step. We'll guide you through each required component.</p>
                     </div>
 
-                    <!-- Unit 1 Accordion for Onboarding -->
-                    <div class="accordion-container onboarding-accordion">
-                        <div class="accordion-item published">
-                            <div class="accordion-header">  
-                                <span class="folder-name">Unit 1</span>
-                                <div class="header-actions">
-                                    <div class="publish-toggle">
-                                        <label class="toggle-switch">
-                                            <input type="checkbox" id="publish-unit1" onchange="togglePublish('Unit 1', this.checked)">
-                                            <span class="toggle-slider"></span>
-                                        </label>
-                                        <span class="toggle-label">Published</span>
-                                    </div>
-                                    <span class="accordion-toggle">▼</span>
-                                </div>
+                    <!-- Guided Progress Indicators -->
+                    <div class="guided-progress">
+                        <div class="progress-card active" data-substep="objectives">
+                            <div class="progress-icon">1</div>
+                            <div class="progress-text">
+                                <h4>Learning Objectives</h4>
+                                <p>Define what students should learn</p>
                             </div>
-                            <div class="accordion-content">
-                                <!-- Learning Objectives Section -->
-                                <div class="unit-section learning-objectives-section">
-                                    <div class="section-header">
-                                        <h3>Learning Objectives</h3>
-                                        <button class="toggle-section">▼</button>
-                                    </div>
-                                    <div class="section-content">
-                                        <div class="objectives-list" id="objectives-list-unit1">
-                                            <!-- Objectives will be added here -->
-                                        </div>
-                                        <div class="objective-input-container">
-                                            <input type="text" id="objective-input-unit1" class="objective-input" placeholder="Enter learning objective...">
-                                            <button class="add-objective-btn-inline" onclick="addObjectiveFromInput('Unit 1')">+</button>
-                                        </div>
-                                        <div class="save-objectives">
-                                            <button class="save-btn" onclick="saveObjectives('Unit 1')">Save Learning Objectives</button>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <!-- Course Materials Section -->
-                                <div class="unit-section course-materials-section">
-                                    <div class="section-header">
-                                        <h3>Course Materials</h3>
-                                        <button class="toggle-section">▼</button>
-                                    </div>
-                                    <div class="section-content">
-                                        <div class="content-type-header">
-                                            <p><strong>Required Materials:</strong> *Lecture Notes and *Practice Questions/Tutorial are mandatory</p>
-                                        </div>
-                                        <div class="file-item">
-                                            <div class="file-info">
-                                                <h3>*Lecture Notes - Unit 1</h3>
-                                                <p>Placeholder for required lecture notes. Please upload content.</p>
-                                                <span class="status-text">Not Uploaded</span>
-                                            </div>
-                                            <div class="file-actions">
-                                                <button class="action-button upload" onclick="openUploadModal('Unit 1', 'lecture-notes')">Upload</button>
-                                                <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
-                                            </div>
-                                        </div>
-                                        <div class="file-item">
-                                            <div class="file-info">
-                                                <h3>*Practice Questions/Tutorial</h3>
-                                                <p>Placeholder for required practice questions. Please upload content.</p>
-                                                <span class="status-text">Not Uploaded</span>
-                                            </div>
-                                            <div class="file-actions">
-                                                <button class="action-button upload" onclick="openUploadModal('Unit 1', 'practice-quiz')">Upload</button>
-                                                <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
-                                            </div>
-                                        </div>
-                                        <!-- Add Content Button -->
-                                        <div class="add-content-section">
-                                            <button class="add-content-btn additional-material" onclick="openUploadModal('Unit 1', 'additional')">
-                                                <span class="btn-icon">➕</span>
-                                                Add Additional Material
-                                            </button>
-                                        </div>
-                                        <div class="save-objectives">
-                                            <button class="save-btn" onclick="confirmCourseMaterials('Unit 1')">Confirm Course Materials</button>
-                                        </div>
-                                    </div>
-                                </div>
-                                
-                                <!-- Probing Questions Section -->
-                                <div class="unit-section probing-questions-section">
-                                    <div class="section-header">
-                                        <h3>Probing Questions</h3>
-                                        <button class="toggle-section">▼</button>
-                                    </div>
-                                    <div class="section-content">
-                                        <div class="objectives-list" id="questions-list-unit1">
-                                            <!-- Questions will be added here -->
-                                        </div>
-                                        <div class="generate-questions-container">
-                                            <button class="generate-btn" onclick="generateProbingQuestions('Unit 1')">
-                                                Generate Probing Questions
-                                            </button>
-                                            <p class="generate-help-text">Let AI generate probing questions based on your uploaded course materials</p>
-                                        </div>
-                                        <div class="objective-input-container">
-                                            <input type="text" id="question-input-unit1" class="objective-input" placeholder="Enter probing question...">
-                                            <button class="add-objective-btn-inline" onclick="addQuestionFromInput('Unit 1')">+</button>
-                                        </div>
-                                        <div class="save-objectives">
-                                            <button class="save-btn" onclick="saveQuestions('Unit 1')">Save Probing Questions</button>
-                                        </div>
-                                    </div>
-                                </div>
+                        </div>
+                        <div class="progress-card" data-substep="materials">
+                            <div class="progress-icon">2</div>
+                            <div class="progress-text">
+                                <h4>Course Materials</h4>
+                                <p>Upload your lecture materials</p>
+                            </div>
+                        </div>
+                        <div class="progress-card" data-substep="questions">
+                            <div class="progress-icon">3</div>
+                            <div class="progress-text">
+                                <h4>Assessment Questions</h4>
+                                <p>Create questions to evaluate student readiness</p>
                             </div>
                         </div>
                     </div>
 
-                    <div class="step-actions">
-                        <button type="button" class="btn-secondary" onclick="previousStep()">Back</button>
-                        <button type="button" class="btn-primary" onclick="completeUnit1Setup()">Complete Unit 1 & Continue</button>
+                    <!-- Sub-step 1: Learning Objectives -->
+                    <div id="substep-objectives" class="guided-substep active">
+                        <div class="substep-header">
+                            <h3>Step 1: Learning Objectives</h3>
+                            <p>Define clear learning objectives for Unit 1. These will help students understand what they should learn and help AI generate better responses.</p>
+                        </div>
+                        
+                        <div class="substep-content">
+                            <div class="objectives-input-section">
+                                <div class="input-group">
+                                    <input type="text" id="objective-input" class="objective-input" placeholder="Enter learning objective">
+                                    <button class="add-objective-btn" onclick="addObjective()">+</button>
+                                </div>
+                                <div class="tip-box">
+                                    <strong>Tip:</strong> Start with 3-5 clear, measurable objectives. You can always add more later.
+                                </div>
+                            </div>
+                            
+                            <div class="objectives-list" id="objectives-list">
+                                <!-- Objectives will be added here -->
+                            </div>
+                        </div>
+                        
+                        <div class="substep-actions">
+                            <button class="btn-primary" onclick="nextSubstep('materials')">Continue to Course Materials</button>
+                        </div>
+                    </div>
+
+                    <!-- Sub-step 2: Course Materials -->
+                    <div id="substep-materials" class="guided-substep">
+                        <div class="substep-header">
+                            <h3>Step 2: Course Materials</h3>
+                            <p>Upload your lecture notes and practice materials for Unit 1. These are required for students to access the content.</p>
+                        </div>
+                        
+                        <div class="substep-content">
+                            <div class="materials-section">
+                                <div class="material-item required">
+                                    <div class="material-info">
+                                        <h4>Lecture Notes</h4>
+                                        <p>Upload your lecture slides, notes, or readings for Unit 1</p>
+                                        <span class="status-badge" id="lecture-status">Not Uploaded</span>
+                                    </div>
+                                    <button class="upload-btn" onclick="openUploadModal('Unit 1', 'lecture-notes')">Upload</button>
+                                </div>
+                                
+                                <div class="material-item required">
+                                    <div class="material-info">
+                                        <h4>Practice Questions/Tutorial</h4>
+                                        <p>Upload practice questions, assignments, or tutorial materials</p>
+                                        <span class="status-badge" id="practice-status">Not Uploaded</span>
+                                    </div>
+                                    <button class="upload-btn" onclick="openUploadModal('Unit 1', 'practice-quiz')">Upload</button>
+                                </div>
+                                
+                                <div class="material-item optional">
+                                    <div class="material-info">
+                                        <h4>Additional Materials (Optional)</h4>
+                                        <p>Add supplementary readings, videos, or other resources</p>
+                                        <span class="status-badge" id="additional-status">Optional</span>
+                                    </div>
+                                    <button class="upload-btn" onclick="openUploadModal('Unit 1', 'additional')">Add</button>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="substep-actions">
+                            <button class="btn-secondary" onclick="previousSubstep('objectives')">Back</button>
+                            <button class="btn-primary" onclick="nextSubstep('questions')">Continue to Probing Questions</button>
+                        </div>
+                    </div>
+
+                    <!-- Sub-step 3: Probing Questions -->
+                    <div id="substep-questions" class="guided-substep">
+                        <div class="substep-header">
+                            <h3>Step 3: Assessment Questions</h3>
+                            <p>Create assessment questions to determine student readiness for tutor/protégé mode. These help evaluate student understanding.</p>
+                        </div>
+                        
+                        <div class="substep-content">
+                            <div class="assessment-info">
+                                <p><strong>Assessment Settings:</strong> Create questions to determine student readiness for tutor/protégé mode</p>
+                            </div>
+                            
+                            <!-- Pass Threshold Setting -->
+                            <div class="threshold-setting">
+                                <label for="pass-threshold-onboarding">Questions required to pass:</label>
+                                <input type="number" id="pass-threshold-onboarding" min="1" max="10" value="2" class="threshold-input">
+                                <span class="threshold-help">out of total questions</span>
+                            </div>
+                            
+                            <!-- Questions List -->
+                            <div class="questions-list" id="assessment-questions-onboarding">
+                                <!-- Assessment questions will be displayed here -->
+                                <div class="no-questions-message">
+                                    <p>No assessment questions created yet. Click "Add Question" to get started.</p>
+                                </div>
+                            </div>
+                            
+                            <!-- Action Buttons -->
+                            <div class="assessment-actions">
+                                <button class="add-question-btn" onclick="openQuestionModal('Onboarding')">
+                                    <span class="btn-icon">➕</span>
+                                    Add Question
+                                </button>
+                            </div>
+                            
+                            <div class="save-assessment">
+                                <button class="save-btn" onclick="saveAssessment('Onboarding')">Save Assessment</button>
+                            </div>
+                        </div>
+                        
+                        <div class="substep-actions">
+                            <button class="btn-secondary" onclick="previousSubstep('materials')">Back</button>
+                            <button class="btn-primary" onclick="completeUnit1Setup()">Complete Unit 1 & Continue</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -340,6 +364,100 @@
                 <div class="modal-actions">
                     <button class="btn-secondary" onclick="closeUploadModal()">Cancel</button>
                     <button class="btn-primary" id="upload-btn" onclick="handleUpload()">Upload</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Question Creation Modal -->
+    <div id="question-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Create Assessment Question</h2>
+                <button class="modal-close" onclick="closeQuestionModal()">×</button>
+            </div>
+            
+            <div class="modal-body">
+                <div class="question-form">
+                    <!-- Question Type Selection -->
+                    <div class="form-section">
+                        <label for="question-type">Question Type</label>
+                        <select id="question-type" onchange="updateQuestionForm()">
+                            <option value="">Select question type...</option>
+                            <option value="true-false">True/False</option>
+                            <option value="multiple-choice">Multiple Choice</option>
+                            <option value="short-answer">Short Answer</option>
+                        </select>
+                    </div>
+                    
+                    <!-- Question Text -->
+                    <div class="form-section">
+                        <label for="question-text">Question</label>
+                        <textarea id="question-text" rows="3" placeholder="Enter your question..."></textarea>
+                    </div>
+                    
+                    <!-- True/False Answer -->
+                    <div class="form-section" id="tf-answer-section" style="display: none;">
+                        <label>Correct Answer</label>
+                        <div class="radio-group">
+                            <label class="radio-option">
+                                <input type="radio" name="tf-answer" value="true">
+                                <span>True</span>
+                            </label>
+                            <label class="radio-option">
+                                <input type="radio" name="tf-answer" value="false">
+                                <span>False</span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <!-- Multiple Choice Options -->
+                    <div class="form-section" id="mcq-answer-section" style="display: none;">
+                        <label>Answer Options</label>
+                        <div class="mcq-options">
+                            <div class="mcq-option">
+                                <input type="text" placeholder="Option A" class="mcq-input" data-option="A">
+                                <label class="radio-option">
+                                    <input type="radio" name="mcq-correct" value="A">
+                                    <span class="correct-label">Correct</span>
+                                </label>
+                            </div>
+                            <div class="mcq-option">
+                                <input type="text" placeholder="Option B" class="mcq-input" data-option="B">
+                                <label class="radio-option">
+                                    <input type="radio" name="mcq-correct" value="B">
+                                    <span class="correct-label">Correct</span>
+                                </label>
+                            </div>
+                            <div class="mcq-option">
+                                <input type="text" placeholder="Option C" class="mcq-input" data-option="C">
+                                <label class="radio-option">
+                                    <input type="radio" name="mcq-correct" value="C">
+                                    <span class="correct-label">Correct</span>
+                                </label>
+                            </div>
+                            <div class="mcq-option">
+                                <input type="text" placeholder="Option D" class="mcq-input" data-option="D">
+                                <label class="radio-option">
+                                    <input type="radio" name="mcq-correct" value="D">
+                                    <span class="correct-label">Correct</span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Short Answer Expected -->
+                    <div class="form-section" id="sa-answer-section" style="display: none;">
+                        <label for="sa-answer">Expected Answer/Key Points</label>
+                        <textarea id="sa-answer" rows="3" placeholder="Describe the expected answer or key points..."></textarea>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <div class="modal-actions">
+                    <button class="btn-secondary" onclick="closeQuestionModal()">Cancel</button>
+                    <button class="btn-primary" onclick="saveQuestion()">Save Question</button>
                 </div>
             </div>
         </div>
