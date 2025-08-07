@@ -1860,12 +1860,20 @@
 }
 
 .add-question-btn {
-    background: #007bff;
-    color: white;
+    background-color: #f8f9fa;
+    border: 1px dashed #e0e0e0;
+    color: #666;
+    display: flex;
+    visibility: visible;
+    opacity: 1;
+    width: 100%;
+    justify-content: center;
 }
 
 .add-question-btn:hover {
-    background: #0056b3;
+    background-color: #f0f0f0;
+    border-color: #999;
+    color: #333;
 }
 
 .generate-ai-btn {
@@ -2056,4 +2064,10 @@
     outline: none;
     border-color: #4a6fa5;
     box-shadow: 0 0 0 3px rgba(74, 111, 165, 0.1);
+} 
+
+.save-assessment {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 18px;
 } 
