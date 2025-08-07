@@ -1,30 +1,25 @@
-/* Onboarding Page Styles */
+/* Onboarding Styles */
 
 /* Progress Bar */
 .onboarding-progress {
-    background: white;
-    border-bottom: 1px solid var(--border-color);
-    padding: 20px 40px;
-    position: sticky;
-    top: 0;
-    z-index: 100;
+    margin-bottom: 2rem;
+    padding: 0 2rem;
 }
 
 .progress-bar {
     width: 100%;
-    height: 4px;
+    height: 8px;
     background-color: #e0e0e0;
-    border-radius: 2px;
-    margin-bottom: 15px;
+    border-radius: 4px;
     overflow: hidden;
+    margin-bottom: 1rem;
 }
 
 .progress-fill {
     height: 100%;
-    background-color: var(--primary-color);
-    border-radius: 2px;
+    background: linear-gradient(90deg, #4CAF50, #45a049);
     transition: width 0.3s ease;
-    width: 25%; /* Start at 25% for first step */
+    width: 25%; /* Start at 25% for step 1 */
 }
 
 .progress-steps {
@@ -34,26 +29,31 @@
 }
 
 .step-indicator {
-    font-size: 0.875rem;
+    font-size: 0.9rem;
     color: #666;
-    font-weight: 500;
-    transition: color 0.3s ease;
+    position: relative;
+    padding: 0.5rem 1rem;
+    border-radius: 20px;
+    transition: all 0.3s ease;
 }
 
 .step-indicator.active {
-    color: var(--primary-color);
+    background-color: #4CAF50;
+    color: white;
     font-weight: 600;
 }
 
 .step-indicator.completed {
-    color: var(--success-color);
+    background-color: #45a049;
+    color: white;
 }
 
-/* Step Container */
+/* Onboarding Steps */
 .onboarding-step {
     display: none;
-    min-height: calc(100vh - 200px);
-    padding: 40px;
+    padding: 2rem;
+    max-width: 800px;
+    margin: 0 auto;
 }
 
 .onboarding-step.active {
@@ -61,138 +61,123 @@
 }
 
 .step-content {
-    max-width: 900px;
-    margin: 0 auto;
+    background: white;
+    border-radius: 12px;
+    padding: 2rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
-/* Step 1: Welcome Styles */
+/* Welcome Step */
 .welcome-header {
     text-align: center;
-    margin-bottom: 60px;
+    margin-bottom: 3rem;
 }
 
 .welcome-header h1 {
-    font-size: 3rem;
-    color: var(--text-color);
-    margin-bottom: 15px;
-    font-weight: 700;
+    font-size: 2.5rem;
+    color: #333;
+    margin-bottom: 0.5rem;
 }
 
 .welcome-subtitle {
-    font-size: 1.25rem;
+    font-size: 1.2rem;
     color: #666;
     margin: 0;
 }
 
 .intro-section {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 30px;
-    margin-bottom: 60px;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+    margin-bottom: 3rem;
 }
 
 .feature-card {
-    background: white;
-    border: 1px solid var(--border-color);
-    border-radius: 12px;
-    padding: 30px;
+    background: #f8f9fa;
+    padding: 1.5rem;
+    border-radius: 8px;
     text-align: center;
-    transition: transform 0.3s ease, box-shadow 0.3s ease;
-}
-
-.feature-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+    border: 1px solid #e9ecef;
 }
 
 .feature-icon {
-    font-size: 3rem;
-    margin-bottom: 20px;
+    font-size: 2.5rem;
+    margin-bottom: 1rem;
     display: block;
 }
 
 .feature-card h3 {
-    font-size: 1.5rem;
-    color: var(--text-color);
-    margin-bottom: 15px;
-    font-weight: 600;
+    color: #333;
+    margin-bottom: 0.5rem;
+    font-size: 1.1rem;
 }
 
 .feature-card p {
     color: #666;
-    line-height: 1.6;
+    font-size: 0.9rem;
+    line-height: 1.4;
     margin: 0;
 }
 
 .how-it-works {
-    margin-bottom: 60px;
+    margin-top: 3rem;
 }
 
 .how-it-works h2 {
     text-align: center;
-    font-size: 2rem;
-    color: var(--text-color);
-    margin-bottom: 40px;
-    font-weight: 600;
+    color: #333;
+    margin-bottom: 2rem;
 }
 
 .workflow-steps {
-    display: grid;
-    gap: 30px;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
 }
 
 .workflow-step {
     display: flex;
     align-items: flex-start;
-    background: white;
-    border: 1px solid var(--border-color);
-    border-radius: 12px;
-    padding: 25px;
+    gap: 1rem;
 }
 
-.workflow-step .step-number {
-    width: 50px;
-    height: 50px;
-    border-radius: 50%;
-    background-color: var(--primary-color);
+.step-number {
+    background: #4CAF50;
     color: white;
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
     font-weight: bold;
-    font-size: 1.25rem;
-    margin-right: 25px;
     flex-shrink: 0;
 }
 
 .step-details h4 {
-    font-size: 1.25rem;
-    color: var(--text-color);
-    margin-bottom: 10px;
-    font-weight: 600;
+    color: #333;
+    margin-bottom: 0.5rem;
+    font-size: 1.1rem;
 }
 
 .step-details p {
     color: #666;
-    line-height: 1.6;
     margin: 0;
+    line-height: 1.4;
 }
 
-/* Step 2: Course Setup Styles */
+/* Course Setup Step */
 .step-header {
     text-align: center;
-    margin-bottom: 50px;
+    margin-bottom: 2rem;
 }
 
 .step-header h2 {
-    font-size: 2.5rem;
-    color: var(--text-color);
-    margin-bottom: 15px;
-    font-weight: 600;
+    color: #333;
+    margin-bottom: 0.5rem;
 }
 
 .step-header p {
-    font-size: 1.1rem;
     color: #666;
     margin: 0;
 }
@@ -203,415 +188,806 @@
 }
 
 .form-section {
-    background: white;
-    border: 1px solid var(--border-color);
-    border-radius: 12px;
-    padding: 30px;
-    margin-bottom: 30px;
+    margin-bottom: 2rem;
 }
 
 .form-section h3 {
-    font-size: 1.5rem;
-    color: var(--text-color);
-    margin-bottom: 25px;
-    font-weight: 600;
+    color: #333;
+    margin-bottom: 1rem;
+    font-size: 1.2rem;
 }
 
 .form-row {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 20px;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.form-row.full-width {
+    grid-template-columns: 1fr;
 }
 
 .form-group {
-    margin-bottom: 25px;
+    display: flex;
+    flex-direction: column;
 }
 
 .form-group label {
-    display: block;
-    font-size: 1rem;
-    color: var(--text-color);
-    margin-bottom: 8px;
-    font-weight: 500;
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 0.5rem;
 }
 
 .form-group input,
-.form-group select,
-.form-group textarea {
-    width: 100%;
-    padding: 12px 16px;
-    border: 1px solid #ddd;
+.form-group select {
+    padding: 0.75rem;
+    border: 2px solid #e0e0e0;
     border-radius: 6px;
     font-size: 1rem;
-    background-color: #f8f9fa;
-    color: var(--text-color);
-    transition: border-color 0.3s ease, background-color 0.3s ease;
+    transition: border-color 0.3s ease;
 }
 
 .form-group input:focus,
-.form-group select:focus,
-.form-group textarea:focus {
+.form-group select:focus {
     outline: none;
-    border-color: var(--primary-color);
-    background-color: white;
-    box-shadow: 0 0 0 3px rgba(74, 111, 165, 0.1);
-}
-
-.form-group textarea {
-    min-height: 100px;
-    resize: vertical;
+    border-color: #4CAF50;
 }
 
 .content-types {
     display: grid;
-    gap: 15px;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
 }
 
 .checkbox-label {
     display: flex;
     align-items: center;
+    padding: 1rem;
+    border: 2px solid #e0e0e0;
+    border-radius: 6px;
     cursor: pointer;
-    padding: 15px;
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    transition: border-color 0.3s ease, background-color 0.3s ease;
+    transition: all 0.3s ease;
+    background: white;
 }
 
 .checkbox-label:hover {
-    border-color: var(--primary-color);
-    background-color: #f8f9fa;
+    border-color: #4CAF50;
+    background: #f8f9fa;
 }
 
 .checkbox-label input[type="checkbox"] {
+    margin-right: 0.75rem;
+    transform: scale(1.2);
+}
+
+.checkbox-label.checked {
+    border-color: #4CAF50;
+    background: #f0f8f0;
+}
+
+/* Guided Progress Indicators */
+.guided-progress {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 2rem;
+    gap: 1rem;
+}
+
+.progress-card {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    padding: 1rem;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border: 2px solid #e0e0e0;
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.progress-card.active {
+    background: #e8f5e8;
+    border-color: #4CAF50;
+}
+
+.progress-card.completed {
+    background: #f0f8f0;
+    border-color: #45a049;
+}
+
+.progress-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #4CAF50;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    margin-right: 1rem;
+    flex-shrink: 0;
+}
+
+.progress-card.active .progress-icon {
+    background: #45a049;
+}
+
+.progress-text h4 {
+    margin: 0 0 0.25rem 0;
+    font-size: 0.9rem;
+    color: #333;
+}
+
+.progress-text p {
+    margin: 0;
+    font-size: 0.8rem;
+    color: #666;
+}
+
+/* Guided Sub-steps */
+.guided-substep {
     display: none;
 }
 
-.checkmark {
-    width: 20px;
-    height: 20px;
-    border: 2px solid #ddd;
-    border-radius: 4px;
-    margin-right: 15px;
-    position: relative;
-    transition: border-color 0.3s ease, background-color 0.3s ease;
+.guided-substep.active {
+    display: block;
 }
 
-.checkbox-label input[type="checkbox"]:checked + .checkmark {
-    background-color: var(--primary-color);
-    border-color: var(--primary-color);
-}
-
-.checkbox-label input[type="checkbox"]:checked + .checkmark::after {
-    content: '✓';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    color: white;
-    font-size: 12px;
-    font-weight: bold;
-}
-
-/* Step 3: Structure Preview Styles */
-.structure-preview {
-    background: white;
-    border: 1px solid var(--border-color);
-    border-radius: 12px;
-    padding: 30px;
-    margin-bottom: 30px;
-}
-
-.preview-header {
+.substep-header {
     text-align: center;
-    margin-bottom: 30px;
+    margin-bottom: 1.5rem;
 }
 
-.preview-header h3 {
-    font-size: 1.8rem;
-    color: var(--text-color);
-    margin-bottom: 10px;
-    font-weight: 600;
+.substep-header h3 {
+    color: #333;
+    margin-bottom: 0.5rem;
+    font-size: 1.5rem;
 }
 
-.preview-header p {
+.substep-header p {
     color: #666;
     margin: 0;
-}
-
-.folder-structure {
-    display: grid;
-    gap: 15px;
-    margin-bottom: 30px;
-}
-
-.folder-item {
-    display: flex;
-    align-items: center;
-    padding: 15px 20px;
-    background: #f8f9fa;
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-}
-
-.folder-icon {
-    font-size: 1.5rem;
-    margin-right: 15px;
-}
-
-.folder-name {
-    font-weight: 500;
-    color: var(--text-color);
-}
-
-.structure-actions {
-    display: flex;
-    gap: 15px;
-    justify-content: center;
-}
-
-/* Step 4: Upload Styles */
-.upload-guide {
-    max-width: 700px;
+    max-width: 600px;
     margin: 0 auto;
 }
 
-.upload-section {
-    background: white;
-    border: 1px solid var(--border-color);
-    border-radius: 12px;
-    padding: 30px;
-    margin-bottom: 30px;
+.substep-content {
+    margin-bottom: 1.5rem;
 }
 
-.upload-section h3 {
-    font-size: 1.5rem;
-    color: var(--text-color);
-    margin-bottom: 20px;
-    font-weight: 600;
+/* Learning Objectives Sub-step */
+.objectives-input-section {
+    margin-bottom: 1.5rem;
 }
 
-.upload-options {
-    display: grid;
-    gap: 20px;
-}
-
-.upload-option {
+.input-group {
     display: flex;
-    align-items: center;
-    padding: 20px;
-    border: 1px solid var(--border-color);
-    border-radius: 8px;
-    transition: border-color 0.3s ease;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
 }
 
-.upload-option:hover {
-    border-color: var(--primary-color);
+.objective-input {
+    flex: 1;
+    padding: 0.75rem;
+    border: 2px solid #e0e0e0;
+    border-radius: 6px;
+    font-size: 1rem;
 }
 
-.option-icon {
-    font-size: 2rem;
-    margin-right: 20px;
+.objective-input:focus {
+    outline: none;
+    border-color: #4CAF50;
 }
 
-.option-content h4 {
-    font-size: 1.1rem;
-    color: var(--text-color);
-    margin-bottom: 5px;
-    font-weight: 600;
-}
-
-.option-content p {
-    color: #666;
-    margin: 0;
-}
-
-.file-upload-area {
-    border: 2px dashed #ddd;
-    border-radius: 8px;
-    padding: 40px;
-    text-align: center;
-    transition: border-color 0.3s ease;
-}
-
-.file-upload-area:hover {
-    border-color: var(--primary-color);
-}
-
-.upload-zone {
-    cursor: pointer;
-}
-
-.upload-icon {
-    font-size: 3rem;
-    margin-bottom: 15px;
-    display: block;
-}
-
-.upload-zone p {
-    color: #666;
-    margin-bottom: 20px;
-}
-
-.browse-btn {
-    padding: 12px 24px;
-    background-color: var(--primary-color);
+.add-objective-btn {
+    width: 40px;
+    height: 40px;
+    background: #4CAF50;
     color: white;
     border: none;
     border-radius: 6px;
+    font-size: 1.2rem;
     cursor: pointer;
-    font-size: 1rem;
-    font-weight: 500;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     transition: background-color 0.3s ease;
 }
 
-.browse-btn:hover {
-    background-color: var(--accent-color);
+.add-objective-btn:hover {
+    background: #45a049;
 }
 
-.file-info {
-    margin-top: 20px;
-    padding: 15px;
+.tip-box {
+    background: #e8f5e8;
+    border: 1px solid #4CAF50;
+    border-radius: 6px;
+    padding: 1rem;
+    font-size: 0.9rem;
+    color: #2e7d32;
+}
+
+.objectives-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.objective-display-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.75rem;
     background: #f8f9fa;
     border-radius: 6px;
+    border-left: 4px solid #4CAF50;
 }
 
-.file-name {
-    font-weight: 500;
-    color: var(--text-color);
-    display: block;
-    margin-bottom: 5px;
+.objective-text {
+    flex: 1;
+    color: #333;
 }
 
-.file-size {
-    color: #666;
-    font-size: 0.875rem;
+.remove-objective {
+    background: #dc3545;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
+    margin-left: 0.5rem;
 }
 
-.content-details {
-    display: grid;
-    gap: 20px;
+.remove-objective:hover {
+    background: #c82333;
 }
 
-/* Step 5: Completion Styles */
-.completion-header {
-    text-align: center;
-    margin-bottom: 50px;
+/* Course Materials Sub-step */
+.materials-section {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
 }
 
-.completion-icon {
-    font-size: 4rem;
-    margin-bottom: 20px;
-    display: block;
+.material-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 1.5rem;
+    background: white;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    transition: all 0.3s ease;
 }
 
-.completion-header h2 {
-    font-size: 2.5rem;
-    color: var(--text-color);
-    margin-bottom: 15px;
-    font-weight: 600;
+.material-item.required {
+    border-left: 4px solid #dc3545;
 }
 
-.completion-header p {
+.material-item.optional {
+    border-left: 4px solid #6c757d;
+}
+
+.material-info {
+    flex: 1;
+}
+
+.material-info h4 {
+    margin: 0 0 0.5rem 0;
+    color: #333;
     font-size: 1.1rem;
+}
+
+.material-info p {
+    margin: 0 0 0.5rem 0;
     color: #666;
+    font-size: 0.9rem;
+}
+
+.status-badge {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+
+.status-badge:contains("Not Uploaded") {
+    background: rgba(220, 53, 69, 0.1);
+    color: #dc3545;
+}
+
+.status-badge:contains("Uploaded") {
+    background: rgba(40, 167, 69, 0.1);
+    color: #28a745;
+}
+
+.status-badge:contains("Optional") {
+    background: rgba(108, 117, 125, 0.1);
+    color: #6c757d;
+}
+
+.upload-btn {
+    background: #4CAF50;
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: background-color 0.3s ease;
+}
+
+.upload-btn:hover {
+    background: #45a049;
+}
+
+/* Probing Questions Sub-step */
+.questions-section {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.generate-section {
+    text-align: center;
+    padding: 1.5rem;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border: 2px dashed #e0e0e0;
+}
+
+.generate-btn {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    padding: 1rem 2rem;
+    border-radius: 6px;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0 auto 1rem auto;
+}
+
+.generate-btn:hover {
+    background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+    transform: translateY(-1px);
+}
+
+.generate-help {
+    color: #666;
+    font-size: 0.9rem;
     margin: 0;
 }
 
-.next-steps {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 30px;
-    margin-bottom: 50px;
+.questions-input-section {
+    margin-bottom: 1rem;
 }
 
-.next-step-card {
-    background: white;
-    border: 1px solid var(--border-color);
-    border-radius: 12px;
-    padding: 30px;
+.question-input {
+    flex: 1;
+    padding: 0.75rem;
+    border: 2px solid #e0e0e0;
+    border-radius: 6px;
+    font-size: 1rem;
+}
+
+.question-input:focus {
+    outline: none;
+    border-color: #4CAF50;
+}
+
+.add-question-btn {
+    width: 40px;
+    height: 40px;
+    background: #4CAF50;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 1.2rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background-color 0.3s ease;
+}
+
+.add-question-btn:hover {
+    background: #45a049;
+}
+
+.questions-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+/* Assessment Questions Styling */
+.assessment-info {
+    background: #f8f9fa;
+    padding: 0.75rem;
+    border-left: 3px solid #007bff;
+    margin-bottom: 1rem;
+    border-radius: 4px;
+}
+
+.threshold-setting {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+    padding: 0.75rem;
+    background: #e9ecef;
+    border-radius: 6px;
+}
+
+.threshold-input {
+    width: 60px;
+    padding: 0.25rem 0.5rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
     text-align: center;
-    transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
 
-.next-step-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+.threshold-help {
+    color: #6c757d;
+    font-size: 0.875rem;
 }
 
-.step-icon {
-    font-size: 2.5rem;
-    margin-bottom: 20px;
-    display: block;
+.questions-list {
+    min-height: 100px;
+    margin-bottom: 1.5rem;
 }
 
-.next-step-card h3 {
-    font-size: 1.3rem;
-    color: var(--text-color);
-    margin-bottom: 15px;
+.no-questions-message {
+    text-align: center;
+    padding: 2rem 1rem;
+    color: #6c757d;
+    background: #f8f9fa;
+    border-radius: 6px;
+    border: 2px dashed #dee2e6;
+}
+
+.question-item {
+    border: 1px solid #e1e5e9;
+    border-radius: 6px;
+    margin-bottom: 1rem;
+    background: white;
+    overflow: hidden;
+}
+
+.question-header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: #f8f9fa;
+    border-bottom: 1px solid #e1e5e9;
+}
+
+.question-type-badge {
+    padding: 0.25rem 0.5rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
     font-weight: 600;
+    text-transform: uppercase;
 }
 
-.next-step-card p {
+.question-type-badge.true-false {
+    background: #d4edda;
+    color: #155724;
+}
+
+.question-type-badge.multiple-choice {
+    background: #cce7ff;
+    color: #004085;
+}
+
+.question-type-badge.short-answer {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.question-number {
+    flex: 1;
+    font-weight: 500;
+    color: #495057;
+}
+
+.delete-question-btn {
+    background: #dc3545;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.delete-question-btn:hover {
+    background: #c82333;
+}
+
+.question-content {
+    padding: 1rem;
+}
+
+.question-text {
+    margin-bottom: 1rem;
+    font-weight: 500;
+    color: #333;
+}
+
+.answer-preview {
+    margin-top: 0.5rem;
+    padding: 0.5rem;
+    background: #f8f9fa;
+    border-radius: 4px;
+    font-size: 0.9rem;
+}
+
+.mcq-preview {
+    margin-top: 0.5rem;
+}
+
+.mcq-option-preview {
+    padding: 0.25rem 0.5rem;
+    margin: 0.25rem 0;
+    border-radius: 4px;
+    font-size: 0.9rem;
+}
+
+.mcq-option-preview.correct {
+    background: #d4edda;
+    color: #155724;
+    font-weight: 500;
+}
+
+.assessment-actions {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.add-question-btn, .generate-ai-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+    font-size: 0.9rem;
+    transition: all 0.2s ease;
+}
+
+.add-question-btn {
+    background-color: #f8f9fa;
+    border: 1px dashed #e0e0e0;
     color: #666;
-    line-height: 1.6;
-    margin-bottom: 20px;
+    display: flex;
+    visibility: visible;
+    opacity: 1;
+    width: 100%;
+    justify-content: center;
 }
 
-/* Button Styles */
+.add-question-btn:hover {
+    background-color: #f0f0f0;
+    border-color: #999;
+    color: #333;
+}
+
+.generate-ai-btn {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+}
+
+.generate-ai-btn:hover:not(:disabled) {
+    background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+}
+
+.generate-ai-btn:disabled {
+    background: #6c757d;
+    cursor: not-allowed;
+}
+
+.btn-icon {
+    font-size: 1rem;
+}
+
+.save-assessment {
+    text-align: center;
+}
+
+.save-btn {
+    background: #28a745;
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+}
+
+.save-btn:hover {
+    background: #218838;
+}
+
+/* Question Modal Styling */
+#question-modal .modal-content {
+    max-width: 600px;
+    width: 90%;
+}
+
+.question-form .form-section {
+    margin-bottom: 1.5rem;
+}
+
+.question-form label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    color: #333;
+}
+
+.question-form select,
+.question-form textarea,
+.question-form input[type="text"] {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 1rem;
+}
+
+.question-form select:focus,
+.question-form textarea:focus,
+.question-form input[type="text"]:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+.radio-group {
+    display: flex;
+    gap: 1rem;
+    margin-top: 0.5rem;
+}
+
+.radio-option {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    cursor: pointer;
+    padding: 0.5rem;
+    border-radius: 4px;
+    transition: background-color 0.2s ease;
+}
+
+.radio-option:hover {
+    background-color: #f8f9fa;
+}
+
+.radio-option input[type="radio"] {
+    margin: 0;
+}
+
+.mcq-options {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin-top: 0.5rem;
+}
+
+.mcq-option {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.75rem;
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    background: #f8f9fa;
+}
+
+.mcq-option .mcq-input {
+    flex: 1;
+    margin: 0;
+}
+
+.mcq-option .radio-option {
+    margin: 0;
+    padding: 0;
+}
+
+.correct-label {
+    font-weight: 500;
+    color: #28a745;
+}
+
+/* Sub-step Actions */
+.substep-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 1.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid #e0e0e0;
+}
+
+/* Step Actions */
 .step-actions {
     display: flex;
-    gap: 15px;
-    justify-content: center;
-    margin-top: 40px;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 2rem;
+    padding-top: 2rem;
+    border-top: 1px solid #e0e0e0;
 }
 
 .btn-primary,
 .btn-secondary {
-    padding: 12px 24px;
-    font-size: 1rem;
-    font-weight: 500;
+    padding: 0.75rem 1.5rem;
     border-radius: 6px;
+    font-size: 1rem;
+    font-weight: 600;
     cursor: pointer;
     transition: all 0.3s ease;
     border: none;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
 }
 
 .btn-primary {
-    background-color: var(--primary-color);
+    background: #4CAF50;
     color: white;
-    border: 1px solid var(--primary-color);
 }
 
 .btn-primary:hover {
-    background-color: var(--accent-color);
-    border-color: var(--accent-color);
+    background: #45a049;
 }
 
 .btn-secondary {
-    background-color: white;
-    color: var(--text-color);
-    border: 1px solid var(--border-color);
+    background: #6c757d;
+    color: white;
 }
 
 .btn-secondary:hover {
-    background-color: #f8f9fa;
-    border-color: var(--primary-color);
+    background: #5a6268;
 }
 
-.completion-actions {
-    text-align: center;
+.btn-primary:disabled,
+.btn-secondary:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
 }
 
 /* Responsive Design */
 @media (max-width: 768px) {
-    .onboarding-step {
-        padding: 20px;
-    }
-    
-    .welcome-header h1 {
-        font-size: 2.5rem;
-    }
-    
     .intro-section {
         grid-template-columns: 1fr;
     }
@@ -620,65 +996,213 @@
         grid-template-columns: 1fr;
     }
     
-    .workflow-step {
+    .guided-progress {
+        flex-direction: column;
+        gap: 1rem;
+    }
+    
+    .progress-card {
         flex-direction: column;
         text-align: center;
     }
     
-    .workflow-step .step-number {
+    .progress-icon {
         margin-right: 0;
-        margin-bottom: 15px;
+        margin-bottom: 0.5rem;
     }
     
-    .step-actions {
+    .substep-actions {
         flex-direction: column;
+        gap: 1rem;
     }
     
-    .next-steps {
-        grid-template-columns: 1fr;
+    .substep-actions .btn-primary,
+    .substep-actions .btn-secondary {
+        width: 100%;
+        justify-content: center;
     }
     
-    .progress-steps {
-        font-size: 0.75rem;
+    .onboarding-step {
+        padding: 1rem;
+    }
+    
+    .step-content {
+        padding: 1.5rem;
+    }
+    
+    .material-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+    
+    .upload-btn {
+        align-self: flex-end;
     }
 }
 
-/* Accessibility Enhancements */
-.btn-primary:focus-visible,
-.btn-secondary:focus-visible {
-    outline: 2px solid var(--primary-color);
-    outline-offset: 2px;
+/* Remove old accordion overrides since we're using guided approach */
+.onboarding-accordion {
+    display: none;
 }
 
-.form-group input:focus-visible,
-.form-group select:focus-visible,
-.form-group textarea:focus-visible {
-    outline: 2px solid var(--primary-color);
-    outline-offset: 2px;
+/* Modal Styles */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
 }
 
-/* Loading States */
-.btn-primary:disabled,
-.btn-secondary:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
+.modal.show {
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
-/* Success/Error States */
-.form-group.success input,
-.form-group.success select,
-.form-group.success textarea {
-    border-color: var(--success-color);
+.modal-content {
+    background-color: white;
+    margin: 2rem;
+    padding: 0;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 600px;
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
 
-.form-group.error input,
-.form-group.error select,
-.form-group.error textarea {
-    border-color: var(--danger-color);
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1.5rem 2rem;
+    border-bottom: 1px solid #e0e0e0;
 }
 
-.form-group.error .error-message {
-    color: var(--danger-color);
-    font-size: 0.875rem;
-    margin-top: 5px;
+.modal-header h2 {
+    margin: 0;
+    color: #333;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: #666;
+    padding: 0;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-close:hover {
+    color: #333;
+}
+
+.modal-body {
+    padding: 2rem;
+}
+
+.modal-footer {
+    padding: 1.5rem 2rem;
+    border-top: 1px solid #e0e0e0;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 1rem;
+}
+
+/* Upload Section Styles */
+.upload-section {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.file-upload-container {
+    text-align: center;
+}
+
+.upload-file-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    width: 100%;
+    padding: 2rem;
+    border: 2px dashed #e0e0e0;
+    border-radius: 8px;
+    background: white;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.upload-file-btn:hover {
+    border-color: #4CAF50;
+    background: #f8f9fa;
+}
+
+.upload-icon {
+    font-size: 2rem;
+    color: #666;
+}
+
+.input-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.input-section label {
+    font-weight: 600;
+    color: #333;
+}
+
+.input-section input,
+.input-section textarea {
+    padding: 0.75rem;
+    border: 2px solid #e0e0e0;
+    border-radius: 6px;
+    font-size: 1rem;
+    transition: border-color 0.3s ease;
+}
+
+.input-section input:focus,
+.input-section textarea:focus {
+    outline: none;
+    border-color: #4CAF50;
+}
+
+.file-info {
+    display: none;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 1rem;
+    background: #f8f9fa;
+    border-radius: 6px;
+    margin-top: 1rem;
+}
+
+.file-info.show {
+    display: flex;
+}
+
+.file-name {
+    font-weight: 600;
+    color: #333;
+}
+
+.file-size {
+    color: #666;
+    font-size: 0.9rem;
 } 
