@@ -305,6 +305,8 @@
     margin-left: auto;
 }
 
+
+
 .publish-toggle {
     display: flex;
     align-items: center;
@@ -397,6 +399,22 @@
 .file-item {
     display: flex;
     align-items: flex-start;
+}
+
+/* Uploaded file status styling */
+.status-text.uploaded {
+    color: #28a745;
+    font-weight: 600;
+}
+
+.file-info.uploaded {
+    color: #28a745;
+}
+
+.additional-material-item {
+    border-left: 4px solid #17a2b8;
+    background-color: #f8f9fa;
+}
     padding: 15px;
     border-bottom: 1px solid var(--border-color);
     background-color: white;
@@ -2071,3 +2089,64 @@
     justify-content: flex-end;
     margin-top: 18px;
 } 
+
+/* Delete Unit Button */
+.delete-unit-btn {
+    background: #dc3545;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 4px 8px;
+    cursor: pointer;
+    font-size: 12px;
+    margin-left: 8px;
+    transition: background-color 0.2s;
+}
+
+.delete-unit-btn:hover {
+    background: #c82333;
+}
+
+.delete-unit-btn .btn-icon {
+    font-size: 14px;
+}
+
+/* Empty Course State */
+.empty-course-state {
+    text-align: center;
+    padding: 4rem 2rem;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    margin: 2rem 0;
+}
+
+.empty-course-state .empty-message h3 {
+    color: #333;
+    font-size: 1.8rem;
+    margin-bottom: 1rem;
+}
+
+.empty-course-state .empty-message p {
+    color: #666;
+    font-size: 1.1rem;
+    margin-bottom: 2rem;
+    line-height: 1.6;
+}
+
+.empty-course-state .btn-primary {
+    display: inline-block;
+    background: #4CAF50;
+    color: white;
+    padding: 1rem 2rem;
+    border-radius: 8px;
+    text-decoration: none;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.empty-course-state .btn-primary:hover {
+    background: #45a049;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}

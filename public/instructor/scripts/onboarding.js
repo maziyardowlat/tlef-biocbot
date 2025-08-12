@@ -11,7 +11,9 @@ let onboardingState = {
     substeps: ['objectives', 'materials', 'questions'],
     courseData: {},
     uploadedFile: null,
-    createdCourseId: null
+    createdCourseId: null,
+    isSubmitting: false, // Prevent multiple submissions
+    existingCourseId: null // Store existing course ID if found
 };
 
 // Upload modal state
@@ -28,9 +30,106 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 /**
+ * Check if onboarding is already complete for this instructor
+ */
+async function checkOnboardingStatus() {
+    try {
+        // Check if there's a courseId in URL params (from redirect)
+        const urlParams = new URLSearchParams(window.location.search);
+        const courseId = urlParams.get('courseId');
+        
+        if (courseId) {
+            // Check if this course has onboarding complete
+            const response = await fetch(`/api/onboarding/${courseId}`);
+            if (response.ok) {
+                const courseData = await response.json();
+                if (courseData.data && courseData.data.isOnboardingComplete) {
+                    showOnboardingComplete();
+                    return;
+                }
+            }
+        }
+        
+        // Check if instructor has any completed courses
+        const instructorId = 'instructor-123'; // This would come from authentication
+        const response = await fetch(`/api/onboarding/instructor/${instructorId}`);
+        if (response.ok) {
+            const result = await response.json();
+            if (result.data && result.data.courses && result.data.courses.length > 0) {
+                // Check if any course has onboarding complete
+                const completedCourse = result.data.courses.find(course => course.isOnboardingComplete);
+                if (completedCourse) {
+                    // Store the course ID for potential redirect
+                    onboardingState.existingCourseId = completedCourse.courseId;
+                    showOnboardingComplete();
+                    return;
+                }
+            }
+        }
+        
+        // If we get here, onboarding is not complete, show normal flow
+        showOnboardingFlow();
+        
+    } catch (error) {
+        console.error('Error checking onboarding status:', error);
+        // If there's an error, show normal onboarding flow
+        showOnboardingFlow();
+    }
+}
+
+/**
+ * Show onboarding complete message
+ */
+function showOnboardingComplete() {
+    // Hide all onboarding steps
+    document.querySelectorAll('.onboarding-step').forEach(step => {
+        step.style.display = 'none';
+    });
+    
+    // Hide progress bar
+    document.querySelector('.onboarding-progress').style.display = 'none';
+    
+    // Show completion message
+    document.getElementById('onboarding-complete').style.display = 'block';
+    
+    // Update the course upload link to include the existing course ID
+    if (onboardingState.existingCourseId) {
+        const courseUploadLink = document.querySelector('#onboarding-complete .btn-primary');
+        if (courseUploadLink) {
+            courseUploadLink.href = `/instructor/documents?courseId=${onboardingState.existingCourseId}`;
+        }
+    }
+    
+    // Auto-redirect after 5 seconds to prevent users from staying on onboarding
+    setTimeout(() => {
+        if (onboardingState.existingCourseId) {
+            window.location.href = `/instructor/documents?courseId=${onboardingState.existingCourseId}`;
+        } else {
+            window.location.href = '/instructor/documents';
+        }
+    }, 5000);
+}
+
+/**
+ * Show normal onboarding flow
+ */
+function showOnboardingFlow() {
+    // Hide completion message
+    document.getElementById('onboarding-complete').style.display = 'none';
+    
+    // Show progress bar
+    document.querySelector('.onboarding-progress').style.display = 'block';
+    
+    // Show first step
+    showStep(1);
+}
+
+/**
  * Initialize all onboarding functionality
  */
 function initializeOnboarding() {
+    console.log('Initializing onboarding...');
+    
     // Initialize form handlers
     initializeFormHandlers();
     
@@ -40,8 +139,31 @@ function initializeOnboarding() {
     // Initialize progress bar
     updateProgressBar();
     
-    // Show first step
+    // Show first step (this will be overridden if onboarding is complete)
     showStep(1);
+    
+    // Add debugging for learning objectives
+    console.log('Setting up learning objectives debugging...');
+    setTimeout(() => {
+        const addButton = document.querySelector('.add-objective-btn');
+        if (addButton) {
+            console.log('Add objective button found:', addButton);
+            
+            // Remove any existing onclick to avoid conflicts
+            addButton.removeAttribute('onclick');
+            
+            addButton.addEventListener('click', function(e) {
+                console.log('Add objective button clicked!');
+                e.preventDefault();
+                e.stopPropagation();
+                addObjectiveForUnit('Unit 1');
+            });
+            
+            console.log('Event listener added to add objective button');
+        } else {
+            console.error('Add objective button not found!');
+        }
+    }, 1000); // Wait a bit for DOM to be ready
 }
 
 /**
@@ -134,6 +256,12 @@ function handleCustomCourseInput(event) {
 async function handleCourseSetup(event) {
     event.preventDefault();
     
+    // Prevent multiple submissions
+    if (onboardingState.isSubmitting) {
+        console.log('Form submission already in progress, ignoring duplicate submit');
+        return;
+    }
+    
     const form = event.target;
     const submitButton = form.querySelector('button[type="submit"]');
     
@@ -144,21 +272,39 @@ async function handleCourseSetup(event) {
     
     // Collect form data
     const formData = new FormData(form);
+    const weeks = parseInt(formData.get('weeks'));
+    const lecturesPerWeek = parseInt(formData.get('lecturesPerWeek'));
+    
     onboardingState.courseData = {
         course: formData.get('course') === 'custom' ? 
             document.getElementById('custom-course-name').value : 
             formData.get('course'),
-        weeks: parseInt(formData.get('weeks')),
-        lecturesPerWeek: parseInt(formData.get('lecturesPerWeek'))
+        weeks: weeks,
+        lecturesPerWeek: lecturesPerWeek,
+        totalUnits: weeks * lecturesPerWeek // Calculate total units
     };
     
-    // Disable submit button and show loading
+    console.log('Collected course data:', onboardingState.courseData);
+    console.log(`Will create ${onboardingState.courseData.totalUnits} units (${weeks} weeks × ${lecturesPerWeek} lectures per week)`);
+    
+    // Set submitting flag and disable submit button
+    onboardingState.isSubmitting = true;
     submitButton.disabled = true;
     submitButton.textContent = 'Creating course...';
     
     try {
-        // Mock API call to create course
-        const response = await mockCreateCourse(onboardingState.courseData);
+        // Check if course already exists for this instructor
+        const existingCourse = await checkExistingCourse();
+        if (existingCourse) {
+            showNotification('You already have a course set up. Redirecting to course page...', 'info');
+            setTimeout(() => {
+                window.location.href = `/instructor/documents?courseId=${existingCourse.courseId}`;
+            }, 2000);
+            return;
+        }
+        
+        // Create course and save to database
+        const response = await createCourse(onboardingState.courseData);
         onboardingState.createdCourseId = response.courseId;
         
         // Move to next step (guided unit setup)
@@ -168,28 +314,245 @@ async function handleCourseSetup(event) {
         console.error('Error creating course:', error);
         showNotification('Error creating course. Please try again.', 'error');
     } finally {
-        // Re-enable submit button
+        // Reset submitting flag and re-enable submit button
+        onboardingState.isSubmitting = false;
         submitButton.disabled = false;
         submitButton.textContent = 'Continue to Unit Setup';
     }
 }
 
 /**
- * Mock create course API call
+ * Check if instructor already has a course
  */
-async function mockCreateCourse(courseData) {
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 1500));
+async function checkExistingCourse() {
+    try {
+        const instructorId = 'instructor-123'; // This would come from authentication
+        const response = await fetch(`/api/onboarding/instructor/${instructorId}`);
+        
+        if (response.ok) {
+            const result = await response.json();
+            if (result.data && result.data.courses && result.data.courses.length > 0) {
+                // Return the first course found
+                return result.data.courses[0];
+            }
+        }
+        
+        return null;
+    } catch (error) {
+        console.error('Error checking existing course:', error);
+        return null;
+    }
+}
+
+/**
+ * Create course and save onboarding data to database
+ */
+async function createCourse(courseData) {
+    try {
+        // Generate a course ID based on the course name
+        let courseId = courseData.course.replace(/\s+/g, '-').toUpperCase();
+        
+        // Ensure the course ID is valid (no special characters, reasonable length)
+        courseId = courseId.replace(/[^A-Z0-9-]/g, '');
+        if (courseId.length > 20) {
+            courseId = courseId.substring(0, 20);
+        }
+        
+        // Add timestamp to ensure uniqueness
+        courseId = `${courseId}-${Date.now()}`;
+        
+        const instructorId = 'instructor-123'; // This would come from authentication in real app
+        
+        // Get learning objectives from the UI
+        const learningObjectives = getLearningObjectivesFromUI();
+        console.log('Learning objectives from UI:', learningObjectives);
+        console.log('Objectives list element:', document.getElementById('objectives-list'));
+        console.log('Objective items found:', document.querySelectorAll('.objective-display-item').length);
+        
+        // If no objectives found, show error
+        if (learningObjectives.length === 0) {
+            console.warn('No learning objectives found in UI - this might cause issues');
+            console.log('Trying to find objectives manually...');
+            
+            // Try to find objectives manually
+            const objectivesList = document.getElementById('objectives-list');
+            if (objectivesList) {
+                const items = objectivesList.querySelectorAll('.objective-display-item');
+                console.log('Manual search found items:', items.length);
+                items.forEach((item, index) => {
+                    const text = item.querySelector('.objective-text')?.textContent;
+                    console.log(`Item ${index}:`, text);
+                });
+            }
+        }
+        
+        // Prepare onboarding data with unit structure
+        const onboardingData = {
+            courseId: courseId,
+            courseName: courseData.course,
+            instructorId: instructorId,
+            courseDescription: '',
+            learningOutcomes: learningObjectives,
+            prerequisites: [],
+            assessmentCriteria: '',
+            courseMaterials: [],
+            unitFiles: {},
+            courseStructure: {
+                weeks: courseData.weeks,
+                lecturesPerWeek: courseData.lecturesPerWeek,
+                totalUnits: courseData.totalUnits
+            }
+        };
+        
+        // Initialize unit structure with Unit 1 learning objectives
+        for (let i = 1; i <= courseData.totalUnits; i++) {
+            const unitName = `Unit ${i}`;
+            onboardingData.unitFiles[unitName] = [];
+            
+            // Add learning objectives to Unit 1
+            if (i === 1 && learningObjectives.length > 0) {
+                onboardingData.lectures = [{
+                    name: unitName,
+                    learningObjectives: learningObjectives,
+                    isPublished: false,
+                    passThreshold: 2,
+                    createdAt: new Date(),
+                    updatedAt: new Date()
+                }];
+                console.log(`Added ${learningObjectives.length} learning objectives to ${unitName}`);
+            }
+        }
+        
+        console.log('Sending onboarding data to API:', onboardingData);
+        
+        // Save to database
+        console.log('Making API request to:', '/api/onboarding');
+        console.log('Request method: POST');
+        console.log('Request headers:', { 'Content-Type': 'application/json' });
+        console.log('Request body:', JSON.stringify(onboardingData, null, 2));
+        
+        const response = await fetch('/api/onboarding', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(onboardingData)
+        });
+        
+        console.log('API response status:', response.status);
+        console.log('API response status text:', response.statusText);
+        console.log('API response headers:', response.headers);
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('API error response:', errorText);
+            throw new Error(`Failed to create course: ${response.status} ${errorText}`);
+        }
+        
+        const result = await response.json();
+        console.log('API success response:', result);
+        
+        return {
+            courseId: courseId,
+            name: courseData.course,
+            weeks: courseData.weeks,
+            lecturesPerWeek: courseData.lecturesPerWeek,
+            createdAt: new Date().toISOString(),
+            status: 'active'
+        };
+        
+    } catch (error) {
+        console.error('Error creating course:', error);
+        throw error;
+    }
+}
+
+/**
+ * Get learning objectives from the UI
+ * @returns {Array} Array of learning objectives
+ */
+function getLearningObjectivesFromUI() {
+    const objectivesList = document.getElementById('objectives-list');
+    if (!objectivesList) {
+        console.error('Objectives list not found');
+        return [];
+    }
     
-    // Return mock response
-    return {
-        courseId: `course-${Date.now()}`,
-        name: courseData.course,
-        weeks: courseData.weeks,
-        lecturesPerWeek: courseData.lecturesPerWeek,
-        createdAt: new Date().toISOString(),
-        status: 'active'
-    };
+    const objectives = [];
+    const objectiveItems = objectivesList.querySelectorAll('.objective-display-item');
+    
+    console.log('Found objective items:', objectiveItems.length);
+    
+    objectiveItems.forEach((item, index) => {
+        const objectiveText = item.querySelector('.objective-text');
+        if (objectiveText && objectiveText.textContent.trim()) {
+            const text = objectiveText.textContent.trim();
+            objectives.push(text);
+            console.log(`Objective ${index + 1}:`, text);
+        }
+    });
+    
+    console.log('Learning objectives from UI:', objectives);
+    return objectives;
+}
+
+/**
+ * Add a new learning objective for a unit (used in onboarding)
+ * @param {string} unitName - The unit name (e.g., 'Unit 1')
+ */
+function addObjectiveForUnit(unitName) {
+    console.log('addObjectiveForUnit called with:', unitName);
+    
+    const inputField = document.getElementById('objective-input');
+    const objectivesList = document.getElementById('objectives-list');
+    
+    console.log('Input field found:', !!inputField);
+    console.log('Objectives list found:', !!objectivesList);
+    
+    if (!inputField || !objectivesList) {
+        console.error('Could not find objective input or list elements');
+        showNotification('Error: Could not find objective elements', 'error');
+        return;
+    }
+    
+    const objectiveText = inputField.value.trim();
+    console.log('Objective text:', objectiveText);
+    
+    if (!objectiveText) {
+        showNotification('Please enter a learning objective.', 'error');
+        return;
+    }
+    
+    // Create new objective display item
+    const objectiveItem = document.createElement('div');
+    objectiveItem.className = 'objective-display-item';
+    objectiveItem.innerHTML = `
+        <span class="objective-text">${objectiveText}</span>
+        <button class="remove-objective" onclick="removeObjective(this)">×</button>
+    `;
+    
+    // Add to the list
+    objectivesList.appendChild(objectiveItem);
+    
+    // Clear the input field
+    inputField.value = '';
+    inputField.focus();
+    
+    console.log('Objective added successfully:', objectiveText);
+    console.log('Total objectives now:', objectivesList.querySelectorAll('.objective-display-item').length);
+    showNotification('Learning objective added successfully!', 'success');
+}
+
+/**
+ * Remove a learning objective (used in onboarding)
+ * @param {HTMLElement} button - The remove button element
+ */
+function removeObjective(button) {
+    const objectiveItem = button.closest('.objective-display-item');
+    if (objectiveItem) {
+        objectiveItem.remove();
+        showNotification('Learning objective removed.', 'info');
+    }
 }
 
 /**
@@ -866,6 +1229,161 @@ async function saveAssessment(week) {
 }
 
 /**
+ * Test the onboarding API to see if it's working
+ */
+async function testOnboardingAPI() {
+    try {
+        console.log('🧪 Testing onboarding API...');
+        
+        // Test the test endpoint
+        const testResponse = await fetch('/api/onboarding/test');
+        console.log('Test endpoint response status:', testResponse.status);
+        
+        if (testResponse.ok) {
+            const testResult = await testResponse.json();
+            console.log('Test endpoint result:', testResult);
+            showNotification('✅ Onboarding API is working!', 'success');
+        } else {
+            console.error('Test endpoint failed:', testResponse.status);
+            showNotification('❌ Onboarding API test failed', 'error');
+        }
+        
+        // Test the main endpoint with a simple request
+        const testData = {
+            courseId: 'TEST-COURSE-' + Date.now(),
+            courseName: 'Test Course',
+            instructorId: 'instructor-123',
+            courseDescription: 'Test course for API testing',
+            learningOutcomes: ['Test objective 1', 'Test objective 2'],
+            prerequisites: [],
+            assessmentCriteria: 'Test criteria',
+            courseMaterials: [],
+            unitFiles: {
+                'Unit 1': []
+            },
+            courseStructure: {
+                weeks: 1,
+                lecturesPerWeek: 1,
+                totalUnits: 1
+            }
+        };
+        
+        console.log('Testing main endpoint with data:', testData);
+        
+        const mainResponse = await fetch('/api/onboarding', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(testData)
+        });
+        
+        console.log('Main endpoint response status:', mainResponse.status);
+        
+        if (mainResponse.ok) {
+            const mainResult = await mainResponse.json();
+            console.log('Main endpoint result:', mainResult);
+            showNotification('✅ Onboarding API main endpoint is working!', 'success');
+        } else {
+            const errorText = await mainResponse.text();
+            console.error('Main endpoint failed:', mainResponse.status, errorText);
+            showNotification(`❌ Main endpoint failed: ${mainResponse.status}`, 'error');
+        }
+        
+    } catch (error) {
+        console.error('Error testing onboarding API:', error);
+        showNotification(`❌ API test error: ${error.message}`, 'error');
+    }
+}
+
+/**
+ * Save onboarding data to database
+ */
+async function saveOnboardingData() {
+    try {
+        const courseId = onboardingState.createdCourseId;
+        const instructorId = 'instructor-123';
+        
+        // Collect learning objectives
+        const objectivesList = document.getElementById('objectives-list');
+        const objectives = Array.from(objectivesList.querySelectorAll('.objective-display-item .objective-text'))
+            .map(obj => obj.textContent.trim());
+        
+        // Collect unit files (materials uploaded during onboarding)
+        const unitFiles = {};
+        
+        // Get lecture notes status and content
+        const lectureStatus = document.getElementById('lecture-status');
+        if (lectureStatus.textContent !== 'Not Uploaded') {
+            unitFiles['Unit 1'] = [{
+                name: 'Lecture Notes - Unit 1',
+                type: 'lecture-notes',
+                status: 'uploaded',
+                uploadedAt: new Date().toISOString()
+            }];
+        }
+        
+        // Get practice questions status and content
+        const practiceStatus = document.getElementById('practice-status');
+        if (practiceStatus.textContent !== 'Not Uploaded') {
+            if (!unitFiles['Unit 1']) {
+                unitFiles['Unit 1'] = [];
+            }
+            unitFiles['Unit 1'].push({
+                name: 'Practice Questions/Tutorial',
+                type: 'practice-questions',
+                status: 'uploaded',
+                uploadedAt: new Date().toISOString()
+            });
+        }
+        
+        // Get additional materials
+        const additionalMaterials = document.querySelectorAll('.additional-material-item');
+        additionalMaterials.forEach(material => {
+            const materialName = material.querySelector('.material-name').textContent;
+            if (!unitFiles['Unit 1']) {
+                unitFiles['Unit 1'] = [];
+            }
+            unitFiles['Unit 1'].push({
+                name: materialName,
+                type: 'additional',
+                status: 'uploaded',
+                uploadedAt: new Date().toISOString()
+            });
+        });
+        
+        // Prepare onboarding data
+        const onboardingData = {
+            courseId: courseId,
+            courseName: onboardingState.courseData.course,
+            instructorId: instructorId,
+            learningOutcomes: objectives,
+            unitFiles: unitFiles
+        };
+        
+        // Update the onboarding data in the database
+        const response = await fetch(`/api/onboarding/${courseId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(onboardingData)
+        });
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Failed to save onboarding data: ${response.status} ${errorText}`);
+        }
+        
+        console.log('Onboarding data saved successfully');
+        
+    } catch (error) {
+        console.error('Error saving onboarding data:', error);
+        throw error;
+    }
+}
+
+/**
  * Complete Unit 1 setup
  */
 async function completeUnit1Setup() {
@@ -887,13 +1405,22 @@ async function completeUnit1Setup() {
         return;
     }
     
-    // Show success message and redirect
-    showNotification('Unit 1 setup completed successfully! Redirecting to course upload...', 'success');
-    
-    // Wait a moment for the notification to be seen, then redirect
-    setTimeout(() => {
-        window.location.href = '/instructor/index.html';
-    }, 1500);
+    try {
+        // Save onboarding data to database before redirecting
+        await saveOnboardingData();
+        
+        // Show success message and redirect
+        showNotification('Unit 1 setup completed successfully! Redirecting to course upload...', 'success');
+        
+        // Wait a moment for the notification to be seen, then redirect with course ID
+        setTimeout(() => {
+            window.location.href = `/instructor/index.html?courseId=${onboardingState.createdCourseId}`;
+        }, 1500);
+        
+    } catch (error) {
+        console.error('Error saving onboarding data:', error);
+        showNotification('Error saving onboarding data. Please try again.', 'error');
+    }
 }
 
 /**

@@ -48,6 +48,25 @@
                 </div>
             </div>
 
+            <!-- Onboarding Complete Message -->
+            <div id="onboarding-complete" class="onboarding-complete" style="display: none;">
+                <div class="step-content">
+                    <div class="welcome-header">
+                        <h1>🎉 Onboarding Completed!</h1>
+                        <p class="welcome-subtitle">Your course has been successfully set up. You can now enjoy using BiocBot!</p>
+                    </div>
+                    
+                    <div class="completion-message">
+                        <p><strong>Onboarding has been finished, please go to another page.</strong></p>
+                    </div>
+                    
+                    <div class="completion-actions">
+                        <a href="/instructor/documents" class="btn-primary">Go to Course Upload</a>
+                        <a href="/instructor/home" class="btn-secondary">Go to Home</a>
+                    </div>
+                </div>
+            </div>
+
             <!-- Step 1: Welcome & Introduction -->
             <div id="step-1" class="onboarding-step active">
                 <div class="step-content">
@@ -114,6 +133,11 @@
                     <div class="step-header">
                         <h2>Let's Set Up Your Course</h2>
                         <p>Tell us about your course structure so we can organize your content effectively.</p>
+                        
+                        <!-- Test API Button -->
+                        <button type="button" onclick="testOnboardingAPI()" class="test-api-btn" style="margin: 20px 0; padding: 10px 15px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 14px;">
+                            🧪 Test Onboarding API
+                        </button>
                     </div>
 
                     <form id="course-setup-form" class="setup-form">
@@ -199,22 +223,28 @@
                     <div id="substep-objectives" class="guided-substep active">
                         <div class="substep-header">
                             <h3>Step 1: Learning Objectives</h3>
-                            <p>Define clear learning objectives for Unit 1. These will help students understand what they should learn and help AI generate better responses.</p>
+                            <p>Define clear learning objectives for your units. These will help students understand what they should learn and help AI generate better responses.</p>
                         </div>
                         
                         <div class="substep-content">
-                            <div class="objectives-input-section">
-                                <div class="input-group">
-                                    <input type="text" id="objective-input" class="objective-input" placeholder="Enter learning objective">
-                                    <button class="add-objective-btn" onclick="addObjective()">+</button>
+                            <div id="units-objectives-container">
+                                <!-- Unit 1 Learning Objectives -->
+                                <div class="unit-objectives-section">
+                                    <h4>Unit 1 Learning Objectives</h4>
+                                    <div class="objectives-input-section">
+                                        <div class="input-group">
+                                            <input type="text" id="objective-input" class="objective-input" placeholder="Enter learning objective">
+                                            <button class="add-objective-btn" onclick="addObjectiveForUnit('Unit 1')" type="button">+</button>
+                                        </div>
+                                        <div class="tip-box">
+                                            <strong>Tip:</strong> Start with 3-5 clear, measurable objectives. You can always add more later.
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="objectives-list" id="objectives-list">
+                                        <!-- Objectives will be added here -->
+                                    </div>
                                 </div>
-                                <div class="tip-box">
-                                    <strong>Tip:</strong> Start with 3-5 clear, measurable objectives. You can always add more later.
-                                </div>
-                            </div>
-                            
-                            <div class="objectives-list" id="objectives-list">
-                                <!-- Objectives will be added here -->
                             </div>
                         </div>
                         
@@ -227,36 +257,42 @@
                     <div id="substep-materials" class="guided-substep">
                         <div class="substep-header">
                             <h3>Step 2: Course Materials</h3>
-                            <p>Upload your lecture notes and practice materials for Unit 1. These are required for students to access the content.</p>
+                            <p>Upload your lecture notes and practice materials for your units. These are required for students to access the content.</p>
                         </div>
                         
                         <div class="substep-content">
-                            <div class="materials-section">
-                                <div class="material-item required">
-                                    <div class="material-info">
-                                        <h4>Lecture Notes</h4>
-                                        <p>Upload your lecture slides, notes, or readings for Unit 1</p>
-                                        <span class="status-badge" id="lecture-status">Not Uploaded</span>
+                            <div id="units-materials-container">
+                                <!-- Unit 1 Course Materials -->
+                                <div class="unit-materials-section">
+                                    <h4>Unit 1 Course Materials</h4>
+                                    <div class="materials-section">
+                                        <div class="material-item required">
+                                            <div class="material-info">
+                                                <h5>Lecture Notes</h5>
+                                                <p>Upload your lecture slides, notes, or readings for Unit 1</p>
+                                                <span class="status-badge" id="lecture-status">Not Uploaded</span>
+                                            </div>
+                                            <button class="upload-btn" onclick="openUploadModal('Unit 1', 'lecture-notes')">Upload</button>
+                                        </div>
+                                        
+                                        <div class="material-item required">
+                                            <div class="material-info">
+                                                <h5>Practice Questions/Tutorial</h5>
+                                                <p>Upload practice questions, assignments, or tutorial materials</p>
+                                                <span class="status-badge" id="practice-status">Not Uploaded</span>
+                                            </div>
+                                            <button class="upload-btn" onclick="openUploadModal('Unit 1', 'practice-quiz')">Upload</button>
+                                        </div>
+                                        
+                                        <div class="material-item optional">
+                                            <div class="material-info">
+                                                <h5>Additional Materials (Optional)</h5>
+                                                <p>Add supplementary readings, videos, or other resources</p>
+                                                <span class="status-badge" id="additional-status">Optional</span>
+                                            </div>
+                                            <button class="upload-btn" onclick="openUploadModal('Unit 1', 'additional')">Add</button>
+                                        </div>
                                     </div>
-                                    <button class="upload-btn" onclick="openUploadModal('Unit 1', 'lecture-notes')">Upload</button>
-                                </div>
-                                
-                                <div class="material-item required">
-                                    <div class="material-info">
-                                        <h4>Practice Questions/Tutorial</h4>
-                                        <p>Upload practice questions, assignments, or tutorial materials</p>
-                                        <span class="status-badge" id="practice-status">Not Uploaded</span>
-                                    </div>
-                                    <button class="upload-btn" onclick="openUploadModal('Unit 1', 'practice-quiz')">Upload</button>
-                                </div>
-                                
-                                <div class="material-item optional">
-                                    <div class="material-info">
-                                        <h4>Additional Materials (Optional)</h4>
-                                        <p>Add supplementary readings, videos, or other resources</p>
-                                        <span class="status-badge" id="additional-status">Optional</span>
-                                    </div>
-                                    <button class="upload-btn" onclick="openUploadModal('Unit 1', 'additional')">Add</button>
                                 </div>
                             </div>
                         </div>

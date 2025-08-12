@@ -66,6 +66,27 @@ document.addEventListener('DOMContentLoaded', () => {
     // Check for URL parameters to open modals
     checkUrlParameters();
     
+    // Load the saved publish status from the database
+    loadPublishStatus();
+    
+    // Load the saved learning objectives from the database
+    loadLearningObjectives();
+    
+    // Load the saved documents from the database
+    loadDocuments();
+    
+    // Load the saved assessment questions from the database
+    loadAssessmentQuestions();
+    
+    // Load the saved pass thresholds from the database
+    loadPassThresholds();
+    
+    // Set up threshold input event listeners
+    setupThresholdInputListeners();
+    
+    // Load course data if available (either from onboarding or existing course)
+    loadCourseData();
+    
     // Handle accordion toggling
     accordionHeaders.forEach(header => {
         header.addEventListener('click', (e) => {
@@ -492,25 +513,90 @@ async function handleUpload() {
     uploadBtn.disabled = true;
     
     try {
-        // Simulate upload delay
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        const courseId = getCurrentCourseId();
+        const instructorId = getCurrentInstructorId();
+        const lectureName = currentWeek;
         
-        // Create content item based on what was provided
-        let contentDescription = '';
-        let fileName = '';
+        let uploadResult;
         
         if (uploadedFile) {
-            fileName = uploadedFile.name;
-            contentDescription = `Uploaded file: ${uploadedFile.name}`;
-        } else if (urlInput) {
-            fileName = `Content from URL`;
-            contentDescription = `Imported from: ${urlInput}`;
+            // Handle file upload
+            const formData = new FormData();
+            formData.append('file', uploadedFile);
+            formData.append('courseId', courseId);
+            formData.append('lectureName', lectureName);
+            formData.append('documentType', currentContentType);
+            formData.append('instructorId', instructorId);
+            
+            const response = await fetch('/api/documents/upload', {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Upload failed: ${response.status} ${errorText}`);
+            }
+            
+            uploadResult = await response.json();
+            
         } else if (textInput) {
-            fileName = `Direct text input`;
-            contentDescription = `Direct text content (${textInput.length} characters)`;
+            // Handle text submission
+            const title = materialNameInput || `${currentContentType} - ${currentWeek}`;
+            
+            const response = await fetch('/api/documents/text', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    courseId: courseId,
+                    lectureName: lectureName,
+                    documentType: currentContentType,
+                    instructorId: instructorId,
+                    content: textInput,
+                    title: title,
+                    description: urlInput || ''
+                })
+            });
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Text submission failed: ${response.status} ${errorText}`);
+            }
+            
+            uploadResult = await response.json();
+            
+        } else if (urlInput) {
+            // Handle URL import (treat as text with URL as description)
+            const title = materialNameInput || `Content from URL - ${currentWeek}`;
+            
+            const response = await fetch('/api/documents/text', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    courseId: courseId,
+                    lectureName: lectureName,
+                    documentType: currentContentType,
+                    instructorId: instructorId,
+                    content: `Content imported from: ${urlInput}`,
+                    title: title,
+                    description: urlInput
+                })
+            });
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`URL import failed: ${response.status} ${errorText}`);
+            }
+            
+            uploadResult = await response.json();
         }
         
         // Generate proper file name based on content type
+        let fileName = '';
         switch (currentContentType) {
             case 'lecture-notes':
                 fileName = `*Lecture Notes - ${currentWeek}`;
@@ -525,28 +611,22 @@ async function handleUpload() {
                 fileName = `Syllabus - ${currentWeek}`;
                 break;
             case 'additional':
-                // Use custom name if provided, otherwise use default
-                if (materialNameInput) {
-                    fileName = materialNameInput;
-                    contentDescription = `Additional Material: ${materialNameInput}`;
-                } else {
-                    fileName = `Additional Material - ${currentWeek}`;
-                }
+                fileName = materialNameInput || `Additional Material - ${currentWeek}`;
                 break;
             default:
-                fileName = fileName || `Content - ${currentWeek}`;
+                fileName = uploadResult?.data?.title || `Content - ${currentWeek}`;
         }
         
         // Add the content to the appropriate week
-        addContentToWeek(currentWeek, fileName, contentDescription);
+        addContentToWeek(currentWeek, fileName, `Uploaded successfully - ${uploadResult?.data?.filename || fileName}`);
         
         // Close modal and show success
         closeUploadModal();
-        showNotification('Content uploaded and processed successfully!', 'success');
+        showNotification(uploadResult?.message || 'Content uploaded successfully!', 'success');
         
     } catch (error) {
         console.error('Error uploading content:', error);
-        showNotification('Error uploading content. Please try again.', 'error');
+        showNotification(`Error uploading content: ${error.message}`, 'error');
         
         // Re-enable upload button
         uploadBtn.textContent = 'Upload';
@@ -694,31 +774,60 @@ function togglePublish(lectureName, isPublished) {
  */
 async function updatePublishStatus(lectureName, isPublished) {
     try {
-        // Simulate API call to update publish status
+        // Get the current course ID (for now, using a default)
+        const courseId = getCurrentCourseId();
+        
+        console.log(`Updating publish status: ${lectureName} -> ${isPublished}, Course: ${courseId}`);
+        
+        const requestBody = {
+            lectureName: lectureName,
+            isPublished: isPublished,
+            instructorId: getCurrentInstructorId(),
+            courseId: courseId
+        };
+        
+        console.log('Request body:', requestBody);
+        
         const response = await fetch('/api/lectures/publish', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-                lectureName: lectureName,
-                isPublished: isPublished,
-                instructorId: getCurrentInstructorId()
-            })
+            body: JSON.stringify(requestBody)
         });
         
+        console.log('Response status:', response.status);
+        
         if (!response.ok) {
-            throw new Error('Failed to update publish status');
+            const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
+            console.error('Error response:', errorData);
+            
+            // Show specific error message
+            const errorMessage = errorData.message || errorData.error || `Failed to update publish status: ${response.status}`;
+            showNotification(`Error: ${errorMessage}`, 'error');
+            
+            // Revert the toggle if the API call failed
+            const toggleId = `publish-${lectureName.toLowerCase().replace(/\s+/g, '')}`;
+            const toggle = document.getElementById(toggleId);
+            if (toggle) {
+                toggle.checked = !isPublished;
+                togglePublish(lectureName, !isPublished);
+            }
+            return;
         }
         
-        console.log(`Publish status updated for ${lectureName}: ${isPublished}`);
+        const result = await response.json();
+        console.log(`Publish status updated for ${lectureName}: ${isPublished}`, result);
+        
+        // Show success notification
+        showNotification(result.message || 'Publish status updated successfully', 'success');
         
     } catch (error) {
         console.error('Error updating publish status:', error);
         showNotification('Error updating publish status. Please try again.', 'error');
         
         // Revert the toggle if the API call failed
-        const toggleId = `publish-${lectureName.toLowerCase().replace(/\s+/g, '-')}`;
+        const toggleId = `publish-${lectureName.toLowerCase().replace(/\s+/g, '')}`;
         const toggle = document.getElementById(toggleId);
         if (toggle) {
             toggle.checked = !isPublished;
@@ -735,6 +844,468 @@ function getCurrentInstructorId() {
     // In a real implementation, this would get the instructor ID from the session/token
     return 'instructor-123';
 }
+
+/**
+ * Get current course ID (placeholder function)
+ * @returns {string} Course ID
+ */
+function getCurrentCourseId() {
+    // Check if we have a courseId from URL parameters (onboarding redirect)
+    const urlParams = new URLSearchParams(window.location.search);
+    const courseIdFromUrl = urlParams.get('courseId');
+    
+    if (courseIdFromUrl) {
+        return courseIdFromUrl;
+    }
+    
+    // In a real implementation, this would get the course ID from:
+    // - Course selection dropdown
+    // - Session storage
+    return 'BIOC-101';
+}
+
+/**
+ * Load the saved publish status for all lectures from the database
+ */
+async function loadPublishStatus() {
+    try {
+        const courseId = getCurrentCourseId();
+        const instructorId = getCurrentInstructorId();
+        
+        const response = await fetch(`/api/lectures/publish-status?instructorId=${instructorId}&courseId=${courseId}`);
+        
+        if (!response.ok) {
+            throw new Error('Failed to fetch publish status');
+        }
+        
+        const result = await response.json();
+        const publishStatus = result.data.publishStatus;
+        
+        // Update all toggle switches to reflect the saved state
+        Object.keys(publishStatus).forEach(lectureName => {
+            const isPublished = publishStatus[lectureName];
+            const toggleId = `publish-${lectureName.toLowerCase().replace(/\s+/g, '')}`;
+            const toggle = document.getElementById(toggleId);
+            
+            if (toggle) {
+                // Update the toggle state
+                toggle.checked = isPublished;
+                
+                // Update the visual state
+                const accordionItem = toggle.closest('.accordion-item');
+                if (accordionItem) {
+                    if (isPublished) {
+                        accordionItem.classList.add('published');
+                    } else {
+                        accordionItem.classList.remove('published');
+                    }
+                }
+            }
+        });
+        
+        console.log('Publish status loaded from database:', publishStatus);
+        
+    } catch (error) {
+        console.error('Error loading publish status:', error);
+        showNotification('Error loading publish status. Using default values.', 'warning');
+    }
+}
+
+/**
+ * Load the saved learning objectives for all lectures from the database
+ */
+async function loadLearningObjectives() {
+    try {
+        const courseId = getCurrentCourseId();
+        
+        // Get all accordion items (units/weeks)
+        const accordionItems = document.querySelectorAll('.accordion-item');
+        
+        for (const item of accordionItems) {
+            const folderName = item.querySelector('.folder-name');
+            if (!folderName) continue;
+            
+            const lectureName = folderName.textContent;
+            
+            const response = await fetch(`/api/learning-objectives?week=${encodeURIComponent(lectureName)}&courseId=${courseId}`);
+            
+            if (response.ok) {
+                const result = await response.json();
+                const objectives = result.data.objectives;
+                
+                if (objectives && objectives.length > 0) {
+                    // Clear existing objectives
+                    const objectivesList = item.querySelector('.objectives-list');
+                    if (objectivesList) {
+                        objectivesList.innerHTML = '';
+                        
+                        // Add each objective
+                        objectives.forEach(objective => {
+                            const objectiveItem = document.createElement('div');
+                            objectiveItem.className = 'objective-display-item';
+                            objectiveItem.innerHTML = `
+                                <span class="objective-text">${objective}</span>
+                                <button class="remove-objective" onclick="removeObjective(this)">×</button>
+                            `;
+                            objectivesList.appendChild(objectiveItem);
+                        });
+                    }
+                }
+            }
+        }
+        
+        console.log('Learning objectives loaded from database');
+        
+    } catch (error) {
+        console.error('Error loading learning objectives:', error);
+        showNotification('Error loading learning objectives. Using default values.', 'warning');
+    }
+}
+
+/**
+ * Load the saved documents for all lectures from the database
+ */
+async function loadDocuments() {
+    try {
+        const courseId = getCurrentCourseId();
+        
+        // Get all accordion items (units/weeks)
+        const accordionItems = document.querySelectorAll('.accordion-item');
+        
+        for (const item of accordionItems) {
+            const folderName = item.querySelector('.folder-name');
+            if (!folderName) continue;
+            
+            const lectureName = folderName.textContent;
+            
+            const response = await fetch(`/api/documents/lecture?courseId=${courseId}&lectureName=${encodeURIComponent(lectureName)}`);
+            
+            if (response.ok) {
+                const result = await response.json();
+                const documents = result.data.documents;
+                
+                if (documents && documents.length > 0) {
+                    // Find the course materials section
+                    const courseMaterialsSection = item.querySelector('.course-materials-section .section-content');
+                    if (courseMaterialsSection) {
+                        // Clear existing placeholder content
+                        const placeholders = courseMaterialsSection.querySelectorAll('.file-item');
+                        placeholders.forEach(placeholder => {
+                            if (placeholder.querySelector('.status-text')?.textContent === 'Not Uploaded') {
+                                placeholder.remove();
+                            }
+                        });
+                        
+                        // Add each document
+                        documents.forEach(doc => {
+                            const documentItem = createDocumentItem(doc);
+                            courseMaterialsSection.appendChild(documentItem);
+                        });
+                    }
+                }
+            }
+        }
+        
+        console.log('Documents loaded from database');
+        
+    } catch (error) {
+        console.error('Error loading documents:', error);
+        showNotification('Error loading documents. Using default values.', 'warning');
+    }
+}
+
+/**
+ * Create a document item element for display
+ * @param {Object} doc - Document object from database
+ * @returns {HTMLElement} Document item element
+ */
+function createDocumentItem(doc) {
+    const documentItem = document.createElement('div');
+    documentItem.className = 'file-item';
+    documentItem.dataset.documentId = doc.documentId;
+    
+    const fileIcon = doc.contentType === 'text' ? '📝' : '📄';
+    const statusText = doc.status === 'uploaded' ? 'Uploaded' : doc.status;
+    
+    documentItem.innerHTML = `
+        <span class="file-icon">${fileIcon}</span>
+        <div class="file-info">
+            <h3>${doc.originalName}</h3>
+            <p>${doc.metadata?.description || 'No description'}</p>
+            <span class="status-text">${statusText}</span>
+        </div>
+        <div class="file-actions">
+            <button class="action-button view" onclick="viewDocument('${doc.documentId}')">View</button>
+            <button class="action-button delete" onclick="deleteDocument('${doc.documentId}')">Delete</button>
+        </div>
+    `;
+    
+    return documentItem;
+}
+
+/**
+ * Delete a document
+ * @param {string} documentId - Document identifier
+ */
+async function deleteDocument(documentId) {
+    try {
+        const instructorId = getCurrentInstructorId();
+        
+        const response = await fetch(`/api/documents/${documentId}`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                instructorId: instructorId
+            })
+        });
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Delete failed: ${response.status} ${errorText}`);
+        }
+        
+        // Remove the document item from the UI
+        const documentItem = document.querySelector(`[data-document-id="${documentId}"]`);
+        if (documentItem) {
+            documentItem.remove();
+        }
+        
+        showNotification('Document deleted successfully!', 'success');
+        
+    } catch (error) {
+        console.error('Error deleting document:', error);
+        showNotification(`Error deleting document: ${error.message}`, 'error');
+    }
+}
+
+/**
+ * View a document (placeholder function)
+ * @param {string} documentId - Document identifier
+ */
+function viewDocument(documentId) {
+    // TODO: Implement document viewing functionality
+    showNotification('Document viewing not yet implemented', 'info');
+}
+
+/**
+ * Load the saved assessment questions for all lectures from the database
+ */
+async function loadAssessmentQuestions() {
+    try {
+        const courseId = getCurrentCourseId();
+        
+        // Get all accordion items (units/weeks)
+        const accordionItems = document.querySelectorAll('.accordion-item');
+        
+        for (const item of accordionItems) {
+            const folderName = item.querySelector('.folder-name');
+            if (!folderName) continue;
+            
+            const lectureName = folderName.textContent;
+            
+            const response = await fetch(`/api/questions/lecture?courseId=${courseId}&lectureName=${encodeURIComponent(lectureName)}`);
+            
+            if (response.ok) {
+                const result = await response.json();
+                const questions = result.data.questions;
+                
+                if (questions && questions.length > 0) {
+                    // Store questions in the assessmentQuestions object
+                    if (!assessmentQuestions[lectureName]) {
+                        assessmentQuestions[lectureName] = [];
+                    }
+                    
+                    // Convert database questions to local format
+                    questions.forEach(dbQuestion => {
+                        const localQuestion = {
+                            id: dbQuestion.questionId,
+                            questionId: dbQuestion.questionId,
+                            type: dbQuestion.questionType,
+                            question: dbQuestion.question,
+                            answer: dbQuestion.correctAnswer,
+                            options: dbQuestion.options || {}
+                        };
+                        
+                        assessmentQuestions[lectureName].push(localQuestion);
+                    });
+                    
+                    // Update the display for this lecture
+                    updateQuestionsDisplay(lectureName);
+                }
+            }
+        }
+        
+        console.log('Assessment questions loaded from database');
+        
+    } catch (error) {
+        console.error('Error loading assessment questions:', error);
+        showNotification('Error loading assessment questions. Using default values.', 'warning');
+    }
+}
+
+/**
+ * Delete an assessment question
+ * @param {string} questionId - Question identifier
+ * @param {string} week - Week identifier
+ */
+async function deleteAssessmentQuestion(questionId, week) {
+    try {
+        const instructorId = getCurrentInstructorId();
+        
+        const response = await fetch(`/api/questions/${questionId}`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                instructorId: instructorId
+            })
+        });
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Delete failed: ${response.status} ${errorText}`);
+        }
+        
+        // Remove question from local array
+        if (assessmentQuestions[week]) {
+            assessmentQuestions[week] = assessmentQuestions[week].filter(q => q.questionId !== questionId);
+        }
+        
+        // Update the display
+        updateQuestionsDisplay(week);
+        
+        showNotification('Question deleted successfully!', 'success');
+        
+    } catch (error) {
+        console.error('Error deleting question:', error);
+        showNotification(`Error deleting question: ${error.message}`, 'error');
+    }
+}
+
+/**
+ * Save the pass threshold for a specific lecture
+ * @param {string} lectureName - Name of the lecture/unit
+ * @param {number} threshold - Number of questions required to pass
+ */
+async function savePassThreshold(lectureName, threshold) {
+    try {
+        const courseId = getCurrentCourseId();
+        const instructorId = getCurrentInstructorId();
+        
+        const response = await fetch('/api/lectures/pass-threshold', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                courseId: courseId,
+                lectureName: lectureName,
+                passThreshold: threshold,
+                instructorId: instructorId
+            })
+        });
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Failed to save threshold: ${response.status} ${errorText}`);
+        }
+        
+        const result = await response.json();
+        console.log(`Pass threshold saved for ${lectureName}: ${threshold}`);
+        
+        // Show success notification
+        showNotification(result.message, 'success');
+        
+    } catch (error) {
+        console.error('Error saving pass threshold:', error);
+        showNotification(`Error saving pass threshold: ${error.message}`, 'error');
+    }
+}
+
+/**
+ * Load the saved pass thresholds for all lectures from the database
+ */
+async function loadPassThresholds() {
+    try {
+        const courseId = getCurrentCourseId();
+        
+        // Get all accordion items (units/weeks)
+        const accordionItems = document.querySelectorAll('.accordion-item');
+        
+        for (const item of accordionItems) {
+            const folderName = item.querySelector('.folder-name');
+            if (!folderName) continue;
+            
+            const lectureName = folderName.textContent;
+            
+            const response = await fetch(`/api/lectures/pass-threshold?courseId=${courseId}&lectureName=${encodeURIComponent(lectureName)}`);
+            
+            if (response.ok) {
+                const result = await response.json();
+                const passThreshold = result.data.passThreshold;
+                
+                // Find and update the threshold input for this lecture
+                // Convert lecture name to ID format (e.g., "Unit 1" -> "Unit-1")
+                const thresholdId = `pass-threshold-${lectureName.replace(/\s+/g, '-')}`;
+                const thresholdInput = item.querySelector(`#${thresholdId}`);
+                
+                if (thresholdInput) {
+                    thresholdInput.value = passThreshold;
+                    
+                    // Also update the display text if it exists
+                    const thresholdValue = item.querySelector(`#threshold-value-${lectureName.toLowerCase().replace(/\s+/g, '')}`);
+                    if (thresholdValue) {
+                        thresholdValue.textContent = passThreshold + '%';
+                    }
+                }
+            }
+        }
+        
+        console.log('Pass thresholds loaded from database');
+        
+    } catch (error) {
+        console.error('Error loading pass thresholds:', error);
+        showNotification('Error loading pass thresholds. Using default values.', 'warning');
+    }
+}
+
+/**
+ * Set up event listeners for threshold inputs
+ */
+function setupThresholdInputListeners() {
+    // Get all threshold inputs
+    const thresholdInputs = document.querySelectorAll('input[id^="pass-threshold-"]');
+    
+    thresholdInputs.forEach(input => {
+        // Add change event listener
+        input.addEventListener('change', function() {
+            const threshold = parseInt(this.value);
+            // Extract the exact lecture name from the ID (e.g., "Unit-1" -> "Unit 1")
+            const lectureName = this.id.replace('pass-threshold-', '').replace(/-/g, ' ');
+            
+            // Save the threshold to MongoDB
+            savePassThreshold(lectureName, threshold);
+        });
+        
+        // Add input event listener for real-time updates
+        input.addEventListener('input', function() {
+            const threshold = parseInt(this.value);
+            // Extract the exact lecture name from the ID
+            const lectureName = this.id.replace('pass-threshold-', '').replace(/-/g, ' ');
+            
+            // Update the display text if it exists
+            const thresholdValue = document.querySelector(`#threshold-value-${lectureName.toLowerCase().replace(/\s+/g, '')}`);
+            if (thresholdValue) {
+                thresholdValue.textContent = threshold + '%';
+            }
+        });
+    });
+}
+
+
 
 // Mode Questions Modal functionality
 let currentQuestions = [];
@@ -1623,11 +2194,38 @@ function toggleSection(headerElement, e) {
  * @param {string} week - The week identifier (e.g., 'Week 1')
  */
 function addObjectiveFromInput(week) {
+    console.log('addObjectiveFromInput called with:', week);
+    
     // Find the week element using our custom helper function
     const folderElement = findElementsContainingText('.accordion-item .folder-name', week)[0];
+    if (!folderElement) {
+        console.error('Could not find folder element for:', week);
+        showNotification('Error: Could not find unit element', 'error');
+        return;
+    }
+    
     const weekElement = folderElement.closest('.accordion-item');
-    const inputField = weekElement.querySelector(`#objective-input-${week.toLowerCase().replace(/\s+/g, '')}`);
+    if (!weekElement) {
+        console.error('Could not find week element for:', week);
+        showNotification('Error: Could not find unit element', 'error');
+        return;
+    }
+    
+    // Convert unit name to ID format (e.g., "Unit 1" -> "Unit-1")
+    const unitId = week.toLowerCase().replace(/\s+/g, '-');
+    console.log('Looking for unit ID:', unitId);
+    
+    const inputField = weekElement.querySelector(`#objective-input-${unitId}`);
+    console.log('Input field found:', !!inputField);
+    
+    if (!inputField) {
+        console.error('Could not find input field for:', week, 'with ID:', `objective-input-${unitId}`);
+        showNotification('Error: Could not find input field', 'error');
+        return;
+    }
+    
     const objectiveText = inputField.value.trim();
+    console.log('Objective text:', objectiveText);
     
     if (!objectiveText) {
         showNotification('Please enter a learning objective.', 'error');
@@ -1635,7 +2233,14 @@ function addObjectiveFromInput(week) {
     }
     
     // Get the objectives list
-    const objectivesList = weekElement.querySelector(`#objectives-list-${week.toLowerCase().replace(/\s+/g, '')}`);
+    const objectivesList = weekElement.querySelector(`#objectives-list-${unitId}`);
+    console.log('Objectives list found:', !!objectivesList);
+    
+    if (!objectivesList) {
+        console.error('Could not find objectives list for:', week);
+        showNotification('Error: Could not find objectives list', 'error');
+        return;
+    }
     
     // Create new objective display item
     const objectiveItem = document.createElement('div');
@@ -1651,6 +2256,10 @@ function addObjectiveFromInput(week) {
     // Clear the input field
     inputField.value = '';
     inputField.focus();
+    
+    console.log('Objective added successfully:', objectiveText);
+    console.log('Total objectives now:', objectivesList.querySelectorAll('.objective-display-item').length);
+    showNotification('Learning objective added successfully!', 'success');
 }
 
 /**
@@ -1659,7 +2268,59 @@ function addObjectiveFromInput(week) {
  */
 function removeObjective(button) {
     const objectiveItem = button.closest('.objective-display-item');
-    objectiveItem.remove();
+    if (objectiveItem) {
+        objectiveItem.remove();
+        showNotification('Learning objective removed.', 'info');
+    } else {
+        console.error('Could not find objective item to remove');
+    }
+}
+
+/**
+ * Add a new learning objective for a unit (used in onboarding)
+ * @param {string} unitName - The unit name (e.g., 'Unit 1')
+ */
+function addObjectiveForUnit(unitName) {
+    console.log('addObjectiveForUnit called with:', unitName);
+    
+    const inputField = document.getElementById('objective-input');
+    const objectivesList = document.getElementById('objectives-list');
+    
+    console.log('Input field found:', !!inputField);
+    console.log('Objectives list found:', !!objectivesList);
+    
+    if (!inputField || !objectivesList) {
+        console.error('Could not find objective input or list elements');
+        showNotification('Error: Could not find objective elements', 'error');
+        return;
+    }
+    
+    const objectiveText = inputField.value.trim();
+    console.log('Objective text:', objectiveText);
+    
+    if (!objectiveText) {
+        showNotification('Please enter a learning objective.', 'error');
+        return;
+    }
+    
+    // Create new objective display item
+    const objectiveItem = document.createElement('div');
+    objectiveItem.className = 'objective-display-item';
+    objectiveItem.innerHTML = `
+        <span class="objective-text">${objectiveText}</span>
+        <button class="remove-objective" onclick="removeObjective(this)">×</button>
+    `;
+    
+    // Add to the list
+    objectivesList.appendChild(objectiveItem);
+    
+    // Clear the input field
+    inputField.value = '';
+    inputField.focus();
+    
+    console.log('Objective added successfully:', objectiveText);
+    console.log('Total objectives now:', objectivesList.querySelectorAll('.objective-display-item').length);
+    showNotification('Learning objective added successfully!', 'success');
 }
 
 /**
@@ -1669,7 +2330,19 @@ function removeObjective(button) {
 async function saveObjectives(week) {
     // Find the week element using our custom helper function
     const folderElement = findElementsContainingText('.accordion-item .folder-name', week)[0];
+    if (!folderElement) {
+        console.error('Could not find folder element for:', week);
+        showNotification('Error: Could not find unit element', 'error');
+        return;
+    }
+    
     const weekElement = folderElement.closest('.accordion-item');
+    if (!weekElement) {
+        console.error('Could not find week element for:', week);
+        showNotification('Error: Could not find unit element', 'error');
+        return;
+    }
+    
     const objectiveItems = weekElement.querySelectorAll('.objective-text');
     
     // Collect all objectives
@@ -1681,29 +2354,43 @@ async function saveObjectives(week) {
     }
     
     try {
-        // In a real implementation, this would save to the server
+        // Get the current course ID
+        const courseId = getCurrentCourseId();
+        
+        console.log(`Saving learning objectives for ${week}, Course: ${courseId}`, objectives);
+        
+        const requestBody = {
+            lectureName: week, // Use lectureName for consistency
+            objectives: objectives,
+            instructorId: getCurrentInstructorId(),
+            courseId: courseId
+        };
+        
+        console.log('Request body:', requestBody);
+        
         const response = await fetch('/api/learning-objectives', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-                week: week,
-                objectives: objectives,
-                instructorId: getCurrentInstructorId()
-            })
+            body: JSON.stringify(requestBody)
         });
         
+        console.log('Response status:', response.status);
+        
         if (!response.ok) {
-            throw new Error('Failed to save learning objectives');
+            const errorText = await response.text();
+            console.error('Error response:', errorText);
+            throw new Error(`Failed to save learning objectives: ${response.status} ${errorText}`);
         }
         
-        showNotification(`Learning objectives for ${week} saved successfully!`, 'success');
+        const result = await response.json();
+        console.log('Learning objectives saved successfully:', result);
+        showNotification(result.message, 'success');
         
     } catch (error) {
         console.error('Error saving learning objectives:', error);
-        // For demo purposes, still show success
-        showNotification(`Learning objectives for ${week} saved successfully! (Demo mode)`, 'success');
+        showNotification('Error saving learning objectives. Please try again.', 'error');
     }
 }
 
@@ -2161,24 +2848,23 @@ function setupMCQValidation() {
 /**
  * Save the created question
  */
-function saveQuestion() {
+async function saveQuestion() {
     const questionType = document.getElementById('question-type').value;
     const questionText = document.getElementById('question-text').value.trim();
     
     // Validation
     if (!questionType) {
-        alert('Please select a question type.');
+        showNotification('Please select a question type.', 'error');
         return;
     }
     
     if (!questionText) {
-        alert('Please enter a question.');
+        showNotification('Please enter a question.', 'error');
         return;
     }
     
     let question = {
-        id: Date.now(), // Simple ID generation
-        type: questionType,
+        questionType: questionType,
         question: questionText
     };
     
@@ -2186,10 +2872,10 @@ function saveQuestion() {
     if (questionType === 'true-false') {
         const tfAnswer = document.querySelector('input[name="tf-answer"]:checked');
         if (!tfAnswer) {
-            alert('Please select the correct answer (True/False).');
+            showNotification('Please select the correct answer (True/False).', 'error');
             return;
         }
-        question.answer = tfAnswer.value;
+        question.correctAnswer = tfAnswer.value;
     } else if (questionType === 'multiple-choice') {
         // Get all options
         const options = {};
@@ -2211,41 +2897,89 @@ function saveQuestion() {
         });
         
         if (!hasOptions) {
-            alert('Please enter at least one answer option.');
+            showNotification('Please enter at least one answer option.', 'error');
             return;
         }
         
         if (!hasCorrectAnswer) {
-            alert('Please select the correct answer for the options you have entered.');
+            showNotification('Please select the correct answer for the options you have entered.', 'error');
             return;
         }
         
         const correctAnswer = document.querySelector('input[name="mcq-correct"]:checked');
         question.options = options;
-        question.answer = correctAnswer.value;
+        question.correctAnswer = correctAnswer.value;
     } else if (questionType === 'short-answer') {
         const saAnswer = document.getElementById('sa-answer').value.trim();
         if (!saAnswer) {
-            alert('Please provide expected answer or key points.');
+            showNotification('Please provide expected answer or key points.', 'error');
             return;
         }
-        question.answer = saAnswer;
+        question.correctAnswer = saAnswer;
     }
     
-    // Add question to the week's assessment
-    if (!assessmentQuestions[currentWeek]) {
-        assessmentQuestions[currentWeek] = [];
+    try {
+        // Save question to MongoDB
+        const courseId = getCurrentCourseId();
+        const instructorId = getCurrentInstructorId();
+        const lectureName = currentWeek;
+        
+        const response = await fetch('/api/questions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                courseId: courseId,
+                lectureName: lectureName,
+                instructorId: instructorId,
+                questionType: question.questionType,
+                question: question.question,
+                options: question.options || {},
+                correctAnswer: question.correctAnswer,
+                explanation: '',
+                difficulty: 'medium',
+                tags: [],
+                points: 1
+            })
+        });
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Failed to save question: ${response.status} ${errorText}`);
+        }
+        
+        const result = await response.json();
+        
+        // Add question to local array for display
+        if (!assessmentQuestions[currentWeek]) {
+            assessmentQuestions[currentWeek] = [];
+        }
+        
+        // Add the saved question with database ID
+        const savedQuestion = {
+            ...question,
+            id: result.data.questionId,
+            questionId: result.data.questionId
+        };
+        
+        assessmentQuestions[currentWeek].push(savedQuestion);
+        
+        // Update the display
+        updateQuestionsDisplay(currentWeek);
+        
+        // Close modal
+        closeQuestionModal();
+        
+        // Check if we should enable AI generation
+        checkAIGenerationAvailability(currentWeek);
+        
+        showNotification('Question saved successfully!', 'success');
+        
+    } catch (error) {
+        console.error('Error saving question:', error);
+        showNotification(`Error saving question: ${error.message}`, 'error');
     }
-    assessmentQuestions[currentWeek].push(question);
-    
-    // Update the display
-    updateQuestionsDisplay(currentWeek);
-    
-    // Close modal
-    closeQuestionModal();
-    
-    // Check if we should enable AI generation
-    checkAIGenerationAvailability(currentWeek);
 }
 
 /**
@@ -2270,11 +3004,11 @@ function updateQuestionsDisplay(week) {
     let html = '';
     questions.forEach((question, index) => {
         html += `
-            <div class="question-item" data-question-id="${question.id}">
+            <div class="question-item" data-question-id="${question.questionId || question.id}">
                 <div class="question-header">
                     <span class="question-type-badge ${question.type}">${getQuestionTypeLabel(question.type)}</span>
                     <span class="question-number">Question ${index + 1}</span>
-                    <button class="delete-question-btn" onclick="deleteQuestion('${week}', ${question.id})">×</button>
+                    <button class="delete-question-btn" onclick="deleteQuestion('${week}', '${question.questionId || question.id}')">×</button>
                 </div>
                 <div class="question-content">
                     <p class="question-text">${question.question}</p>
@@ -2334,13 +3068,16 @@ function getQuestionAnswerDisplay(question) {
 /**
  * Delete a question
  * @param {string} week - Week identifier
- * @param {number} questionId - Question ID
+ * @param {string} questionId - Question ID
  */
-function deleteQuestion(week, questionId) {
+async function deleteQuestion(week, questionId) {
     if (confirm('Are you sure you want to delete this question?')) {
-        assessmentQuestions[week] = assessmentQuestions[week].filter(q => q.id !== questionId);
-        updateQuestionsDisplay(week);
-        checkAIGenerationAvailability(week);
+        try {
+            await deleteAssessmentQuestion(questionId, week);
+            checkAIGenerationAvailability(week);
+        } catch (error) {
+            console.error('Error deleting question:', error);
+        }
     }
 }
 
@@ -2612,4 +3349,499 @@ function initializeAssessmentSystem() {
         updateQuestionsDisplay(week);
         checkAIGenerationAvailability(week);
     });
+}
+
+/**
+ * Load onboarding data and populate the course upload page
+ */
+async function loadOnboardingData() {
+    try {
+        // Check if we have a courseId from URL parameters (onboarding redirect)
+        const urlParams = new URLSearchParams(window.location.search);
+        const courseId = urlParams.get('courseId');
+        
+        if (!courseId) {
+            console.log('No course ID from onboarding, skipping onboarding data load');
+            return;
+        }
+        
+        console.log('Loading onboarding data for course:', courseId);
+        
+        // Fetch onboarding data from database
+        const response = await fetch(`/api/onboarding/${courseId}`);
+        
+        if (!response.ok) {
+            console.log('No onboarding data found for course:', courseId);
+            return;
+        }
+        
+        const result = await response.json();
+        const onboardingData = result.data;
+        
+        console.log('Onboarding data loaded:', onboardingData);
+        
+        // Generate units dynamically based on course structure
+        if (onboardingData.courseStructure && onboardingData.courseStructure.totalUnits > 0) {
+            generateUnitsFromOnboarding(onboardingData);
+        }
+        
+        // Load existing data for the units
+        loadExistingUnitData(onboardingData);
+        
+        // Show success notification
+        showNotification('Onboarding data loaded successfully!', 'success');
+        
+    } catch (error) {
+        console.error('Error loading onboarding data:', error);
+        showNotification('Error loading onboarding data. Using default values.', 'warning');
+    }
+}
+
+/**
+ * Load course data (either from onboarding redirect or existing course)
+ */
+async function loadCourseData() {
+    try {
+        // First check if we have a courseId from URL parameters (onboarding redirect)
+        const urlParams = new URLSearchParams(window.location.search);
+        const courseId = urlParams.get('courseId');
+        
+        if (courseId) {
+            // Load specific course data
+            await loadSpecificCourse(courseId);
+            return;
+        }
+        
+        // If no courseId in URL, check if instructor has any existing courses
+        const instructorId = 'instructor-123'; // This would come from authentication
+        const response = await fetch(`/api/onboarding/instructor/${instructorId}`);
+        
+        if (response.ok) {
+            const result = await response.json();
+            if (result.data && result.data.courses && result.data.courses.length > 0) {
+                // Load the first available course
+                const firstCourse = result.data.courses[0];
+                await loadSpecificCourse(firstCourse.courseId);
+                return;
+            }
+        }
+        
+        // If no existing course, show empty state
+        showEmptyCourseState();
+        
+    } catch (error) {
+        console.error('Error loading course data:', error);
+        showNotification('Error loading course data. Using default values.', 'warning');
+        showEmptyCourseState();
+    }
+}
+
+/**
+ * Load a specific course by ID
+ */
+async function loadSpecificCourse(courseId) {
+    try {
+        console.log('Loading course data for:', courseId);
+        
+        const response = await fetch(`/api/onboarding/${courseId}`);
+        
+        if (!response.ok) {
+            console.log('No course data found for course:', courseId);
+            showEmptyCourseState();
+            return;
+        }
+        
+        const result = await response.json();
+        const courseData = result.data;
+        
+        console.log('Course data loaded:', courseData);
+        
+        // Generate units dynamically based on course structure
+        if (courseData.courseStructure && courseData.courseStructure.totalUnits > 0) {
+            generateUnitsFromOnboarding(courseData);
+            
+            // Load existing data for the units (learning objectives, publish status, etc.)
+            loadExistingUnitData(courseData);
+        }
+        
+        // Show success notification
+        showNotification('Course data loaded successfully!', 'success');
+        
+    } catch (error) {
+        console.error('Error loading specific course:', error);
+        showNotification('Error loading course data. Using default values.', 'warning');
+        showEmptyCourseState();
+    }
+}
+
+/**
+ * Show empty course state when no course exists
+ */
+function showEmptyCourseState() {
+    const container = document.getElementById('dynamic-units-container');
+    if (container) {
+        container.innerHTML = `
+            <div class="empty-course-state">
+                <div class="empty-message">
+                    <h3>No Course Found</h3>
+                    <p>You haven't set up a course yet. Please complete the onboarding process first.</p>
+                    <a href="/instructor/onboarding" class="btn-primary">Go to Onboarding</a>
+                </div>
+            </div>
+        `;
+    }
+}
+
+/**
+ * Generate units dynamically from onboarding data
+ * @param {Object} onboardingData - Onboarding data with course structure
+ */
+function generateUnitsFromOnboarding(onboardingData) {
+    const container = document.getElementById('dynamic-units-container');
+    if (!container) {
+        console.error('Dynamic units container not found');
+        return;
+    }
+    
+    // Clear existing content
+    container.innerHTML = '';
+    
+    const { courseStructure, lectures } = onboardingData;
+    const totalUnits = courseStructure.totalUnits;
+    
+    console.log(`Generating ${totalUnits} units for course`);
+    
+    // Generate each unit
+    for (let i = 1; i <= totalUnits; i++) {
+        const unitName = `Unit ${i}`;
+        const unitData = lectures ? lectures.find(l => l.name === unitName) : null;
+        
+        const unitElement = createUnitElement(unitName, unitData, i === 1); // First unit is expanded
+        container.appendChild(unitElement);
+    }
+    
+    // Reinitialize event listeners for the new units
+    initializeUnitEventListeners();
+    
+    // Load existing data for the units (learning objectives, publish status, etc.)
+    loadExistingUnitData(onboardingData);
+}
+
+/**
+ * Create a unit element with all its sections
+ * @param {string} unitName - Name of the unit (e.g., "Unit 1")
+ * @param {Object} unitData - Existing unit data from database
+ * @param {boolean} isExpanded - Whether the unit should be expanded by default
+ * @returns {HTMLElement} The unit element
+ */
+function createUnitElement(unitName, unitData, isExpanded = false) {
+    const unitDiv = document.createElement('div');
+    unitDiv.className = 'accordion-item';
+    unitDiv.setAttribute('data-unit-name', unitName);
+    
+    const unitId = unitName.toLowerCase().replace(/\s+/g, '-');
+    
+    unitDiv.innerHTML = `
+        <div class="accordion-header">
+            <span class="folder-name">${unitName}</span>
+            <div class="header-actions">
+                <div class="publish-toggle">
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="publish-${unitId}" onchange="togglePublish('${unitName}', this.checked)">
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span class="toggle-label">Published</span>
+                </div>
+
+                <span class="accordion-toggle">${isExpanded ? '▼' : '▶'}</span>
+            </div>
+        </div>
+        <div class="accordion-content ${isExpanded ? '' : 'collapsed'}">
+            <!-- Learning Objectives Section -->
+            <div class="unit-section learning-objectives-section">
+                <div class="section-header">
+                    <h3>Learning Objectives</h3>
+                    <button class="toggle-section">▼</button>
+                </div>
+                <div class="section-content">
+                    <div class="objectives-list" id="objectives-list-${unitId}">
+                        <!-- Objectives will be added here -->
+                    </div>
+                    <div class="objective-input-container">
+                        <input type="text" id="objective-input-${unitId}" class="objective-input" placeholder="Enter learning objective...">
+                        <button class="add-objective-btn-inline" onclick="addObjectiveFromInput('${unitName}')">+</button>
+                    </div>
+                    <div class="save-objectives">
+                        <button class="save-btn" onclick="saveObjectives('${unitName}')">Save Learning Objectives</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Course Materials Section -->
+            <div class="unit-section course-materials-section">
+                <div class="section-header">
+                    <h3>Course Materials</h3>
+                    <button class="toggle-section">▼</button>
+                </div>
+                <div class="section-content">
+                    <div class="content-type-header">
+                        <p><strong>Required Materials:</strong> *Lecture Notes and *Practice Questions/Tutorial are mandatory</p>
+                    </div>
+                    <div class="file-item">
+                        <div class="file-info">
+                            <h3>*Lecture Notes - ${unitName}</h3>
+                            <p>Placeholder for required lecture notes. Please upload content.</p>
+                            <span class="status-text">Not Uploaded</span>
+                        </div>
+                        <div class="file-actions">
+                            <button class="action-button upload" onclick="openUploadModal('${unitName}', 'lecture-notes')">Upload</button>
+                            <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
+                        </div>
+                    </div>
+                    <div class="file-item">
+                        <div class="file-info">
+                            <h3>*Practice Questions/Tutorial</h3>
+                            <p>Placeholder for required practice questions. Please upload content.</p>
+                            <span class="status-text">Not Uploaded</span>
+                        </div>
+                        <div class="file-actions">
+                            <button class="action-button upload" onclick="openUploadModal('${unitName}', 'practice-quiz')">Upload</button>
+                            <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
+                        </div>
+                    </div>
+                    <!-- Add Content Button -->
+                    <div class="add-content-section">
+                        <button class="add-content-btn additional-material" onclick="openUploadModal('${unitName}', 'additional')">
+                            <span class="btn-icon">➕</span>
+                            Add Additional Material
+                        </button>
+                    </div>
+                    <div class="save-objectives">
+                        <button class="save-btn" onclick="confirmCourseMaterials('${unitName}')">Confirm Course Materials</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Assessment Questions Section -->
+            <div class="unit-section assessment-questions-section">
+                <div class="section-header">
+                    <h3>Assessment Questions</h3>
+                    <button class="toggle-section">▼</button>
+                </div>
+                <div class="section-content">
+                    <div class="assessment-info">
+                        <p><strong>Assessment Settings:</strong> Create questions to determine student readiness for tutor/protégé mode</p>
+                    </div>
+                    
+                    <!-- Pass Threshold Setting -->
+                    <div class="threshold-setting">
+                        <label for="pass-threshold-${unitId}">Questions required to pass:</label>
+                        <input type="number" id="pass-threshold-${unitId}" min="1" max="10" value="2" class="threshold-input">
+                        <span class="threshold-help">out of total questions</span>
+                    </div>
+                    
+                    <!-- Questions List -->
+                    <div class="questions-list" id="assessment-questions-${unitId}">
+                        <!-- Assessment questions will be displayed here -->
+                        <div class="no-questions-message">
+                            <p>No assessment questions created yet. Click "Add Question" to get started.</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Action Buttons -->
+                    <div class="assessment-actions">
+                        <button class="add-question-btn" onclick="openQuestionModal('${unitName}')">
+                            <span class="btn-icon">➕</span>
+                            Add Question
+                        </button>
+                    </div>
+                    
+                    <div class="save-assessment">
+                        <button class="save-btn" onclick="saveAssessment('${unitName}')">Save Assessment</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    return unitDiv;
+}
+
+/**
+ * Load existing data for the generated units
+ * @param {Object} onboardingData - Onboarding data with existing unit information
+ */
+function loadExistingUnitData(onboardingData) {
+    if (!onboardingData.lectures) return;
+    
+    console.log('Loading existing unit data:', onboardingData.lectures);
+    
+    onboardingData.lectures.forEach(unit => {
+        const unitId = unit.name.toLowerCase().replace(/\s+/g, '-');
+        console.log(`Loading data for ${unit.name} (ID: ${unitId})`);
+        
+        // Load learning objectives
+        if (unit.learningObjectives && unit.learningObjectives.length > 0) {
+            console.log(`Found ${unit.learningObjectives.length} learning objectives for ${unit.name}:`, unit.learningObjectives);
+            const objectivesList = document.getElementById(`objectives-list-${unitId}`);
+            console.log(`Looking for objectives list with ID: objectives-list-${unitId}`);
+            console.log(`Objectives list element found:`, !!objectivesList);
+            
+            if (objectivesList) {
+                objectivesList.innerHTML = '';
+                unit.learningObjectives.forEach(objective => {
+                    const objectiveItem = document.createElement('div');
+                    objectiveItem.className = 'objective-display-item';
+                    objectiveItem.innerHTML = `
+                        <span class="objective-text">${objective}</span>
+                        <button class="remove-objective" onclick="removeObjective(this)">×</button>
+                    `;
+                    objectivesList.appendChild(objectiveItem);
+                    console.log(`Added objective: ${objective}`);
+                });
+                console.log(`Loaded ${unit.learningObjectives.length} objectives for ${unit.name}`);
+            } else {
+                console.error(`Could not find objectives list element with ID: objectives-list-${unitId}`);
+            }
+        } else {
+            console.log(`No learning objectives found for ${unit.name}`);
+        }
+        
+        // Load pass threshold
+        if (unit.passThreshold) {
+            const thresholdInput = document.getElementById(`pass-threshold-${unitId}`);
+            if (thresholdInput) {
+                thresholdInput.value = unit.passThreshold;
+                console.log(`Loaded pass threshold ${unit.passThreshold} for ${unit.name}`);
+            }
+        }
+        
+        // Load publish status
+        if (unit.isPublished !== undefined) {
+            const publishToggle = document.getElementById(`publish-${unitId}`);
+            if (publishToggle) {
+                publishToggle.checked = unit.isPublished;
+                console.log(`Loaded publish status ${unit.isPublished} for ${unit.name}`);
+            }
+        }
+        
+        // Load unit files if they exist
+        if (onboardingData.unitFiles && onboardingData.unitFiles[unit.name]) {
+            const unitFiles = onboardingData.unitFiles[unit.name];
+            if (unitFiles && unitFiles.length > 0) {
+                console.log(`Loading ${unitFiles.length} files for ${unit.name}`);
+                // Update file status displays for this unit
+                unitFiles.forEach(file => {
+                    if (file.type === 'lecture-notes') {
+                        updateFileStatus('lecture-notes', unit.name, 'uploaded', file.name);
+                    } else if (file.type === 'practice-questions') {
+                        updateFileStatus('practice-questions', unit.name, 'uploaded', file.name);
+                    } else if (file.type === 'additional') {
+                        addAdditionalMaterial(unit.name, file.name);
+                    }
+                });
+            }
+        }
+    });
+}
+
+
+
+/**
+ * Initialize event listeners for dynamically generated units
+ */
+function initializeUnitEventListeners() {
+    // Setup accordion toggling
+    const accordionHeaders = document.querySelectorAll('.accordion-header');
+    accordionHeaders.forEach(header => {
+        header.addEventListener('click', (e) => {
+            // Don't toggle if clicking on the toggle switch
+            if (e.target.closest('.publish-toggle')) {
+                return;
+            }
+            
+            const accordionItem = header.parentElement;
+            const content = accordionItem.querySelector('.accordion-content');
+            const toggle = header.querySelector('.accordion-toggle');
+            
+            if (content.classList.contains('collapsed')) {
+                content.classList.remove('collapsed');
+                toggle.textContent = '▼';
+            } else {
+                content.classList.add('collapsed');
+                toggle.textContent = '▶';
+            }
+        });
+    });
+    
+    // Setup section toggling
+    const sectionHeaders = document.querySelectorAll('.section-header');
+    sectionHeaders.forEach(header => {
+        header.addEventListener('click', (e) => {
+            toggleSection(header, e);
+        });
+    });
+    
+    // Setup threshold input listeners
+    setupThresholdInputListeners();
+}
+
+/**
+ * Update file status display for uploaded files
+ */
+function updateFileStatus(contentType, unitName, status, fileName) {
+    // Find the file item for this content type and unit
+    const fileItems = document.querySelectorAll('.file-item');
+    
+    fileItems.forEach(item => {
+        const itemTitle = item.querySelector('h3');
+        if (itemTitle) {
+            const isLectureNotes = contentType === 'lecture-notes' && itemTitle.textContent.includes('Lecture Notes');
+            const isPracticeQuestions = contentType === 'practice-questions' && itemTitle.textContent.includes('Practice Questions');
+            
+            // Check if this item belongs to the specified unit
+            const isCorrectUnit = itemTitle.textContent.includes(unitName);
+            
+            if ((isLectureNotes || isPracticeQuestions) && isCorrectUnit) {
+                const statusText = item.querySelector('.status-text');
+                if (statusText) {
+                    statusText.textContent = status === 'uploaded' ? 'Uploaded' : 'Not Uploaded';
+                    statusText.className = status === 'uploaded' ? 'status-text uploaded' : 'status-text';
+                }
+                
+                // Update the file info
+                const fileInfo = item.querySelector('.file-info p');
+                if (fileInfo && status === 'uploaded') {
+                    fileInfo.textContent = `File: ${fileName}`;
+                    fileInfo.className = 'file-info uploaded';
+                }
+            }
+        }
+    });
+}
+
+/**
+ * Add additional material to the display
+ */
+function addAdditionalMaterial(unitName, materialName) {
+    // Find the add content section for Unit 1
+    const addContentSection = document.querySelector('.add-content-section');
+    if (addContentSection) {
+        const materialItem = document.createElement('div');
+        materialItem.className = 'file-item additional-material-item';
+        materialItem.innerHTML = `
+            <div class="file-info">
+                <h3>${materialName}</h3>
+                <p>Additional material uploaded during onboarding</p>
+                <span class="status-text uploaded">Uploaded</span>
+            </div>
+            <div class="file-actions">
+                <button class="action-button view" onclick="viewFile('${materialName}')">View</button>
+                <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
+            </div>
+        `;
+        
+        // Insert before the add content button
+        addContentSection.parentNode.insertBefore(materialItem, addContentSection);
+    }
 } 
