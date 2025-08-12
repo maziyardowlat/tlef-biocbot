@@ -221,6 +221,169 @@ async function updateLearningObjectives(db, courseId, lectureName, objectives, i
 }
 
 /**
+ * Add or update assessment questions for a specific lecture
+ * @param {Object} db - MongoDB database instance
+ * @param {string} courseId - Course identifier
+ * @param {string} lectureName - Name of the lecture/unit
+ * @param {Object} questionData - Question data to add/update
+ * @param {string} instructorId - ID of the instructor making the change
+ * @returns {Promise<Object>} Update result
+ */
+async function updateAssessmentQuestions(db, courseId, lectureName, questionData, instructorId) {
+    const collection = getCoursesCollection(db);
+    
+    const now = new Date();
+    
+    // First, ensure the course exists
+    const course = await collection.findOne({ courseId });
+    if (!course) {
+        console.error(`Course ${courseId} not found for assessment questions update`);
+        return { success: false, error: 'Course not found' };
+    }
+    
+    // Check if the lecture already exists
+    const existingLecture = course.lectures ? course.lectures.find(l => l.name === lectureName) : null;
+    
+    if (existingLecture) {
+        // Generate unique question ID if not provided
+        if (!questionData.questionId) {
+            questionData.questionId = `q_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        }
+        
+        // Add timestamp if not present
+        if (!questionData.createdAt) {
+            questionData.createdAt = now;
+        }
+        questionData.updatedAt = now;
+        
+        // Check if question already exists (for updates)
+        const existingQuestionIndex = existingLecture.assessmentQuestions ? 
+            existingLecture.assessmentQuestions.findIndex(q => q.questionId === questionData.questionId) : -1;
+        
+        if (existingQuestionIndex >= 0) {
+            // Update existing question
+            const result = await collection.updateOne(
+                { 
+                    courseId,
+                    'lectures.name': lectureName,
+                    'lectures.assessmentQuestions.questionId': questionData.questionId
+                },
+                {
+                    $set: {
+                        'lectures.$.assessmentQuestions.$': questionData,
+                        'lectures.$.updatedAt': now,
+                        updatedAt: now,
+                        instructorId
+                    }
+                }
+            );
+            
+            console.log(`Updated existing assessment question in ${lectureName}`);
+            return { success: true, created: false, modifiedCount: result.modifiedCount, questionId: questionData.questionId };
+        } else {
+            // Add new question
+            const result = await collection.updateOne(
+                { 
+                    courseId,
+                    'lectures.name': lectureName 
+                },
+                {
+                    $push: {
+                        'lectures.$.assessmentQuestions': questionData
+                    },
+                    $set: {
+                        'lectures.$.updatedAt': now,
+                        updatedAt: now,
+                        instructorId
+                    }
+                }
+            );
+            
+            console.log(`Added new assessment question to ${lectureName}`);
+            return { success: true, created: true, modifiedCount: result.modifiedCount, questionId: questionData.questionId };
+        }
+    } else {
+        console.error(`Lecture ${lectureName} not found in course ${courseId}`);
+        return { success: false, error: 'Lecture not found' };
+    }
+}
+
+/**
+ * Get assessment questions for a specific lecture
+ * @param {Object} db - MongoDB database instance
+ * @param {string} courseId - Course identifier
+ * @param {string} lectureName - Name of the lecture/unit
+ * @returns {Promise<Array>} Array of assessment questions
+ */
+async function getAssessmentQuestions(db, courseId, lectureName) {
+    const collection = getCoursesCollection(db);
+    
+    const course = await collection.findOne(
+        { courseId },
+        { projection: { lectures: 1 } }
+    );
+    
+    if (!course || !course.lectures) {
+        return [];
+    }
+    
+    // Find the specific lecture and return its assessment questions
+    const lecture = course.lectures.find(l => l.name === lectureName);
+    return lecture ? (lecture.assessmentQuestions || []) : [];
+}
+
+/**
+ * Delete an assessment question from a specific lecture
+ * @param {Object} db - MongoDB database instance
+ * @param {string} courseId - Course identifier
+ * @param {string} lectureName - Name of the lecture/unit
+ * @param {string} questionId - ID of the question to delete
+ * @param {string} instructorId - ID of the instructor making the change
+ * @returns {Promise<Object>} Deletion result
+ */
+async function deleteAssessmentQuestion(db, courseId, lectureName, questionId, instructorId) {
+    const collection = getCoursesCollection(db);
+    
+    const now = new Date();
+    
+    // First, ensure the course exists
+    const course = await collection.findOne({ courseId });
+    if (!course) {
+        console.error(`Course ${courseId} not found for assessment question deletion`);
+        return { success: false, error: 'Course not found' };
+    }
+    
+    // Check if the lecture already exists
+    const existingLecture = course.lectures ? course.lectures.find(l => l.name === lectureName) : null;
+    
+    if (existingLecture) {
+        // Remove the question from the assessmentQuestions array
+        const result = await collection.updateOne(
+            { 
+                courseId,
+                'lectures.name': lectureName 
+            },
+            {
+                $pull: { 
+                    'lectures.$.assessmentQuestions': { questionId: questionId } 
+                },
+                $set: {
+                    'lectures.$.updatedAt': now,
+                    updatedAt: now,
+                    instructorId
+                }
+            }
+        );
+        
+        console.log(`Deleted assessment question from ${lectureName}`);
+        return { success: true, deletedCount: result.modifiedCount, questionId };
+    } else {
+        console.error(`Lecture ${lectureName} not found in course ${courseId}`);
+        return { success: false, error: 'Lecture not found' };
+    }
+}
+
+/**
  * Update pass threshold for a specific lecture
  * @param {Object} db - MongoDB database instance
  * @param {string} courseId - Course identifier
@@ -394,6 +557,7 @@ async function createCourseFromOnboarding(db, onboardingData) {
                 createdAt: now,
                 updatedAt: now,
                 documents: [],
+                assessmentQuestions: [], // Initialize empty assessment questions array
                 unitFiles: {
                     lectureNotes: existingUnitData.lectureNotes || [],
                     practiceQuestions: existingUnitData.practiceQuestions || [],
@@ -526,6 +690,165 @@ async function deleteUnit(db, courseId, unitName) {
     }
 }
 
+/**
+ * Add or update a document reference within a specific unit
+ * @param {Object} db - MongoDB database instance
+ * @param {string} courseId - Course identifier
+ * @param {string} unitName - Name of the unit
+ * @param {Object} documentData - Document data to store
+ * @param {string} instructorId - ID of the instructor
+ * @returns {Promise<Object>} Update result
+ */
+async function addDocumentToUnit(db, courseId, unitName, documentData, instructorId) {
+    const collection = getCoursesCollection(db);
+    
+    const now = new Date();
+    
+    // First, ensure the course exists
+    const course = await collection.findOne({ courseId });
+    if (!course) {
+        console.error(`Course ${courseId} not found for document addition`);
+        return { success: false, error: 'Course not found' };
+    }
+    
+    // Check if the unit already exists
+    const existingUnit = course.lectures ? course.lectures.find(l => l.name === unitName) : null;
+    
+    if (existingUnit) {
+        // Check if document already exists (for updates)
+        const existingDocIndex = existingUnit.documents ? 
+            existingUnit.documents.findIndex(d => d.documentId === documentData.documentId) : -1;
+        
+        if (existingDocIndex >= 0) {
+            // Update existing document
+            const result = await collection.updateOne(
+                { 
+                    courseId,
+                    'lectures.name': unitName,
+                    'lectures.documents.documentId': documentData.documentId
+                },
+                {
+                    $set: {
+                        'lectures.$.documents.$': {
+                            ...documentData,
+                            updatedAt: now
+                        },
+                        'lectures.$.updatedAt': now,
+                        updatedAt: now,
+                        instructorId
+                    }
+                }
+            );
+            
+            console.log(`Updated existing document in ${unitName}`);
+            return { success: true, created: false, modifiedCount: result.modifiedCount };
+        } else {
+            // Add new document
+            const result = await collection.updateOne(
+                { 
+                    courseId,
+                    'lectures.name': unitName 
+                },
+                {
+                    $push: {
+                        'lectures.$.documents': {
+                            ...documentData,
+                            createdAt: now,
+                            updatedAt: now
+                        }
+                    },
+                    $set: {
+                        'lectures.$.updatedAt': now,
+                        updatedAt: now,
+                        instructorId
+                    }
+                }
+            );
+            
+            console.log(`Added new document to ${unitName}`);
+            return { success: true, created: true, modifiedCount: result.modifiedCount };
+        }
+    } else {
+        console.error(`Unit ${unitName} not found in course ${courseId}`);
+        return { success: false, error: 'Unit not found' };
+    }
+}
+
+/**
+ * Get documents for a specific unit from the course structure
+ * @param {Object} db - MongoDB database instance
+ * @param {string} courseId - Course identifier
+ * @param {string} unitName - Name of the unit
+ * @returns {Promise<Array>} Array of documents
+ */
+async function getDocumentsForUnit(db, courseId, unitName) {
+    const collection = getCoursesCollection(db);
+    
+    const course = await collection.findOne(
+        { courseId },
+        { projection: { lectures: 1 } }
+    );
+    
+    if (!course || !course.lectures) {
+        return [];
+    }
+    
+    // Find the specific unit and return its documents
+    const unit = course.lectures.find(l => l.name === unitName);
+    return unit ? (unit.documents || []) : [];
+}
+
+/**
+ * Remove a document from a specific unit
+ * @param {Object} db - MongoDB database instance
+ * @param {string} courseId - Course identifier
+ * @param {string} unitName - Name of the unit
+ * @param {string} documentId - ID of the document to remove
+ * @param {string} instructorId - ID of the instructor
+ * @returns {Promise<Object>} Removal result
+ */
+async function removeDocumentFromUnit(db, courseId, unitName, documentId, instructorId) {
+    const collection = getCoursesCollection(db);
+    
+    const now = new Date();
+    
+    // First, ensure the course exists
+    const course = await collection.findOne({ courseId });
+    if (!course) {
+        console.error(`Course ${courseId} not found for document removal`);
+        return { success: false, error: 'Course not found' };
+    }
+    
+    // Check if the unit already exists
+    const existingUnit = course.lectures ? course.lectures.find(l => l.name === unitName) : null;
+    
+    if (existingUnit) {
+        // Remove the document from the documents array
+        const result = await collection.updateOne(
+            { 
+                courseId,
+                'lectures.name': unitName 
+            },
+            {
+                $pull: { 
+                    'lectures.$.documents': { documentId: documentId } 
+                },
+                $set: {
+                    'lectures.$.updatedAt': now,
+                    updatedAt: now,
+                    instructorId
+                }
+            }
+        );
+        
+        console.log(`Removed document from ${unitName}`);
+        return { success: true, removedCount: result.modifiedCount, documentId };
+    } else {
+        console.error(`Unit ${unitName} not found in course ${courseId}`);
+        return { success: false, error: 'Unit not found' };
+    }
+}
+
 module.exports = {
     getCoursesCollection,
     upsertCourse,
@@ -539,5 +862,11 @@ module.exports = {
     createCourseFromOnboarding,
     getCourseWithOnboarding,
     updateOnboardingStatus,
-    deleteUnit
+    deleteUnit,
+    updateAssessmentQuestions,
+    getAssessmentQuestions,
+    deleteAssessmentQuestion,
+    addDocumentToUnit,
+    getDocumentsForUnit,
+    removeDocumentFromUnit
 };

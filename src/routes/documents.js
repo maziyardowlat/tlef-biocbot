@@ -2,8 +2,9 @@ const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 
-// Import the Document model
+// Import the Document model and Course model
 const DocumentModel = require('../models/Document');
+const CourseModel = require('../models/Course');
 
 // Configure multer for file uploads
 const upload = multer({
@@ -81,6 +82,22 @@ router.post('/upload', upload.single('file'), async (req, res) => {
         // Upload document to MongoDB
         const result = await DocumentModel.uploadDocument(db, documentData);
         
+        // Also add document reference to the course structure
+        const courseResult = await CourseModel.addDocumentToUnit(db, courseId, lectureName, {
+            documentId: result.documentId,
+            documentType: documentType,
+            filename: file.originalname,
+            originalName: file.originalname,
+            mimeType: file.mimetype,
+            size: file.size,
+            status: 'uploaded',
+            metadata: documentData.metadata
+        }, instructorId);
+        
+        if (!courseResult.success) {
+            console.warn('Warning: Document uploaded but failed to link to course structure:', courseResult.error);
+        }
+        
         console.log(`Document uploaded: ${file.originalname} for ${lectureName}`);
         
         res.json({
@@ -90,7 +107,8 @@ router.post('/upload', upload.single('file'), async (req, res) => {
                 documentId: result.documentId,
                 filename: file.originalname,
                 size: file.size,
-                uploadDate: result.uploadDate
+                uploadDate: result.uploadDate,
+                linkedToCourse: courseResult.success
             }
         });
         
@@ -267,8 +285,16 @@ router.delete('/:documentId', async (req, res) => {
             });
         }
         
-        // Delete the document
+        // Delete the document from the documents collection
         const result = await DocumentModel.deleteDocument(db, documentId);
+        
+        // Also remove the document reference from the course structure
+        if (result.success) {
+            const courseResult = await CourseModel.removeDocumentFromUnit(db, document.courseId, document.lectureName, documentId, instructorId);
+            if (!courseResult.success) {
+                console.warn('Warning: Document deleted but failed to remove from course structure:', courseResult.error);
+            }
+        }
         
         console.log(`Document deleted: ${documentId} by instructor ${instructorId}`);
         
@@ -277,7 +303,8 @@ router.delete('/:documentId', async (req, res) => {
             message: 'Document deleted successfully!',
             data: {
                 documentId,
-                deletedCount: result.deletedCount
+                deletedCount: result.deletedCount,
+                removedFromCourse: result.success
             }
         });
         

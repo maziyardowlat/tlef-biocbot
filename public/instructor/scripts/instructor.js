@@ -513,7 +513,7 @@ async function handleUpload() {
     uploadBtn.disabled = true;
     
     try {
-        const courseId = getCurrentCourseId();
+        const courseId = await getCurrentCourseId();
         const instructorId = getCurrentInstructorId();
         const lectureName = currentWeek;
         
@@ -775,7 +775,7 @@ function togglePublish(lectureName, isPublished) {
 async function updatePublishStatus(lectureName, isPublished) {
     try {
         // Get the current course ID (for now, using a default)
-        const courseId = getCurrentCourseId();
+        const courseId = await getCurrentCourseId();
         
         console.log(`Updating publish status: ${lectureName} -> ${isPublished}, Course: ${courseId}`);
         
@@ -846,10 +846,10 @@ function getCurrentInstructorId() {
 }
 
 /**
- * Get current course ID (placeholder function)
- * @returns {string} Course ID
+ * Get the current course ID for the instructor
+ * @returns {Promise<string>} Course ID
  */
-function getCurrentCourseId() {
+async function getCurrentCourseId() {
     // Check if we have a courseId from URL parameters (onboarding redirect)
     const urlParams = new URLSearchParams(window.location.search);
     const courseIdFromUrl = urlParams.get('courseId');
@@ -858,10 +858,33 @@ function getCurrentCourseId() {
         return courseIdFromUrl;
     }
     
-    // In a real implementation, this would get the course ID from:
-    // - Course selection dropdown
-    // - Session storage
-    return 'BIOC-101';
+    // If no course ID in URL, try to get it from the instructor's courses
+    try {
+        const instructorId = getCurrentInstructorId();
+        const response = await fetch(`/api/onboarding/instructor/${instructorId}`);
+        
+        if (response.ok) {
+            const result = await response.json();
+            if (result.data && result.data.courses && result.data.courses.length > 0) {
+                // Return the first course found
+                const firstCourse = result.data.courses[0];
+                console.log('Found existing course:', firstCourse.courseId);
+                return firstCourse.courseId;
+            }
+        }
+    } catch (error) {
+        console.error('Error fetching instructor courses:', error);
+    }
+    
+    // If no course found, show an error and redirect to onboarding
+    console.error('No course ID found. Redirecting to onboarding...');
+    showNotification('No course found. Please complete onboarding first.', 'error');
+    setTimeout(() => {
+        window.location.href = '/instructor/onboarding';
+    }, 2000);
+    
+    // Return a placeholder (this should not be reached due to redirect)
+    return null;
 }
 
 /**
@@ -869,7 +892,7 @@ function getCurrentCourseId() {
  */
 async function loadPublishStatus() {
     try {
-        const courseId = getCurrentCourseId();
+        const courseId = await getCurrentCourseId();
         const instructorId = getCurrentInstructorId();
         
         const response = await fetch(`/api/lectures/publish-status?instructorId=${instructorId}&courseId=${courseId}`);
@@ -916,7 +939,7 @@ async function loadPublishStatus() {
  */
 async function loadLearningObjectives() {
     try {
-        const courseId = getCurrentCourseId();
+        const courseId = await getCurrentCourseId();
         
         // Get all accordion items (units/weeks)
         const accordionItems = document.querySelectorAll('.accordion-item');
@@ -967,7 +990,7 @@ async function loadLearningObjectives() {
  */
 async function loadDocuments() {
     try {
-        const courseId = getCurrentCourseId();
+        const courseId = await getCurrentCourseId();
         
         // Get all accordion items (units/weeks)
         const accordionItems = document.querySelectorAll('.accordion-item');
@@ -978,35 +1001,45 @@ async function loadDocuments() {
             
             const lectureName = folderName.textContent;
             
-            const response = await fetch(`/api/documents/lecture?courseId=${courseId}&lectureName=${encodeURIComponent(lectureName)}`);
+            // Load documents from the course structure instead of separate API
+            const response = await fetch(`/api/courses/${courseId}?instructorId=${getCurrentInstructorId()}`);
             
             if (response.ok) {
                 const result = await response.json();
-                const documents = result.data.documents;
+                const course = result.data;
                 
-                if (documents && documents.length > 0) {
-                    // Find the course materials section
-                    const courseMaterialsSection = item.querySelector('.course-materials-section .section-content');
-                    if (courseMaterialsSection) {
-                        // Clear existing placeholder content
-                        const placeholders = courseMaterialsSection.querySelectorAll('.file-item');
-                        placeholders.forEach(placeholder => {
-                            if (placeholder.querySelector('.status-text')?.textContent === 'Not Uploaded') {
-                                placeholder.remove();
-                            }
-                        });
+                if (course && course.lectures) {
+                    const unit = course.lectures.find(l => l.name === lectureName);
+                    const documents = unit ? (unit.documents || []) : [];
+                    
+                    if (documents && documents.length > 0) {
+                        console.log(`Found ${documents.length} documents for ${lectureName}:`, documents);
                         
-                        // Add each document
-                        documents.forEach(doc => {
-                            const documentItem = createDocumentItem(doc);
-                            courseMaterialsSection.appendChild(documentItem);
-                        });
+                        // Find the course materials section
+                        const courseMaterialsSection = item.querySelector('.course-materials-section .section-content');
+                        if (courseMaterialsSection) {
+                            // Clear existing placeholder content
+                            const placeholders = courseMaterialsSection.querySelectorAll('.file-item');
+                            placeholders.forEach(placeholder => {
+                                if (placeholder.querySelector('.status-text')?.textContent === 'Not Uploaded') {
+                                    placeholder.remove();
+                                }
+                            });
+                            
+                            // Add each document
+                            documents.forEach(doc => {
+                                const documentItem = createDocumentItem(doc);
+                                courseMaterialsSection.appendChild(documentItem);
+                            });
+                        }
+                    } else {
+                        console.log(`No documents found for ${lectureName}`);
                     }
                 }
             }
         }
         
-        console.log('Documents loaded from database');
+        console.log('Documents loaded from course structure');
         
     } catch (error) {
         console.error('Error loading documents:', error);
@@ -1072,6 +1105,9 @@ async function deleteDocument(documentId) {
             documentItem.remove();
         }
         
+        // Reload documents to ensure UI stays in sync with course structure
+        await loadDocuments();
+        
         showNotification('Document deleted successfully!', 'success');
         
     } catch (error) {
@@ -1090,14 +1126,66 @@ function viewDocument(documentId) {
 }
 
 /**
+ * Load assessment questions directly from course data (for initial load)
+ * @param {Object} courseData - Course data with lectures and assessment questions
+ */
+function loadAssessmentQuestionsFromCourseData(courseData) {
+    if (!courseData.lectures) return;
+    
+    console.log('Loading assessment questions from course data:', courseData.lectures);
+    
+    courseData.lectures.forEach(unit => {
+        console.log(`Processing unit: ${unit.name}, has assessmentQuestions:`, !!unit.assessmentQuestions, 'length:', unit.assessmentQuestions?.length);
+        if (unit.assessmentQuestions && unit.assessmentQuestions.length > 0) {
+            console.log(`Found ${unit.assessmentQuestions.length} assessment questions for ${unit.name}:`, unit.assessmentQuestions);
+            
+            // Store questions in the local assessmentQuestions object
+            if (!assessmentQuestions[unit.name]) {
+                assessmentQuestions[unit.name] = [];
+            }
+            
+            // Clear existing questions and add new ones
+            assessmentQuestions[unit.name] = [];
+            
+            // Convert database questions to local format
+            unit.assessmentQuestions.forEach(dbQuestion => {
+                const localQuestion = {
+                    id: dbQuestion.questionId,
+                    questionId: dbQuestion.questionId,
+                    type: dbQuestion.questionType,
+                    question: dbQuestion.question,
+                    answer: dbQuestion.correctAnswer,
+                    options: dbQuestion.options || {}
+                };
+                
+                assessmentQuestions[unit.name].push(localQuestion);
+            });
+            
+            // Update the display for this unit
+            updateQuestionsDisplay(unit.name);
+            console.log(`Loaded ${unit.assessmentQuestions.length} assessment questions for ${unit.name}`);
+        } else {
+            console.log(`No assessment questions found for ${unit.name}`);
+        }
+    });
+}
+
+/**
  * Load the saved assessment questions for all lectures from the database
  */
 async function loadAssessmentQuestions() {
     try {
-        const courseId = getCurrentCourseId();
+        const courseId = await getCurrentCourseId();
         
         // Get all accordion items (units/weeks)
         const accordionItems = document.querySelectorAll('.accordion-item');
+        
+        if (accordionItems.length === 0) {
+            console.log('No accordion items found, skipping assessment questions loading');
+            return;
+        }
+        
+        console.log(`Found ${accordionItems.length} accordion items, loading assessment questions...`);
         
         for (const item of accordionItems) {
             const folderName = item.querySelector('.folder-name');
@@ -1152,6 +1240,7 @@ async function loadAssessmentQuestions() {
  */
 async function deleteAssessmentQuestion(questionId, week) {
     try {
+        const courseId = await getCurrentCourseId();
         const instructorId = getCurrentInstructorId();
         
         const response = await fetch(`/api/questions/${questionId}`, {
@@ -1160,6 +1249,8 @@ async function deleteAssessmentQuestion(questionId, week) {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
+                courseId: courseId,
+                lectureName: week,
                 instructorId: instructorId
             })
         });
@@ -1169,10 +1260,8 @@ async function deleteAssessmentQuestion(questionId, week) {
             throw new Error(`Delete failed: ${response.status} ${errorText}`);
         }
         
-        // Remove question from local array
-        if (assessmentQuestions[week]) {
-            assessmentQuestions[week] = assessmentQuestions[week].filter(q => q.questionId !== questionId);
-        }
+        // Reload questions from database to ensure consistency
+        await reloadQuestionsForUnit(week);
         
         // Update the display
         updateQuestionsDisplay(week);
@@ -1192,7 +1281,7 @@ async function deleteAssessmentQuestion(questionId, week) {
  */
 async function savePassThreshold(lectureName, threshold) {
     try {
-        const courseId = getCurrentCourseId();
+        const courseId = await getCurrentCourseId();
         const instructorId = getCurrentInstructorId();
         
         const response = await fetch('/api/lectures/pass-threshold', {
@@ -1216,6 +1305,9 @@ async function savePassThreshold(lectureName, threshold) {
         const result = await response.json();
         console.log(`Pass threshold saved for ${lectureName}: ${threshold}`);
         
+        // Update local state to reflect the change
+        await reloadPassThresholds();
+        
         // Show success notification
         showNotification(result.message, 'success');
         
@@ -1226,11 +1318,11 @@ async function savePassThreshold(lectureName, threshold) {
 }
 
 /**
- * Load the saved pass thresholds for all lectures from the database
+ * Reload pass thresholds from the database (for use after updates)
  */
-async function loadPassThresholds() {
+async function reloadPassThresholds() {
     try {
-        const courseId = getCurrentCourseId();
+        const courseId = await getCurrentCourseId();
         
         // Get all accordion items (units/weeks)
         const accordionItems = document.querySelectorAll('.accordion-item');
@@ -1248,17 +1340,64 @@ async function loadPassThresholds() {
                 const passThreshold = result.data.passThreshold;
                 
                 // Find and update the threshold input for this lecture
-                // Convert lecture name to ID format (e.g., "Unit 1" -> "Unit-1")
-                const thresholdId = `pass-threshold-${lectureName.replace(/\s+/g, '-')}`;
+                // Convert lecture name to ID format (e.g., "Unit 1" -> "unit-1")
+                const thresholdId = `pass-threshold-${lectureName.toLowerCase().replace(/\s+/g, '-')}`;
                 const thresholdInput = item.querySelector(`#${thresholdId}`);
                 
                 if (thresholdInput) {
                     thresholdInput.value = passThreshold;
                     
                     // Also update the display text if it exists
-                    const thresholdValue = item.querySelector(`#threshold-value-${lectureName.toLowerCase().replace(/\s+/g, '')}`);
+                    const thresholdValue = item.querySelector(`#threshold-value-${lectureName.toLowerCase().replace(/\s+/g, '-')}`);
                     if (thresholdValue) {
-                        thresholdValue.textContent = passThreshold + '%';
+                        thresholdValue.textContent = passThreshold;
+                    }
+                }
+            }
+        }
+        
+        console.log('Pass thresholds reloaded from database');
+        
+    } catch (error) {
+        console.error('Error reloading pass thresholds:', error);
+        showNotification('Error reloading pass thresholds.', 'warning');
+    }
+}
+
+/**
+ * Load the saved pass thresholds for all lectures from the database
+ */
+async function loadPassThresholds() {
+    try {
+        const courseId = await getCurrentCourseId();
+        
+        // Get all accordion items (units/weeks)
+        const accordionItems = document.querySelectorAll('.accordion-item');
+        
+        for (const item of accordionItems) {
+            const folderName = item.querySelector('.folder-name');
+            if (!folderName) continue;
+            
+            const lectureName = folderName.textContent;
+            
+            const response = await fetch(`/api/lectures/pass-threshold?courseId=${courseId}&lectureName=${encodeURIComponent(lectureName)}`);
+            
+            if (response.ok) {
+                const result = await response.json();
+                const passThreshold = result.data.passThreshold;
+                
+                // Find and update the threshold input for this lecture
+                // Convert lecture name to ID format (e.g., "Unit 1" -> "unit-1")
+                const thresholdId = `pass-threshold-${lectureName.toLowerCase().replace(/\s+/g, '-')}`;
+                const thresholdInput = item.querySelector(`#${thresholdId}`);
+                
+                if (thresholdInput) {
+                    thresholdInput.value = passThreshold;
+                    
+                    // Also update the display text if it exists
+                    const thresholdValue = item.querySelector(`#threshold-value-${lectureName.toLowerCase().replace(/\s+/g, '-')}`);
+                    if (thresholdValue) {
+                        thresholdValue.textContent = passThreshold;
                     }
                 }
             }
@@ -1297,9 +1436,9 @@ function setupThresholdInputListeners() {
             const lectureName = this.id.replace('pass-threshold-', '').replace(/-/g, ' ');
             
             // Update the display text if it exists
-            const thresholdValue = document.querySelector(`#threshold-value-${lectureName.toLowerCase().replace(/\s+/g, '')}`);
+            const thresholdValue = document.querySelector(`#threshold-value-${lectureName.toLowerCase().replace(/\s+/g, '-')}`);
             if (thresholdValue) {
-                thresholdValue.textContent = threshold + '%';
+                thresholdValue.textContent = threshold;
             }
         });
     });
@@ -2355,7 +2494,7 @@ async function saveObjectives(week) {
     
     try {
         // Get the current course ID
-        const courseId = getCurrentCourseId();
+        const courseId = await getCurrentCourseId();
         
         console.log(`Saving learning objectives for ${week}, Course: ${courseId}`, objectives);
         
@@ -2920,7 +3059,7 @@ async function saveQuestion() {
     
     try {
         // Save question to MongoDB
-        const courseId = getCurrentCourseId();
+        const courseId = await getCurrentCourseId();
         const instructorId = getCurrentInstructorId();
         const lectureName = currentWeek;
         
@@ -2951,16 +3090,18 @@ async function saveQuestion() {
         
         const result = await response.json();
         
-        // Add question to local array for display
+        // Add the new question to local state immediately
         if (!assessmentQuestions[currentWeek]) {
             assessmentQuestions[currentWeek] = [];
         }
         
-        // Add the saved question with database ID
         const savedQuestion = {
-            ...question,
             id: result.data.questionId,
-            questionId: result.data.questionId
+            questionId: result.data.questionId,
+            type: question.questionType,
+            question: question.question,
+            answer: question.correctAnswer,
+            options: question.options || {}
         };
         
         assessmentQuestions[currentWeek].push(savedQuestion);
@@ -2983,14 +3124,69 @@ async function saveQuestion() {
 }
 
 /**
+ * Reload questions for a specific unit from the database
+ * @param {string} unitName - Unit name (e.g., 'Unit 1')
+ */
+async function reloadQuestionsForUnit(unitName) {
+    try {
+        const courseId = await getCurrentCourseId();
+        
+        const response = await fetch(`/api/questions/lecture?courseId=${courseId}&lectureName=${encodeURIComponent(unitName)}`);
+        
+        if (response.ok) {
+            const result = await response.json();
+            const questions = result.data.questions;
+            
+            // Store questions in the local assessmentQuestions object
+            if (!assessmentQuestions[unitName]) {
+                assessmentQuestions[unitName] = [];
+            }
+            
+            // Clear existing questions and add new ones
+            assessmentQuestions[unitName] = [];
+            
+            // Convert database questions to local format
+            questions.forEach(dbQuestion => {
+                const localQuestion = {
+                    id: dbQuestion.questionId,
+                    questionId: dbQuestion.questionId,
+                    type: dbQuestion.questionType,
+                    question: dbQuestion.question,
+                    answer: dbQuestion.correctAnswer,
+                    options: dbQuestion.options || {}
+                };
+                
+                assessmentQuestions[unitName].push(localQuestion);
+            });
+            
+            console.log(`Reloaded ${questions.length} questions for ${unitName}`);
+        } else {
+            console.error('Failed to reload questions for unit:', unitName);
+        }
+    } catch (error) {
+        console.error('Error reloading questions for unit:', unitName, error);
+    }
+}
+
+/**
  * Update the questions display for a week
  * @param {string} week - Week identifier
  */
 function updateQuestionsDisplay(week) {
-    const questionsContainer = document.getElementById(`assessment-questions-${week.toLowerCase().replace(' ', '')}`);
-    if (!questionsContainer) return;
+    console.log(`updateQuestionsDisplay called for week: ${week}`);
+    console.log(`assessmentQuestions[${week}]:`, assessmentQuestions[week]);
+    
+    const containerId = `assessment-questions-${week.toLowerCase().replace(/\s+/g, '-')}`;
+    console.log(`Looking for container with ID: ${containerId}`);
+    
+    const questionsContainer = document.getElementById(containerId);
+    if (!questionsContainer) {
+        console.error(`Container not found for week: ${week}, ID: ${containerId}`);
+        return;
+    }
     
     const questions = assessmentQuestions[week] || [];
+    console.log(`Questions to display for ${week}:`, questions);
     
     if (questions.length === 0) {
         questionsContainer.innerHTML = `
@@ -3021,7 +3217,7 @@ function updateQuestionsDisplay(week) {
     questionsContainer.innerHTML = html;
     
     // Update pass threshold max value
-    const thresholdInput = document.getElementById(`pass-threshold-${week.toLowerCase().replace(' ', '')}`);
+    const thresholdInput = document.getElementById(`pass-threshold-${week.toLowerCase().replace(/\s+/g, '-')}`);
     if (thresholdInput) {
         thresholdInput.max = questions.length;
         if (parseInt(thresholdInput.value) > questions.length) {
@@ -3525,6 +3721,16 @@ function generateUnitsFromOnboarding(onboardingData) {
     
     // Load existing data for the units (learning objectives, publish status, etc.)
     loadExistingUnitData(onboardingData);
+    
+    // Load assessment questions after units are generated
+    setTimeout(() => {
+        loadAssessmentQuestionsFromCourseData(onboardingData);
+    }, 100);
+    
+    // Load documents from course structure
+    setTimeout(() => {
+        loadDocuments();
+    }, 200);
 }
 
 /**
@@ -3638,6 +3844,7 @@ function createUnitElement(unitName, unitData, isExpanded = false) {
                         <label for="pass-threshold-${unitId}">Questions required to pass:</label>
                         <input type="number" id="pass-threshold-${unitId}" min="1" max="10" value="2" class="threshold-input">
                         <span class="threshold-help">out of total questions</span>
+                        <span class="threshold-display" id="threshold-value-${unitId}">2</span>
                     </div>
                     
                     <!-- Questions List -->
@@ -3713,7 +3920,43 @@ function loadExistingUnitData(onboardingData) {
             if (thresholdInput) {
                 thresholdInput.value = unit.passThreshold;
                 console.log(`Loaded pass threshold ${unit.passThreshold} for ${unit.name}`);
+                
+                // Also update the threshold display
+                const thresholdDisplay = document.getElementById(`threshold-value-${unitId}`);
+                if (thresholdDisplay) {
+                    thresholdDisplay.textContent = unit.passThreshold;
+                }
             }
+        }
+        
+        // Load assessment questions
+        if (unit.assessmentQuestions && unit.assessmentQuestions.length > 0) {
+            console.log(`Found ${unit.assessmentQuestions.length} assessment questions for ${unit.name}:`, unit.assessmentQuestions);
+            
+            // Store questions in the local assessmentQuestions object
+            if (!assessmentQuestions[unit.name]) {
+                assessmentQuestions[unit.name] = [];
+            }
+            
+            // Convert database questions to local format
+            unit.assessmentQuestions.forEach(dbQuestion => {
+                const localQuestion = {
+                    id: dbQuestion.questionId,
+                    questionId: dbQuestion.questionId,
+                    type: dbQuestion.questionType,
+                    question: dbQuestion.question,
+                    answer: dbQuestion.correctAnswer,
+                    options: dbQuestion.options || {}
+                };
+                
+                assessmentQuestions[unit.name].push(localQuestion);
+            });
+            
+            // Update the display for this unit
+            updateQuestionsDisplay(unit.name);
+            console.log(`Loaded ${unit.assessmentQuestions.length} assessment questions for ${unit.name}`);
+        } else {
+            console.log(`No assessment questions found for ${unit.name}`);
         }
         
         // Load publish status
@@ -3741,6 +3984,36 @@ function loadExistingUnitData(onboardingData) {
                     }
                 });
             }
+        }
+        
+        // Load documents from course structure
+        if (unit.documents && unit.documents.length > 0) {
+            console.log(`Found ${unit.documents.length} documents for ${unit.name}:`, unit.documents);
+            
+            // Find the course materials section for this unit
+            const unitElement = document.querySelector(`[data-unit-name="${unit.name}"]`);
+            if (unitElement) {
+                const courseMaterialsSection = unitElement.querySelector('.course-materials-section .section-content');
+                if (courseMaterialsSection) {
+                    // Clear existing placeholder content
+                    const placeholders = courseMaterialsSection.querySelectorAll('.file-item');
+                    placeholders.forEach(placeholder => {
+                        if (placeholder.querySelector('.status-text')?.textContent === 'Not Uploaded') {
+                            placeholder.remove();
+                        }
+                    });
+                    
+                    // Add each document
+                    unit.documents.forEach(doc => {
+                        const documentItem = createDocumentItem(doc);
+                        courseMaterialsSection.appendChild(documentItem);
+                    });
+                    
+                    console.log(`Loaded ${unit.documents.length} documents for ${unit.name}`);
+                }
+            }
+        } else {
+            console.log(`No documents found for ${unit.name}`);
         }
     });
 }

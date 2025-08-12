@@ -5,6 +5,7 @@
 
 const express = require('express');
 const router = express.Router();
+const CourseModel = require('../models/Course');
 
 // Middleware to parse JSON bodies
 router.use(express.json());
@@ -41,32 +42,66 @@ router.post('/', async (req, res) => {
             });
         }
         
-        // TODO: In a real implementation, this would:
-        // 1. Validate instructor permissions
-        // 2. Check if course already exists for this instructor
-        // 3. Create course in database
-        // 4. Set up initial course structure with weeks
-        // 5. Create folder structure based on content types
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
         
-        // For now, return a mock success response
-        const courseData = {
-            id: `course-${Date.now()}`,
-            name: course,
+        // Generate course ID
+        const courseId = `${course.replace(/\s+/g, '-').toLowerCase()}-${Date.now()}`;
+        
+        // Create course structure
+        const courseStructure = {
             weeks: parseInt(weeks),
             lecturesPerWeek: parseInt(lecturesPerWeek),
-            contentTypes: contentTypes || [],
-            instructorId: instructorId,
-            createdAt: new Date().toISOString(),
-            status: 'active',
-            structure: generateCourseStructure(weeks, lecturesPerWeek, contentTypes)
+            totalUnits: weeks * lecturesPerWeek
         };
         
-        console.log('Course created:', courseData);
+        // Prepare onboarding data for course creation
+        const onboardingData = {
+            courseId,
+            courseName: course,
+            instructorId,
+            courseDescription: `Course: ${course}`,
+            learningOutcomes: [],
+            prerequisites: [],
+            assessmentCriteria: '',
+            courseMaterials: contentTypes || [],
+            unitFiles: {},
+            courseStructure
+        };
+        
+        // Create course in database using Course model
+        const result = await CourseModel.createCourseFromOnboarding(db, onboardingData);
+        
+        if (!result.success) {
+            return res.status(500).json({
+                success: false,
+                message: 'Failed to create course in database'
+            });
+        }
+        
+        console.log('Course created in database:', { courseId, course, instructorId });
         
         res.status(201).json({
             success: true,
             message: 'Course created successfully',
-            data: courseData
+            data: {
+                id: courseId,
+                name: course,
+                weeks: parseInt(weeks),
+                lecturesPerWeek: parseInt(lecturesPerWeek),
+                contentTypes: contentTypes || [],
+                instructorId: instructorId,
+                createdAt: new Date().toISOString(),
+                status: 'active',
+                structure: generateCourseStructure(weeks, lecturesPerWeek, contentTypes),
+                totalUnits: result.totalUnits
+            }
         });
         
     } catch (error) {
@@ -195,40 +230,36 @@ router.get('/', async (req, res) => {
             });
         }
         
-        // TODO: In a real implementation, this would:
-        // 1. Validate instructor permissions
-        // 2. Query database for instructor's courses
-        // 3. Return course list with metadata
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
         
-        // Mock response for now
-        const mockCourses = [
-            {
-                id: 'course-1',
-                name: 'BIOC 202',
-                weeks: 16,
-                lecturesPerWeek: 2,
-                instructorId: instructorId,
-                createdAt: '2024-01-15T10:00:00Z',
-                status: 'active',
-                documentCount: 15,
-                studentCount: 45
-            },
-            {
-                id: 'course-2',
-                name: 'BIOC 303',
-                weeks: 12,
-                lecturesPerWeek: 3,
-                instructorId: instructorId,
-                createdAt: '2024-01-20T14:30:00Z',
-                status: 'active',
-                documentCount: 8,
-                studentCount: 32
-            }
-        ];
+        // Query database for instructor's courses
+        const collection = db.collection('courses');
+        const courses = await collection.find({ instructorId }).toArray();
+        
+        // Transform the data to match expected format
+        const transformedCourses = courses.map(course => ({
+            id: course.courseId,
+            name: course.courseName,
+            weeks: course.courseStructure?.weeks || 0,
+            lecturesPerWeek: course.courseStructure?.lecturesPerWeek || 0,
+            instructorId: course.instructorId,
+            createdAt: course.createdAt?.toISOString() || new Date().toISOString(),
+            status: course.status || 'active',
+            documentCount: course.lectures?.reduce((total, lecture) => total + (lecture.documents?.length || 0), 0) || 0,
+            studentCount: 0, // TODO: Implement student tracking
+            totalUnits: course.courseStructure?.totalUnits || 0
+        }));
         
         res.json({
             success: true,
-            data: mockCourses
+            data: transformedCourses
         });
         
     } catch (error) {
@@ -256,28 +287,44 @@ router.get('/:courseId', async (req, res) => {
             });
         }
         
-        // TODO: In a real implementation, this would:
-        // 1. Validate instructor permissions for this course
-        // 2. Query database for course details
-        // 3. Return course with full metadata
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
         
-        // Mock response for now
-        const mockCourse = {
-            id: courseId,
-            name: 'BIOC 202',
-            weeks: 16,
-            lecturesPerWeek: 2,
-            instructorId: instructorId,
-            createdAt: '2024-01-15T10:00:00Z',
-            status: 'active',
-            documentCount: 15,
-            studentCount: 45,
+        // Query database for course details
+        const collection = db.collection('courses');
+        const course = await collection.findOne({ courseId, instructorId });
+        
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                message: 'Course not found'
+            });
+        }
+        
+        // Transform the data to match expected format
+        const transformedCourse = {
+            id: course.courseId,
+            name: course.courseName,
+            weeks: course.courseStructure?.weeks || 0,
+            lecturesPerWeek: course.courseStructure?.lecturesPerWeek || 0,
+            instructorId: course.instructorId,
+            createdAt: course.createdAt?.toISOString() || new Date().toISOString(),
+            status: course.status || 'active',
+            documentCount: course.lectures?.reduce((total, lecture) => total + (lecture.documents?.length || 0), 0) || 0,
+            studentCount: 0, // TODO: Implement student tracking
             structure: {
-                weeks: [
-                    { id: 'week-1', name: 'Week 1', lectures: 2, documents: 3 },
-                    { id: 'week-2', name: 'Week 2', lectures: 2, documents: 4 },
-                    { id: 'week-3', name: 'Week 3', lectures: 2, documents: 2 }
-                ],
+                weeks: course.lectures?.map((lecture, index) => ({
+                    id: `week-${Math.floor(index / (course.courseStructure?.lecturesPerWeek || 1)) + 1}`,
+                    name: `Week ${Math.floor(index / (course.courseStructure?.lecturesPerWeek || 1)) + 1}`,
+                    lectures: course.courseStructure?.lecturesPerWeek || 0,
+                    documents: lecture.documents?.length || 0
+                })) || [],
                 specialFolders: [
                     { id: 'syllabus', name: 'Syllabus & Schedule', type: 'syllabus' },
                     { id: 'quizzes', name: 'Practice Quizzes', type: 'quiz' }
@@ -287,7 +334,7 @@ router.get('/:courseId', async (req, res) => {
         
         res.json({
             success: true,
-            data: mockCourse
+            data: transformedCourse
         });
         
     } catch (error) {
@@ -316,16 +363,49 @@ router.put('/:courseId', async (req, res) => {
             });
         }
         
-        // TODO: In a real implementation, this would:
-        // 1. Validate instructor permissions for this course
-        // 2. Update course in database
-        // 3. Return updated course data
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
         
-        console.log('Course updated:', { courseId, name, weeks, lecturesPerWeek, status, instructorId });
+        // Update course in database
+        const collection = db.collection('courses');
+        const updateData = {
+            updatedAt: new Date()
+        };
+        
+        if (name) updateData.courseName = name;
+        if (status) updateData.status = status;
+        if (weeks || lecturesPerWeek) {
+            updateData.courseStructure = {
+                weeks: weeks || 0,
+                lecturesPerWeek: lecturesPerWeek || 0,
+                totalUnits: (weeks || 0) * (lecturesPerWeek || 0)
+            };
+        }
+        
+        const result = await collection.updateOne(
+            { courseId, instructorId },
+            { $set: updateData }
+        );
+        
+        if (result.matchedCount === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Course not found'
+            });
+        }
+        
+        console.log('Course updated in database:', { courseId, name, weeks, lecturesPerWeek, status, instructorId });
         
         res.json({
             success: true,
-            message: 'Course updated successfully'
+            message: 'Course updated successfully',
+            modifiedCount: result.modifiedCount
         });
         
     } catch (error) {
@@ -353,16 +433,40 @@ router.delete('/:courseId', async (req, res) => {
             });
         }
         
-        // TODO: In a real implementation, this would:
-        // 1. Validate instructor permissions for this course
-        // 2. Soft delete course (set status to 'deleted')
-        // 3. Archive associated documents
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
         
-        console.log('Course deleted:', { courseId, instructorId });
+        // Soft delete course (set status to 'deleted')
+        const collection = db.collection('courses');
+        const result = await collection.updateOne(
+            { courseId, instructorId },
+            { 
+                $set: { 
+                    status: 'deleted',
+                    updatedAt: new Date()
+                } 
+            }
+        );
+        
+        if (result.matchedCount === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Course not found'
+            });
+        }
+        
+        console.log('Course soft deleted:', { courseId, instructorId });
         
         res.json({
             success: true,
-            message: 'Course deleted successfully'
+            message: 'Course deleted successfully',
+            modifiedCount: result.modifiedCount
         });
         
     } catch (error) {

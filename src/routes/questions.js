@@ -1,8 +1,8 @@
 const express = require('express');
 const router = express.Router();
 
-// Import the Question model
-const QuestionModel = require('../models/Question');
+// Import the Course model instead of Question model
+const CourseModel = require('../models/Course');
 
 // Middleware for JSON parsing
 router.use(express.json());
@@ -47,9 +47,6 @@ router.post('/', async (req, res) => {
         
         // Prepare question data
         const questionData = {
-            courseId,
-            lectureName,
-            instructorId,
             questionType,
             question,
             options: options || {},
@@ -66,8 +63,21 @@ router.post('/', async (req, res) => {
             }
         };
         
-        // Create question in MongoDB
-        const result = await QuestionModel.createQuestion(db, questionData);
+        // Create question in the course structure using Course model
+        const result = await CourseModel.updateAssessmentQuestions(
+            db, 
+            courseId, 
+            lectureName, 
+            questionData, 
+            instructorId
+        );
+        
+        if (!result.success) {
+            return res.status(400).json({
+                success: false,
+                message: result.error || 'Failed to create question'
+            });
+        }
         
         console.log(`Question created for ${lectureName} by instructor ${instructorId}`);
         
@@ -76,9 +86,10 @@ router.post('/', async (req, res) => {
             message: 'Question created successfully!',
             data: {
                 questionId: result.questionId,
-                question: result.question,
-                questionType: result.questionType,
-                createdAt: result.createdAt
+                question: questionData.question,
+                questionType: questionData.questionType,
+                createdAt: new Date().toISOString(),
+                created: result.created
             }
         });
         
@@ -116,8 +127,8 @@ router.get('/lecture', async (req, res) => {
             });
         }
         
-        // Fetch questions from MongoDB
-        const questions = await QuestionModel.getQuestionsForLecture(db, courseId, lectureName);
+        // Fetch questions from the course structure using Course model
+        const questions = await CourseModel.getAssessmentQuestions(db, courseId, lectureName);
         
         res.json({
             success: true,
@@ -140,7 +151,7 @@ router.get('/lecture', async (req, res) => {
 
 /**
  * GET /api/questions/:questionId
- * Get a specific question by ID
+ * Get a specific question by ID (search across all courses)
  */
 router.get('/:questionId', async (req, res) => {
     try {
@@ -162,10 +173,29 @@ router.get('/:questionId', async (req, res) => {
             });
         }
         
-        // Fetch question from MongoDB
-        const question = await QuestionModel.getQuestionById(db, questionId);
+        // Search for the question across all courses
+        const collection = db.collection('courses');
+        const course = await collection.findOne({
+            'lectures.assessmentQuestions.questionId': questionId
+        });
         
-        if (!question) {
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                message: 'Question not found'
+            });
+        }
+        
+        // Find the specific question
+        let foundQuestion = null;
+        for (const lecture of course.lectures || []) {
+            if (lecture.assessmentQuestions) {
+                foundQuestion = lecture.assessmentQuestions.find(q => q.questionId === questionId);
+                if (foundQuestion) break;
+            }
+        }
+        
+        if (!foundQuestion) {
             return res.status(404).json({
                 success: false,
                 message: 'Question not found'
@@ -174,7 +204,7 @@ router.get('/:questionId', async (req, res) => {
         
         res.json({
             success: true,
-            data: question
+            data: foundQuestion
         });
         
     } catch (error) {
@@ -194,11 +224,12 @@ router.put('/:questionId', async (req, res) => {
     try {
         const { questionId } = req.params;
         const updateData = req.body;
+        const { courseId, lectureName, instructorId } = req.body;
         
-        if (!questionId) {
+        if (!questionId || !courseId || !lectureName || !instructorId) {
             return res.status(400).json({
                 success: false,
-                message: 'Missing required parameter: questionId'
+                message: 'Missing required fields: questionId, courseId, lectureName, instructorId'
             });
         }
         
@@ -211,13 +242,25 @@ router.put('/:questionId', async (req, res) => {
             });
         }
         
-        // Update question in MongoDB
-        const result = await QuestionModel.updateQuestion(db, questionId, updateData);
+        // Prepare the updated question data
+        const questionData = {
+            ...updateData,
+            questionId: questionId
+        };
         
-        if (result.matchedCount === 0) {
-            return res.status(404).json({
+        // Update question in the course structure using Course model
+        const result = await CourseModel.updateAssessmentQuestions(
+            db, 
+            courseId, 
+            lectureName, 
+            questionData, 
+            instructorId
+        );
+        
+        if (!result.success) {
+            return res.status(400).json({
                 success: false,
-                message: 'Question not found'
+                message: result.error || 'Failed to update question'
             });
         }
         
@@ -244,17 +287,17 @@ router.put('/:questionId', async (req, res) => {
 
 /**
  * DELETE /api/questions/:questionId
- * Delete a question (soft delete)
+ * Delete a question (remove from course structure)
  */
 router.delete('/:questionId', async (req, res) => {
     try {
         const { questionId } = req.params;
-        const { instructorId } = req.body;
+        const { instructorId, courseId, lectureName } = req.body;
         
-        if (!questionId || !instructorId) {
+        if (!questionId || !instructorId || !courseId || !lectureName) {
             return res.status(400).json({
                 success: false,
-                message: 'Missing required fields: questionId, instructorId'
+                message: 'Missing required fields: questionId, instructorId, courseId, lectureName'
             });
         }
         
@@ -267,24 +310,21 @@ router.delete('/:questionId', async (req, res) => {
             });
         }
         
-        // Verify the question exists and belongs to the instructor
-        const question = await QuestionModel.getQuestionById(db, questionId);
-        if (!question) {
-            return res.status(404).json({
+        // Delete the question from the course structure using Course model
+        const result = await CourseModel.deleteAssessmentQuestion(
+            db, 
+            courseId, 
+            lectureName, 
+            questionId, 
+            instructorId
+        );
+        
+        if (!result.success) {
+            return res.status(400).json({
                 success: false,
-                message: 'Question not found'
+                message: result.error || 'Failed to delete question'
             });
         }
-        
-        if (question.instructorId !== instructorId) {
-            return res.status(403).json({
-                success: false,
-                message: 'You do not have permission to delete this question'
-            });
-        }
-        
-        // Soft delete the question
-        const result = await QuestionModel.deleteQuestion(db, questionId);
         
         console.log(`Question deleted: ${questionId} by instructor ${instructorId}`);
         
@@ -293,7 +333,7 @@ router.delete('/:questionId', async (req, res) => {
             message: 'Question deleted successfully!',
             data: {
                 questionId,
-                deletedCount: result.modifiedCount
+                deletedCount: result.deletedCount
             }
         });
         
@@ -330,8 +370,52 @@ router.get('/stats', async (req, res) => {
             });
         }
         
-        // Fetch question statistics from MongoDB
-        const stats = await QuestionModel.getQuestionStats(db, courseId);
+        // Get course data to calculate statistics
+        const collection = db.collection('courses');
+        const course = await collection.findOne({ courseId });
+        
+        if (!course || !course.lectures) {
+            return res.json({
+                success: true,
+                data: {
+                    courseId,
+                    totalQuestions: 0,
+                    totalPoints: 0,
+                    typeBreakdown: []
+                }
+            });
+        }
+        
+        // Calculate statistics from the course structure
+        let totalQuestions = 0;
+        let totalPoints = 0;
+        const typeBreakdown = {};
+        
+        for (const lecture of course.lectures) {
+            if (lecture.assessmentQuestions) {
+                for (const question of lecture.assessmentQuestions) {
+                    totalQuestions++;
+                    totalPoints += question.points || 1;
+                    
+                    const type = question.questionType;
+                    if (!typeBreakdown[type]) {
+                        typeBreakdown[type] = { count: 0, points: 0 };
+                    }
+                    typeBreakdown[type].count++;
+                    typeBreakdown[type].points += question.points || 1;
+                }
+            }
+        }
+        
+        const stats = {
+            totalQuestions,
+            totalPoints,
+            typeBreakdown: Object.entries(typeBreakdown).map(([type, data]) => ({
+                type,
+                count: data.count,
+                points: data.points
+            }))
+        };
         
         res.json({
             success: true,
@@ -374,33 +458,45 @@ router.post('/bulk', async (req, res) => {
             });
         }
         
-        // Prepare questions data with course and lecture info
-        const questionsData = questions.map(q => ({
-            ...q,
-            courseId,
-            lectureName,
-            instructorId,
-            metadata: {
-                source: 'ai-generated',
-                aiGenerated: true,
-                reviewStatus: 'draft',
-                ...q.metadata
+        let insertedCount = 0;
+        const insertedIds = [];
+        
+        // Create each question individually using the Course model
+        for (const question of questions) {
+            const questionData = {
+                ...question,
+                metadata: {
+                    source: 'ai-generated',
+                    aiGenerated: true,
+                    reviewStatus: 'draft',
+                    ...question.metadata
+                }
+            };
+            
+            const result = await CourseModel.updateAssessmentQuestions(
+                db, 
+                courseId, 
+                lectureName, 
+                questionData, 
+                instructorId
+            );
+            
+            if (result.success) {
+                insertedCount++;
+                insertedIds.push(result.questionId);
             }
-        }));
+        }
         
-        // Bulk create questions in MongoDB
-        const result = await QuestionModel.bulkCreateQuestions(db, questionsData);
-        
-        console.log(`Bulk created ${result.insertedCount} questions for ${lectureName}`);
+        console.log(`Bulk created ${insertedCount} questions for ${lectureName}`);
         
         res.json({
             success: true,
-            message: `${result.insertedCount} questions created successfully!`,
+            message: `${insertedCount} questions created successfully!`,
             data: {
                 courseId,
                 lectureName,
-                insertedCount: result.insertedCount,
-                insertedIds: result.insertedIds
+                insertedCount,
+                insertedIds
             }
         });
         
