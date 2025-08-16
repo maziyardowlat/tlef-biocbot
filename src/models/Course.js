@@ -498,7 +498,6 @@ async function createCourseFromOnboarding(db, onboardingData) {
         instructorId,
         courseDescription,
         learningOutcomes,
-        prerequisites,
         assessmentCriteria,
         courseMaterials,
         courseStructure
@@ -534,10 +533,7 @@ async function createCourseFromOnboarding(db, onboardingData) {
             const unitName = `Unit ${i}`;
             
             // Check if we have existing data for this unit from onboarding
-            let existingUnitData = {};
-            if (onboardingData.unitFiles && onboardingData.unitFiles[unitName]) {
-                existingUnitData = onboardingData.unitFiles[unitName];
-            }
+            // Note: Documents are now handled separately through the documents array
             
             // For Unit 1, use learning outcomes from onboarding if available
             let learningObjectives = [];
@@ -557,12 +553,7 @@ async function createCourseFromOnboarding(db, onboardingData) {
                 createdAt: now,
                 updatedAt: now,
                 documents: [],
-                assessmentQuestions: [], // Initialize empty assessment questions array
-                unitFiles: {
-                    lectureNotes: existingUnitData.lectureNotes || [],
-                    practiceQuestions: existingUnitData.practiceQuestions || [],
-                    additionalMaterials: existingUnitData.additionalMaterials || []
-                }
+                assessmentQuestions: [] // Initialize empty assessment questions array
             });
         }
         
@@ -572,7 +563,6 @@ async function createCourseFromOnboarding(db, onboardingData) {
             courseName,
             instructorId,
             courseDescription: courseDescription || '',
-            prerequisites: prerequisites || [],
             assessmentCriteria: assessmentCriteria || '',
             courseMaterials: courseMaterials || [],
             courseStructure: {
@@ -823,30 +813,124 @@ async function removeDocumentFromUnit(db, courseId, unitName, documentId, instru
     const existingUnit = course.lectures ? course.lectures.find(l => l.name === unitName) : null;
     
     if (existingUnit) {
-        // Remove the document from the documents array
+        console.log(`Found unit ${unitName} with ${existingUnit.documents?.length || 0} documents`);
+        console.log(`Looking for document with ID: ${documentId}`);
+        
+        // Check if the document actually exists in this unit
+        const documentExists = existingUnit.documents && existingUnit.documents.some(doc => doc.documentId === documentId);
+        console.log(`Document exists in unit: ${documentExists}`);
+        
+        if (!documentExists) {
+            console.log(`Document ${documentId} not found in unit ${unitName}`);
+            return { success: false, error: 'Document not found in unit' };
+        }
+        
+        // Remove the document from the documents array using a direct approach
+        // First, get the current course to modify it directly
+        const currentCourse = await collection.findOne({ courseId });
+        if (!currentCourse) {
+            return { success: false, error: 'Course not found during update' };
+        }
+        
+        // Find the unit and remove the document
+        let documentRemoved = false;
+        if (currentCourse.lectures) {
+            for (let i = 0; i < currentCourse.lectures.length; i++) {
+                const unit = currentCourse.lectures[i];
+                if (unit.name === unitName && unit.documents) {
+                    const initialLength = unit.documents.length;
+                    unit.documents = unit.documents.filter(doc => doc.documentId !== documentId);
+                    if (unit.documents.length < initialLength) {
+                        documentRemoved = true;
+                        unit.updatedAt = now;
+                    }
+                }
+            }
+        }
+        
+        if (!documentRemoved) {
+            console.log(`Document ${documentId} not found in unit ${unitName}`);
+            return { success: false, error: 'Document not found in unit' };
+        }
+        
+        // Update the course with the modified data
         const result = await collection.updateOne(
-            { 
-                courseId,
-                'lectures.name': unitName 
-            },
+            { courseId },
             {
-                $pull: { 
-                    'lectures.$.documents': { documentId: documentId } 
-                },
                 $set: {
-                    'lectures.$.updatedAt': now,
+                    lectures: currentCourse.lectures,
                     updatedAt: now,
                     instructorId
                 }
             }
         );
         
+        console.log(`MongoDB update result:`, result);
         console.log(`Removed document from ${unitName}`);
         return { success: true, removedCount: result.modifiedCount, documentId };
     } else {
         console.error(`Unit ${unitName} not found in course ${courseId}`);
         return { success: false, error: 'Unit not found' };
     }
+}
+
+/**
+ * Remove a document from any unit in a course (fallback method)
+ * @param {Object} db - MongoDB database instance
+ * @param {string} courseId - Course identifier
+ * @param {string} documentId - ID of the document to remove
+ * @param {string} instructorId - ID of the instructor
+ * @returns {Promise<Object>} Removal result
+ */
+async function removeDocumentFromAnyUnit(db, courseId, documentId, instructorId) {
+    const collection = getCoursesCollection(db);
+    
+    const now = new Date();
+    
+    // Remove the document from any unit that contains it using a direct approach
+    // First, get the current course to modify it directly
+    const currentCourse = await collection.findOne({ courseId });
+    if (!currentCourse) {
+        return { success: false, error: 'Course not found during update' };
+    }
+    
+    // Find and remove the document from any unit
+    let documentRemoved = false;
+    let removedCount = 0;
+    if (currentCourse.lectures) {
+        for (let i = 0; i < currentCourse.lectures.length; i++) {
+            const unit = currentCourse.lectures[i];
+            if (unit.documents) {
+                const initialLength = unit.documents.length;
+                unit.documents = unit.documents.filter(doc => doc.documentId !== documentId);
+                if (unit.documents.length < initialLength) {
+                    documentRemoved = true;
+                    removedCount += (initialLength - unit.documents.length);
+                    unit.updatedAt = now;
+                }
+            }
+        }
+    }
+    
+    if (!documentRemoved) {
+        console.log(`Document ${documentId} not found in any unit`);
+        return { success: false, error: 'Document not found in any unit' };
+    }
+    
+    // Update the course with the modified data
+    const result = await collection.updateOne(
+        { courseId },
+        {
+            $set: {
+                lectures: currentCourse.lectures,
+                updatedAt: now,
+                instructorId
+            }
+        }
+    );
+    
+    console.log(`Removed document ${documentId} from any unit in course ${courseId}`);
+    return { success: true, removedCount: result.modifiedCount, documentId };
 }
 
 module.exports = {
@@ -868,5 +952,6 @@ module.exports = {
     deleteAssessmentQuestion,
     addDocumentToUnit,
     getDocumentsForUnit,
-    removeDocumentFromUnit
+    removeDocumentFromUnit,
+    removeDocumentFromAnyUnit
 };

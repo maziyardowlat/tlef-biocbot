@@ -68,7 +68,6 @@ router.post('/', async (req, res) => {
             instructorId,
             courseDescription: `Course: ${course}`,
             learningOutcomes: [],
-            prerequisites: [],
             assessmentCriteria: '',
             courseMaterials: contentTypes || [],
             unitFiles: {},
@@ -474,6 +473,69 @@ router.delete('/:courseId', async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Internal server error'
+        });
+    }
+});
+
+/**
+ * POST /api/courses/:courseId/clear-documents
+ * Clear all documents from a specific unit in the course structure
+ */
+router.post('/:courseId/clear-documents', async (req, res) => {
+    try {
+        const { courseId } = req.params;
+        const { unitName, instructorId } = req.body;
+        
+        if (!unitName || !instructorId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Missing required fields: unitName, instructorId'
+            });
+        }
+        
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
+        
+        // Get the courses collection
+        const coursesCollection = db.collection('courses');
+        
+        // Clear all documents from the specified unit
+        const result = await coursesCollection.updateOne(
+            { 
+                courseId: courseId,
+                'lectures.name': unitName 
+            },
+            { 
+                $set: { 
+                    'lectures.$.documents': [],
+                    'lectures.$.updatedAt': new Date(),
+                    updatedAt: new Date()
+                }
+            }
+        );
+        
+        console.log(`Cleared all documents from unit ${unitName} in course ${courseId}, modified: ${result.modifiedCount}`);
+        
+        res.json({
+            success: true,
+            message: `All documents cleared from ${unitName}`,
+            data: {
+                unitName,
+                clearedCount: result.modifiedCount
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error clearing documents from unit:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while clearing documents'
         });
     }
 });

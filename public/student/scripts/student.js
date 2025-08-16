@@ -98,8 +98,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const flagMenu = document.createElement('div');
             flagMenu.classList.add('flag-menu');
             flagMenu.innerHTML = `
-                <button class="flag-option" onclick="flagMessage(this, 'incorrectness')">Incorrectness</button>
+                <button class="flag-option" onclick="flagMessage(this, 'incorrect')">Incorrect</button>
                 <button class="flag-option" onclick="flagMessage(this, 'inappropriate')">Inappropriate</button>
+                <button class="flag-option" onclick="flagMessage(this, 'unclear')">Unclear</button>
+                <button class="flag-option" onclick="flagMessage(this, 'confusing')">Confusing</button>
+                <button class="flag-option" onclick="flagMessage(this, 'typo')">Typo/Error</button>
+                <button class="flag-option" onclick="flagMessage(this, 'offensive')">Offensive</button>
                 <button class="flag-option" onclick="flagMessage(this, 'irrelevant')">Irrelevant</button>
             `;
             
@@ -185,7 +189,7 @@ function toggleFlagMenu(button) {
 /**
  * Handle flag message action
  * @param {HTMLElement} button - The flag option button
- * @param {string} flagType - The type of flag (incorrectness, inappropriate, irrelevant)
+ * @param {string} flagType - The type of flag (now flagReason)
  */
 function flagMessage(button, flagType) {
     const menu = button.closest('.flag-menu');
@@ -205,22 +209,40 @@ function flagMessage(button, flagType) {
 /**
  * Submit flag to server
  * @param {string} messageText - The flagged message text
- * @param {string} flagType - The type of flag
+ * @param {string} flagType - The type of flag (now flagReason)
  */
 async function submitFlag(messageText, flagType) {
     try {
+        // Get current course and student information
+        const courseId = getCurrentCourseId();
+        const studentId = getCurrentStudentId();
+        const studentName = getCurrentStudentName();
+        const unitName = getCurrentUnitName();
+        
+        // Create flag data for the new flagged questions API
         const flagData = {
-            messageText: messageText,
-            flagType: flagType,
-            timestamp: new Date().toISOString(),
-            studentId: getCurrentStudentId() // This would come from auth
+            questionId: generateQuestionId(messageText), // Generate a unique ID for this "question"
+            courseId: courseId,
+            unitName: unitName,
+            studentId: studentId,
+            studentName: studentName,
+            flagReason: flagType,
+            flagDescription: `Student flagged bot response as ${flagType}`,
+            questionContent: {
+                question: messageText,
+                questionType: 'bot-response',
+                options: {},
+                correctAnswer: 'N/A',
+                explanation: 'This is a flagged bot response from the student chat interface'
+            }
         };
+        
+        console.log('Submitting flag with data:', flagData);
         
         const response = await fetch('/api/flags', {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${getAuthToken()}`
+                'Content-Type': 'application/json'
             },
             body: JSON.stringify(flagData)
         });
@@ -241,14 +263,27 @@ async function submitFlag(messageText, flagType) {
 /**
  * Replace the bot message with a thank you message
  * @param {HTMLElement} messageContent - The message content element
- * @param {string} flagType - The type of flag that was submitted
+ * @param {string} flagType - The type of flag that was submitted (now flagReason)
  */
 function replaceMessageWithThankYou(messageContent, flagType) {
     // Get the paragraph element
     const paragraph = messageContent.querySelector('p');
     
+    // Map flag types to user-friendly descriptions
+    const flagTypeDescriptions = {
+        'incorrect': 'incorrect information',
+        'inappropriate': 'inappropriate content',
+        'unclear': 'unclear or confusing content',
+        'confusing': 'confusing content',
+        'typo': 'typo or error',
+        'offensive': 'offensive content',
+        'irrelevant': 'irrelevant content'
+    };
+    
+    const description = flagTypeDescriptions[flagType] || flagType;
+    
     // Replace the message text
-    paragraph.textContent = `Thank you for reporting this response as "${flagType}". This has been logged and will be reviewed.`;
+    paragraph.textContent = `Thank you for reporting this response as ${description}. This has been logged and will be reviewed by your instructor.`;
     
     // Add a visual indicator that this message was flagged
     paragraph.style.color = '#666';
@@ -282,6 +317,47 @@ function getCurrentStudentId() {
     // This would typically come from JWT token or session
     // For now, return a placeholder
     return 'student-123';
+}
+
+/**
+ * Get current student name (placeholder)
+ * @returns {string} Student name
+ */
+function getCurrentStudentName() {
+    // This would typically come from JWT token or session
+    // For now, return a placeholder
+    return 'Student Name';
+}
+
+/**
+ * Get current course ID (placeholder)
+ * @returns {string} Course ID
+ */
+function getCurrentCourseId() {
+    // This would typically come from JWT token or session
+    // For now, return a placeholder that matches the course structure
+    return 'BIOC-202-1755285146691';
+}
+
+/**
+ * Get current unit name (placeholder)
+ * @returns {string} Unit name
+ */
+function getCurrentUnitName() {
+    // This would typically come from current session or course context
+    // For now, return a placeholder
+    return 'Unit 1';
+}
+
+/**
+ * Generate a unique question ID for flagged bot responses
+ * @param {string} messageText - The message text to generate ID from
+ * @returns {string} Unique question ID
+ */
+function generateQuestionId(messageText) {
+    const timestamp = Date.now();
+    const hash = btoa(messageText.substring(0, 20)).replace(/[^a-zA-Z0-9]/g, '');
+    return `bot_response_${timestamp}_${hash}`;
 }
 
 /**

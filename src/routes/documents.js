@@ -169,6 +169,22 @@ router.post('/text', async (req, res) => {
         // Upload document to MongoDB
         const result = await DocumentModel.uploadDocument(db, documentData);
         
+        // Also add document reference to the course structure
+        const courseResult = await CourseModel.addDocumentToUnit(db, courseId, lectureName, {
+            documentId: result.documentId,
+            documentType: documentType,
+            filename: documentData.filename,
+            originalName: documentData.originalName,
+            mimeType: documentData.mimeType,
+            size: documentData.size,
+            status: 'uploaded',
+            metadata: documentData.metadata
+        }, instructorId);
+        
+        if (!courseResult.success) {
+            console.warn('Warning: Text document uploaded but failed to link to course structure:', courseResult.error);
+        }
+        
         console.log(`Text document submitted: ${title} for ${lectureName}`);
         
         res.json({
@@ -178,7 +194,8 @@ router.post('/text', async (req, res) => {
                 documentId: result.documentId,
                 title: title,
                 size: result.size,
-                uploadDate: result.uploadDate
+                uploadDate: result.uploadDate,
+                linkedToCourse: courseResult.success
             }
         });
         
@@ -245,6 +262,100 @@ router.get('/lecture', async (req, res) => {
 });
 
 /**
+ * GET /api/documents/stats
+ * Get document statistics for a course
+ */
+router.get('/stats', async (req, res) => {
+    try {
+        const { courseId } = req.query;
+        
+        if (!courseId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Missing required parameter: courseId'
+            });
+        }
+        
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
+        
+        // Fetch document statistics from MongoDB
+        const stats = await DocumentModel.getDocumentStats(db, courseId);
+        
+        res.json({
+            success: true,
+            data: {
+                courseId,
+                stats
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error fetching document stats:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while fetching document stats'
+        });
+    }
+});
+
+/**
+ * GET /api/documents/:documentId
+ * Get a specific document by ID
+ */
+router.get('/:documentId', async (req, res) => {
+    try {
+        const { documentId } = req.params;
+        
+        if (!documentId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Missing required parameter: documentId'
+            });
+        }
+        
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
+        
+        // Get the document from the database
+        const document = await DocumentModel.getDocumentById(db, documentId);
+        if (!document) {
+            return res.status(404).json({
+                success: false,
+                message: 'Document not found'
+            });
+        }
+        
+        console.log(`Document retrieved: ${documentId}`);
+        
+        res.json({
+            success: true,
+            message: 'Document retrieved successfully!',
+            data: document
+        });
+        
+    } catch (error) {
+        console.error('Error retrieving document:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while retrieving document'
+        });
+    }
+});
+
+/**
  * DELETE /api/documents/:documentId
  * Delete a specific document
  */
@@ -288,12 +399,25 @@ router.delete('/:documentId', async (req, res) => {
         // Delete the document from the documents collection
         const result = await DocumentModel.deleteDocument(db, documentId);
         
-        // Also remove the document reference from the course structure
+        // DELETE FROM BOTH DATABASES - SIMPLE AND DIRECT
         if (result.success) {
-            const courseResult = await CourseModel.removeDocumentFromUnit(db, document.courseId, document.lectureName, documentId, instructorId);
-            if (!courseResult.success) {
-                console.warn('Warning: Document deleted but failed to remove from course structure:', courseResult.error);
-            }
+            console.log(`Document deleted from documents collection, now deleting from course structure...`);
+            
+            // Get the course collection directly
+            const coursesCollection = db.collection('courses');
+            
+            // DELETE FROM COURSE STRUCTURE - NO FANCY LOGIC
+            const courseDeleteResult = await coursesCollection.updateOne(
+                { courseId: document.courseId },
+                { 
+                    $pull: { 
+                        'lectures.$[].documents': { documentId: documentId } 
+                    }
+                }
+            );
+            
+            console.log(`Course delete result:`, courseDeleteResult);
+            console.log(`Document ${documentId} deleted from BOTH databases`);
         }
         
         console.log(`Document deleted: ${documentId} by instructor ${instructorId}`);
@@ -318,17 +442,17 @@ router.delete('/:documentId', async (req, res) => {
 });
 
 /**
- * GET /api/documents/stats
- * Get document statistics for a course
+ * POST /api/documents/cleanup-orphans
+ * Clean up orphaned document references in course structure
  */
-router.get('/stats', async (req, res) => {
+router.post('/cleanup-orphans', async (req, res) => {
     try {
-        const { courseId } = req.query;
+        const { courseId, instructorId } = req.body;
         
-        if (!courseId) {
+        if (!courseId || !instructorId) {
             return res.status(400).json({
                 success: false,
-                message: 'Missing required parameter: courseId'
+                message: 'Missing required fields: courseId, instructorId'
             });
         }
         
@@ -341,22 +465,68 @@ router.get('/stats', async (req, res) => {
             });
         }
         
-        // Fetch document statistics from MongoDB
-        const stats = await DocumentModel.getDocumentStats(db, courseId);
+        // Get the course
+        const course = await CourseModel.getCourseWithOnboarding(db, courseId);
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                message: 'Course not found'
+            });
+        }
+        
+        // Check each document reference and remove orphaned ones
+        let totalOrphans = 0;
+        let cleanedUnits = 0;
+        
+        if (course.lectures) {
+            for (const unit of course.lectures) {
+                if (unit.documents && unit.documents.length > 0) {
+                    const validDocuments = [];
+                    for (const doc of unit.documents) {
+                        try {
+                            const docExists = await DocumentModel.getDocumentById(db, doc.documentId);
+                            if (docExists) {
+                                validDocuments.push(doc);
+                            } else {
+                                totalOrphans++;
+                                console.log(`Found orphaned document: ${doc.documentId} in unit ${unit.name}`);
+                            }
+                        } catch (error) {
+                            console.log(`Error checking document ${doc.documentId}:`, error);
+                            totalOrphans++;
+                        }
+                    }
+                    
+                    // Update the unit with only valid documents
+                    if (validDocuments.length !== unit.documents.length) {
+                        unit.documents = validDocuments;
+                        unit.updatedAt = new Date();
+                        cleanedUnits++;
+                    }
+                }
+            }
+            
+            // Update the course if any changes were made
+            if (totalOrphans > 0) {
+                const result = await CourseModel.upsertCourse(db, course);
+                console.log(`Cleaned up ${totalOrphans} orphaned documents from ${cleanedUnits} units`);
+            }
+        }
         
         res.json({
             success: true,
+            message: `Cleanup completed. Removed ${totalOrphans} orphaned documents from ${cleanedUnits} units.`,
             data: {
-                courseId,
-                stats
+                totalOrphans,
+                cleanedUnits
             }
         });
         
     } catch (error) {
-        console.error('Error fetching document stats:', error);
+        console.error('Error cleaning up orphaned documents:', error);
         res.status(500).json({
             success: false,
-            message: 'Internal server error while fetching document stats'
+            message: 'Internal server error while cleaning up orphaned documents'
         });
     }
 });

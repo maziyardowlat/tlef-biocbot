@@ -25,9 +25,43 @@ const appState = {
  */
 document.addEventListener('DOMContentLoaded', function() {
     initializeEventListeners();
-    loadFlaggedContent();
-    loadFlagStats();
+    loadAvailableCourses();
+    // Wait for courses to load before loading content
+    setTimeout(() => {
+        initializeFilters();
+        loadFlaggedContent();
+        loadFlagStats();
+    }, 100);
 });
+
+/**
+ * Initialize filter state to match dropdown values
+ */
+function initializeFilters() {
+    const flagTypeFilter = document.getElementById('flag-type-filter');
+    const statusFilter = document.getElementById('status-filter');
+    
+    if (flagTypeFilter && statusFilter) {
+        appState.currentFilters.flagType = flagTypeFilter.value;
+        appState.currentFilters.status = statusFilter.value;
+        console.log('Filters initialized:', appState.currentFilters);
+    }
+}
+
+/**
+ * Sync filter state with UI dropdowns
+ */
+function syncFiltersWithUI() {
+    const flagTypeFilter = document.getElementById('flag-type-filter');
+    const statusFilter = document.getElementById('status-filter');
+    
+    if (flagTypeFilter && statusFilter) {
+        // Update UI to match current filter state
+        flagTypeFilter.value = appState.currentFilters.flagType;
+        statusFilter.value = appState.currentFilters.status;
+        console.log('UI synced with filter state:', appState.currentFilters);
+    }
+}
 
 /**
  * Set up event listeners for the page
@@ -37,6 +71,7 @@ function initializeEventListeners() {
     const flagTypeFilter = document.getElementById('flag-type-filter');
     const statusFilter = document.getElementById('status-filter');
     const refreshButton = document.getElementById('refresh-flags');
+    const courseSelect = document.getElementById('course-select');
     
     if (flagTypeFilter) {
         flagTypeFilter.addEventListener('change', handleFilterChange);
@@ -49,6 +84,61 @@ function initializeEventListeners() {
     if (refreshButton) {
         refreshButton.addEventListener('click', handleRefresh);
     }
+    
+    if (courseSelect) {
+        courseSelect.addEventListener('change', handleCourseChange);
+    }
+}
+
+/**
+ * Load available courses for the instructor
+ */
+async function loadAvailableCourses() {
+    try {
+        const courseSelect = document.getElementById('course-select');
+        if (!courseSelect) return;
+        
+        // For now, use a mock course list - in production this would come from an API
+        const courses = [
+            { courseId: 'BIOC-202-1755285146691', courseName: 'BIOC 202' },
+            { courseId: 'BIOC-303-1234567890', courseName: 'BIOC 303' }
+        ];
+        
+        // Clear loading option
+        courseSelect.innerHTML = '';
+        
+        // Add course options
+        courses.forEach(course => {
+            const option = document.createElement('option');
+            option.value = course.courseId;
+            option.textContent = course.courseName;
+            courseSelect.appendChild(option);
+        });
+        
+        // Set default selection
+        if (courses.length > 0) {
+            courseSelect.value = courses[0].courseId;
+        }
+        
+        console.log('Available courses loaded:', courses);
+        
+    } catch (error) {
+        console.error('Error loading available courses:', error);
+        // Fallback to default course
+        const courseSelect = document.getElementById('course-select');
+        if (courseSelect) {
+            courseSelect.innerHTML = '<option value="BIOC-202-1755285146691">BIOC 202</option>';
+        }
+    }
+}
+
+/**
+ * Handle course selection change
+ */
+function handleCourseChange() {
+    console.log('Course selection changed, reloading data...');
+    loadFlaggedContent();
+    loadFlagStats();
 }
 
 /**
@@ -89,14 +179,27 @@ async function loadFlaggedContent() {
     try {
         showLoadingState();
         
-        // TODO: Replace with actual instructor ID from auth
-        const instructorId = 'instructor-123';
+        // Get current course ID from selector
+        const courseSelect = document.getElementById('course-select');
+        const courseId = courseSelect ? courseSelect.value : '';
         
-        const response = await fetch(`/api/flags?instructorId=${instructorId}`, {
+        if (!courseId) {
+            console.log('No course selected, showing empty state');
+            appState.flags = [];
+            applyFilters();
+            renderFlaggedContent();
+            return;
+        }
+        
+        console.log(`Loading flagged content for course: ${courseId}`);
+        
+        // Always load all flags for the course, let local filters handle filtering
+        const apiUrl = `/api/flags/course/${courseId}`;
+        
+        const response = await fetch(apiUrl, {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json',
-                // 'Authorization': `Bearer ${getAuthToken()}` // TODO: Add when auth is implemented
             }
         });
         
@@ -107,7 +210,9 @@ async function loadFlaggedContent() {
         const result = await response.json();
         
         if (result.success) {
-            appState.flags = result.data || [];
+            appState.flags = result.data.flags || [];
+            console.log(`Loaded ${appState.flags.length} flagged questions for course ${courseId}`);
+            console.log('Flags data:', appState.flags);
             applyFilters();
             renderFlaggedContent();
         } else {
@@ -125,14 +230,23 @@ async function loadFlaggedContent() {
  */
 async function loadFlagStats() {
     try {
-        // TODO: Replace with actual instructor ID from auth
-        const instructorId = 'instructor-123';
+        // Get current course ID from selector
+        const courseSelect = document.getElementById('course-select');
+        const courseId = courseSelect ? courseSelect.value : '';
         
-        const response = await fetch(`/api/flags/stats?instructorId=${instructorId}`, {
+        if (!courseId) {
+            console.log('No course selected, using default stats');
+            appState.stats = { total: 0, pending: 0, reviewed: 0, resolved: 0, dismissed: 0 };
+            updateStatsDisplay();
+            return;
+        }
+        
+        console.log(`Loading flag statistics for course: ${courseId}`);
+        
+        const response = await fetch(`/api/flags/stats/${courseId}`, {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json',
-                // 'Authorization': `Bearer ${getAuthToken()}` // TODO: Add when auth is implemented
             }
         });
         
@@ -143,13 +257,16 @@ async function loadFlagStats() {
         const result = await response.json();
         
         if (result.success) {
-            appState.stats = result.data;
+            appState.stats = result.data.statistics;
+            console.log('Flag statistics loaded:', appState.stats);
             updateStatsDisplay();
         }
         
     } catch (error) {
         console.error('Error loading flag stats:', error);
         // Don't show error for stats, just use defaults
+        appState.stats = { total: 0, pending: 0, reviewed: 0, resolved: 0, dismissed: 0 };
+        updateStatsDisplay();
     }
 }
 
@@ -159,12 +276,23 @@ async function loadFlagStats() {
 function applyFilters() {
     const { flagType, status } = appState.currentFilters;
     
+    console.log('Applying filters with state:', appState.currentFilters);
+    console.log('Available flags:', appState.flags);
+    
     appState.filteredFlags = appState.flags.filter(flag => {
-        const matchesFlagType = flagType === 'all' || flag.flagType === flagType;
-        const matchesStatus = status === 'all' || flag.status === status;
+        const matchesFlagType = flagType === 'all' || flag.flagReason === flagType;
+        const matchesStatus = status === 'all' || flag.flagStatus === status;
+        
+        console.log(`Flag ${flag.flagId}: flagReason=${flag.flagReason}, flagStatus=${flag.flagStatus}`);
+        console.log(`  matchesFlagType: ${flagType} === 'all' || ${flag.flagReason} === ${flagType} = ${matchesFlagType}`);
+        console.log(`  matchesStatus: ${status} === 'all' || ${flag.flagStatus} === ${status} = ${matchesStatus}`);
         
         return matchesFlagType && matchesStatus;
     });
+    
+    console.log(`Applied filters: flagType=${flagType}, status=${status}`);
+    console.log(`Filtered ${appState.filteredFlags.length} flags from ${appState.flags.length} total`);
+    console.log('Filtered flags:', appState.filteredFlags);
 }
 
 /**
@@ -213,29 +341,52 @@ function renderFlaggedContent() {
 function createFlagElement(flag) {
     const flagDiv = document.createElement('div');
     flagDiv.className = 'flagged-item';
-    flagDiv.setAttribute('data-flag-id', flag.id);
+    flagDiv.setAttribute('data-flag-id', flag.flagId);
     
     // Format timestamp for display
-    const timestamp = formatTimestamp(flag.timestamp || flag.createdAt);
+    const timestamp = formatTimestamp(flag.createdAt);
     
-    // Create flag type display text
-    const flagTypeDisplay = getFlagTypeDisplay(flag.flagType);
+    // Create flag reason display text
+    const flagReasonDisplay = getFlagReasonDisplay(flag.flagReason);
+    
+    // Get question content for display
+    const questionContent = flag.questionContent || {};
     
     flagDiv.innerHTML = `
         <div class="flag-header">
             <div class="flag-meta">
-                <div class="flag-type ${flag.flagType}">${flagTypeDisplay}</div>
-                <div class="flag-student-info">Flagged by: Student ${flag.studentId}</div>
+                <div class="flag-reason ${flag.flagReason}">${flagReasonDisplay}</div>
+                <div class="flag-student-info">Flagged by: ${flag.studentName || `Student ${flag.studentId}`}</div>
                 <div class="flag-timestamp">${timestamp}</div>
+                <div class="flag-priority">Priority: ${flag.priority || 'medium'}</div>
             </div>
             <div class="flag-status">
-                <span class="status-badge ${flag.status}">${getStatusDisplayText(flag.status)}</span>
+                <span class="status-badge ${flag.flagStatus}">${getStatusDisplayText(flag.flagStatus)}</span>
             </div>
         </div>
         
         <div class="flag-content">
-            <div class="flag-content-label">Flagged Response:</div>
-            <div class="flag-message">${escapeHtml(flag.messageText)}</div>
+            <div class="question-content">
+                <div class="content-label">Flagged Question:</div>
+                <div class="question-text">${escapeHtml(questionContent.question || 'Question content not available')}</div>
+                <div class="question-details">
+                    <span class="question-type">Type: ${questionContent.questionType || 'Unknown'}</span>
+                    <span class="unit-name">Unit: ${flag.unitName || 'Unknown'}</span>
+                </div>
+            </div>
+            
+            <div class="flag-description">
+                <div class="content-label">Student's Concern:</div>
+                <div class="flag-message">${escapeHtml(flag.flagDescription)}</div>
+            </div>
+            
+            ${flag.instructorResponse ? `
+                <div class="instructor-response">
+                    <div class="content-label">Instructor Response:</div>
+                    <div class="response-text">${escapeHtml(flag.instructorResponse)}</div>
+                    <div class="response-meta">Responded by: ${flag.instructorName || 'Instructor'} on ${formatTimestamp(flag.updatedAt)}</div>
+                </div>
+            ` : ''}
         </div>
         
         <div class="flag-actions">
@@ -252,38 +403,38 @@ function createFlagElement(flag) {
  * @returns {string} HTML for action buttons
  */
 function createActionButtons(flag) {
-    if (flag.status === 'pending') {
+    if (flag.flagStatus === 'pending') {
         return `
-            <button class="action-btn approve-btn" onclick="showApprovalForm('${flag.id}')">
+            <button class="action-btn approve-btn" onclick="showApprovalForm('${flag.flagId}')">
                 Approve
             </button>
-            <button class="action-btn dismiss-btn" onclick="handleFlagAction('${flag.id}', 'rejected')">
+            <button class="action-btn dismiss-btn" onclick="handleFlagAction('${flag.flagId}', 'rejected')">
                 Dismiss
             </button>
-            <div id="approval-form-${flag.id}" class="approval-form" style="display: none;">
+            <div id="approval-form-${flag.flagId}" class="approval-form" style="display: none;">
                 <div class="form-header">
                     <h4>Send Follow-up to Student</h4>
                     <p class="form-description">This message will be sent to the student who flagged this content.</p>
                 </div>
                 <div class="form-group">
-                    <label for="message-content-${flag.id}">Message:</label>
-                    <textarea id="message-content-${flag.id}" class="message-textarea" rows="4">Thanks for flagging this, please follow up on this email or come to my office hours if you are still working on this topic</textarea>
+                    <label for="message-content-${flag.flagId}">Message:</label>
+                    <textarea id="message-content-${flag.flagId}" class="message-textarea" rows="4">Thanks for flagging this, please follow up on this email or come to my office hours if you are still working on this topic</textarea>
                 </div>
                 <div class="form-actions">
-                    <button class="action-btn send-approve-btn" onclick="sendApprovalMessage('${flag.id}')">
+                    <button class="action-btn send-approve-btn" onclick="sendApprovalMessage('${flag.flagId}')">
                         Send & Approve
                     </button>
-                    <button class="action-btn cancel-btn" onclick="hideApprovalForm('${flag.id}')">
+                    <button class="action-btn cancel-btn" onclick="hideApprovalForm('${flag.flagId}')">
                         Cancel
                     </button>
                 </div>
                 <!-- Hidden email field for backend processing -->
-                <input type="hidden" id="student-email-${flag.id}" value="student.${flag.studentId}@university.edu">
+                <input type="hidden" id="student-email-${flag.flagId}" value="student.${flag.studentId}@university.edu">
             </div>
         `;
     } else {
         return `
-            <button class="action-btn view-btn" onclick="viewFlagDetails('${flag.id}')">
+            <button class="action-btn view-btn" onclick="viewFlagDetails('${flag.flagId}')">
                 View Details
             </button>
         `;
@@ -360,22 +511,57 @@ async function sendApprovalMessage(flagId) {
             cancelButton.disabled = true;
         }
         
-        // TODO: In a real implementation, this would send an actual email
-        // For now, we'll simulate the email sending and then approve the flag
-        console.log('Sending follow-up email:', {
-            to: studentEmail,
-            message: messageContent,
-            flagId: flagId
+        // TODO: Replace with actual instructor ID from auth
+        const instructorId = 'instructor-123';
+        const instructorName = 'Instructor Name';
+        
+        // Send instructor response using the new API
+        const response = await fetch(`/api/flags/${flagId}/response`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                response: messageContent,
+                instructorId: instructorId,
+                instructorName: instructorName,
+                flagStatus: 'resolved'
+            })
         });
         
-        // Simulate email sending delay
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
         
-        // Now approve the flag (without showing the regular success message)
-        await handleFlagAction(flagId, 'approved', true); // Pass true to skip success message
+        const result = await response.json();
         
-        // Show combined success message
-        showSuccessMessage('Follow-up email sent to student and flag approved successfully');
+        if (result.success) {
+            // Update the flag in local state
+            const flagIndex = appState.flags.findIndex(flag => flag.flagId === flagId);
+            if (flagIndex !== -1) {
+                appState.flags[flagIndex].flagStatus = 'resolved';
+                appState.flags[flagIndex].instructorResponse = messageContent;
+                appState.flags[flagIndex].instructorId = instructorId;
+                appState.flags[flagIndex].instructorName = instructorName;
+                appState.flags[flagIndex].updatedAt = new Date().toISOString();
+            }
+            
+            // Hide the approval form
+            hideApprovalForm(flagId);
+            
+            // Re-apply filters and re-render
+            applyFilters();
+            renderFlaggedContent();
+            
+            // Refresh stats
+            loadFlagStats();
+            
+            // Show combined success message
+            showSuccessMessage('Follow-up message sent to student and flag resolved successfully');
+            
+        } else {
+            throw new Error(result.message || 'Failed to send instructor response');
+        }
         
     } catch (error) {
         console.error('Error sending approval message:', error);
@@ -398,7 +584,7 @@ async function sendApprovalMessage(flagId) {
 /**
  * Handle flag action (approve/reject)
  * @param {string} flagId - The flag ID
- * @param {string} action - The action to take (approved/rejected)
+ * @param {string} action - The action to take (resolved/dismissed)
  * @param {boolean} skipSuccessMessage - Whether to skip showing the success message
  */
 async function handleFlagAction(flagId, action, skipSuccessMessage = false) {
@@ -410,16 +596,25 @@ async function handleFlagAction(flagId, action, skipSuccessMessage = false) {
         
         // TODO: Replace with actual instructor ID from auth
         const instructorId = 'instructor-123';
+        const instructorName = 'Instructor Name';
         
-        const response = await fetch(`/api/flags/${flagId}?instructorId=${instructorId}`, {
+        // Map old action names to new ones
+        const actionMap = {
+            'approved': 'resolved',
+            'rejected': 'dismissed'
+        };
+        
+        const newStatus = actionMap[action] || action;
+        
+        // Update flag status using the new API
+        const response = await fetch(`/api/flags/${flagId}/status`, {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
-                // 'Authorization': `Bearer ${getAuthToken()}` // TODO: Add when auth is implemented
             },
             body: JSON.stringify({
-                status: action,
-                instructorComment: `Flag ${action} by instructor`
+                status: newStatus,
+                instructorId: instructorId
             })
         });
         
@@ -431,9 +626,9 @@ async function handleFlagAction(flagId, action, skipSuccessMessage = false) {
         
         if (result.success) {
             // Update the flag in local state
-            const flagIndex = appState.flags.findIndex(flag => flag.id === flagId);
+            const flagIndex = appState.flags.findIndex(flag => flag.flagId === flagId);
             if (flagIndex !== -1) {
-                appState.flags[flagIndex].status = action;
+                appState.flags[flagIndex].flagStatus = newStatus;
             }
             
             // Re-apply filters and re-render
@@ -445,12 +640,12 @@ async function handleFlagAction(flagId, action, skipSuccessMessage = false) {
             
             // Show success message only if not skipped
             if (!skipSuccessMessage) {
-                const actionText = action === 'rejected' ? 'dismissed' : action;
+                const actionText = newStatus === 'dismissed' ? 'dismissed' : newStatus;
                 showSuccessMessage(`Flag ${actionText} successfully`);
             }
             
         } else {
-            throw new Error(result.message || `Failed to ${action} flag`);
+            throw new Error(result.message || `Failed to ${newStatus} flag`);
         }
         
     } catch (error) {
@@ -470,10 +665,10 @@ async function handleFlagAction(flagId, action, skipSuccessMessage = false) {
  * @param {string} flagId - The flag ID
  */
 function viewFlagDetails(flagId) {
-    const flag = appState.flags.find(f => f.id === flagId);
+    const flag = appState.flags.find(f => f.flagId === flagId);
     if (flag) {
         // TODO: Implement detailed view modal or navigation
-        alert(`Flag Details:\n\nStudent: ${flag.studentId}\nType: ${flag.flagType}\nStatus: ${flag.status}\nTimestamp: ${flag.timestamp}\n\nMessage: ${flag.messageText}`);
+        alert(`Flag Details:\n\nStudent: ${flag.studentId}\nType: ${flag.flagReason}\nStatus: ${flag.flagStatus}\nTimestamp: ${flag.createdAt}\n\nMessage: ${flag.flagDescription}`);
     }
 }
 
@@ -486,15 +681,22 @@ function updateStatsDisplay() {
     const todayElement = document.getElementById('today-flags');
     
     if (totalElement) {
-        totalElement.textContent = appState.stats.totalFlags || 0;
+        totalElement.textContent = appState.stats.total || 0;
     }
     
     if (pendingElement) {
-        pendingElement.textContent = appState.stats.pendingFlags || 0;
+        pendingElement.textContent = appState.stats.pending || 0;
     }
     
     if (todayElement) {
-        todayElement.textContent = appState.stats.flagsToday || 0;
+        // Calculate today's flags from the flags array
+        const today = new Date();
+        const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+        const todayFlags = appState.flags.filter(flag => {
+            const flagDate = new Date(flag.createdAt);
+            return flagDate >= todayStart;
+        }).length;
+        todayElement.textContent = todayFlags;
     }
 }
 
@@ -579,33 +781,38 @@ function formatTimestamp(timestamp) {
 }
 
 /**
- * Get display text for flag type
- * @param {string} flagType - The flag type
- * @returns {string} Display text
+ * Get display text for flag reason
+ * @param {string} flagReason - The flag reason
+ * @returns {string} Display text for the flag reason
  */
-function getFlagTypeDisplay(flagType) {
-    const displays = {
-        'incorrectness': 'Incorrect',
+function getFlagReasonDisplay(flagReason) {
+    const reasonMap = {
+        'incorrect': 'Incorrect',
         'inappropriate': 'Inappropriate',
+        'unclear': 'Unclear',
+        'confusing': 'Confusing',
+        'typo': 'Typo/Error',
+        'offensive': 'Offensive',
         'irrelevant': 'Irrelevant'
     };
     
-    return displays[flagType] || flagType;
+    return reasonMap[flagReason] || flagReason;
 }
 
 /**
- * Get display text for status
- * @param {string} status - The status value
- * @returns {string} Display text
+ * Get display text for flag status
+ * @param {string} status - The flag status
+ * @returns {string} Display text for the status
  */
 function getStatusDisplayText(status) {
-    const displays = {
-        'pending': 'Pending',
-        'approved': 'Approved',
-        'rejected': 'Dismissed'
+    const statusMap = {
+        'pending': 'Pending Review',
+        'reviewed': 'Reviewed',
+        'resolved': 'Resolved',
+        'dismissed': 'Dismissed'
     };
     
-    return displays[status] || status;
+    return statusMap[status] || status;
 }
 
 /**
