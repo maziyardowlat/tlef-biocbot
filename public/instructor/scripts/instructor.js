@@ -61,7 +61,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
     
-    console.log('Instructor interface initialized');
+
     
     // Check for URL parameters to open modals
     checkUrlParameters();
@@ -113,7 +113,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const selectedCourse = courseSelect.value;
             if (selectedCourse) {
                 // In a real implementation, this would load the course documents
-                console.log('Selected course:', selectedCourse);
                 
                 // For demonstration purposes, we'll just show a notification
                 showNotification(`Loaded documents for ${courseSelect.options[courseSelect.selectedIndex].text}`, 'info');
@@ -166,7 +165,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         function handleFiles(files) {
             // This is just a UI skeleton, so we'll just log the files
-            console.log('Files selected:', files);
             
             // Check if a course is selected
             const selectedCourse = courseSelect.value;
@@ -233,12 +231,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const deleteButton = fileItem.querySelector('.delete');
         
         viewButton.addEventListener('click', () => {
-            console.log('View document:', file.name);
             // In a real implementation, this would open the document
         });
         
         deleteButton.addEventListener('click', () => {
-            console.log('Delete document:', file.name);
             fileItem.remove();
             // In a real implementation, this would delete the document from the server
             showNotification(`Document "${file.name}" deleted`, 'info');
@@ -807,16 +803,12 @@ async function updatePublishStatus(lectureName, isPublished) {
         // Get the current course ID (for now, using a default)
         const courseId = await getCurrentCourseId();
         
-        console.log(`Updating publish status: ${lectureName} -> ${isPublished}, Course: ${courseId}`);
-        
         const requestBody = {
             lectureName: lectureName,
             isPublished: isPublished,
             instructorId: getCurrentInstructorId(),
             courseId: courseId
         };
-        
-        console.log('Request body:', requestBody);
         
         const response = await fetch('/api/lectures/publish', {
             method: 'POST',
@@ -825,8 +817,6 @@ async function updatePublishStatus(lectureName, isPublished) {
             },
             body: JSON.stringify(requestBody)
         });
-        
-        console.log('Response status:', response.status);
         
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
@@ -847,7 +837,6 @@ async function updatePublishStatus(lectureName, isPublished) {
         }
         
         const result = await response.json();
-        console.log(`Publish status updated for ${lectureName}: ${isPublished}`, result);
         
         // Show success notification
         showNotification(result.message || 'Publish status updated successfully', 'success');
@@ -898,7 +887,6 @@ async function getCurrentCourseId() {
             if (result.data && result.data.courses && result.data.courses.length > 0) {
                 // Return the first course found
                 const firstCourse = result.data.courses[0];
-                console.log('Found existing course:', firstCourse.courseId);
                 return firstCourse.courseId;
             }
         }
@@ -956,8 +944,6 @@ async function loadPublishStatus() {
             }
         });
         
-        console.log('Publish status loaded from database:', publishStatus);
-        
     } catch (error) {
         console.error('Error loading publish status:', error);
         showNotification('Error loading publish status. Using default values.', 'warning');
@@ -1007,7 +993,7 @@ async function loadLearningObjectives() {
             }
         }
         
-        console.log('Learning objectives loaded from database');
+
         
     } catch (error) {
         console.error('Error loading learning objectives:', error);
@@ -1021,21 +1007,17 @@ async function loadLearningObjectives() {
 async function loadDocuments() {
     try {
         const courseId = await getCurrentCourseId();
-        console.log('Loading documents for course:', courseId);
         
         // Get all accordion items (units/weeks)
         const accordionItems = document.querySelectorAll('.accordion-item');
-        console.log('Found accordion items:', accordionItems.length);
         
         for (const item of accordionItems) {
             const folderName = item.querySelector('.folder-name');
             if (!folderName) {
-                console.log('No folder name found for item:', item);
                 continue;
             }
             
             const lectureName = folderName.textContent;
-            console.log('Processing lecture/unit:', lectureName);
             
             // Load documents from the course structure instead of separate API
             const response = await fetch(`/api/courses/${courseId}?instructorId=${getCurrentInstructorId()}`);
@@ -1043,39 +1025,30 @@ async function loadDocuments() {
             if (response.ok) {
                 const result = await response.json();
                 const course = result.data;
-                console.log('Course data loaded:', course);
                 
                 if (course && course.lectures) {
                     const unit = course.lectures.find(l => l.name === lectureName);
                     const documents = unit ? (unit.documents || []) : [];
-                    console.log(`Unit ${lectureName} documents:`, documents);
                     
                     // Find the course materials section
                     const courseMaterialsSection = item.querySelector('.course-materials-section .section-content');
                     if (courseMaterialsSection) {
-                        console.log('Found course materials section for', lectureName);
                         
                         // Clear ALL existing document items (both placeholders and actual documents)
                         const existingItems = courseMaterialsSection.querySelectorAll('.file-item');
-                        console.log('Found existing items:', existingItems.length);
                         
                         existingItems.forEach(item => {
-                            console.log('Removing existing item:', item);
                             item.remove();
                         });
                         
                         // ADD ALL DOCUMENTS - BACKEND HANDLES DELETION FROM BOTH DBs
                         if (documents && documents.length > 0) {
-                            console.log(`Found ${documents.length} documents for ${lectureName}:`, documents);
                             
                             // Add all documents - backend ensures they exist in both databases
                             documents.forEach(doc => {
-                                console.log('Creating document item for:', doc);
                                 const documentItem = createDocumentItem(doc);
                                 courseMaterialsSection.appendChild(documentItem);
                             });
-                        } else {
-                            console.log(`No documents found for ${lectureName}`);
                         }
                         
                         // Always add the required placeholder items if they don't exist
@@ -1086,24 +1059,20 @@ async function loadDocuments() {
                         
                         // Add cleanup button if there are documents
                         if (documents && documents.length > 0) {
-                            console.log(`Adding cleanup button for ${lectureName} with ${documents.length} documents`);
                             addCleanupButton(courseMaterialsSection, lectureName, courseId);
                         } else {
-                            console.log(`No documents found for ${lectureName}, adding cleanup button anyway for manual cleanup`);
                             addCleanupButton(courseMaterialsSection, lectureName, courseId);
                         }
                     } else {
                         console.error('Course materials section not found for', lectureName);
                     }
                 } else {
-                    console.log('No course or lectures data found');
+                    // No course or lectures data found
                 }
             } else {
                 console.error('Failed to load course data:', response.status);
             }
         }
-        
-        console.log('Documents loaded from course structure');
         
     } catch (error) {
         console.error('Error loading documents:', error);
@@ -1149,8 +1118,6 @@ async function deleteDocument(documentId) {
         const instructorId = getCurrentInstructorId();
         const courseId = await getCurrentCourseId();
         
-        console.log(`Deleting document ${documentId} from both collections...`);
-        
         // Step 1: Try to delete from documents collection first
         let documentDeleted = false;
         try {
@@ -1166,9 +1133,7 @@ async function deleteDocument(documentId) {
             
             if (deleteResponse.ok) {
                 documentDeleted = true;
-                console.log('Document successfully deleted from documents collection');
             } else if (deleteResponse.status === 404) {
-                console.log('Document not found in documents collection (already deleted)');
                 documentDeleted = true; // Consider it "deleted" if it doesn't exist
             } else {
                 const errorText = await deleteResponse.text();
@@ -1182,10 +1147,8 @@ async function deleteDocument(documentId) {
         
         // Step 2: Always remove from course structure (regardless of document deletion status)
         let courseUpdateSuccess = false;
-        console.log(`Attempting to remove document ${documentId} from course structure...`);
         
         try {
-            console.log(`Trying endpoint: /api/courses/${courseId}/remove-document`);
             const courseResponse = await fetch(`/api/courses/${courseId}/remove-document`, {
                 method: 'POST',
                 headers: {
@@ -1197,11 +1160,8 @@ async function deleteDocument(documentId) {
                 })
             });
             
-            console.log(`Course response status: ${courseResponse.status}`);
-            
             if (courseResponse.ok) {
                 courseUpdateSuccess = true;
-                console.log('Document successfully removed from course structure via API endpoint');
             } else {
                 const errorText = await courseResponse.text();
                 console.warn(`Course structure update failed: ${courseResponse.status} - ${errorText}`);
@@ -1213,11 +1173,9 @@ async function deleteDocument(documentId) {
         // Step 3: If course structure update failed, use manual approach
         if (!courseUpdateSuccess) {
             try {
-                console.log('API endpoint failed, using manual course structure cleanup...');
                 const manualResult = await removeDocumentFromCourseStructure(documentId, courseId, instructorId);
                 if (manualResult) {
                     courseUpdateSuccess = true;
-                    console.log('Manual course structure cleanup succeeded');
                 } else {
                     console.warn('Manual cleanup returned false');
                 }
@@ -1225,7 +1183,6 @@ async function deleteDocument(documentId) {
                 console.warn('Manual course structure update failed:', fallbackError);
                 // Last resort: try global cleanup
                 try {
-                    console.log('Attempting global cleanup as last resort...');
                     await cleanupOrphanedDocuments();
                 } catch (cleanupError) {
                     console.warn('Global cleanup also failed:', cleanupError);
@@ -1314,8 +1271,6 @@ function addGlobalCleanupButton() {
  */
 async function removeDocumentFromCourseStructure(documentId, courseId, instructorId) {
     try {
-        console.log('Manually removing document from course structure:', documentId);
-        
         // Get the current course structure
         const response = await fetch(`/api/courses/${courseId}?instructorId=${instructorId}`);
         
@@ -1329,36 +1284,27 @@ async function removeDocumentFromCourseStructure(documentId, courseId, instructo
         // Find and remove the document from all units
         let documentRemoved = false;
         
-        // Log the course structure to see what we're working with
-        console.log('Course structure:', JSON.stringify(course, null, 2));
-        
         // Check different possible property names for units
         const units = course.lectures || course.units || course.weeks || [];
-        console.log(`Found ${units.length} units in course structure`);
         
         // Also check courseMaterials field
         if (course.courseMaterials) {
-            console.log('Course materials field:', course.courseMaterials);
+            // Course materials field exists
         }
         
         units.forEach((unit, index) => {
-            console.log(`Checking unit ${index}:`, unit);
-            
             // Check different possible property names for documents
             const documents = unit.documents || unit.materials || unit.files || [];
-            console.log(`Unit ${index} has ${documents.length} documents:`, documents);
             
             if (documents.length > 0) {
                 const initialLength = documents.length;
                 const filteredDocuments = documents.filter(doc => {
                     const docId = doc.documentId || doc.id || doc._id;
-                    console.log(`Checking document:`, doc, `against target: ${documentId}`);
                     return docId !== documentId;
                 });
                 
                 if (filteredDocuments.length < initialLength) {
                     documentRemoved = true;
-                    console.log(`Removed document ${documentId} from unit ${unit.name || index}`);
                     
                     // Update the unit's documents array
                     if (unit.documents) unit.documents = filteredDocuments;
@@ -1378,14 +1324,11 @@ async function removeDocumentFromCourseStructure(documentId, courseId, instructo
             
             if (course.courseMaterials.length < initialLength) {
                 documentRemoved = true;
-                console.log(`Removed document ${documentId} from courseMaterials`);
             }
         }
         
         // Also check unitFiles field
         if (course.unitFiles && Array.isArray(course.unitFiles)) {
-            console.log('Unit files field:', course.unitFiles);
-            
             const initialLength = course.unitFiles.length;
             course.unitFiles = course.unitFiles.filter(doc => {
                 const docId = doc.documentId || doc.id || doc._id;
@@ -1394,7 +1337,6 @@ async function removeDocumentFromCourseStructure(documentId, courseId, instructo
             
             if (course.unitFiles.length < initialLength) {
                 documentRemoved = true;
-                console.log(`Removed document ${documentId} from unitFiles`);
             }
         }
         
@@ -1412,13 +1354,11 @@ async function removeDocumentFromCourseStructure(documentId, courseId, instructo
             });
             
             if (updateResponse.ok) {
-                console.log('Course structure updated successfully');
                 return true;
             } else {
                 throw new Error('Failed to update course structure');
             }
         } else {
-            console.log('Document not found in course structure');
             return true; // Document wasn't in course structure, so nothing to update
         }
         
@@ -1479,8 +1419,6 @@ async function cleanupOrphanedDocuments() {
  */
 async function viewDocument(documentId) {
     try {
-        console.log('Viewing document:', documentId);
-        
         // Fetch document content
         const response = await fetch(`/api/documents/${documentId}`);
         
@@ -1512,13 +1450,8 @@ async function viewDocument(documentId) {
 function loadAssessmentQuestionsFromCourseData(courseData) {
     if (!courseData.lectures) return;
     
-    console.log('Loading assessment questions from course data:', courseData.lectures);
-    
     courseData.lectures.forEach(unit => {
-        console.log(`Processing unit: ${unit.name}, has assessmentQuestions:`, !!unit.assessmentQuestions, 'length:', unit.assessmentQuestions?.length);
         if (unit.assessmentQuestions && unit.assessmentQuestions.length > 0) {
-            console.log(`Found ${unit.assessmentQuestions.length} assessment questions for ${unit.name}:`, unit.assessmentQuestions);
-            
             // Store questions in the local assessmentQuestions object
             if (!assessmentQuestions[unit.name]) {
                 assessmentQuestions[unit.name] = [];
@@ -1543,9 +1476,6 @@ function loadAssessmentQuestionsFromCourseData(courseData) {
             
             // Update the display for this unit
             updateQuestionsDisplay(unit.name);
-            console.log(`Loaded ${unit.assessmentQuestions.length} assessment questions for ${unit.name}`);
-        } else {
-            console.log(`No assessment questions found for ${unit.name}`);
         }
     });
 }
@@ -1561,11 +1491,8 @@ async function loadAssessmentQuestions() {
         const accordionItems = document.querySelectorAll('.accordion-item');
         
         if (accordionItems.length === 0) {
-            console.log('No accordion items found, skipping assessment questions loading');
             return;
         }
-        
-        console.log(`Found ${accordionItems.length} accordion items, loading assessment questions...`);
         
         for (const item of accordionItems) {
             const folderName = item.querySelector('.folder-name');
@@ -1604,8 +1531,6 @@ async function loadAssessmentQuestions() {
                 }
             }
         }
-        
-        console.log('Assessment questions loaded from database');
         
     } catch (error) {
         console.error('Error loading assessment questions:', error);
@@ -1683,7 +1608,6 @@ async function savePassThreshold(lectureName, threshold) {
         }
         
         const result = await response.json();
-        console.log(`Pass threshold saved for ${lectureName}: ${threshold}`);
         
         // Update local state to reflect the change
         await reloadPassThresholds();
@@ -1736,8 +1660,6 @@ async function reloadPassThresholds() {
             }
         }
         
-        console.log('Pass thresholds reloaded from database');
-        
     } catch (error) {
         console.error('Error reloading pass thresholds:', error);
         showNotification('Error reloading pass thresholds.', 'warning');
@@ -1782,8 +1704,6 @@ async function loadPassThresholds() {
                 }
             }
         }
-        
-        console.log('Pass thresholds loaded from database');
         
     } catch (error) {
         console.error('Error loading pass thresholds:', error);
@@ -1844,63 +1764,6 @@ function closeModeQuestionsModal() {
     closeCalibrationModal();
 }
 
-/**
- * Load existing mode questions
- */
-async function loadModeQuestions() {
-    try {
-        // In a real implementation, this would fetch from the server
-        // For now, we'll use mock data
-        const mockQuestions = [
-            {
-                id: 1,
-                question: "What is the primary function of enzymes in biochemical reactions?",
-                options: [
-                    "To slow down reactions",
-                    "To speed up reactions",
-                    "To change the direction of reactions",
-                    "To prevent reactions from occurring"
-                ],
-                correctAnswer: 1
-            },
-            {
-                id: 2,
-                question: "Which of the following best describes the structure of an amino acid?",
-                options: [
-                    "A single carbon atom with various side chains",
-                    "A central carbon atom with an amino group, carboxyl group, hydrogen, and R group",
-                    "A chain of carbon atoms with oxygen at the end",
-                    "A ring structure with nitrogen atoms"
-                ],
-                correctAnswer: 1
-            },
-            {
-                id: 3,
-                question: "What is the role of ATP in cellular processes?",
-                options: [
-                    "To provide structural support",
-                    "To store and transfer energy",
-                    "To act as a genetic material",
-                    "To transport oxygen"
-                ],
-                correctAnswer: 1
-            }
-        ];
-        
-        currentQuestions = mockQuestions;
-        questionCounter = mockQuestions.length + 1;
-        renderQuestions();
-        
-        // Load threshold
-        const threshold = 70; // In real implementation, fetch from server
-        document.getElementById('mode-threshold').value = threshold;
-        document.getElementById('threshold-value').textContent = threshold + '%';
-        
-    } catch (error) {
-        console.error('Error loading mode questions:', error);
-        showNotification('Error loading questions. Please try again.', 'error');
-    }
-}
 
 /**
  * Render questions in the modal
@@ -2274,8 +2137,6 @@ function toggleSection(headerElement, e) {
  * @param {string} week - The week identifier (e.g., 'Week 1')
  */
 function addObjectiveFromInput(week) {
-    console.log('addObjectiveFromInput called with:', week);
-    
     // Find the week element using our custom helper function
     const folderElement = findElementsContainingText('.accordion-item .folder-name', week)[0];
     if (!folderElement) {
@@ -2293,10 +2154,8 @@ function addObjectiveFromInput(week) {
     
     // Convert unit name to ID format (e.g., "Unit 1" -> "Unit-1")
     const unitId = week.toLowerCase().replace(/\s+/g, '-');
-    console.log('Looking for unit ID:', unitId);
     
     const inputField = weekElement.querySelector(`#objective-input-${unitId}`);
-    console.log('Input field found:', !!inputField);
     
     if (!inputField) {
         console.error('Could not find input field for:', week, 'with ID:', `objective-input-${unitId}`);
@@ -2305,7 +2164,6 @@ function addObjectiveFromInput(week) {
     }
     
     const objectiveText = inputField.value.trim();
-    console.log('Objective text:', objectiveText);
     
     if (!objectiveText) {
         showNotification('Please enter a learning objective.', 'error');
@@ -2314,7 +2172,6 @@ function addObjectiveFromInput(week) {
     
     // Get the objectives list
     const objectivesList = weekElement.querySelector(`#objectives-list-${unitId}`);
-    console.log('Objectives list found:', !!objectivesList);
     
     if (!objectivesList) {
         console.error('Could not find objectives list for:', week);
@@ -2337,8 +2194,6 @@ function addObjectiveFromInput(week) {
     inputField.value = '';
     inputField.focus();
     
-    console.log('Objective added successfully:', objectiveText);
-    console.log('Total objectives now:', objectivesList.querySelectorAll('.objective-display-item').length);
     showNotification('Learning objective added successfully!', 'success');
 }
 
@@ -2361,13 +2216,8 @@ function removeObjective(button) {
  * @param {string} unitName - The unit name (e.g., 'Unit 1')
  */
 function addObjectiveForUnit(unitName) {
-    console.log('addObjectiveForUnit called with:', unitName);
-    
     const inputField = document.getElementById('objective-input');
     const objectivesList = document.getElementById('objectives-list');
-    
-    console.log('Input field found:', !!inputField);
-    console.log('Objectives list found:', !!objectivesList);
     
     if (!inputField || !objectivesList) {
         console.error('Could not find objective input or list elements');
@@ -2376,7 +2226,6 @@ function addObjectiveForUnit(unitName) {
     }
     
     const objectiveText = inputField.value.trim();
-    console.log('Objective text:', objectiveText);
     
     if (!objectiveText) {
         showNotification('Please enter a learning objective.', 'error');
@@ -2398,8 +2247,6 @@ function addObjectiveForUnit(unitName) {
     inputField.value = '';
     inputField.focus();
     
-    console.log('Objective added successfully:', objectiveText);
-    console.log('Total objectives now:', objectivesList.querySelectorAll('.objective-display-item').length);
     showNotification('Learning objective added successfully!', 'success');
 }
 
@@ -2437,16 +2284,12 @@ async function saveObjectives(week) {
         // Get the current course ID
         const courseId = await getCurrentCourseId();
         
-        console.log(`Saving learning objectives for ${week}, Course: ${courseId}`, objectives);
-        
         const requestBody = {
             lectureName: week, // Use lectureName for consistency
             objectives: objectives,
             instructorId: getCurrentInstructorId(),
             courseId: courseId
         };
-        
-        console.log('Request body:', requestBody);
         
         const response = await fetch('/api/learning-objectives', {
             method: 'POST',
@@ -2456,8 +2299,6 @@ async function saveObjectives(week) {
             body: JSON.stringify(requestBody)
         });
         
-        console.log('Response status:', response.status);
-        
         if (!response.ok) {
             const errorText = await response.text();
             console.error('Error response:', errorText);
@@ -2465,7 +2306,6 @@ async function saveObjectives(week) {
         }
         
         const result = await response.json();
-        console.log('Learning objectives saved successfully:', result);
         showNotification(result.message, 'success');
         
     } catch (error) {
@@ -2484,9 +2324,6 @@ async function confirmCourseMaterials(week) {
     const weekElement = folderElement.closest('.accordion-item');
     const fileItems = weekElement.querySelectorAll('.course-materials-section .file-item');
     
-    console.log(`Checking mandatory materials for ${week}`);
-    console.log(`Found ${fileItems.length} file items:`, fileItems);
-    
     // Check if mandatory materials are present
     let hasLectureNotes = false;
     let hasPracticeQuestions = false;
@@ -2499,28 +2336,17 @@ async function confirmCourseMaterials(week) {
             const titleText = title.textContent;
             const status = statusText.textContent;
             
-            console.log(`File item: "${titleText}" - Status: "${status}"`);
-            console.log(`Title includes 'Lecture Notes': ${titleText.includes('Lecture Notes')}`);
-            console.log(`Title includes 'Practice Questions': ${titleText.includes('Practice Questions')}`);
-            console.log(`Status is 'Uploaded' or 'uploaded': ${status === 'Uploaded' || status === 'uploaded'}`);
-            
             // Check if this is a lecture notes document that's uploaded
             if (titleText.includes('Lecture Notes') && (status === 'Uploaded' || status === 'uploaded')) {
                 hasLectureNotes = true;
-                console.log('Found uploaded lecture notes');
             }
             
             // Check if this is a practice questions document that's uploaded
             if ((titleText.includes('Practice Questions') || titleText.includes('Practice Questions/Tutorial')) && (status === 'Uploaded' || status === 'uploaded')) {
                 hasPracticeQuestions = true;
-                console.log('Found uploaded practice questions');
             }
-        } else {
-            console.log('File item missing title or status:', { title: !!title, statusText: !!statusText });
         }
     });
-    
-    console.log(`Validation results: hasLectureNotes=${hasLectureNotes}, hasPracticeQuestions=${hasPracticeQuestions}`);
     
     // Validate mandatory materials
     if (!hasLectureNotes || !hasPracticeQuestions) {
@@ -2652,8 +2478,6 @@ async function saveQuestions(week) {
  * @param {string} week - The week identifier (e.g., 'Week 1')
  */
 async function generateProbingQuestions(week) {
-    console.log('Generating probing questions for:', week);
-    
     const weekElement = findElementsContainingText('.accordion-item .folder-name', week)[0].closest('.accordion-item');
     const fileItems = weekElement.querySelectorAll('.course-materials-section .file-item');
     
@@ -2661,7 +2485,6 @@ async function generateProbingQuestions(week) {
     let hasMaterials = false;
     fileItems.forEach(item => {
         const statusText = item.querySelector('.status-text').textContent;
-        console.log('Found file item with status:', statusText);
         if (statusText === 'Processed') {
             hasMaterials = true;
         }
@@ -2687,11 +2510,9 @@ async function generateProbingQuestions(week) {
             "What questions would you ask to deepen your understanding of this subject?",
             "How do these concepts relate to current research or applications in the field?"
         ];
-        console.log('Generated placeholder questions:', mockQuestions);
         
         // Get the questions list for this week
         const questionsList = weekElement.querySelector(`#questions-list-${week.toLowerCase().replace(/\s+/g, '')}`);
-        console.log('Questions list element:', questionsList);
         
         if (!questionsList) {
             console.error('Could not find questions list element for', week);
@@ -3096,7 +2917,6 @@ async function reloadQuestionsForUnit(unitName) {
                 assessmentQuestions[unitName].push(localQuestion);
             });
             
-            console.log(`Reloaded ${questions.length} questions for ${unitName}`);
         } else {
             console.error('Failed to reload questions for unit:', unitName);
         }
@@ -3110,11 +2930,7 @@ async function reloadQuestionsForUnit(unitName) {
  * @param {string} week - Week identifier
  */
 function updateQuestionsDisplay(week) {
-    console.log(`updateQuestionsDisplay called for week: ${week}`);
-    console.log(`assessmentQuestions[${week}]:`, assessmentQuestions[week]);
-    
     const containerId = `assessment-questions-${week.toLowerCase().replace(/\s+/g, '-')}`;
-    console.log(`Looking for container with ID: ${containerId}`);
     
     const questionsContainer = document.getElementById(containerId);
     if (!questionsContainer) {
@@ -3123,7 +2939,6 @@ function updateQuestionsDisplay(week) {
     }
     
     const questions = assessmentQuestions[week] || [];
-    console.log(`Questions to display for ${week}:`, questions);
     
     if (questions.length === 0) {
         questionsContainer.innerHTML = `
@@ -3469,8 +3284,6 @@ function saveAssessment(week) {
         savedAt: new Date().toISOString()
     };
     
-    console.log('Saving assessment:', assessmentData);
-    
     // Show success message
     alert(`Assessment saved for ${week}!\nTotal Questions: ${questions.length}\nPass Threshold: ${threshold}`);
 }
@@ -3494,24 +3307,18 @@ async function loadOnboardingData() {
         const courseId = urlParams.get('courseId');
         
         if (!courseId) {
-            console.log('No course ID from onboarding, skipping onboarding data load');
             return;
         }
-        
-        console.log('Loading onboarding data for course:', courseId);
         
         // Fetch onboarding data from database
         const response = await fetch(`/api/onboarding/${courseId}`);
         
         if (!response.ok) {
-            console.log('No onboarding data found for course:', courseId);
             return;
         }
         
         const result = await response.json();
         const onboardingData = result.data;
-        
-        console.log('Onboarding data loaded:', onboardingData);
         
         // Generate units dynamically based on course structure
         if (onboardingData.courseStructure && onboardingData.courseStructure.totalUnits > 0) {
@@ -3574,20 +3381,15 @@ async function loadCourseData() {
  */
 async function loadSpecificCourse(courseId) {
     try {
-        console.log('Loading course data for:', courseId);
-        
         const response = await fetch(`/api/onboarding/${courseId}`);
         
         if (!response.ok) {
-            console.log('No course data found for course:', courseId);
             showEmptyCourseState();
             return;
         }
         
         const result = await response.json();
         const courseData = result.data;
-        
-        console.log('Course data loaded:', courseData);
         
         // Generate units dynamically based on course structure
         if (courseData.courseStructure && courseData.courseStructure.totalUnits > 0) {
@@ -3641,8 +3443,6 @@ function generateUnitsFromOnboarding(onboardingData) {
     
     const { courseStructure, lectures } = onboardingData;
     const totalUnits = courseStructure.totalUnits;
-    
-    console.log(`Generating ${totalUnits} units for course`);
     
     // Generate each unit
     for (let i = 1; i <= totalUnits; i++) {
@@ -3816,19 +3616,12 @@ function createUnitElement(unitName, unitData, isExpanded = false) {
 function loadExistingUnitData(onboardingData) {
     if (!onboardingData.lectures) return;
     
-    console.log('Loading existing unit data:', onboardingData.lectures);
-    
     onboardingData.lectures.forEach(unit => {
         const unitId = unit.name.toLowerCase().replace(/\s+/g, '-');
-        console.log(`Loading data for ${unit.name} (ID: ${unitId})`);
         
         // Load learning objectives
         if (unit.learningObjectives && unit.learningObjectives.length > 0) {
-            console.log(`Found ${unit.learningObjectives.length} learning objectives for ${unit.name}:`, unit.learningObjectives);
             const objectivesList = document.getElementById(`objectives-list-${unitId}`);
-            console.log(`Looking for objectives list with ID: objectives-list-${unitId}`);
-            console.log(`Objectives list element found:`, !!objectivesList);
-            
             if (objectivesList) {
                 objectivesList.innerHTML = '';
                 unit.learningObjectives.forEach(objective => {
@@ -3839,14 +3632,10 @@ function loadExistingUnitData(onboardingData) {
                         <button class="remove-objective" onclick="removeObjective(this)">×</button>
                     `;
                     objectivesList.appendChild(objectiveItem);
-                    console.log(`Added objective: ${objective}`);
                 });
-                console.log(`Loaded ${unit.learningObjectives.length} objectives for ${unit.name}`);
             } else {
                 console.error(`Could not find objectives list element with ID: objectives-list-${unitId}`);
             }
-        } else {
-            console.log(`No learning objectives found for ${unit.name}`);
         }
         
         // Load pass threshold
@@ -3854,7 +3643,6 @@ function loadExistingUnitData(onboardingData) {
             const thresholdInput = document.getElementById(`pass-threshold-${unitId}`);
             if (thresholdInput) {
                 thresholdInput.value = unit.passThreshold;
-                console.log(`Loaded pass threshold ${unit.passThreshold} for ${unit.name}`);
                 
                 // Also update the threshold display
                 const thresholdDisplay = document.getElementById(`threshold-value-${unitId}`);
@@ -3866,8 +3654,6 @@ function loadExistingUnitData(onboardingData) {
         
         // Load assessment questions
         if (unit.assessmentQuestions && unit.assessmentQuestions.length > 0) {
-            console.log(`Found ${unit.assessmentQuestions.length} assessment questions for ${unit.name}:`, unit.assessmentQuestions);
-            
             // Store questions in the local assessmentQuestions object
             if (!assessmentQuestions[unit.name]) {
                 assessmentQuestions[unit.name] = [];
@@ -3889,9 +3675,6 @@ function loadExistingUnitData(onboardingData) {
             
             // Update the display for this unit
             updateQuestionsDisplay(unit.name);
-            console.log(`Loaded ${unit.assessmentQuestions.length} assessment questions for ${unit.name}`);
-        } else {
-            console.log(`No assessment questions found for ${unit.name}`);
         }
         
         // Load publish status
@@ -3899,14 +3682,11 @@ function loadExistingUnitData(onboardingData) {
             const publishToggle = document.getElementById(`publish-${unitId}`);
             if (publishToggle) {
                 publishToggle.checked = unit.isPublished;
-                console.log(`Loaded publish status ${unit.isPublished} for ${unit.name}`);
             }
         }
         
         // Load documents from course structure
         if (unit.documents && unit.documents.length > 0) {
-            console.log(`Found ${unit.documents.length} documents for ${unit.name}:`, unit.documents);
-            
             // Find the course materials section for this unit
             const unitElement = document.querySelector(`[data-unit-name="${unit.name}"]`);
             if (unitElement) {
@@ -3914,10 +3694,8 @@ function loadExistingUnitData(onboardingData) {
                 if (courseMaterialsSection) {
                     // Clear existing placeholder content
                     const placeholders = courseMaterialsSection.querySelectorAll('.file-item');
-                    console.log('Found existing items:', placeholders.length);
                     
                     placeholders.forEach(placeholder => {
-                        console.log('Removing existing item:', placeholder);
                         placeholder.remove();
                     });
                     
@@ -3926,12 +3704,8 @@ function loadExistingUnitData(onboardingData) {
                         const documentItem = createDocumentItem(doc);
                         courseMaterialsSection.appendChild(documentItem);
                     });
-                    
-                    console.log(`Loaded ${unit.documents.length} documents for ${unit.name}`);
                 }
             }
-        } else {
-            console.log(`No documents found for ${unit.name}`);
         }
     });
 }

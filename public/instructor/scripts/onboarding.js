@@ -128,7 +128,7 @@ function showOnboardingFlow() {
  * Initialize all onboarding functionality
  */
 function initializeOnboarding() {
-    console.log('Initializing onboarding...');
+
     
     // Initialize form handlers
     initializeFormHandlers();
@@ -143,25 +143,21 @@ function initializeOnboarding() {
     showStep(1);
     
     // Add debugging for learning objectives
-    console.log('Setting up learning objectives debugging...');
     setTimeout(() => {
         const addButton = document.querySelector('.add-objective-btn');
         if (addButton) {
-            console.log('Add objective button found:', addButton);
             
             // Remove any existing onclick to avoid conflicts
             addButton.removeAttribute('onclick');
             
             addButton.addEventListener('click', function(e) {
-                console.log('Add objective button clicked!');
                 e.preventDefault();
                 e.stopPropagation();
                 addObjectiveForUnit('Unit 1');
             });
             
-            console.log('Event listener added to add objective button');
         } else {
-            console.error('Add objective button not found!');
+            // Add objective button not found
         }
     }, 1000); // Wait a bit for DOM to be ready
 }
@@ -258,7 +254,6 @@ async function handleCourseSetup(event) {
     
     // Prevent multiple submissions
     if (onboardingState.isSubmitting) {
-        console.log('Form submission already in progress, ignoring duplicate submit');
         return;
     }
     
@@ -284,8 +279,7 @@ async function handleCourseSetup(event) {
         totalUnits: weeks * lecturesPerWeek // Calculate total units
     };
     
-    console.log('Collected course data:', onboardingState.courseData);
-    console.log(`Will create ${onboardingState.courseData.totalUnits} units (${weeks} weeks × ${lecturesPerWeek} lectures per week)`);
+
     
     // Set submitting flag and disable submit button
     onboardingState.isSubmitting = true;
@@ -365,23 +359,15 @@ async function createCourse(courseData) {
         
         // Get learning objectives from the UI
         const learningObjectives = getLearningObjectivesFromUI();
-        console.log('Learning objectives from UI:', learningObjectives);
-        console.log('Objectives list element:', document.getElementById('objectives-list'));
-        console.log('Objective items found:', document.querySelectorAll('.objective-display-item').length);
         
         // If no objectives found, show error
-        if (learningObjectives.length === 0) {
-            console.warn('No learning objectives found in UI - this might cause issues');
-            console.log('Trying to find objectives manually...');
-            
+        if (learningObjectives.length === 0) {            
             // Try to find objectives manually
             const objectivesList = document.getElementById('objectives-list');
             if (objectivesList) {
                 const items = objectivesList.querySelectorAll('.objective-display-item');
-                console.log('Manual search found items:', items.length);
                 items.forEach((item, index) => {
                     const text = item.querySelector('.objective-text')?.textContent;
-                    console.log(`Item ${index}:`, text);
                 });
             }
         }
@@ -418,17 +404,9 @@ async function createCourse(courseData) {
                     createdAt: new Date(),
                     updatedAt: new Date()
                 }];
-                console.log(`Added ${learningObjectives.length} learning objectives to ${unitName}`);
             }
         }
         
-        console.log('Sending onboarding data to API:', onboardingData);
-        
-        // Save to database
-        console.log('Making API request to:', '/api/onboarding');
-        console.log('Request method: POST');
-        console.log('Request headers:', { 'Content-Type': 'application/json' });
-        console.log('Request body:', JSON.stringify(onboardingData, null, 2));
         
         const response = await fetch('/api/onboarding', {
             method: 'POST',
@@ -438,19 +416,13 @@ async function createCourse(courseData) {
             body: JSON.stringify(onboardingData)
         });
         
-        console.log('API response status:', response.status);
-        console.log('API response status text:', response.statusText);
-        console.log('API response headers:', response.headers);
         
         if (!response.ok) {
             const errorText = await response.text();
-            console.error('API error response:', errorText);
             throw new Error(`Failed to create course: ${response.status} ${errorText}`);
         }
         
-        const result = await response.json();
-        console.log('API success response:', result);
-        
+        const result = await response.json();        
         // After successfully creating the course, save Unit 1 data using the same APIs
         // that the course upload functionality expects
         // Note: Learning objectives will be saved together when onboarding is completed
@@ -479,18 +451,14 @@ async function createCourse(courseData) {
  * @param {string} instructorId - The instructor ID
  */
 async function saveUnit1LearningObjectives(courseId, lectureName, objectives, instructorId) {
-    try {
-        console.log(`Saving Unit 1 learning objectives for course ${courseId}:`, objectives);
-        
+    try {        
         const requestBody = {
             lectureName: lectureName,
             objectives: objectives,
             instructorId: instructorId,
             courseId: courseId
         };
-        
-        console.log('Learning objectives request body:', requestBody);
-        
+                
         const response = await fetch('/api/learning-objectives', {
             method: 'POST',
             headers: {
@@ -501,15 +469,12 @@ async function saveUnit1LearningObjectives(courseId, lectureName, objectives, in
         
         if (!response.ok) {
             const errorText = await response.text();
-            console.error('Error saving Unit 1 learning objectives:', errorText);
             throw new Error(`Failed to save learning objectives: ${response.status} ${errorText}`);
         }
         
         const result = await response.json();
-        console.log('Unit 1 learning objectives saved successfully:', result);
         
     } catch (error) {
-        console.error('Error saving Unit 1 learning objectives:', error);
         // Don't throw here - we want the course creation to succeed even if this fails
         showNotification('Warning: Learning objectives saved to course but not to learning objectives API. They may not appear in the course upload interface.', 'warning');
     }
@@ -522,15 +487,11 @@ async function saveUnit1LearningObjectives(courseId, lectureName, objectives, in
 function getLearningObjectivesFromUI() {
     const objectivesList = document.getElementById('objectives-list');
     if (!objectivesList) {
-        console.error('Objectives list not found');
         return [];
     }
     
     const objectives = [];
-    const objectiveItems = objectivesList.querySelectorAll('.objective-display-item');
-    
-    console.log('Found objective items:', objectiveItems.length);
-    
+    const objectiveItems = objectivesList.querySelectorAll('.objective-display-item');    
     objectiveItems.forEach((item, index) => {
         const objectiveText = item.querySelector('.objective-text');
         if (objectiveText && objectiveText.textContent.trim()) {
@@ -539,8 +500,6 @@ function getLearningObjectivesFromUI() {
             console.log(`Objective ${index + 1}:`, text);
         }
     });
-    
-    console.log('Learning objectives from UI:', objectives);
     return objectives;
 }
 
