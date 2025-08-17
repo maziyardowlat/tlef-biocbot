@@ -860,8 +860,12 @@ function removeObjective(button) {
  * Add probing question
  */
 async function addQuestion() {
+    console.log('=== ADDING PROBING QUESTION ===');
     const input = document.getElementById('question-input');
     const questionText = input.value.trim();
+    
+    console.log('Question input value:', questionText);
+    console.log('Question input element found:', !!input);
     
     if (!questionText) {
         showNotification('Please enter a probing question.', 'error');
@@ -869,6 +873,14 @@ async function addQuestion() {
     }
     
     const questionsList = document.getElementById('assessment-questions-onboarding');
+    console.log('Questions list element found:', !!questionsList);
+    console.log('Questions list ID:', questionsList?.id);
+    
+    if (!questionsList) {
+        console.error('Questions list not found!');
+        showNotification('Error: Questions list not found', 'error');
+        return;
+    }
     
     // Create new question display item
     const questionItem = document.createElement('div');
@@ -878,8 +890,14 @@ async function addQuestion() {
         <button class="remove-objective" onclick="removeQuestion(this)">×</button>
     `;
     
+    console.log('Created question item:', questionItem);
+    console.log('Question item HTML:', questionItem.innerHTML);
+    
     // Add to the list
     questionsList.appendChild(questionItem);
+    
+    console.log('Question added to DOM. Total questions now:', questionsList.querySelectorAll('.objective-display-item').length);
+    console.log('All questions in DOM:', Array.from(questionsList.querySelectorAll('.objective-display-item .objective-text')).map(q => q.textContent.trim()));
     
     // Clear the input field
     input.value = '';
@@ -895,11 +913,19 @@ async function addQuestion() {
  * Remove probing question
  */
 async function removeQuestion(button) {
+    console.log('=== REMOVING PROBING QUESTION ===');
     const questionItem = button.closest('.objective-display-item');
     const questionText = questionItem.querySelector('.objective-text').textContent.trim();
     
+    console.log('Removing question:', questionText);
+    console.log('Question item found:', !!questionItem);
+    
     // Remove from UI
     questionItem.remove();
+    
+    const questionsList = document.getElementById('assessment-questions-onboarding');
+    console.log('Question removed from DOM. Total questions now:', questionsList?.querySelectorAll('.objective-display-item').length || 0);
+    console.log('Remaining questions:', Array.from(questionsList?.querySelectorAll('.objective-display-item .objective-text') || []).map(q => q.textContent.trim()));
     
     // Don't remove from API immediately - the final state will be saved
     // when onboarding is completed
@@ -1127,14 +1153,20 @@ function saveQuestion() {
     }
     
     // Add question to the assessment
-    if (!assessmentQuestions[currentWeek]) {
-        assessmentQuestions[currentWeek] = [];
+    // During onboarding, we're always working with 'Onboarding' as the week
+    const weekKey = currentWeek || 'Onboarding';
+    
+    if (!assessmentQuestions[weekKey]) {
+        assessmentQuestions[weekKey] = [];
     }
     
-    assessmentQuestions[currentWeek].push(question);
+    assessmentQuestions[weekKey].push(question);
+    
+    console.log(`Question added to assessmentQuestions['${weekKey}']:`, question);
+    console.log(`Total questions for ${weekKey}:`, assessmentQuestions[weekKey].length);
     
     // Update the display
-    displayAssessmentQuestions(currentWeek);
+    displayAssessmentQuestions(weekKey);
     
     // Close modal and show success
     closeQuestionModal();
@@ -1180,16 +1212,22 @@ async function generateAIQuestions(week) {
         ];
         
         // Add questions to the assessment
-        if (!assessmentQuestions[week]) {
-            assessmentQuestions[week] = [];
+        // During onboarding, we're always working with 'Onboarding' as the week
+        const weekKey = week || 'Onboarding';
+        
+        if (!assessmentQuestions[weekKey]) {
+            assessmentQuestions[weekKey] = [];
         }
         
         mockQuestions.forEach(question => {
-            assessmentQuestions[week].push(question);
+            assessmentQuestions[weekKey].push(question);
         });
         
+        console.log(`AI questions added to assessmentQuestions['${weekKey}']:`, mockQuestions);
+        console.log(`Total questions for ${weekKey}:`, assessmentQuestions[weekKey].length);
+        
         // Update the display
-        displayAssessmentQuestions(week);
+        displayAssessmentQuestions(weekKey);
         
         showNotification(`${mockQuestions.length} AI assessment questions generated successfully!`, 'success');
         
@@ -1203,9 +1241,20 @@ async function generateAIQuestions(week) {
  * Display assessment questions
  */
 function displayAssessmentQuestions(week) {
-    const questionsContainer = document.getElementById(`assessment-questions-${week.toLowerCase()}`);
+    // During onboarding, we need to handle the 'Onboarding' week specially
+    let containerId;
+    if (week === 'Onboarding') {
+        containerId = 'assessment-questions-onboarding';
+    } else {
+        containerId = `assessment-questions-${week.toLowerCase()}`;
+    }
     
-    if (!questionsContainer) return;
+    const questionsContainer = document.getElementById(containerId);
+    
+    if (!questionsContainer) {
+        console.error(`Questions container not found for week '${week}' with ID '${containerId}'`);
+        return;
+    }
     
     const questions = assessmentQuestions[week] || [];
     
@@ -1272,9 +1321,19 @@ function createQuestionElement(question, questionNumber, week) {
  */
 function deleteAssessmentQuestion(week, questionId) {
     if (confirm('Are you sure you want to delete this question?')) {
-        assessmentQuestions[week] = assessmentQuestions[week].filter(q => q.id !== questionId);
-        displayAssessmentQuestions(week);
-        showNotification('Question deleted successfully!', 'success');
+        // During onboarding, we're always working with 'Onboarding' as the week
+        const weekKey = week || 'Onboarding';
+        
+        if (assessmentQuestions[weekKey]) {
+            assessmentQuestions[weekKey] = assessmentQuestions[weekKey].filter(q => q.id !== questionId);
+            console.log(`Question ${questionId} deleted from assessmentQuestions['${weekKey}']`);
+            console.log(`Remaining questions for ${weekKey}:`, assessmentQuestions[weekKey].length);
+            displayAssessmentQuestions(weekKey);
+            showNotification('Question deleted successfully!', 'success');
+        } else {
+            console.error(`No assessment questions found for week '${weekKey}'`);
+            showNotification('No questions found to delete.', 'error');
+        }
     }
 }
 
@@ -1282,9 +1341,14 @@ function deleteAssessmentQuestion(week, questionId) {
  * Save assessment
  */
 async function saveAssessment(week) {
+    console.log(`=== SAVING ASSESSMENT FOR ${week} ===`);
+    
     const questions = assessmentQuestions[week] || [];
     const thresholdInput = document.getElementById(`pass-threshold-${week.toLowerCase()}`);
     const threshold = thresholdInput ? parseInt(thresholdInput.value) : 2;
+    
+    console.log('Questions to save:', questions);
+    console.log('Pass threshold:', threshold);
     
     if (questions.length === 0) {
         showNotification('Please add at least one assessment question before saving.', 'error');
@@ -1292,83 +1356,49 @@ async function saveAssessment(week) {
     }
     
     try {
-        // Simulate save delay
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        // Get the current course ID and instructor ID
+        const courseId = onboardingState.createdCourseId;
+        const instructorId = 'instructor-123';
         
-        showNotification(`Assessment saved for ${week}!\nTotal Questions: ${questions.length}\nPass Threshold: ${threshold}`, 'success');
+        if (!courseId) {
+            throw new Error('No course ID available. Please complete course setup first.');
+        }
+        
+        console.log(`Saving ${questions.length} questions for course ${courseId}...`);
+        
+        // Save each question individually to the backend
+        const savedQuestions = [];
+        for (let i = 0; i < questions.length; i++) {
+            const question = questions[i];
+            console.log(`Saving question ${i + 1}/${questions.length}:`, question);
+            
+            try {
+                const result = await saveUnit1AssessmentQuestion(courseId, 'Unit 1', question.question, instructorId);
+                savedQuestions.push(result);
+                console.log(`Question ${i + 1} saved successfully:`, result);
+            } catch (error) {
+                console.error(`Failed to save question ${i + 1}:`, error);
+                // Continue with other questions even if one fails
+            }
+        }
+        
+        // Save the pass threshold
+        try {
+            await saveUnit1PassThreshold(courseId, 'Unit 1', threshold, instructorId);
+            console.log('Pass threshold saved successfully');
+        } catch (error) {
+            console.error('Failed to save pass threshold:', error);
+        }
+        
+        console.log(`Assessment saved successfully! ${savedQuestions.length}/${questions.length} questions saved.`);
+        showNotification(`Assessment saved for ${week}!\nTotal Questions: ${savedQuestions.length}/${questions.length}\nPass Threshold: ${threshold}`, 'success');
         
     } catch (error) {
         console.error('Error saving assessment:', error);
-        showNotification('Failed to save assessment. Please try again.', 'error');
+        showNotification(`Failed to save assessment: ${error.message}`, 'error');
     }
 }
 
-/**
- * Test the onboarding API to see if it's working
- */
-async function testOnboardingAPI() {
-    try {
-        console.log('🧪 Testing onboarding API...');
-        
-        // Test the test endpoint
-        const testResponse = await fetch('/api/onboarding/test');
-        console.log('Test endpoint response status:', testResponse.status);
-        
-        if (testResponse.ok) {
-            const testResult = await testResponse.json();
-            console.log('Test endpoint result:', testResult);
-            showNotification('✅ Onboarding API is working!', 'success');
-        } else {
-            console.error('Test endpoint failed:', testResponse.status);
-            showNotification('❌ Onboarding API test failed', 'error');
-        }
-        
-        // Test the main endpoint with a simple request
-        const testData = {
-            courseId: 'TEST-COURSE-' + Date.now(),
-            courseName: 'Test Course',
-            instructorId: 'instructor-123',
-            courseDescription: 'Test course for API testing',
-            learningOutcomes: ['Test objective 1', 'Test objective 2'],
-            assessmentCriteria: 'Test criteria',
-            courseMaterials: [],
-            unitFiles: {
-                'Unit 1': []
-            },
-            courseStructure: {
-                weeks: 1,
-                lecturesPerWeek: 1,
-                totalUnits: 1
-            }
-        };
-        
-        console.log('Testing main endpoint with data:', testData);
-        
-        const mainResponse = await fetch('/api/onboarding', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(testData)
-        });
-        
-        console.log('Main endpoint response status:', mainResponse.status);
-        
-        if (mainResponse.ok) {
-            const mainResult = await mainResponse.json();
-            console.log('Main endpoint result:', mainResult);
-            showNotification('✅ Onboarding API main endpoint is working!', 'success');
-        } else {
-            const errorText = await mainResponse.text();
-            console.error('Main endpoint failed:', mainResponse.status, errorText);
-            showNotification(`❌ Main endpoint failed: ${mainResponse.status}`, 'error');
-        }
-        
-    } catch (error) {
-        console.error('Error testing onboarding API:', error);
-        showNotification(`❌ API test error: ${error.message}`, 'error');
-    }
-}
 
 /**
  * Save onboarding data to database
@@ -1461,6 +1491,8 @@ async function saveOnboardingData() {
  * Complete Unit 1 setup
  */
 async function completeUnit1Setup() {
+    console.log('%c--- Starting Final Onboarding Step ---', 'font-weight: bold; color: blue;');
+
     // Validate that required content has been set up
     const objectivesList = document.getElementById('objectives-list');
     const objectives = objectivesList.querySelectorAll('.objective-display-item');
@@ -1481,12 +1513,17 @@ async function completeUnit1Setup() {
     
     try {
         // Save onboarding data to database before redirecting
+        console.log('Step 1: Calling saveOnboardingData...');
         await saveOnboardingData();
+        console.log('Step 1: saveOnboardingData completed.');
         
         // Also ensure all Unit 1 data is saved using the same APIs that course upload expects
+        console.log('Step 2: Calling saveAllUnit1Data...');
         await saveAllUnit1Data();
+        console.log('Step 2: saveAllUnit1Data completed.');
         
         // Show success message and redirect
+        console.log('Step 3: Onboarding save process complete. Redirecting...');
         showNotification('Unit 1 setup completed successfully! Redirecting to course upload...', 'success');
         
         // Wait a moment for the notification to be seen, then redirect with course ID
@@ -1533,24 +1570,29 @@ async function saveAllUnit1Data() {
         
         // 2. Save all probing questions together as assessment questions
         const questionsList = document.getElementById('assessment-questions-onboarding');
+        console.log('=== ASSESSMENT QUESTIONS DEBUGGING ===');
         console.log('Looking for questions list with ID "assessment-questions-onboarding":', questionsList);
         
         if (questionsList) {
-            console.log('Questions list element found, HTML content:', questionsList.innerHTML);
+            console.log('Questions list element found!');
+            console.log('Questions list HTML content:', questionsList.innerHTML);
+            console.log('Questions list children count:', questionsList.children.length);
+            console.log('All child elements:', Array.from(questionsList.children).map(child => ({ tagName: child.tagName, className: child.className, id: child.id, textContent: child.textContent?.substring(0, 100) })));
             
             const questions = Array.from(questionsList.querySelectorAll('.objective-display-item .objective-text'))
                 .map(q => q.textContent.trim())
                 .filter(q => q.length > 0);
             
-            console.log('Found questions in DOM:', questions);
+            console.log('Found questions in DOM using selector ".objective-display-item .objective-text":', questions);
             console.log('Questions array length:', questions.length);
+            console.log('Questions array details:', questions.map((q, i) => `Question ${i + 1}: "${q}"`));
             
             if (questions.length > 0) {
                 console.log('Saving all probing questions as assessment questions:', questions);
                 // Save each question individually as an assessment question
                 for (let i = 0; i < questions.length; i++) {
                     const questionText = questions[i];
-                    console.log(`Saving question ${i + 1}/${questions.length}:`, questionText);
+                    console.log(`Saving question ${i + 1}/${questions.length}: "${questionText}"`);
                     try {
                         const result = await saveUnit1AssessmentQuestion(courseId, 'Unit 1', questionText, instructorId);
                         console.log(`Question ${i + 1} saved successfully:`, result);
@@ -1564,6 +1606,15 @@ async function saveAllUnit1Data() {
                 console.log('All child elements in questions list:', questionsList.children);
                 console.log('Elements with class "objective-display-item":', questionsList.querySelectorAll('.objective-display-item'));
                 console.log('Elements with class "objective-text":', questionsList.querySelectorAll('.objective-text'));
+                console.log('Elements with class "objective-display-item .objective-text":', questionsList.querySelectorAll('.objective-display-item .objective-text'));
+                
+                // Try alternative selectors
+                console.log('Trying alternative selectors...');
+                const altQuestions1 = Array.from(questionsList.querySelectorAll('.objective-display-item')).map(item => item.textContent?.trim()).filter(t => t && t.length > 0);
+                console.log('Alternative selector 1 (all .objective-display-item text):', altQuestions1);
+                
+                const altQuestions2 = Array.from(questionsList.querySelectorAll('*')).filter(el => el.textContent && el.textContent.trim().length > 10 && !el.querySelector('*')).map(el => el.textContent.trim());
+                console.log('Alternative selector 2 (all leaf elements with text > 10 chars):', altQuestions2);
             }
         } else {
             console.error('Questions list element not found with ID "assessment-questions-onboarding"');
@@ -2340,6 +2391,7 @@ async function removeExistingDocumentType(courseId, lectureName, documentType, i
  */
 async function saveUnit1AssessmentQuestion(courseId, lectureName, questionText, instructorId) {
     try {
+        console.log(`%c--- SAVING ASSESSMENT QUESTION ---`, 'font-weight: bold; color: green;');
         console.log(`Saving assessment question for course ${courseId}:`, { lectureName, questionText });
         
         const requestBody = {
@@ -2361,7 +2413,10 @@ async function saveUnit1AssessmentQuestion(courseId, lectureName, questionText, 
             points: 1
         };
         
-        console.log('Assessment question request body:', requestBody);
+        console.log('Assessment question request body:', JSON.stringify(requestBody, null, 2));
+        console.log('Making API request to:', '/api/questions');
+        console.log('Request method: POST');
+        console.log('Request headers:', { 'Content-Type': 'application/json' });
         
         const response = await fetch('/api/questions', {
             method: 'POST',
@@ -2371,14 +2426,19 @@ async function saveUnit1AssessmentQuestion(courseId, lectureName, questionText, 
             body: JSON.stringify(requestBody)
         });
         
+        console.log('API response status:', response.status);
+        console.log('API response status text:', response.statusText);
+        console.log('API response headers:', Object.fromEntries(response.headers.entries()));
+        
         if (!response.ok) {
             const errorText = await response.text();
-            console.error('Error saving assessment question:', response.status, errorText);
+            console.error('API error response:', errorText);
             throw new Error(`Failed to save assessment question: ${response.status} ${errorText}`);
         }
         
         const result = await response.json();
-        console.log('Assessment question saved successfully:', result);
+        console.log('API success response:', result);
+        console.log('%c--- ASSESSMENT QUESTION SAVED SUCCESSFULLY ---', 'font-weight: bold; color: green;');
         return result;
         
     } catch (error) {
