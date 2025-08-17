@@ -11,6 +11,7 @@ const learningObjectivesRoutes = require('./routes/learning-objectives');
 const documentsRoutes = require('./routes/documents');
 const questionsRoutes = require('./routes/questions');
 const onboardingRoutes = require('./routes/onboarding');
+const qdrantRoutes = require('./routes/qdrant');
 
 const app = express();
 const port = process.env.TLEF_BIOCBOT_PORT || 8080;
@@ -60,6 +61,38 @@ app.use(express.static(path.join(__dirname, '../public')));
 // Home page route now shows role selection
 app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, '../public/index.html'));
+});
+
+// Qdrant test page
+app.get('/qdrant-test', (req, res) => {
+    res.sendFile(path.join(__dirname, '../public/qdrant-test.html'));
+});
+
+// Quick Qdrant test endpoint
+app.get('/test-qdrant', async (req, res) => {
+    try {
+        const QdrantService = require('./services/qdrantService');
+        const qdrantService = new QdrantService();
+        
+        console.log('🧪 Testing Qdrant connection...');
+        await qdrantService.initialize();
+        
+        const stats = await qdrantService.getCollectionStats();
+        
+        res.json({
+            success: true,
+            message: 'Qdrant connection successful!',
+            collection: stats
+        });
+        
+    } catch (error) {
+        console.error('❌ Qdrant test failed:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Qdrant test failed',
+            error: error.message
+        });
+    }
 });
 
 // Student routes
@@ -180,6 +213,7 @@ app.use('/api/learning-objectives', learningObjectivesRoutes);
 app.use('/api/documents', documentsRoutes);
 app.use('/api/questions', questionsRoutes);
 app.use('/api/onboarding', onboardingRoutes);
+app.use('/api/qdrant', qdrantRoutes);
 
 // Initialize the application
 async function startServer() {

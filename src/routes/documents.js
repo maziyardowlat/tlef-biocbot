@@ -5,6 +5,20 @@ const multer = require('multer');
 // Import the Document model and Course model
 const DocumentModel = require('../models/Document');
 const CourseModel = require('../models/Course');
+const QdrantService = require('../services/qdrantService');
+
+// Initialize Qdrant service
+const qdrantService = new QdrantService();
+
+// Initialize Qdrant service when the module loads
+(async () => {
+    try {
+        await qdrantService.initialize();
+        console.log('✅ Qdrant service initialized in documents route');
+    } catch (error) {
+        console.error('❌ Failed to initialize Qdrant service in documents route:', error);
+    }
+})();
 
 // Configure multer for file uploads
 const upload = multer({
@@ -98,6 +112,46 @@ router.post('/upload', upload.single('file'), async (req, res) => {
             console.warn('Warning: Document uploaded but failed to link to course structure:', courseResult.error);
         }
         
+        // Process document through Qdrant for vector search
+        let qdrantResult = null;
+        try {
+            // Ensure Qdrant service is initialized
+            if (!qdrantService.embeddings) {
+                console.log('Initializing Qdrant service before processing document...');
+                await qdrantService.initialize();
+            }
+            
+            // Extract text content from file (for now, handle text files)
+            let textContent = '';
+            if (file.mimetype === 'text/plain' || file.mimetype === 'text/markdown') {
+                textContent = file.buffer.toString('utf8');
+            } else {
+                // For other file types, we'll need to implement text extraction
+                // For now, skip Qdrant processing for non-text files
+                console.log(`Skipping Qdrant processing for non-text file: ${file.mimetype}`);
+            }
+            
+            if (textContent) {
+                console.log(`Processing document through Qdrant: ${file.originalname}`);
+                qdrantResult = await qdrantService.processAndStoreDocument({
+                    courseId,
+                    lectureName,
+                    documentId: result.documentId,
+                    content: textContent,
+                    fileName: file.originalname,
+                    mimeType: file.mimetype
+                });
+                
+                if (qdrantResult.success) {
+                    console.log(`✅ Document processed and stored in Qdrant: ${qdrantResult.chunksStored} chunks`);
+                } else {
+                    console.warn(`⚠️ Qdrant processing failed: ${qdrantResult.error}`);
+                }
+            }
+        } catch (qdrantError) {
+            console.warn('Warning: Document uploaded but Qdrant processing failed:', qdrantError.message);
+        }
+        
         console.log(`Document uploaded: ${file.originalname} for ${lectureName}`);
         
         res.json({
@@ -108,7 +162,9 @@ router.post('/upload', upload.single('file'), async (req, res) => {
                 filename: file.originalname,
                 size: file.size,
                 uploadDate: result.uploadDate,
-                linkedToCourse: courseResult.success
+                linkedToCourse: courseResult.success,
+                qdrantProcessed: qdrantResult ? qdrantResult.success : false,
+                chunksStored: qdrantResult ? qdrantResult.chunksStored : 0
             }
         });
         
@@ -185,6 +241,34 @@ router.post('/text', async (req, res) => {
             console.warn('Warning: Text document uploaded but failed to link to course structure:', courseResult.error);
         }
         
+        // Process text document through Qdrant for vector search
+        let qdrantResult = null;
+        try {
+            // Ensure Qdrant service is initialized
+            if (!qdrantService.embeddings) {
+                console.log('Initializing Qdrant service before processing document...');
+                await qdrantService.initialize();
+            }
+            
+            console.log(`Processing text document through Qdrant: ${title}`);
+            qdrantResult = await qdrantService.processAndStoreDocument({
+                courseId,
+                lectureName,
+                documentId: result.documentId,
+                content: content,
+                fileName: title,
+                mimeType: 'text/plain'
+            });
+            
+            if (qdrantResult.success) {
+                console.log(`✅ Text document processed and stored in Qdrant: ${qdrantResult.chunksStored} chunks`);
+            } else {
+                console.warn(`⚠️ Qdrant processing failed: ${qdrantResult.error}`);
+            }
+        } catch (qdrantError) {
+            console.warn('Warning: Text document uploaded but Qdrant processing failed:', qdrantError.message);
+        }
+        
         console.log(`Text document submitted: ${title} for ${lectureName}`);
         
         res.json({
@@ -195,7 +279,9 @@ router.post('/text', async (req, res) => {
                 title: title,
                 size: result.size,
                 uploadDate: result.uploadDate,
-                linkedToCourse: courseResult.success
+                linkedToCourse: courseResult.success,
+                qdrantProcessed: qdrantResult ? qdrantResult.success : false,
+                chunksStored: qdrantResult ? qdrantResult.chunksStored : 0
             }
         });
         
