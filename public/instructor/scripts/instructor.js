@@ -620,8 +620,9 @@ async function handleUpload() {
                 fileName = uploadResult?.data?.title || `Content - ${currentWeek}`;
         }
         
-        // Add the content to the appropriate week
-        addContentToWeek(currentWeek, fileName, `Uploaded successfully - ${uploadResult?.data?.filename || fileName}`);
+        // Add the content to the appropriate week with document ID
+        const documentId = uploadResult?.data?.documentId;
+        addContentToWeek(currentWeek, fileName, `Uploaded successfully - ${uploadResult?.data?.filename || fileName}`, documentId);
         
         // Close modal and show success
         closeUploadModal();
@@ -642,8 +643,9 @@ async function handleUpload() {
  * @param {string} week - The week identifier
  * @param {string} fileName - The file name to display
  * @param {string} description - The file description
+ * @param {string} documentId - The document ID from the database
  */
-function addContentToWeek(week, fileName, description) {
+function addContentToWeek(week, fileName, description, documentId) {
     // Find the week accordion item
     const weekAccordion = findElementsContainingText('.accordion-item .folder-name', week)[0].closest('.accordion-item');
     
@@ -673,17 +675,42 @@ function addContentToWeek(week, fileName, description) {
         targetFileItem.querySelector('.status-text').textContent = 'Processed';
         targetFileItem.querySelector('.status-text').className = 'status-text processed';
         
+        // Set document ID for proper deletion
+        if (documentId) {
+            targetFileItem.dataset.documentId = documentId;
+        }
+        
         // Update action button to view instead of upload
         const uploadButton = targetFileItem.querySelector('.action-button.upload');
         if (uploadButton) {
             uploadButton.textContent = 'View';
             uploadButton.className = 'action-button view';
-            uploadButton.onclick = () => viewFileItem(uploadButton);
+            uploadButton.onclick = () => viewDocument(documentId);
+        }
+        
+        // Add delete button if it doesn't exist
+        let deleteButton = targetFileItem.querySelector('.action-button.delete');
+        if (!deleteButton) {
+            deleteButton = document.createElement('button');
+            deleteButton.className = 'action-button delete';
+            deleteButton.onclick = () => deleteDocument(documentId);
+            deleteButton.textContent = 'Delete';
+            
+            const fileActions = targetFileItem.querySelector('.file-actions');
+            if (fileActions) {
+                fileActions.appendChild(deleteButton);
+            }
         }
     } else {
         // Create new file item
         const fileItem = document.createElement('div');
         fileItem.className = 'file-item';
+        
+        // Set document ID if available
+        if (documentId) {
+            fileItem.dataset.documentId = documentId;
+        }
+        
         fileItem.innerHTML = `
             <span class="file-icon">📄</span>
             <div class="file-info">
@@ -692,8 +719,8 @@ function addContentToWeek(week, fileName, description) {
                 <span class="status-text processed">Processed</span>
             </div>
             <div class="file-actions">
-                <button class="action-button view" onclick="viewFileItem(this)">View</button>
-                <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
+                <button class="action-button view" onclick="${documentId ? `viewDocument('${documentId}')` : 'viewFileItem(this)'}">View</button>
+                <button class="action-button delete" onclick="${documentId ? `deleteDocument('${documentId}')` : 'deleteFileItem(this)'}">Delete</button>
             </div>
         `;
         
@@ -1120,21 +1147,90 @@ function createDocumentItem(doc) {
 async function deleteDocument(documentId) {
     try {
         const instructorId = getCurrentInstructorId();
+        const courseId = await getCurrentCourseId();
         
-        // Delete the document - the backend will handle both document deletion and course structure updates
-        const response = await fetch(`/api/documents/${documentId}`, {
-            method: 'DELETE',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                instructorId: instructorId
-            })
-        });
+        console.log(`Deleting document ${documentId} from both collections...`);
         
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Delete failed: ${response.status} ${errorText}`);
+        // Step 1: Try to delete from documents collection first
+        let documentDeleted = false;
+        try {
+            const deleteResponse = await fetch(`/api/documents/${documentId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    instructorId: instructorId
+                })
+            });
+            
+            if (deleteResponse.ok) {
+                documentDeleted = true;
+                console.log('Document successfully deleted from documents collection');
+            } else if (deleteResponse.status === 404) {
+                console.log('Document not found in documents collection (already deleted)');
+                documentDeleted = true; // Consider it "deleted" if it doesn't exist
+            } else {
+                const errorText = await deleteResponse.text();
+                console.warn(`Document deletion warning: ${deleteResponse.status} ${errorText}`);
+                // Continue with course cleanup even if document deletion fails
+            }
+        } catch (deleteError) {
+            console.warn('Document deletion endpoint not available:', deleteError);
+            // Continue with course cleanup
+        }
+        
+        // Step 2: Always remove from course structure (regardless of document deletion status)
+        let courseUpdateSuccess = false;
+        console.log(`Attempting to remove document ${documentId} from course structure...`);
+        
+        try {
+            console.log(`Trying endpoint: /api/courses/${courseId}/remove-document`);
+            const courseResponse = await fetch(`/api/courses/${courseId}/remove-document`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    documentId: documentId,
+                    instructorId: instructorId
+                })
+            });
+            
+            console.log(`Course response status: ${courseResponse.status}`);
+            
+            if (courseResponse.ok) {
+                courseUpdateSuccess = true;
+                console.log('Document successfully removed from course structure via API endpoint');
+            } else {
+                const errorText = await courseResponse.text();
+                console.warn(`Course structure update failed: ${courseResponse.status} - ${errorText}`);
+            }
+        } catch (courseError) {
+            console.warn('Course structure update endpoint not available or failed:', courseError);
+        }
+        
+        // Step 3: If course structure update failed, use manual approach
+        if (!courseUpdateSuccess) {
+            try {
+                console.log('API endpoint failed, using manual course structure cleanup...');
+                const manualResult = await removeDocumentFromCourseStructure(documentId, courseId, instructorId);
+                if (manualResult) {
+                    courseUpdateSuccess = true;
+                    console.log('Manual course structure cleanup succeeded');
+                } else {
+                    console.warn('Manual cleanup returned false');
+                }
+            } catch (fallbackError) {
+                console.warn('Manual course structure update failed:', fallbackError);
+                // Last resort: try global cleanup
+                try {
+                    console.log('Attempting global cleanup as last resort...');
+                    await cleanupOrphanedDocuments();
+                } catch (cleanupError) {
+                    console.warn('Global cleanup also failed:', cleanupError);
+                }
+            }
         }
         
         // Remove the document item from the UI immediately
@@ -1143,14 +1239,192 @@ async function deleteDocument(documentId) {
             documentItem.remove();
         }
         
-        // Simple reload to sync with database
+        // Reload documents to sync with database
         await loadDocuments();
         
-        showNotification('Document deleted successfully!', 'success');
+        // Show appropriate success message
+        if (documentDeleted && courseUpdateSuccess) {
+            showNotification('Document deleted from both collections successfully!', 'success');
+        } else if (courseUpdateSuccess) {
+            showNotification('Document removed from course structure successfully!', 'success');
+        } else {
+            showNotification('Document deletion completed with some cleanup issues. Use cleanup button if needed.', 'warning');
+        }
         
     } catch (error) {
         console.error('Error deleting document:', error);
         showNotification(`Error deleting document: ${error.message}`, 'error');
+    }
+}
+
+/**
+ * Add a global cleanup button to the instructor interface
+ * This allows instructors to manually clean up orphaned documents
+ */
+function addGlobalCleanupButton() {
+    // Check if cleanup button already exists
+    if (document.querySelector('.global-cleanup-btn')) {
+        return;
+    }
+    
+    // Create cleanup button
+    const cleanupButton = document.createElement('button');
+    cleanupButton.className = 'global-cleanup-btn';
+    cleanupButton.innerHTML = '🧹 Clean Up Orphaned Documents';
+    cleanupButton.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 1000;
+        background: #dc3545;
+        color: white;
+        border: none;
+        padding: 10px 15px;
+        border-radius: 5px;
+        cursor: pointer;
+        font-size: 14px;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    `;
+    
+    cleanupButton.addEventListener('click', async () => {
+        cleanupButton.disabled = true;
+        cleanupButton.innerHTML = '🧹 Cleaning...';
+        
+        try {
+            await cleanupOrphanedDocuments();
+        } catch (error) {
+            console.error('Global cleanup failed:', error);
+            showNotification('Global cleanup failed. Please try again.', 'error');
+        } finally {
+            cleanupButton.disabled = false;
+            cleanupButton.innerHTML = '🧹 Clean Up Orphaned Documents';
+        }
+    });
+    
+    // Add to page
+    document.body.appendChild(cleanupButton);
+}
+
+/**
+ * Manually remove a document reference from the course structure
+ * This is a fallback when the backend endpoint is not available
+ * @param {string} documentId - Document ID to remove
+ * @param {string} courseId - Course ID
+ * @param {string} instructorId - Instructor ID
+ */
+async function removeDocumentFromCourseStructure(documentId, courseId, instructorId) {
+    try {
+        console.log('Manually removing document from course structure:', documentId);
+        
+        // Get the current course structure
+        const response = await fetch(`/api/courses/${courseId}?instructorId=${instructorId}`);
+        
+        if (!response.ok) {
+            throw new Error('Failed to fetch course structure');
+        }
+        
+        const result = await response.json();
+        const course = result.data;
+        
+        // Find and remove the document from all units
+        let documentRemoved = false;
+        
+        // Log the course structure to see what we're working with
+        console.log('Course structure:', JSON.stringify(course, null, 2));
+        
+        // Check different possible property names for units
+        const units = course.lectures || course.units || course.weeks || [];
+        console.log(`Found ${units.length} units in course structure`);
+        
+        // Also check courseMaterials field
+        if (course.courseMaterials) {
+            console.log('Course materials field:', course.courseMaterials);
+        }
+        
+        units.forEach((unit, index) => {
+            console.log(`Checking unit ${index}:`, unit);
+            
+            // Check different possible property names for documents
+            const documents = unit.documents || unit.materials || unit.files || [];
+            console.log(`Unit ${index} has ${documents.length} documents:`, documents);
+            
+            if (documents.length > 0) {
+                const initialLength = documents.length;
+                const filteredDocuments = documents.filter(doc => {
+                    const docId = doc.documentId || doc.id || doc._id;
+                    console.log(`Checking document:`, doc, `against target: ${documentId}`);
+                    return docId !== documentId;
+                });
+                
+                if (filteredDocuments.length < initialLength) {
+                    documentRemoved = true;
+                    console.log(`Removed document ${documentId} from unit ${unit.name || index}`);
+                    
+                    // Update the unit's documents array
+                    if (unit.documents) unit.documents = filteredDocuments;
+                    if (unit.materials) unit.materials = filteredDocuments;
+                    if (unit.files) unit.files = filteredDocuments;
+                }
+            }
+        });
+        
+        // Also check if document is in courseMaterials
+        if (course.courseMaterials && Array.isArray(course.courseMaterials)) {
+            const initialLength = course.courseMaterials.length;
+            course.courseMaterials = course.courseMaterials.filter(doc => {
+                const docId = doc.documentId || doc.id || doc._id;
+                return docId !== documentId;
+            });
+            
+            if (course.courseMaterials.length < initialLength) {
+                documentRemoved = true;
+                console.log(`Removed document ${documentId} from courseMaterials`);
+            }
+        }
+        
+        // Also check unitFiles field
+        if (course.unitFiles && Array.isArray(course.unitFiles)) {
+            console.log('Unit files field:', course.unitFiles);
+            
+            const initialLength = course.unitFiles.length;
+            course.unitFiles = course.unitFiles.filter(doc => {
+                const docId = doc.documentId || doc.id || doc._id;
+                return docId !== documentId;
+            });
+            
+            if (course.unitFiles.length < initialLength) {
+                documentRemoved = true;
+                console.log(`Removed document ${documentId} from unitFiles`);
+            }
+        }
+        
+        if (documentRemoved) {
+            // Update the course structure in the backend
+            const updateResponse = await fetch(`/api/courses/${courseId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    ...course,
+                    instructorId: instructorId
+                })
+            });
+            
+            if (updateResponse.ok) {
+                console.log('Course structure updated successfully');
+                return true;
+            } else {
+                throw new Error('Failed to update course structure');
+            }
+        } else {
+            console.log('Document not found in course structure');
+            return true; // Document wasn't in course structure, so nothing to update
+        }
+        
+    } catch (error) {
+        console.error('Error manually updating course structure:', error);
+        throw error;
     }
 }
 
@@ -1755,11 +2029,25 @@ document.addEventListener('DOMContentLoaded', function() {
  * Delete a file item
  * @param {HTMLElement} button - The delete button element
  */
-function deleteFileItem(button) {
+async function deleteFileItem(button) {
     const fileItem = button.closest('.file-item');
     const fileName = fileItem.querySelector('h3').textContent;
     
-    // Show confirmation dialog
+    // Check if this is a placeholder item (shouldn't be deleted)
+    if (fileItem.classList.contains('placeholder-item')) {
+        showNotification('Cannot delete placeholder items. Please upload content first.', 'warning');
+        return;
+    }
+    
+    // Check if this is an actual document with a document ID
+    const documentId = fileItem.dataset.documentId;
+    if (documentId) {
+        // This is a real document, use the proper delete function
+        await deleteDocument(documentId);
+        return;
+    }
+    
+    // Show confirmation dialog for other file items
     if (confirm(`Are you sure you want to delete "${fileName}"?`)) {
         // Remove the file item from the DOM
         fileItem.remove();
@@ -1778,185 +2066,21 @@ function viewFileItem(button) {
     const fileName = fileItem.querySelector('h3').textContent;
     const fileDescription = fileItem.querySelector('p').textContent;
     
-    // Generate mock content based on the file name
-    const mockContent = generateMockContent(fileName, fileDescription);
+    // Show a placeholder message since we're not generating mock content anymore
+    const placeholderContent = `
+        <h2>${fileName}</h2>
+        <p><strong>Description:</strong> ${fileDescription}</p>
+        <div class="content-placeholder">
+            <p>Document content will be displayed here when the actual document is loaded.</p>
+            <p>This placeholder indicates that the document viewing functionality is being implemented.</p>
+        </div>
+    `;
     
     // Open the view modal
-    openViewModal(fileName, mockContent);
+    openViewModal(fileName, placeholderContent);
 }
 
-/**
- * Generate mock content based on file name
- * @param {string} fileName - The name of the file
- * @param {string} description - The file description
- * @returns {string} Mock content for the file
- */
-function generateMockContent(fileName, description) {
-    // Generate different content based on the file type/name
-    if (fileName.includes('Introduction')) {
-        return `
-            <h2>Introduction to Biochemistry</h2>
-            <p><strong>Course Overview:</strong> This course provides a comprehensive introduction to the fundamental principles of biochemistry and molecular biology. Students will explore the chemical basis of life, from simple molecules to complex cellular processes.</p>
-            
-            <h3>Learning Objectives:</h3>
-            <ul>
-                <li>Understand the basic principles of biochemistry</li>
-                <li>Identify the four major classes of biomolecules</li>
-                <li>Explain the relationship between structure and function in biological molecules</li>
-                <li>Describe the central dogma of molecular biology</li>
-            </ul>
-            
-            <h3>Key Concepts:</h3>
-            <p><strong>Biomolecules:</strong> The four major classes of biomolecules are carbohydrates, lipids, proteins, and nucleic acids. Each class has distinct chemical properties and biological functions.</p>
-            
-            <p><strong>Metabolism:</strong> The sum of all chemical reactions that occur within a living organism. These reactions are organized into metabolic pathways that convert molecules into other molecules.</p>
-            
-            <p><strong>Enzymes:</strong> Biological catalysts that speed up chemical reactions without being consumed in the process. They are typically proteins that bind specific substrates and lower the activation energy of reactions.</p>
-        `;
-    } else if (fileName.includes('Amino Acids')) {
-        return `
-            <h2>Amino Acids, Peptides, and Proteins</h2>
-            <p><strong>Structure of Amino Acids:</strong> Amino acids are the building blocks of proteins. Each amino acid contains a central carbon atom (α-carbon) bonded to an amino group (-NH₂), a carboxyl group (-COOH), a hydrogen atom, and a unique side chain (R-group).</p>
-            
-            <h3>The 20 Standard Amino Acids:</h3>
-            <p>Amino acids can be classified based on their side chain properties:</p>
-            <ul>
-                <li><strong>Nonpolar (hydrophobic):</strong> Alanine, Valine, Leucine, Isoleucine, Methionine, Phenylalanine, Tryptophan, Proline</li>
-                <li><strong>Polar (hydrophilic):</strong> Serine, Threonine, Cysteine, Asparagine, Glutamine, Tyrosine</li>
-                <li><strong>Charged:</strong> Lysine, Arginine, Histidine (basic); Aspartic acid, Glutamic acid (acidic)</li>
-            </ul>
-            
-            <h3>Peptide Bond Formation:</h3>
-            <p>Peptide bonds are formed through a condensation reaction between the carboxyl group of one amino acid and the amino group of another, releasing a water molecule. This creates a peptide chain with the backbone structure: -N-C-C-N-C-C-</p>
-            
-            <h3>Protein Structure Levels:</h3>
-            <ol>
-                <li><strong>Primary:</strong> Linear sequence of amino acids</li>
-                <li><strong>Secondary:</strong> Local folding patterns (α-helices, β-sheets)</li>
-                <li><strong>Tertiary:</strong> Overall 3D structure of a single polypeptide</li>
-                <li><strong>Quaternary:</strong> Assembly of multiple polypeptide subunits</li>
-            </ol>
-        `;
-    } else if (fileName.includes('Enzymes')) {
-        return `
-            <h2>Enzymes: Basic Concepts and Kinetics</h2>
-            <p><strong>Enzyme Definition:</strong> Enzymes are biological catalysts that accelerate chemical reactions by lowering the activation energy barrier. They are typically proteins (though some RNA molecules can also act as enzymes).</p>
-            
-            <h3>Enzyme-Substrate Interaction:</h3>
-            <p>The enzyme binds to its substrate(s) at the active site, forming an enzyme-substrate complex. This binding is highly specific due to the complementary shape and chemical properties of the active site and substrate.</p>
-            
-            <h3>Michaelis-Menten Kinetics:</h3>
-            <p>The relationship between substrate concentration and reaction rate follows the Michaelis-Menten equation:</p>
-            <p><em>v = Vmax[S] / (Km + [S])</em></p>
-            <ul>
-                <li><strong>Vmax:</strong> Maximum reaction rate when enzyme is saturated</li>
-                <li><strong>Km:</strong> Michaelis constant - substrate concentration at half Vmax</li>
-                <li><strong>[S]:</strong> Substrate concentration</li>
-            </ul>
-            
-            <h3>Factors Affecting Enzyme Activity:</h3>
-            <ul>
-                <li><strong>Temperature:</strong> Activity increases with temperature until denaturation occurs</li>
-                <li><strong>pH:</strong> Enzymes have optimal pH ranges for activity</li>
-                <li><strong>Substrate concentration:</strong> Rate increases with substrate until saturation</li>
-                <li><strong>Enzyme concentration:</strong> Rate is directly proportional to enzyme concentration</li>
-            </ul>
-        `;
-    } else if (fileName.includes('Readings')) {
-        return `
-            <h2>Week 1 Required Readings</h2>
-            <p><strong>Textbook Chapters:</strong></p>
-            <ul>
-                <li>Chapter 1: Introduction to Biochemistry</li>
-                <li>Chapter 2: Water and pH</li>
-                <li>Chapter 3: Amino Acids and Peptides</li>
-            </ul>
-            
-            <h3>Research Papers:</h3>
-            <ol>
-                <li><strong>"The Central Dogma of Molecular Biology"</strong> by Francis Crick (1970)</li>
-                <li><strong>"Structure and Function of Proteins"</strong> by Linus Pauling (1951)</li>
-            </ol>
-            
-            <h3>Key Concepts to Focus On:</h3>
-            <ul>
-                <li>Chemical properties of water and their biological significance</li>
-                <li>pH and buffer systems in biological systems</li>
-                <li>Structure and properties of the 20 standard amino acids</li>
-                <li>Peptide bond formation and protein primary structure</li>
-            </ul>
-            
-            <h3>Study Questions:</h3>
-            <ol>
-                <li>How does the structure of water contribute to its role as a biological solvent?</li>
-                <li>What are the Henderson-Hasselbalch equation and its applications?</li>
-                <li>How do amino acid side chains determine protein structure and function?</li>
-                <li>What is the significance of the peptide bond in protein structure?</li>
-            </ol>
-        `;
-    } else if (fileName.includes('Quiz')) {
-        return `
-            <h2>Practice Quiz: Protein Structure</h2>
-            <p><strong>Instructions:</strong> Answer the following questions to test your understanding of protein structure concepts. This quiz covers primary, secondary, tertiary, and quaternary protein structures.</p>
-            
-            <h3>Question 1:</h3>
-            <p><strong>Which of the following best describes the primary structure of a protein?</strong></p>
-            <ol type="a">
-                <li>The overall 3D shape of the protein</li>
-                <li>The linear sequence of amino acids</li>
-                <li>The local folding patterns like α-helices</li>
-                <li>The assembly of multiple polypeptide chains</li>
-            </ol>
-            <p><strong>Answer:</strong> b) The linear sequence of amino acids</p>
-            
-            <h3>Question 2:</h3>
-            <p><strong>What type of bonds are primarily responsible for maintaining secondary structure?</strong></p>
-            <ol type="a">
-                <li>Peptide bonds</li>
-                <li>Hydrogen bonds</li>
-                <li>Disulfide bonds</li>
-                <li>Ionic bonds</li>
-            </ol>
-            <p><strong>Answer:</strong> b) Hydrogen bonds</p>
-            
-            <h3>Question 3:</h3>
-            <p><strong>Which of the following is NOT a type of secondary structure?</strong></p>
-            <ol type="a">
-                <li>α-helix</li>
-                <li>β-sheet</li>
-                <li>β-turn</li>
-                <li>Random coil</li>
-            </ol>
-            <p><strong>Answer:</strong> d) Random coil (this is a tertiary structure element)</p>
-        `;
-    } else {
-        // Generic content for other files
-        return `
-            <h2>${fileName}</h2>
-            <p><strong>Description:</strong> ${description}</p>
-            
-            <h3>Content Overview:</h3>
-            <p>This document contains important course materials related to ${fileName.toLowerCase()}. The content has been processed and is ready for student access.</p>
-            
-            <h3>Key Topics Covered:</h3>
-            <ul>
-                <li>Fundamental concepts and principles</li>
-                <li>Important definitions and terminology</li>
-                <li>Practical applications and examples</li>
-                <li>Study questions and exercises</li>
-            </ul>
-            
-            <h3>Learning Objectives:</h3>
-            <p>After reviewing this material, students should be able to:</p>
-            <ul>
-                <li>Understand the core concepts presented</li>
-                <li>Apply the knowledge to solve related problems</li>
-                <li>Connect this material to other course topics</li>
-                <li>Demonstrate comprehension through assessments</li>
-            </ul>
-        `;
-    }
-}
+
 
 /**
  * Open the view modal with file content
@@ -2043,8 +2167,8 @@ function openCalibrationModal(week, topic) {
     modal.style.display = ''; // Clear any inline display style
     modal.classList.add('show');
     
-    // Load questions specific to this week/topic
-    loadCalibrationQuestions(week);
+    // TODO: Load questions specific to this week/topic from database
+    // This functionality will be implemented when the actual question loading is ready
 }
 
 /**
@@ -2059,122 +2183,7 @@ function closeCalibrationModal() {
     }
 }
 
-/**
- * Load calibration questions for a specific week
- * @param {string} week - The week identifier (e.g., 'Week 1')
- */
-async function loadCalibrationQuestions(week) {
-    try {
-        // In a real implementation, this would fetch questions specific to the week
-        // For now, we'll use mock data with week-specific content
-        let mockQuestions;
-        
-        if (week === 'Week 1') {
-            mockQuestions = [
-                {
-                    id: 1,
-                    question: "What is the primary focus of biochemistry?",
-                    options: [
-                        "The study of plant life",
-                        "The study of chemical processes in living organisms",
-                        "The study of ecosystems",
-                        "The study of microorganisms"
-                    ],
-                    correctAnswer: 1
-                },
-                {
-                    id: 2,
-                    question: "Which of the following is a major biomolecule studied in biochemistry?",
-                    options: [
-                        "Silicon",
-                        "Proteins",
-                        "Plastic",
-                        "Petroleum"
-                    ],
-                    correctAnswer: 1
-                }
-            ];
-        } else if (week === 'Week 2') {
-            mockQuestions = [
-                {
-                    id: 1,
-                    question: "What is the basic building block of proteins?",
-                    options: [
-                        "Nucleotides",
-                        "Amino acids",
-                        "Fatty acids",
-                        "Monosaccharides"
-                    ],
-                    correctAnswer: 1
-                },
-                {
-                    id: 2,
-                    question: "Which level of protein structure refers to the overall 3D arrangement?",
-                    options: [
-                        "Primary structure",
-                        "Secondary structure",
-                        "Tertiary structure",
-                        "Quaternary structure"
-                    ],
-                    correctAnswer: 2
-                }
-            ];
-        } else if (week === 'Week 3') {
-            mockQuestions = [
-                {
-                    id: 1,
-                    question: "What do enzymes primarily do in biochemical reactions?",
-                    options: [
-                        "Slow down reactions",
-                        "Speed up reactions",
-                        "Stop reactions",
-                        "Reverse reactions"
-                    ],
-                    correctAnswer: 1
-                },
-                {
-                    id: 2,
-                    question: "In enzyme kinetics, what does Km represent?",
-                    options: [
-                        "Maximum reaction rate",
-                        "Substrate concentration at half maximum velocity",
-                        "Enzyme concentration",
-                        "Inhibition constant"
-                    ],
-                    correctAnswer: 1
-                }
-            ];
-        } else {
-            // Default questions
-            mockQuestions = [
-                {
-                    id: 1,
-                    question: "Sample question for " + week,
-                    options: [
-                        "Option A",
-                        "Option B",
-                        "Option C",
-                        "Option D"
-                    ],
-                    correctAnswer: 1
-                }
-            ];
-        }
-        
-        currentQuestions = mockQuestions;
-        questionCounter = mockQuestions.length + 1;
-        renderQuestions();
-        
-        // Load threshold - in a real implementation, this would be specific to the week
-        const threshold = 70;
-        document.getElementById('mode-threshold').value = threshold;
-        document.getElementById('threshold-value').textContent = threshold + '%';
-        
-    } catch (error) {
-        console.error('Error loading calibration questions:', error);
-        showNotification('Error loading questions. Please try again.', 'error');
-    }
-}
+
 
 /**
  * Save calibration questions for the current week
@@ -2670,9 +2679,15 @@ async function generateProbingQuestions(week) {
         // For now, we'll simulate a delay and generate some mock questions
         await new Promise(resolve => setTimeout(resolve, 2000));
 
-        // Generate mock probing questions based on the week
-        const mockQuestions = generateMockProbingQuestions(week);
-        console.log('Generated questions:', mockQuestions);
+        // TODO: Generate probing questions using AI API with course materials
+        // For now, using placeholder questions until AI integration is implemented
+        const mockQuestions = [
+            "How would you apply the concepts from this week to solve a real-world problem?",
+            "What connections can you make between this material and previous topics?",
+            "What questions would you ask to deepen your understanding of this subject?",
+            "How do these concepts relate to current research or applications in the field?"
+        ];
+        console.log('Generated placeholder questions:', mockQuestions);
         
         // Get the questions list for this week
         const questionsList = weekElement.querySelector(`#questions-list-${week.toLowerCase().replace(/\s+/g, '')}`);
@@ -2703,41 +2718,7 @@ async function generateProbingQuestions(week) {
     }
 }
 
-/**
- * Generate mock probing questions based on the week
- * @param {string} week - The week identifier (e.g., 'Week 1')
- * @returns {Array<string>} Array of probing question texts
- */
-function generateMockProbingQuestions(week) {
-    const questionSets = {
-        'Week 1': [
-            "Can you explain the relationship between water's molecular structure and its role as a biological solvent?",
-            "How do buffer systems maintain pH homeostasis in living organisms?",
-            "What would happen to cellular processes if amino acids couldn't form peptide bonds?",
-            "How does the amphipathic nature of phospholipids contribute to membrane formation?"
-        ],
-        'Week 2': [
-            "Can you predict how a change in pH would affect protein structure and function?",
-            "How do you think the R-groups of amino acids influence protein folding patterns?",
-            "What role do chaperone proteins play in preventing misfolded proteins?",
-            "How might protein denaturation affect enzymatic activity in cells?"
-        ],
-        'Week 3': [
-            "Can you explain why enzymes are more efficient than inorganic catalysts?",
-            "How would competitive inhibition affect the Michaelis-Menten kinetics curve?",
-            "What factors would you consider when designing an enzyme for industrial use?",
-            "How do allosteric enzymes provide regulatory control in metabolic pathways?"
-        ]
-    };
 
-    // Return questions for the specific week, or default questions
-    return questionSets[week] || [
-        "Can you connect the concepts from this week to previous material?",
-        "How would you apply these principles to solve a real-world problem?",
-        "What questions would you ask to deepen understanding of this topic?",
-        "How do these concepts relate to current research in the field?"
-    ];
-}
 
 /**
  * Helper function to find elements containing specific text
@@ -3749,7 +3730,7 @@ function createUnitElement(unitName, unitData, isExpanded = false) {
                     <div class="content-type-header">
                         <p><strong>Required Materials:</strong> *Lecture Notes and *Practice Questions/Tutorial are mandatory</p>
                     </div>
-                    <div class="file-item">
+                    <div class="file-item placeholder-item">
                         <div class="file-info">
                             <h3>*Lecture Notes - ${unitName}</h3>
                             <p>Placeholder for required lecture notes. Please upload content.</p>
@@ -3757,10 +3738,9 @@ function createUnitElement(unitName, unitData, isExpanded = false) {
                         </div>
                         <div class="file-actions">
                             <button class="action-button upload" onclick="openUploadModal('${unitName}', 'lecture-notes')">Upload</button>
-                            <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
                         </div>
                     </div>
-                    <div class="file-item">
+                    <div class="file-item placeholder-item">
                         <div class="file-info">
                             <h3>*Practice Questions/Tutorial</h3>
                             <p>Placeholder for required practice questions. Please upload content.</p>
@@ -3768,7 +3748,6 @@ function createUnitElement(unitName, unitData, isExpanded = false) {
                         </div>
                         <div class="file-actions">
                             <button class="action-button upload" onclick="openUploadModal('${unitName}', 'practice-quiz')">Upload</button>
-                            <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
                         </div>
                     </div>
                     <!-- Add Content Button -->
