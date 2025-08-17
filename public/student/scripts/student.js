@@ -6,9 +6,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize chat
     console.log('Student chat interface initialized');
     
-    // Show calibration questions on every reload for demo purposes
-    // In production, this would check session or database
-    showCalibrationQuestions();
+    // Check for published units and load real assessment questions
+    // If no units are published, allow direct chat
+    checkPublishedUnitsAndLoadQuestions();
     
     // Initialize mode toggle functionality
     initializeModeToggle();
@@ -335,8 +335,8 @@ function getCurrentStudentName() {
  */
 function getCurrentCourseId() {
     // This would typically come from JWT token or session
-    // For now, return a placeholder that matches the course structure
-    return 'BIOC-202-1755285146691';
+    // For now, return the actual course ID from your database
+    return 'BIOC-202-1755456577040';
 }
 
 /**
@@ -386,81 +386,290 @@ let currentQuestionIndex = 0;
 let studentAnswers = [];
 
 /**
- * Show calibration questions to determine student mode
+ * Check for published units and load real assessment questions
+ * If no units are published, allow direct chat
  */
-async function showCalibrationQuestions() {
+async function checkPublishedUnitsAndLoadQuestions() {
     try {
-        // Clear any existing mode for demo purposes
-        localStorage.removeItem('studentMode');
+        console.log('=== CHECKING FOR PUBLISHED UNITS ===');
         
-        // Define the 3 calibration questions (T/F, MCQ, Short Answer)
-        currentCalibrationQuestions = [
-            {
-                type: 'true-false',
-                question: 'The cell is the basic unit of life.',
-                options: ['True', 'False'],
-                correctAnswer: 0 // True
-            },
-            {
-                type: 'multiple-choice',
-                question: 'Which of the following is NOT a function of the cell membrane?',
-                options: [
-                    'Regulating what enters and exits the cell',
-                    'Protecting the cell from its environment',
-                    'Producing energy through photosynthesis',
-                    'Maintaining cell shape and structure'
-                ],
-                correctAnswer: 2 // C - Producing energy through photosynthesis
-            },
-            {
-                type: 'short-answer',
-                question: 'Explain the difference between prokaryotic and eukaryotic cells in one sentence.',
-                correctAnswer: 'Prokaryotic cells lack a nucleus and membrane-bound organelles, while eukaryotic cells have both a nucleus and membrane-bound organelles.'
-            }
-        ];
+        // Get current course ID
+        const courseId = getCurrentCourseId();
+        console.log('Checking course:', courseId);
         
-        currentQuestionIndex = 0;
-        studentAnswers = [];
+        // Fetch course data to check which units are published
+        console.log(`Making API request to: /api/courses/${courseId}`);
+        const response = await fetch(`/api/courses/${courseId}`);
+        console.log('API response status:', response.status);
+        console.log('API response headers:', Object.fromEntries(response.headers.entries()));
         
-        // Hide chat input during calibration
-        const chatInputContainer = document.querySelector('.chat-input-container');
-        if (chatInputContainer) {
-            chatInputContainer.style.display = 'none';
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('API error response body:', errorText);
+            throw new Error(`Failed to fetch course data: ${response.status} - ${errorText}`);
         }
         
-        // Hide mode toggle during calibration
-        const modeToggleContainer = document.querySelector('.mode-toggle-container');
-        if (modeToggleContainer) {
-            modeToggleContainer.style.display = 'none';
+        const courseData = await response.json();
+        console.log('=== COURSE DATA RECEIVED ===');
+        console.log('Full course data:', courseData);
+        console.log('Course data structure:', {
+            success: courseData.success,
+            hasData: !!courseData.data,
+            dataKeys: courseData.data ? Object.keys(courseData.data) : 'no data',
+            hasLectures: courseData.data && !!courseData.data.lectures,
+            lecturesType: courseData.data && courseData.data.lectures ? typeof courseData.data.lectures : 'no lectures',
+            lecturesLength: courseData.data && courseData.data.lectures ? courseData.data.lectures.length : 'no lectures'
+        });
+        
+        if (!courseData.data || !courseData.data.lectures) {
+            console.log('No course data or lectures found');
+            console.log('Available data keys:', courseData.data ? Object.keys(courseData.data) : 'no data');
+            showNoQuestionsMessage();
+            return;
         }
         
-        // Clear any existing messages except the welcome message
-        const chatMessages = document.getElementById('chat-messages');
-        const welcomeMessage = chatMessages.querySelector('.message:not(.calibration-question):not(.mode-result)');
-        if (welcomeMessage) {
-            chatMessages.innerHTML = '';
-            chatMessages.appendChild(welcomeMessage);
+        // Find published units
+        const publishedUnits = courseData.data.lectures.filter(unit => unit.isPublished === true);
+        console.log('=== PUBLISHED UNITS ANALYSIS ===');
+        console.log('All lectures:', courseData.data.lectures);
+        console.log('Published units found:', publishedUnits);
+        console.log('Published units count:', publishedUnits.length);
+        
+        if (publishedUnits.length === 0) {
+            console.log('No published units found');
+            console.log('All units:', courseData.data.lectures.map(u => ({ name: u.name, isPublished: u.isPublished })));
+            showNoQuestionsMessage();
+            return;
         }
         
-        // Show first question
-        showCalibrationQuestion();
+        // Load assessment questions from published units
+        console.log('Loading assessment questions from published units...');
+        await loadAssessmentQuestionsFromUnits(publishedUnits);
         
     } catch (error) {
-        console.error('Error loading calibration questions:', error);
-        // Default to tutor mode on error
-        localStorage.setItem('studentMode', 'tutor');
-        updateModeToggleUI('tutor');
-        
-        // Show chat input and mode toggle on error
-        const chatInputContainer = document.querySelector('.chat-input-container');
-        if (chatInputContainer) {
-            chatInputContainer.style.display = 'block';
-        }
-        const modeToggleContainer = document.querySelector('.mode-toggle-container');
-        if (modeToggleContainer) {
-            modeToggleContainer.style.display = 'block';
-        }
+        console.error('=== ERROR CHECKING PUBLISHED UNITS ===');
+        console.error('Error details:', error);
+        console.error('Error stack:', error.stack);
+        showNoQuestionsMessage();
     }
+}
+
+/**
+ * Show message when no questions are available
+ */
+function showNoQuestionsMessage() {
+    console.log('Showing no questions message');
+    
+    // Set default mode to tutor
+    localStorage.setItem('studentMode', 'tutor');
+    updateModeToggleUI('tutor');
+    
+    // Show chat input and mode toggle
+    const chatInputContainer = document.querySelector('.chat-input-container');
+    if (chatInputContainer) {
+        chatInputContainer.style.display = 'block';
+    }
+    const modeToggleContainer = document.querySelector('.mode-toggle-container');
+    if (modeToggleContainer) {
+        modeToggleContainer.style.display = 'block';
+    }
+    
+    // Add message to chat
+    const noQuestionsMessage = document.createElement('div');
+    noQuestionsMessage.classList.add('message', 'bot-message');
+    
+    const avatarDiv = document.createElement('div');
+    avatarDiv.classList.add('message-avatar');
+    avatarDiv.textContent = 'B';
+    
+    const contentDiv = document.createElement('div');
+    contentDiv.classList.add('message-content');
+    
+    const messageText = document.createElement('p');
+    messageText.innerHTML = `<strong>Welcome to BiocBot!</strong><br>
+    No assessment questions are currently available for this course. You can chat directly with me about any topics you'd like to discuss or questions you have about the course material.`;
+    
+    contentDiv.appendChild(messageText);
+    
+    // Add timestamp
+    const timestamp = document.createElement('span');
+    timestamp.classList.add('timestamp');
+    timestamp.textContent = 'Just now';
+    contentDiv.appendChild(timestamp);
+    
+    noQuestionsMessage.appendChild(avatarDiv);
+    noQuestionsMessage.appendChild(contentDiv);
+    
+    // Add to chat
+    const chatMessages = document.getElementById('chat-messages');
+    chatMessages.appendChild(noQuestionsMessage);
+    
+    // Scroll to bottom
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+/**
+ * Load assessment questions from published units
+ */
+async function loadAssessmentQuestionsFromUnits(publishedUnits) {
+    try {
+        console.log('=== LOADING ASSESSMENT QUESTIONS ===');
+        console.log('Loading questions from units:', publishedUnits.map(u => u.name));
+        
+        // Collect all assessment questions from published units
+        const allQuestions = [];
+        
+        for (const unit of publishedUnits) {
+            console.log(`Loading questions for unit: ${unit.name}`);
+            console.log(`Unit data:`, unit);
+            console.log(`Unit has assessmentQuestions:`, !!unit.assessmentQuestions);
+            console.log(`Unit assessmentQuestions count:`, unit.assessmentQuestions ? unit.assessmentQuestions.length : 0);
+            
+            // Check if the unit has assessment questions directly embedded
+            if (unit.assessmentQuestions && unit.assessmentQuestions.length > 0) {
+                console.log(`Found ${unit.assessmentQuestions.length} embedded questions in ${unit.name}`);
+                console.log(`Embedded questions:`, unit.assessmentQuestions);
+                
+                // Transform embedded questions to match our format
+                const transformedQuestions = unit.assessmentQuestions.map(q => ({
+                    id: q.questionId || q.id || q._id,
+                    type: q.questionType || 'multiple-choice',
+                    question: q.question,
+                    options: q.options || {},
+                    correctAnswer: q.correctAnswer,
+                    explanation: q.explanation || '',
+                    unitName: unit.name,
+                    passThreshold: unit.passThreshold || 2
+                }));
+                
+                allQuestions.push(...transformedQuestions);
+                console.log(`Added ${transformedQuestions.length} embedded questions from ${unit.name}`);
+            } else {
+                console.log(`No embedded questions found for ${unit.name}, trying API endpoint...`);
+                
+                try {
+                    // Fallback: try to fetch questions from API endpoint
+                    const questionsResponse = await fetch(`/api/questions/lecture?courseId=${getCurrentCourseId()}&lectureName=${unit.name}`);
+                    console.log(`API response for ${unit.name}:`, questionsResponse.status, questionsResponse.statusText);
+                    
+                    if (questionsResponse.ok) {
+                        const questionsData = await questionsResponse.json();
+                        console.log(`API questions for ${unit.name}:`, questionsData);
+                        
+                        if (questionsData.data && questionsData.data.questions && questionsData.data.questions.length > 0) {
+                            // Transform API questions to match our format
+                            const transformedQuestions = questionsData.data.questions.map(q => {
+                                console.log(`Raw question from API:`, q);
+                                console.log(`Question ${q.question}: correctAnswer = "${q.correctAnswer}"`);
+                                console.log(`Raw options:`, q.options);
+                                
+                                // Fix the correct answer format - remove "A" prefix if present
+                                let cleanCorrectAnswer = q.correctAnswer;
+                                if (typeof cleanCorrectAnswer === 'string' && cleanCorrectAnswer.startsWith('A')) {
+                                    cleanCorrectAnswer = cleanCorrectAnswer.substring(1);
+                                    console.log(`Cleaned correct answer from "${q.correctAnswer}" to "${cleanCorrectAnswer}"`);
+                                }
+                                
+                                // Fix the options format - remove "A,", "B,", "C," prefixes if present
+                                let cleanOptions = q.options;
+                                if (q.options && typeof q.options === 'object') {
+                                    cleanOptions = {};
+                                    Object.keys(q.options).forEach(key => {
+                                        let optionValue = q.options[key];
+                                        if (typeof optionValue === 'string' && optionValue.includes(',')) {
+                                            // Remove prefix like "A,", "B,", "C,"
+                                            const parts = optionValue.split(',');
+                                            if (parts.length > 1) {
+                                                optionValue = parts.slice(1).join(','); // Join remaining parts in case there are commas in the actual text
+                                            }
+                                        }
+                                        cleanOptions[key] = optionValue;
+                                    });
+                                    console.log(`Cleaned options from:`, q.options, `to:`, cleanOptions);
+                                }
+                                
+                                return {
+                                    id: q.questionId || q.id || q._id,
+                                    type: q.questionType || 'multiple-choice',
+                                    question: q.question,
+                                    options: cleanOptions,
+                                    correctAnswer: cleanCorrectAnswer,
+                                    explanation: q.explanation || '',
+                                    unitName: unit.name,
+                                    passThreshold: unit.passThreshold || 2
+                                };
+                            });
+                            
+                            allQuestions.push(...transformedQuestions);
+                            console.log(`Added ${transformedQuestions.length} API questions from ${unit.name}`);
+                            console.log(`Transformed questions:`, transformedQuestions);
+                        } else {
+                            console.log(`No API questions found for ${unit.name}`);
+                            console.log(`API response structure:`, questionsData);
+                        }
+                    } else {
+                        const errorText = await questionsResponse.text();
+                        console.warn(`Failed to fetch API questions for ${unit.name}:`, questionsResponse.status, errorText);
+                    }
+                } catch (error) {
+                    console.error(`Error loading API questions for ${unit.name}:`, error);
+                }
+            }
+        }
+        
+        console.log('Total questions loaded:', allQuestions.length);
+        
+        if (allQuestions.length === 0) {
+            console.log('No assessment questions found in any published units');
+            showNoQuestionsMessage();
+            return;
+        }
+        
+        // Start the assessment process with real questions
+        startAssessmentWithQuestions(allQuestions);
+        
+    } catch (error) {
+        console.error('Error loading assessment questions:', error);
+        showNoQuestionsMessage();
+    }
+}
+
+/**
+ * Start assessment with loaded questions
+ */
+function startAssessmentWithQuestions(questions) {
+    console.log('=== STARTING ASSESSMENT ===');
+    
+    // Clear any existing mode
+    localStorage.removeItem('studentMode');
+    
+    // Set up the questions
+    currentCalibrationQuestions = questions;
+    currentQuestionIndex = 0;
+    studentAnswers = [];
+    
+    // Hide chat input during assessment
+    const chatInputContainer = document.querySelector('.chat-input-container');
+    if (chatInputContainer) {
+        chatInputContainer.style.display = 'none';
+    }
+    
+    // Hide mode toggle during assessment
+    const modeToggleContainer = document.querySelector('.mode-toggle-container');
+    if (modeToggleContainer) {
+        modeToggleContainer.style.display = 'none';
+    }
+    
+    // Clear any existing messages except the welcome message
+    const chatMessages = document.getElementById('chat-messages');
+    const welcomeMessage = chatMessages.querySelector('.message:not(.calibration-question):not(.mode-result)');
+    if (welcomeMessage) {
+        chatMessages.innerHTML = '';
+        chatMessages.appendChild(welcomeMessage);
+    }
+    
+    // Show first question
+    showCalibrationQuestion();
 }
 
 /**
@@ -497,7 +706,10 @@ function showCalibrationQuestion() {
         const optionsDiv = document.createElement('div');
         optionsDiv.classList.add('calibration-options');
         
-        question.options.forEach((option, index) => {
+        // For true-false, always create True/False options
+        const options = ['True', 'False'];
+        
+        options.forEach((option, index) => {
             const optionContainer = document.createElement('div');
             optionContainer.classList.add('calibration-option-container');
             
@@ -517,18 +729,50 @@ function showCalibrationQuestion() {
         const optionsDiv = document.createElement('div');
         optionsDiv.classList.add('calibration-options');
         
-        question.options.forEach((option, index) => {
-            const optionContainer = document.createElement('div');
-            optionContainer.classList.add('calibration-option-container');
+        if (question.options && Object.keys(question.options).length > 0) {
+            // Use the options from the question (handle both array and object formats)
+            const optionEntries = Array.isArray(question.options) ? question.options : Object.entries(question.options);
             
-            const optionButton = document.createElement('button');
-            optionButton.classList.add('calibration-option');
-            optionButton.textContent = `${String.fromCharCode(65 + index)}. ${option}`;
-            optionButton.onclick = () => selectCalibrationAnswer(index, currentQuestionIndex);
-            
-            optionContainer.appendChild(optionButton);
-            optionsDiv.appendChild(optionContainer);
-        });
+            optionEntries.forEach((option, index) => {
+                const optionContainer = document.createElement('div');
+                optionContainer.classList.add('calibration-option-container');
+                
+                const optionButton = document.createElement('button');
+                optionButton.classList.add('calibration-option');
+                
+                // Handle both array and object formats
+                let optionText = '';
+                if (Array.isArray(option)) {
+                    optionText = option;
+                } else if (typeof option === 'object' && option !== null) {
+                    optionText = option[1] || `Option ${index + 1}`;
+                } else {
+                    optionText = option || `Option ${index + 1}`;
+                }
+                
+                // Don't add extra letters since we're cleaning the options from the database
+                optionButton.textContent = `${String.fromCharCode(65 + index)}. ${optionText}`;
+                optionButton.onclick = () => selectCalibrationAnswer(index, currentQuestionIndex);
+                
+                optionContainer.appendChild(optionButton);
+                optionsDiv.appendChild(optionContainer);
+            });
+        } else {
+            // Fallback options if none provided
+            const fallbackOptions = ['Option A', 'Option B', 'Option C', 'Option D'];
+            fallbackOptions.forEach((option, index) => {
+                const optionContainer = document.createElement('div');
+                optionContainer.classList.add('calibration-option-container');
+                
+                const optionButton = document.createElement('button');
+                optionButton.classList.add('calibration-option');
+                optionButton.textContent = `${String.fromCharCode(65 + index)}. ${option}`;
+                optionButton.onclick = () => selectCalibrationAnswer(index, currentQuestionIndex);
+                
+                optionContainer.appendChild(optionButton);
+                optionsDiv.appendChild(optionContainer);
+            });
+        }
         
         contentDiv.appendChild(optionsDiv);
         
@@ -550,6 +794,28 @@ function showCalibrationQuestion() {
         answerContainer.appendChild(answerInput);
         answerContainer.appendChild(submitButton);
         contentDiv.appendChild(answerContainer);
+    } else {
+        // Handle unknown question types by defaulting to multiple choice
+        console.warn(`Unknown question type: ${question.type}, defaulting to multiple choice`);
+        
+        const optionsDiv = document.createElement('div');
+        optionsDiv.classList.add('calibration-options');
+        
+        const fallbackOptions = ['Option A', 'Option B', 'Option C', 'Option D'];
+        fallbackOptions.forEach((option, index) => {
+            const optionContainer = document.createElement('div');
+            optionContainer.classList.add('calibration-option-container');
+            
+            const optionButton = document.createElement('button');
+            optionButton.classList.add('calibration-option');
+            optionButton.textContent = `${String.fromCharCode(65 + index)}. ${option}`;
+            optionButton.onclick = () => selectCalibrationAnswer(index, currentQuestionIndex);
+            
+            optionContainer.appendChild(optionButton);
+            optionsDiv.appendChild(optionContainer);
+        });
+        
+        contentDiv.appendChild(optionsDiv);
     }
     
     // Create message footer for timestamp only (no flag button for calibration questions)
@@ -673,38 +939,112 @@ function submitShortAnswer(answer, questionIndex) {
 }
 
 /**
- * Calculate student mode based on answers
+ * Calculate student mode based on answers to real assessment questions
  */
 async function calculateStudentMode() {
     try {
-        // Calculate scores for each question type
-        let tfCorrect = false;
-        let mcqCorrect = false;
-        let shortAnswerProvided = false;
+        console.log('=== CALCULATING STUDENT MODE ===');
+        console.log('Student answers:', studentAnswers);
+        console.log('Questions:', currentCalibrationQuestions);
         
-        // Check T/F question (first question)
-        if (studentAnswers.length > 0) {
-            tfCorrect = (studentAnswers[0] === currentCalibrationQuestions[0].correctAnswer);
+        // Calculate total correct answers
+        let totalCorrect = 0;
+        const totalQuestions = currentCalibrationQuestions.length;
+        
+        // Check each answer against the correct answer
+        for (let i = 0; i < Math.min(studentAnswers.length, totalQuestions); i++) {
+            const question = currentCalibrationQuestions[i];
+            const studentAnswerIndex = studentAnswers[i];
+            
+            // Convert student answer index to actual answer text for display
+            let studentAnswerText = '';
+            if (question.type === 'true-false') {
+                studentAnswerText = studentAnswerIndex === 0 ? 'True' : 'False';
+            } else if (question.type === 'multiple-choice' && question.options) {
+                // Get the actual option text from the options object
+                const optionKeys = Object.keys(question.options);
+                if (optionKeys[studentAnswerIndex]) {
+                    studentAnswerText = question.options[optionKeys[studentAnswerIndex]];
+                } else {
+                    studentAnswerText = `Option ${studentAnswerIndex}`;
+                }
+            } else {
+                studentAnswerText = studentAnswerIndex;
+            }
+            
+            console.log(`Question ${i + 1}:`, question.question);
+            console.log(`Student answer index:`, studentAnswerIndex);
+            console.log(`Student answer text:`, studentAnswerText);
+            console.log(`Correct answer:`, question.correctAnswer);
+            
+            let isCorrect = false;
+            
+            if (question.type === 'true-false') {
+                // For true-false, check if the answer matches
+                // Handle both string and boolean formats
+                const expectedAnswer = question.correctAnswer;
+                const studentAnswerText = studentAnswerIndex === 0 ? 'True' : 'False';
+                
+                if (typeof expectedAnswer === 'string') {
+                    // Convert to lowercase for comparison
+                    isCorrect = (studentAnswerText.toLowerCase() === expectedAnswer.toLowerCase());
+                } else if (typeof expectedAnswer === 'boolean') {
+                    // Handle boolean format
+                    isCorrect = (studentAnswerIndex === (expectedAnswer ? 0 : 1));
+                } else {
+                    // Default comparison
+                    isCorrect = (studentAnswerIndex === expectedAnswer);
+                }
+                
+                console.log(`True/False check: student answered ${studentAnswerText}, expected ${expectedAnswer}, correct: ${isCorrect}`);
+                
+            } else if (question.type === 'multiple-choice') {
+                // For multiple choice, check if the answer index matches
+                // Convert correct answer to index if it's a string
+                let expectedIndex = question.correctAnswer;
+                if (typeof expectedIndex === 'string') {
+                    // Try to find the index of the correct answer in options
+                    const optionKeys = Object.keys(question.options);
+                    expectedIndex = optionKeys.findIndex(key => question.options[key] === expectedIndex);
+                    if (expectedIndex === -1) expectedIndex = 0; // Default to 0 if not found
+                }
+                isCorrect = (studentAnswerIndex === expectedIndex);
+                console.log(`Multiple choice check: student answered index ${studentAnswerIndex}, expected index ${expectedIndex}, correct: ${isCorrect}`);
+            } else if (question.type === 'short-answer') {
+                // For short answer, consider it correct if they provided any meaningful answer
+                isCorrect = (studentAnswerIndex && studentAnswerIndex.trim().length > 10);
+            } else {
+                // For unknown types, default to checking if answer matches
+                isCorrect = (studentAnswerIndex === question.correctAnswer);
+            }
+            
+            if (isCorrect) {
+                totalCorrect++;
+                console.log(`Question ${i + 1} is CORRECT`);
+            } else {
+                console.log(`Question ${i + 1} is INCORRECT`);
+            }
         }
         
-        // Check MCQ question (second question)
-        if (studentAnswers.length > 1) {
-            mcqCorrect = (studentAnswers[1] === currentCalibrationQuestions[1].correctAnswer);
-        }
+        console.log(`Total correct: ${totalCorrect}/${totalQuestions}`);
         
-        // Check Short Answer question (third question)
-        if (studentAnswers.length > 2) {
-            shortAnswerProvided = (studentAnswers[2] && studentAnswers[2].trim().length > 0);
-        }
+        // Calculate percentage
+        const percentage = (totalCorrect / totalQuestions) * 100;
+        console.log(`Percentage: ${percentage}%`);
         
-        // Determine mode: Protégé if both T/F and MCQ are correct, otherwise Tutor
-        const mode = (tfCorrect && mcqCorrect) ? 'protege' : 'tutor';
+        // Determine mode based on performance
+        // If they get 70% or higher, they're in protégé mode (ready for advanced learning)
+        // Otherwise, they're in tutor mode (need more guidance)
+        const mode = (percentage >= 70) ? 'protege' : 'tutor';
+        
         const score = {
-            tfCorrect: tfCorrect,
-            mcqCorrect: mcqCorrect,
-            shortAnswerProvided: shortAnswerProvided,
-            totalCorrect: (tfCorrect ? 1 : 0) + (mcqCorrect ? 1 : 0) + (shortAnswerProvided ? 1 : 0)
+            totalCorrect: totalCorrect,
+            totalQuestions: totalQuestions,
+            percentage: percentage,
+            mode: mode
         };
+        
+        console.log(`Determined mode: ${mode}`);
         
         // Store mode in localStorage
         localStorage.setItem('studentMode', mode);
@@ -748,7 +1088,7 @@ async function calculateStudentMode() {
 /**
  * Show mode result to student
  * @param {string} mode - Determined mode (tutor or protege)
- * @param {object} score - Calibration score object
+ * @param {object} score - Assessment score object
  */
 function showModeResult(mode, score) {
     const modeMessage = document.createElement('div');
@@ -762,16 +1102,33 @@ function showModeResult(mode, score) {
     contentDiv.classList.add('message-content');
     
     const resultText = document.createElement('p');
+    
+    // Show score information
+    const scoreInfo = document.createElement('div');
+    scoreInfo.classList.add('score-info');
+    scoreInfo.innerHTML = `
+        <strong>Assessment Results:</strong><br>
+        Score: ${score.totalCorrect}/${score.totalQuestions} (${score.percentage.toFixed(1)}%)
+    `;
+    contentDiv.appendChild(scoreInfo);
+    
+    // Show mode explanation
+    const modeExplanation = document.createElement('div');
+    modeExplanation.classList.add('mode-explanation');
+    
     if (mode === 'protege') {
-        resultText.innerHTML = `<strong>BiocBot is in protégé mode</strong><br>
-        Great job! You answered both the True/False and Multiple Choice questions correctly. I'm ready to be your study partner and help you explore topics together. What questions do you have about cellular processes and reactions?`;
+        modeExplanation.innerHTML = `
+            <strong>BiocBot is in protégé mode</strong><br>
+            Excellent work! You've demonstrated strong understanding of the course material. I'm ready to be your study partner and help you explore advanced topics together. What questions do you have about the course material?`;
     } else {
-        resultText.innerHTML = `<strong>BiocBot is in tutor mode</strong><br>
-        Thanks for your responses! I'm here to guide your learning and help explain concepts clearly. What questions do you have about cellular processes and reactions?`;
+        modeExplanation.innerHTML = `
+            <strong>BiocBot is in tutor mode</strong><br>
+            Thanks for completing the assessment! I'm here to guide your learning and help explain concepts clearly. What questions do you have about the course material?`;
     }
     
-    contentDiv.appendChild(resultText);
+    contentDiv.appendChild(modeExplanation);
     
+    // Add timestamp
     const timestamp = document.createElement('span');
     timestamp.classList.add('timestamp');
     timestamp.textContent = 'Just now';

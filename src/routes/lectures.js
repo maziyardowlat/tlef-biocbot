@@ -268,6 +268,85 @@ router.get('/pass-threshold', async (req, res) => {
     }
 });
 
-
+/**
+ * GET /api/lectures/published-with-questions
+ * Get published lectures with their assessment questions for students
+ */
+router.get('/published-with-questions', async (req, res) => {
+    const { courseId } = req.query;
+    
+    if (!courseId) {
+        return res.status(400).json({
+            success: false,
+            message: 'Missing required parameter: courseId'
+        });
+    }
+    
+    try {
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
+        
+        // Get the courses collection
+        const collection = db.collection('courses');
+        
+        // Find the course and get only published lectures with their questions
+        const course = await collection.findOne(
+            { courseId },
+            { projection: { lectures: 1, courseName: 1 } }
+        );
+        
+        if (!course || !course.lectures) {
+            return res.json({
+                success: true,
+                data: {
+                    courseId,
+                    courseName: course?.courseName || 'Unknown Course',
+                    publishedLectures: [],
+                    count: 0
+                }
+            });
+        }
+        
+        // Filter for published lectures and include assessment questions
+        const publishedLectures = course.lectures
+            .filter(lecture => lecture.isPublished === true)
+            .map(lecture => ({
+                name: lecture.name,
+                isPublished: lecture.isPublished,
+                learningObjectives: lecture.learningObjectives || [],
+                passThreshold: lecture.passThreshold || 2,
+                assessmentQuestions: lecture.assessmentQuestions || [],
+                documents: lecture.documents || [],
+                createdAt: lecture.createdAt,
+                updatedAt: lecture.updatedAt
+            }));
+        
+        console.log(`Found ${publishedLectures.length} published lectures for course ${courseId}`);
+        
+        res.json({
+            success: true,
+            data: {
+                courseId,
+                courseName: course.courseName,
+                publishedLectures,
+                count: publishedLectures.length,
+                lastUpdated: new Date().toISOString()
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error fetching published lectures with questions:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while fetching published lectures'
+        });
+    }
+});
 
 module.exports = router; 

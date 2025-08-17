@@ -395,6 +395,48 @@
     margin-top: 40px;
 }
 
+/* Score info and mode explanation styles */
+.score-info {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 15px 20px;
+    border-radius: 12px;
+    margin: 15px 0;
+    text-align: center;
+    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.score-info strong {
+    font-size: 16px;
+    display: block;
+    margin-bottom: 8px;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.mode-explanation {
+    background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+    color: white;
+    padding: 20px;
+    border-radius: 12px;
+    margin: 15px 0;
+    text-align: center;
+    box-shadow: 0 4px 15px rgba(240, 147, 251, 0.3);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    line-height: 1.6;
+}
+
+.mode-explanation strong {
+    font-size: 18px;
+    display: block;
+    margin-bottom: 12px;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.mode-explanation br {
+    margin-bottom: 8px;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .chat-container {

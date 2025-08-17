@@ -272,19 +272,20 @@ router.get('/', async (req, res) => {
 
 /**
  * GET /api/courses/:courseId
- * Get specific course details
+ * Get course details (for instructors)
  */
 router.get('/:courseId', async (req, res) => {
     try {
         const { courseId } = req.params;
         const instructorId = req.query.instructorId;
         
+        // If no instructorId provided, treat as student request
         if (!instructorId) {
-            return res.status(400).json({
-                success: false,
-                message: 'instructorId is required'
-            });
+            console.log(`Student request for course: ${courseId}`);
+            return await getCourseForStudent(req, res, courseId);
         }
+        
+        console.log(`Instructor request for course: ${courseId}, instructor: ${instructorId}`);
         
         // Get database instance from app.locals
         const db = req.app.locals.db;
@@ -344,6 +345,95 @@ router.get('/:courseId', async (req, res) => {
         });
     }
 });
+
+/**
+ * Helper function to get course data for students
+ * @param {Object} req - Express request object
+ * @param {Object} res - Express response object
+ * @param {string} courseId - Course ID
+ */
+async function getCourseForStudent(req, res, courseId) {
+    try {
+        console.log(`Getting course data for student: ${courseId}`);
+        
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
+        
+        // Query database for course details (any instructor)
+        const collection = db.collection('courses');
+        const course = await collection.findOne({ courseId });
+        
+        if (!course) {
+            console.log(`Course not found: ${courseId}`);
+            return res.status(404).json({
+                success: false,
+                message: 'Course not found'
+            });
+        }
+        
+        console.log(`Course found: ${courseId}, lectures count: ${course.lectures?.length || 0}`);
+        console.log('Raw course data from DB:', JSON.stringify(course, null, 2));
+        console.log('Course lectures structure:', course.lectures);
+        
+        // Transform the data to include lectures array that students expect
+        const transformedCourse = {
+            id: course.courseId,
+            name: course.courseName,
+            weeks: course.courseStructure?.weeks || 0,
+            lecturesPerWeek: course.courseStructure?.lecturesPerWeek || 0,
+            createdAt: course.createdAt?.toISOString() || new Date().toISOString(),
+            status: course.status || 'active',
+            // Include lectures array that students expect
+            lectures: course.lectures?.map(lecture => ({
+                id: lecture.id || lecture.name,
+                name: lecture.name,
+                isPublished: lecture.isPublished || false,
+                documents: lecture.documents || [],
+                questions: lecture.questions || []
+            })) || [],
+            // Keep structure for compatibility
+            structure: {
+                weeks: course.lectures?.map((lecture, index) => ({
+                    id: `week-${Math.floor(index / (course.courseStructure?.lecturesPerWeek || 1)) + 1}`,
+                    name: `Week ${Math.floor(index / (course.courseStructure?.lecturesPerWeek || 1)) + 1}`,
+                    lectures: course.courseStructure?.lecturesPerWeek || 0,
+                    documents: lecture.documents?.length || 0
+                })) || [],
+                specialFolders: [
+                    { id: 'syllabus', name: 'Syllabus & Schedule', type: 'syllabus' },
+                    { id: 'quizzes', name: 'Practice Quizzes', type: 'quiz' }
+                ]
+            }
+        };
+        
+        console.log(`Transformed course data:`, {
+            courseId: transformedCourse.id,
+            name: transformedCourse.name,
+            lecturesCount: transformedCourse.lectures.length,
+            publishedLectures: transformedCourse.lectures.filter(l => l.isPublished).length,
+            lecturesDetails: transformedCourse.lectures.map(l => ({ name: l.name, isPublished: l.isPublished, hasDocuments: l.documents.length > 0, hasQuestions: l.questions.length > 0 }))
+        });
+        console.log('Full transformed course data:', JSON.stringify(transformedCourse, null, 2));
+        
+        res.json({
+            success: true,
+            data: transformedCourse
+        });
+        
+    } catch (error) {
+        console.error('Error fetching course for student:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error'
+        });
+    }
+}
 
 /**
  * PUT /api/courses/:courseId
