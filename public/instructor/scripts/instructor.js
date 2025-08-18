@@ -1214,53 +1214,7 @@ async function deleteDocument(documentId) {
     }
 }
 
-/**
- * Add a global cleanup button to the instructor interface
- * This allows instructors to manually clean up orphaned documents
- */
-function addGlobalCleanupButton() {
-    // Check if cleanup button already exists
-    if (document.querySelector('.global-cleanup-btn')) {
-        return;
-    }
-    
-    // Create cleanup button
-    const cleanupButton = document.createElement('button');
-    cleanupButton.className = 'global-cleanup-btn';
-    cleanupButton.innerHTML = '🧹 Clean Up Orphaned Documents';
-    cleanupButton.style.cssText = `
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        z-index: 1000;
-        background: #dc3545;
-        color: white;
-        border: none;
-        padding: 10px 15px;
-        border-radius: 5px;
-        cursor: pointer;
-        font-size: 14px;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-    `;
-    
-    cleanupButton.addEventListener('click', async () => {
-        cleanupButton.disabled = true;
-        cleanupButton.innerHTML = '🧹 Cleaning...';
-        
-        try {
-            await cleanupOrphanedDocuments();
-        } catch (error) {
-            console.error('Global cleanup failed:', error);
-            showNotification('Global cleanup failed. Please try again.', 'error');
-        } finally {
-            cleanupButton.disabled = false;
-            cleanupButton.innerHTML = '🧹 Clean Up Orphaned Documents';
-        }
-    });
-    
-    // Add to page
-    document.body.appendChild(cleanupButton);
-}
+
 
 /**
  * Manually remove a document reference from the course structure
