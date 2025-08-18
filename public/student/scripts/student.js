@@ -1103,14 +1103,7 @@ function showModeResult(mode, score) {
     
     const resultText = document.createElement('p');
     
-    // Show score information
-    const scoreInfo = document.createElement('div');
-    scoreInfo.classList.add('score-info');
-    scoreInfo.innerHTML = `
-        <strong>Assessment Results:</strong><br>
-        Score: ${score.totalCorrect}/${score.totalQuestions} (${score.percentage.toFixed(1)}%)
-    `;
-    contentDiv.appendChild(scoreInfo);
+    
     
     // Show mode explanation
     const modeExplanation = document.createElement('div');
