@@ -5,6 +5,7 @@
 
 const { QdrantClient } = require('@qdrant/js-client-rest');
 const { EmbeddingsModule } = require('ubc-genai-toolkit-embeddings');
+const { ChunkingModule } = require('ubc-genai-toolkit-chunking');
 const { ConsoleLogger } = require('ubc-genai-toolkit-core');
 const { randomUUID } = require('crypto');
 
@@ -14,6 +15,7 @@ class QdrantService {
     constructor() {
         this.client = null;
         this.embeddings = null;
+        this.chunker = null;
         this.collectionName = 'biocbot_documents';
         this.vectorSize = 768; // nomic-embed-text model dimension
     }
@@ -58,6 +60,22 @@ class QdrantService {
 
             this.embeddings = await EmbeddingsModule.create(config);
             console.log('✅ Successfully initialized embeddings service');
+
+            // Initialize chunking service
+            console.log('Initializing chunking service...');
+            const chunkLogger = new ConsoleLogger('biocbot-chunking');
+            const strategy = process.env.CHUNK_STRATEGY || 'recursiveCharacter';
+            const defaultOptions = {
+                chunkSize: Number(process.env.CHUNK_SIZE) || 1000,
+                chunkOverlap: Number(process.env.CHUNK_OVERLAP) || 200,
+                minChunkSize: Number(process.env.CHUNK_MIN) || 100
+            };
+            this.chunker = new ChunkingModule({
+                strategy,
+                defaultOptions,
+                logger: chunkLogger
+            });
+            console.log(`✅ Successfully initialized chunking service (strategy=${this.chunker.getDefaultStrategyName()})`);
 
             // Test embeddings service with a simple text
             console.log('Testing embeddings service...');
@@ -158,9 +176,24 @@ class QdrantService {
             console.log(`Sanitized content length: ${sanitizedContent.length} characters`);
             console.log(`Content preview: "${sanitizedContent.substring(0, 100)}..."`);
 
-            // Chunk the document content
-            const chunks = this.chunkDocument(sanitizedContent);
-            console.log(`Created ${chunks.length} chunks from document`);
+            // Chunk the document content using toolkit chunker
+            if (!this.chunker) {
+                throw new Error('Chunking service is not initialized');
+            }
+
+            const documents = [{
+                content: sanitizedContent,
+                metadata: { sourceId: documentData.documentId }
+            }];
+
+            const chunkResp = await this.chunker.chunkDocuments(documents, {});
+            const sortedChunks = [...chunkResp.chunks].sort(
+                (a, b) => a.metadata.chunkNumber - b.metadata.chunkNumber
+            );
+            const chunks = sortedChunks.map(c => c.text);
+            const strategyUsed = chunkResp.strategy || this.chunker.getDefaultStrategyName();
+
+            console.log(`Created ${chunks.length} chunks from document (strategy=${strategyUsed})`);
             
             if (chunks.length === 0) {
                 throw new Error('No chunks were created from the document content');
@@ -175,7 +208,7 @@ class QdrantService {
             }
 
             // Store chunks and embeddings in Qdrant
-            const storedChunks = await this.storeChunks(documentData, chunks, embeddings);
+            const storedChunks = await this.storeChunks(documentData, chunks, embeddings, strategyUsed);
             console.log(`Stored ${storedChunks.length} chunks in Qdrant`);
 
             return {
@@ -200,86 +233,7 @@ class QdrantService {
         }
     }
 
-    /**
-     * Chunk document content into smaller pieces for better embedding
-     * @param {string} content - Document text content
-     * @param {number} chunkSize - Maximum chunk size in characters
-     * @param {number} overlap - Overlap between chunks in characters
-     * @returns {Array<string>} Array of text chunks
-     */
-    chunkDocument(content, chunkSize = 1000, overlap = 200) {
-        if (!content || typeof content !== 'string') {
-            console.warn('Invalid content provided to chunkDocument, returning empty array');
-            return [];
-        }
-
-        if (content.trim().length === 0) {
-            console.warn('Empty content provided to chunkDocument, returning empty array');
-            return [];
-        }
-
-        console.log(`Chunking document: ${content.length} characters, chunk size: ${chunkSize}, overlap: ${overlap}`);
-        
-        const chunks = [];
-        let currentPosition = 0;
-        const maxIterations = Math.ceil(content.length / (chunkSize - overlap)) + 10; // Safety limit
-        let iterationCount = 0;
-
-        while (currentPosition < content.length && iterationCount < maxIterations) {
-            iterationCount++;
-            
-            // Calculate the end position for this chunk
-            let endPosition = Math.min(currentPosition + chunkSize, content.length);
-            
-            // Extract the chunk
-            let chunk = content.substring(currentPosition, endPosition);
-            
-            // Try to find a good break point near the end
-            if (endPosition < content.length && chunk.length > chunkSize * 0.8) {
-                // Look for sentence endings in the last 20% of the chunk
-                const searchStart = Math.max(currentPosition + Math.floor(chunkSize * 0.8), currentPosition);
-                const searchEnd = endPosition;
-                const searchText = content.substring(searchStart, searchEnd);
-                
-                const lastPeriod = searchText.lastIndexOf('.');
-                const lastQuestion = searchText.lastIndexOf('?');
-                const lastExclamation = searchText.lastIndexOf('!');
-                const lastBreak = Math.max(lastPeriod, lastQuestion, lastExclamation);
-                
-                if (lastBreak > 0) {
-                    // Found a good break point
-                    const actualEnd = searchStart + lastBreak + 1;
-                    chunk = content.substring(currentPosition, actualEnd);
-                    endPosition = actualEnd;
-                }
-            }
-            
-            // Ensure the chunk is valid
-            if (chunk && chunk.trim().length > 0) {
-                const trimmedChunk = chunk.trim();
-                if (trimmedChunk.length > 0) {
-                    chunks.push(trimmedChunk);
-                    console.log(`Created chunk ${chunks.length}: ${trimmedChunk.length} characters`);
-                }
-            }
-            
-            // Move to next position
-            if (endPosition <= currentPosition) {
-                // Safety check - if we're not making progress, force advancement
-                currentPosition = Math.min(currentPosition + chunkSize, content.length);
-            } else {
-                currentPosition = endPosition - overlap;
-            }
-            
-            // Ensure we don't go backwards
-            if (currentPosition < 0) {
-                currentPosition = 0;
-            }
-        }
-        
-        console.log(`Chunking complete: created ${chunks.length} chunks`);
-        return chunks;
-    }
+    
 
     /**
      * Generate embeddings for text chunks
@@ -344,9 +298,10 @@ class QdrantService {
      * @param {Object} documentData - Document metadata
      * @param {Array<string>} chunks - Text chunks
      * @param {Array<Array<number>>} embeddings - Embedding vectors
+     * @param {string} strategyUsed - Chunking strategy identifier
      * @returns {Promise<Array<Object>>} Array of stored chunk IDs
      */
-    async storeChunks(documentData, chunks, embeddings) {
+    async storeChunks(documentData, chunks, embeddings, strategyUsed = 'toolkit') {
         try {
             const points = [];
             const storedChunks = [];
@@ -364,8 +319,10 @@ class QdrantService {
                         fileName: documentData.fileName,
                         mimeType: documentData.mimeType,
                         chunkIndex: i,
+                        totalChunks: chunks.length,
                         chunkText: chunks[i],
                         chunkLength: chunks[i].length,
+                        strategyUsed: strategyUsed,
                         timestamp: new Date().toISOString()
                     }
                 };
