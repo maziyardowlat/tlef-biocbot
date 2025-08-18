@@ -38,10 +38,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 // Add bot response (simulated)
                 const botResponses = [
-                    "I found this information in your BIOC 202 materials. The cell is the basic unit of life, and all living organisms are composed of one or more cells.",
-                    "According to your BIOC 202 textbook, photosynthesis is the process by which plants convert light energy into chemical energy.",
-                    "Based on the lecture notes for BIOC 202, DNA replication is semi-conservative, meaning each new double helix contains one original strand and one new strand.",
-                    "The course material explains that natural selection is the process where organisms better adapted to their environment tend to survive and produce more offspring."
+                    "The cell is the basic unit of life, and all living organisms are composed of one or more cells.",
+                    "Photosynthesis is the process by which plants convert light energy into chemical energy.",
+                    "DNA replication is semi-conservative, meaning each new double helix contains one original strand and one new strand.",
+                    "Natural selection is the process where organisms better adapted to their environment tend to survive and produce more offspring."
                 ];
                 
                 const randomResponse = botResponses[Math.floor(Math.random() * botResponses.length)];
@@ -75,7 +75,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (withSource && sender === 'bot') {
             const sourceDiv = document.createElement('div');
             sourceDiv.classList.add('message-source');
-            sourceDiv.innerHTML = 'Source: <a href="#">BIOC 202 Textbook, Chapter 3</a>';
+            sourceDiv.innerHTML = 'Source: <a href="#">Course Content</a>';
             footerDiv.appendChild(sourceDiv);
         }
         

@@ -3379,6 +3379,12 @@ function showEmptyCourseState() {
             </div>
         `;
     }
+    
+    // Show onboarding navigation item when no course exists
+    const onboardingNavItem = document.getElementById('onboarding-nav-item');
+    if (onboardingNavItem) {
+        onboardingNavItem.style.display = 'block';
+    }
 }
 
 /**
@@ -3390,6 +3396,12 @@ function generateUnitsFromOnboarding(onboardingData) {
     if (!container) {
         console.error('Dynamic units container not found');
         return;
+    }
+    
+    // Hide onboarding navigation item when courses exist
+    const onboardingNavItem = document.getElementById('onboarding-nav-item');
+    if (onboardingNavItem) {
+        onboardingNavItem.style.display = 'none';
     }
     
     // Clear existing content
