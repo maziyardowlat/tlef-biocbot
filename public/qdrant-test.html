@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BiocBot Qdrant Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        .section {
+            margin-bottom: 30px;
+        }
+        h1, h2 {
+            color: #333;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input, textarea, select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        textarea {
+            height: 100px;
+            resize: vertical;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .result {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin-top: 15px;
+            white-space: pre-wrap;
+            font-family: monospace;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .status {
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 15px;
+        }
+        .status.success {
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+        }
+        .status.error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+        }
+        .status.info {
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            color: #0c5460;
+        }
+        .search-result {
+            background-color: #fff;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 10px;
+        }
+        .search-result .score {
+            font-weight: bold;
+            color: #007bff;
+        }
+        .search-result .chunk-text {
+            margin-top: 10px;
+            font-style: italic;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧬 BiocBot Qdrant Integration Test</h1>
+    
+    <!-- Status Section -->
+    <div class="container">
+        <h2>📊 Qdrant Status</h2>
+        <button onclick="checkStatus()">Check Qdrant Status</button>
+        <div id="statusResult"></div>
+    </div>
+
+    <!-- Document Processing Section -->
+    <div class="container">
+        <h2>📄 Process Document</h2>
+        <div class="form-group">
+            <label for="courseId">Course ID:</label>
+            <input type="text" id="courseId" value="BIOC-202-1755456577040" placeholder="Enter course ID">
+        </div>
+        <div class="form-group">
+            <label for="lectureName">Lecture/Unit Name:</label>
+            <input type="text" id="lectureName" value="Unit 1" placeholder="Enter lecture name">
+        </div>
+        <div class="form-group">
+            <label for="documentTitle">Document Title:</label>
+            <input type="text" id="documentTitle" value="Test Document" placeholder="Enter document title">
+        </div>
+        <div class="form-group">
+            <label for="documentContent">Document Content:</label>
+            <textarea id="documentContent" placeholder="Enter or paste document content here...">This is a test document about biochemistry. It contains information about molecular biology, cellular processes, and genetic mechanisms. Students will learn about DNA replication, protein synthesis, and metabolic pathways. This content will be chunked, embedded, and stored in the Qdrant vector database for semantic search capabilities.</textarea>
+        </div>
+        <button onclick="processDocument()">Process Document</button>
+        <div id="processResult"></div>
+    </div>
+
+    <!-- Semantic Search Section -->
+    <div class="container">
+        <h2>🔍 Semantic Search</h2>
+        <div class="form-group">
+            <label for="searchQuery">Search Query:</label>
+            <input type="text" id="searchQuery" value="DNA replication" placeholder="Enter your search query">
+        </div>
+        <div class="form-group">
+            <label for="searchCourseId">Course ID (optional):</label>
+            <input type="text" id="searchCourseId" value="BIOC-202-1755456577040" placeholder="Filter by course ID">
+        </div>
+        <div class="form-group">
+            <label for="searchLectureName">Lecture Name (optional):</label>
+            <input type="text" id="searchLectureName" value="Unit 1" placeholder="Filter by lecture name">
+        </div>
+        <div class="form-group">
+            <label for="searchLimit">Max Results:</label>
+            <select id="searchLimit">
+                <option value="5">5</option>
+                <option value="10" selected>10</option>
+                <option value="20">20</option>
+                <option value="50">50</option>
+            </select>
+        </div>
+        <button onclick="searchDocuments()">Search Documents</button>
+        <div id="searchResult"></div>
+    </div>
+
+    <!-- Collection Stats Section -->
+    <div class="container">
+        <h2>📈 Collection Statistics</h2>
+        <button onclick="getCollectionStats()">Get Collection Stats</button>
+        <div id="statsResult"></div>
+    </div>
+
+    <script>
+        const API_BASE = '/api/qdrant';
+
+        // Check Qdrant status
+        async function checkStatus() {
+            try {
+                const response = await fetch(`${API_BASE}/status`);
+                const result = await response.json();
+                
+                if (result.success) {
+                    showResult('statusResult', result, 'success');
+                } else {
+                    showResult('statusResult', result, 'error');
+                }
+            } catch (error) {
+                showResult('statusResult', { error: error.message }, 'error');
+            }
+        }
+
+        // Process document through Qdrant
+        async function processDocument() {
+            const courseId = document.getElementById('courseId').value;
+            const lectureName = document.getElementById('lectureName').value;
+            const title = document.getElementById('documentTitle').value;
+            const content = document.getElementById('documentContent').value;
+
+            if (!courseId || !lectureName || !title || !content) {
+                showResult('processResult', { error: 'All fields are required' }, 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE}/process-document`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        courseId,
+                        lectureName,
+                        documentId: `doc_${Date.now()}`,
+                        content,
+                        fileName: title,
+                        mimeType: 'text/plain'
+                    })
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    showResult('processResult', result, 'success');
+                } else {
+                    showResult('processResult', result, 'error');
+                }
+            } catch (error) {
+                showResult('processResult', { error: error.message }, 'error');
+            }
+        }
+
+        // Search documents using semantic similarity
+        async function searchDocuments() {
+            const query = document.getElementById('searchQuery').value;
+            const courseId = document.getElementById('searchCourseId').value;
+            const lectureName = document.getElementById('searchLectureName').value;
+            const limit = parseInt(document.getElementById('searchLimit').value);
+
+            if (!query) {
+                showResult('searchResult', { error: 'Search query is required' }, 'error');
+                return;
+            }
+
+            try {
+                const searchData = { query, limit };
+                if (courseId) searchData.courseId = courseId;
+                if (lectureName) searchData.lectureName = lectureName;
+
+                const response = await fetch(`${API_BASE}/search`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(searchData)
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    displaySearchResults(result);
+                } else {
+                    showResult('searchResult', result, 'error');
+                }
+            } catch (error) {
+                showResult('searchResult', { error: error.message }, 'error');
+            }
+        }
+
+        // Display search results in a user-friendly format
+        function displaySearchResults(result) {
+            const container = document.getElementById('searchResult');
+            
+            if (result.data.results.length === 0) {
+                container.innerHTML = '<div class="status info">No results found for your query.</div>';
+                return;
+            }
+
+            let html = `<div class="status success">Found ${result.data.results.length} relevant chunks for: "${result.data.query}"</div>`;
+            
+            result.data.results.forEach((item, index) => {
+                html += `
+                    <div class="search-result">
+                        <div><strong>Result ${index + 1}</strong> <span class="score">(Score: ${(item.score * 100).toFixed(1)}%)</span></div>
+                        <div><strong>File:</strong> ${item.fileName}</div>
+                        <div><strong>Lecture:</strong> ${item.lectureName}</div>
+                        <div><strong>Chunk:</strong> ${item.chunkIndex + 1}</div>
+                        <div class="chunk-text">${item.chunkText}</div>
+                    </div>
+                `;
+            });
+
+            container.innerHTML = html;
+        }
+
+        // Get collection statistics
+        async function getCollectionStats() {
+            try {
+                const response = await fetch(`${API_BASE}/collection-stats`);
+                const result = await response.json();
+                
+                if (result.success) {
+                    showResult('statsResult', result, 'success');
+                } else {
+                    showResult('statsResult', result, 'error');
+                }
+            } catch (error) {
+                showResult('statsResult', { error: error.message }, 'error');
+            }
+        }
+
+        // Helper function to display results
+        function showResult(elementId, data, type = 'info') {
+            const element = document.getElementById(elementId);
+            const statusClass = type === 'success' ? 'success' : type === 'error' ? 'error' : 'info';
+            
+            element.innerHTML = `
+                <div class="status ${statusClass}">
+                    <pre class="result">${JSON.stringify(data, null, 2)}</pre>
+                </div>
+            `;
+        }
+
+        // Auto-check status on page load
+        window.addEventListener('load', () => {
+            checkStatus();
+        });
+    </script>
+</body>
+</html>
+
+
+

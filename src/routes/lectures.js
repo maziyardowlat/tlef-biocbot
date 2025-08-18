@@ -1,6 +1,9 @@
 const express = require('express');
 const router = express.Router();
 
+// Import the Course model
+const CourseModel = require('../models/Course');
+
 // Middleware for JSON parsing
 router.use(express.json());
 
@@ -8,35 +11,48 @@ router.use(express.json());
  * POST /api/lectures/publish
  * Update the publish status of a lecture/week
  */
-router.post('/publish', (req, res) => {
-    const { lectureName, isPublished, instructorId } = req.body;
+router.post('/publish', async (req, res) => {
+    const { lectureName, isPublished, instructorId, courseId } = req.body;
     
     // Validate required fields
-    if (!lectureName || typeof isPublished !== 'boolean' || !instructorId) {
+    if (!lectureName || typeof isPublished !== 'boolean' || !instructorId || !courseId) {
         return res.status(400).json({
             success: false,
-            message: 'Missing required fields: lectureName, isPublished, instructorId'
+            message: 'Missing required fields: lectureName, isPublished, instructorId, courseId'
         });
     }
     
     try {
-        // In a real implementation, this would:
-        // 1. Validate the instructor has permission to modify this lecture
-        // 2. Update the publish status in the database
-        // 3. Update the Qdrant collection to include/exclude this lecture from student queries
-        // 4. Log the action for audit purposes
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
+        
+        // Update the publish status in MongoDB
+        const result = await CourseModel.updateLecturePublishStatus(
+            db, 
+            courseId, 
+            lectureName, 
+            isPublished, 
+            instructorId
+        );
         
         console.log(`Publish status updated for ${lectureName} by instructor ${instructorId}: ${isPublished}`);
         
-        // Mock successful response
         res.json({
             success: true,
             message: `${lectureName} ${isPublished ? 'published' : 'unpublished'} successfully`,
             data: {
                 lectureName,
                 isPublished,
+                courseId,
                 updatedAt: new Date().toISOString(),
-                instructorId
+                instructorId,
+                created: result.created
             }
         });
         
@@ -53,30 +69,34 @@ router.post('/publish', (req, res) => {
  * GET /api/lectures/publish-status
  * Get the publish status of all lectures for an instructor
  */
-router.get('/publish-status', (req, res) => {
-    const { instructorId } = req.query;
+router.get('/publish-status', async (req, res) => {
+    const { instructorId, courseId } = req.query;
     
-    if (!instructorId) {
+    if (!instructorId || !courseId) {
         return res.status(400).json({
             success: false,
-            message: 'Missing required parameter: instructorId'
+            message: 'Missing required parameters: instructorId, courseId'
         });
     }
     
     try {
-        // In a real implementation, this would fetch from the database
-        // Mock response with publish status for each lecture
-        const publishStatus = {
-            'Week 1': true,
-            'Week 2': false,
-            'Week 3': false,
-            'Quizzes': true
-        };
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
+        
+        // Fetch publish status from MongoDB
+        const publishStatus = await CourseModel.getLecturePublishStatus(db, courseId);
         
         res.json({
             success: true,
             data: {
                 instructorId,
+                courseId,
                 publishStatus,
                 lastUpdated: new Date().toISOString()
             }
@@ -95,7 +115,7 @@ router.get('/publish-status', (req, res) => {
  * GET /api/lectures/student-visible
  * Get all published lectures for student access
  */
-router.get('/student-visible', (req, res) => {
+router.get('/student-visible', async (req, res) => {
     const { courseId } = req.query;
     
     if (!courseId) {
@@ -106,44 +126,225 @@ router.get('/student-visible', (req, res) => {
     }
     
     try {
-        // In a real implementation, this would:
-        // 1. Check if the student has access to this course
-        // 2. Return only published lectures
-        // 3. Include content summaries and learning objectives
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
         
-        const publishedLectures = [
-            {
-                id: 'week-1',
-                name: 'Week 1',
-                title: 'Introduction to Biochemistry',
-                isPublished: true,
-                contentCount: 2,
-                lastUpdated: '2024-01-15T10:30:00Z'
-            },
-            {
-                id: 'quizzes',
-                name: 'Quizzes',
-                title: 'Practice Quizzes',
-                isPublished: true,
-                contentCount: 1,
-                lastUpdated: '2024-01-10T14:20:00Z'
-            }
-        ];
+        // Fetch published lectures from MongoDB
+        const publishedLectures = await CourseModel.getPublishedLectures(db, courseId);
         
         res.json({
             success: true,
             data: {
                 courseId,
                 publishedLectures,
-                totalPublished: publishedLectures.length
+                count: publishedLectures.length,
+                lastUpdated: new Date().toISOString()
             }
         });
         
     } catch (error) {
-        console.error('Error fetching student-visible lectures:', error);
+        console.error('Error fetching published lectures:', error);
         res.status(500).json({
             success: false,
-            message: 'Internal server error while fetching lectures'
+            message: 'Internal server error while fetching published lectures'
+        });
+    }
+});
+
+/**
+ * POST /api/lectures/pass-threshold
+ * Update the pass threshold for a specific lecture
+ */
+router.post('/pass-threshold', async (req, res) => {
+    const { courseId, lectureName, passThreshold, instructorId } = req.body;
+    
+    // Validate required fields
+    if (!courseId || !lectureName || typeof passThreshold !== 'number' || !instructorId) {
+        return res.status(400).json({
+            success: false,
+            message: 'Missing required fields: courseId, lectureName, passThreshold (number), instructorId'
+        });
+    }
+    
+    // Validate threshold value
+    if (passThreshold < 1 || passThreshold > 100) {
+        return res.status(400).json({
+            success: false,
+            message: 'Pass threshold must be between 1 and 100'
+        });
+    }
+    
+    try {
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
+        
+        // Update the pass threshold in MongoDB
+        const result = await CourseModel.updatePassThreshold(
+            db, 
+            courseId, 
+            lectureName, 
+            passThreshold, 
+            instructorId
+        );
+        
+        console.log(`Pass threshold updated for ${lectureName}: ${passThreshold}`);
+        
+        res.json({
+            success: true,
+            message: `Pass threshold updated to ${passThreshold}`,
+            data: {
+                courseId,
+                lectureName,
+                passThreshold,
+                updatedAt: new Date().toISOString(),
+                instructorId
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error updating pass threshold:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while updating pass threshold'
+        });
+    }
+});
+
+/**
+ * GET /api/lectures/pass-threshold
+ * Get the pass threshold for a specific lecture
+ */
+router.get('/pass-threshold', async (req, res) => {
+    const { courseId, lectureName } = req.query;
+    
+    if (!courseId || !lectureName) {
+        return res.status(400).json({
+            success: false,
+            message: 'Missing required parameters: courseId, lectureName'
+        });
+    }
+    
+    try {
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
+        
+        // Fetch pass threshold from MongoDB
+        const passThreshold = await CourseModel.getPassThreshold(db, courseId, lectureName);
+        
+        res.json({
+            success: true,
+            data: {
+                courseId,
+                lectureName,
+                passThreshold,
+                lastUpdated: new Date().toISOString()
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error fetching pass threshold:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while fetching pass threshold'
+        });
+    }
+});
+
+/**
+ * GET /api/lectures/published-with-questions
+ * Get published lectures with their assessment questions for students
+ */
+router.get('/published-with-questions', async (req, res) => {
+    const { courseId } = req.query;
+    
+    if (!courseId) {
+        return res.status(400).json({
+            success: false,
+            message: 'Missing required parameter: courseId'
+        });
+    }
+    
+    try {
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
+        
+        // Get the courses collection
+        const collection = db.collection('courses');
+        
+        // Find the course and get only published lectures with their questions
+        const course = await collection.findOne(
+            { courseId },
+            { projection: { lectures: 1, courseName: 1 } }
+        );
+        
+        if (!course || !course.lectures) {
+            return res.json({
+                success: true,
+                data: {
+                    courseId,
+                    courseName: course?.courseName || 'Unknown Course',
+                    publishedLectures: [],
+                    count: 0
+                }
+            });
+        }
+        
+        // Filter for published lectures and include assessment questions
+        const publishedLectures = course.lectures
+            .filter(lecture => lecture.isPublished === true)
+            .map(lecture => ({
+                name: lecture.name,
+                isPublished: lecture.isPublished,
+                learningObjectives: lecture.learningObjectives || [],
+                passThreshold: lecture.passThreshold || 2,
+                assessmentQuestions: lecture.assessmentQuestions || [],
+                documents: lecture.documents || [],
+                createdAt: lecture.createdAt,
+                updatedAt: lecture.updatedAt
+            }));
+        
+        console.log(`Found ${publishedLectures.length} published lectures for course ${courseId}`);
+        
+        res.json({
+            success: true,
+            data: {
+                courseId,
+                courseName: course.courseName,
+                publishedLectures,
+                count: publishedLectures.length,
+                lastUpdated: new Date().toISOString()
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error fetching published lectures with questions:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while fetching published lectures'
         });
     }
 });

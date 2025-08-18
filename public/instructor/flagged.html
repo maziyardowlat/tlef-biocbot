@@ -16,7 +16,6 @@
             </div>
             <nav class="main-nav">
                 <ul>
-                    <li><a href="/instructor/onboarding">Onboarding</a></li>
                     <li><a href="/instructor/home">Home</a></li>
                     <li><a href="/instructor/documents">Course Upload</a></li>
                     <li class="active"><a href="/instructor/flagged">Flagged Content</a></li>
@@ -39,8 +38,7 @@
                 <h1>Flagged Content</h1>
                 <div class="course-selector">
                     <select id="course-select">
-                        <option value="bioc202">BIOC 202</option>
-                        <option value="bioc303">BIOC 303</option>
+                        <option value="">Loading courses...</option>
                     </select>
                 </div>
             </header>
@@ -55,8 +53,12 @@
                     <label for="flag-type-filter">Filter by reason:</label>
                     <select id="flag-type-filter">
                         <option value="all">All Flags</option>
-                        <option value="incorrectness">Incorrect</option>
+                        <option value="incorrect">Incorrect</option>
                         <option value="inappropriate">Inappropriate</option>
+                        <option value="unclear">Unclear</option>
+                        <option value="confusing">Confusing</option>
+                        <option value="typo">Typo/Error</option>
+                        <option value="offensive">Offensive</option>
                         <option value="irrelevant">Irrelevant</option>
                     </select>
                 </div>
@@ -65,8 +67,9 @@
                     <select id="status-filter">
                         <option value="pending">Pending Review</option>
                         <option value="all">All Status</option>
-                        <option value="approved">Approved</option>
-                        <option value="rejected">Dismissed</option>
+                        <option value="reviewed">Reviewed</option>
+                        <option value="resolved">Resolved</option>
+                        <option value="dismissed">Dismissed</option>
                     </select>
                 </div>
                 <button id="refresh-flags" class="refresh-btn">Refresh</button>

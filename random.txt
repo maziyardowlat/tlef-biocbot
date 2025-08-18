@@ -1,0 +1,1 @@
+MONGO_URI=mongodb://mongoadmin:secret@127.0.0.1:27017/example-db?authSource=admin
