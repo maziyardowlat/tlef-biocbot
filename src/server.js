@@ -2,11 +2,18 @@ require('dotenv').config();
 const express = require('express');
 const path = require('path');
 
+const { MongoClient } = require('mongodb');
 const coursesRoutes = require('./routes/courses');
 const flagsRoutes = require('./routes/flags');
 const lecturesRoutes = require('./routes/lectures');
 const modeQuestionsRoutes = require('./routes/mode-questions');
 const chatRoutes = require('./routes/chat');
+
+const learningObjectivesRoutes = require('./routes/learning-objectives');
+const documentsRoutes = require('./routes/documents');
+const questionsRoutes = require('./routes/questions');
+const onboardingRoutes = require('./routes/onboarding');
+const qdrantRoutes = require('./routes/qdrant');
 
 const app = express();
 const port = process.env.TLEF_BIOCBOT_PORT || 8080;
