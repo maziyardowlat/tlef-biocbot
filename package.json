@@ -16,7 +16,9 @@
   "type": "commonjs",
   "dependencies": {
     "dotenv": "^17.0.1",
-    "express": "^5.1.0"
+    "express": "^5.1.0",
+    "ubc-genai-toolkit-core": "^0.1.0",
+    "ubc-genai-toolkit-llm": "^0.1.0"
   },
   "devDependencies": {
     "browser-sync": "^3.0.4",
