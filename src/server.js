@@ -1,12 +1,14 @@
 require('dotenv').config();
 const express = require('express');
 const path = require('path');
+
 const { MongoClient } = require('mongodb');
-const exampleRoutes = require('./routes/example/hello');
 const coursesRoutes = require('./routes/courses');
 const flagsRoutes = require('./routes/flags');
 const lecturesRoutes = require('./routes/lectures');
 const modeQuestionsRoutes = require('./routes/mode-questions');
+const chatRoutes = require('./routes/chat');
+
 const learningObjectivesRoutes = require('./routes/learning-objectives');
 const documentsRoutes = require('./routes/documents');
 const questionsRoutes = require('./routes/questions');
@@ -204,7 +206,6 @@ app.get('/api/health', async (req, res) => {
 });
 
 // API endpoints
-app.use('/api/example', exampleRoutes);
 app.use('/api/courses', coursesRoutes);
 app.use('/api/flags', flagsRoutes);
 app.use('/api/lectures', lecturesRoutes);
@@ -214,6 +215,7 @@ app.use('/api/documents', documentsRoutes);
 app.use('/api/questions', questionsRoutes);
 app.use('/api/onboarding', onboardingRoutes);
 app.use('/api/qdrant', qdrantRoutes);
+app.use('/api/chat', chatRoutes);
 
 // Initialize the application
 async function startServer() {

@@ -13,9 +13,100 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize mode toggle functionality
     initializeModeToggle();
     
+    // Set up periodic timestamp updates
+    setInterval(updateTimestamps, 20000); // Update every 20 seconds
+    
+    /**
+     * Format timestamp for display
+     * @param {Date} timestamp - The timestamp to format
+     * @returns {string} Formatted timestamp string
+     */
+    function formatTimestamp(timestamp) {
+        const now = new Date();
+        const diffMs = now - timestamp;
+        const diffSeconds = Math.floor(diffMs / 1000);
+        const diffMinutes = Math.floor(diffSeconds / 60);
+        const diffHours = Math.floor(diffMinutes / 60);
+        const diffDays = Math.floor(diffHours / 24);
+        
+        // Format based on how long ago
+        if (diffSeconds < 60) {
+            return 'Just now';
+        } else if (diffMinutes < 60) {
+            return `${diffMinutes} minute${diffMinutes !== 1 ? 's' : ''} ago`;
+        } else if (diffHours < 24) {
+            return `${diffHours} hour${diffHours !== 1 ? 's' : ''} ago`;
+        } else if (diffDays < 7) {
+            return `${diffDays} day${diffDays !== 1 ? 's' : ''} ago`;
+        } else {
+            // For older messages, show actual date
+            return timestamp.toLocaleDateString('en-US', {
+                month: 'short',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true
+            });
+        }
+    }
+    
+    /**
+     * Update all timestamps to show relative time
+     */
+    function updateTimestamps() {
+        const timestamps = document.querySelectorAll('.timestamp');
+        timestamps.forEach(timestamp => {
+            const messageDiv = timestamp.closest('.message');
+            if (messageDiv && messageDiv.dataset.timestamp) {
+                const messageTime = new Date(parseInt(messageDiv.dataset.timestamp));
+                timestamp.textContent = formatTimestamp(messageTime);
+            }
+        });
+    }
+    
+    /**
+     * Send message to LLM service
+     * @param {string} message - The message to send
+     * @returns {Promise<Object>} Response from LLM service
+     */
+    async function sendMessageToLLM(message) {
+        try {
+            // Get current student mode for context
+            const currentMode = localStorage.getItem('studentMode') || 'tutor';
+            
+            const response = await fetch('/api/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    message: message,
+                    mode: currentMode
+                })
+            });
+            
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            
+            if (!data.success) {
+                throw new Error(data.message || 'Failed to get response from LLM');
+            }
+            
+            return data;
+            
+        } catch (error) {
+            console.error('Error sending message to LLM:', error);
+            throw error;
+        }
+    }
+    
     // Handle chat form submission
     if (chatForm) {
-        chatForm.addEventListener('submit', (e) => {
+        chatForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             
             const message = chatInput.value.trim();
@@ -30,23 +121,24 @@ document.addEventListener('DOMContentLoaded', () => {
             // Show typing indicator
             showTypingIndicator();
             
-            // In a real implementation, this would send the message to the server
-            // and get a response from the AI
-            setTimeout(() => {
+            // Send message to real LLM service
+            try {
+                const response = await sendMessageToLLM(message);
+                
                 // Remove typing indicator
                 removeTypingIndicator();
                 
-                // Add bot response (simulated)
-                const botResponses = [
-                    "The cell is the basic unit of life, and all living organisms are composed of one or more cells.",
-                    "Photosynthesis is the process by which plants convert light energy into chemical energy.",
-                    "DNA replication is semi-conservative, meaning each new double helix contains one original strand and one new strand.",
-                    "Natural selection is the process where organisms better adapted to their environment tend to survive and produce more offspring."
-                ];
+                // Add real bot response
+                addMessage(response.message, 'bot', true);
                 
-                const randomResponse = botResponses[Math.floor(Math.random() * botResponses.length)];
-                addMessage(randomResponse, 'bot', true);
-            }, 1500);
+            } catch (error) {
+                // Remove typing indicator
+                removeTypingIndicator();
+                
+                // Show error message
+                console.error('Chat error:', error);
+                addMessage('Sorry, I encountered an error processing your message. Please try again.', 'bot', false);
+            }
         });
     }
     
@@ -75,7 +167,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (withSource && sender === 'bot') {
             const sourceDiv = document.createElement('div');
             sourceDiv.classList.add('message-source');
-            sourceDiv.innerHTML = 'Source: <a href="#">Course Content</a>';
+            sourceDiv.innerHTML = 'Source: TBD';
             footerDiv.appendChild(sourceDiv);
         }
         
@@ -85,7 +177,26 @@ document.addEventListener('DOMContentLoaded', () => {
         
         const timestamp = document.createElement('span');
         timestamp.classList.add('timestamp');
-        timestamp.textContent = 'Just now';
+        
+        // Create real timestamp
+        const messageTime = new Date();
+        timestamp.textContent = formatTimestamp(messageTime);
+        
+        // Store timestamp in message div for future updates
+        messageDiv.dataset.timestamp = messageTime.getTime();
+        
+        // Add title attribute for exact time on hover
+        timestamp.title = messageTime.toLocaleString('en-US', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: true
+        });
+        
         rightContainer.appendChild(timestamp);
         
         // Add flag button for bot messages in footer
@@ -165,6 +276,40 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Global functions for flagging functionality
+
+/**
+ * Format timestamp for display (global version)
+ * @param {Date} timestamp - The timestamp to format
+ * @returns {string} Formatted timestamp string
+ */
+function formatTimestamp(timestamp) {
+    const now = new Date();
+    const diffMs = now - timestamp;
+    const diffSeconds = Math.floor(diffMs / 1000);
+    const diffMinutes = Math.floor(diffSeconds / 60);
+    const diffHours = Math.floor(diffMinutes / 60);
+    const diffDays = Math.floor(diffHours / 24);
+    
+    // Format based on how long ago
+    if (diffSeconds < 60) {
+        return 'Just now';
+    } else if (diffMinutes < 60) {
+        return `${diffMinutes} minute${diffMinutes !== 1 ? 's' : ''} ago`;
+    } else if (diffHours < 24) {
+        return `${diffHours} hour${diffHours !== 1 ? 's' : ''} ago`;
+    } else if (diffDays < 7) {
+        return `${diffDays} day${diffDays !== 1 ? 's' : ''} ago`;
+    } else {
+        // For older messages, show actual date
+        return timestamp.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+        });
+    }
+}
 
 /**
  * Toggle the flag menu visibility
@@ -828,7 +973,26 @@ function showCalibrationQuestion() {
     
     const timestamp = document.createElement('span');
     timestamp.classList.add('timestamp');
-    timestamp.textContent = 'Just now';
+    
+        // Create real timestamp for calibration question
+        const questionTime = new Date();
+        timestamp.textContent = formatTimestamp(questionTime);
+        
+        // Store timestamp in question message div for future updates
+        questionMessage.dataset.timestamp = questionTime.getTime();
+        
+        // Add title attribute for exact time on hover
+        timestamp.title = questionTime.toLocaleString('en-US', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: true
+        });
+    
     rightContainer.appendChild(timestamp);
     
     footerDiv.appendChild(rightContainer);
@@ -1124,7 +1288,26 @@ function showModeResult(mode, score) {
     // Add timestamp
     const timestamp = document.createElement('span');
     timestamp.classList.add('timestamp');
-    timestamp.textContent = 'Just now';
+    
+        // Create real timestamp for mode result
+        const modeTime = new Date();
+        timestamp.textContent = formatTimestamp(modeTime);
+        
+        // Store timestamp in mode message div for future updates
+        modeMessage.dataset.timestamp = modeTime.getTime();
+        
+        // Add title attribute for exact time on hover
+        timestamp.title = modeTime.toLocaleString('en-US', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: true
+        });
+    
     contentDiv.appendChild(timestamp);
     
     modeMessage.appendChild(avatarDiv);
@@ -1166,7 +1349,26 @@ function showModeToggleResult(mode) {
     
     const timestamp = document.createElement('span');
     timestamp.classList.add('timestamp');
-    timestamp.textContent = 'Just now';
+    
+        // Create real timestamp for mode toggle result
+        const toggleTime = new Date();
+        timestamp.textContent = formatTimestamp(toggleTime);
+        
+        // Store timestamp in mode message div for future updates
+        modeMessage.dataset.timestamp = toggleTime.getTime();
+        
+        // Add title attribute for exact time on hover
+        timestamp.title = toggleTime.toLocaleString('en-US', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: true
+        });
+    
     contentDiv.appendChild(timestamp);
     
     modeMessage.appendChild(avatarDiv);
