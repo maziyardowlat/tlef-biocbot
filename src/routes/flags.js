@@ -1,223 +1,452 @@
 /**
- * Flags API Routes
- * Handles student flag submissions for bot responses
+ * Flagged Questions API Routes
+ * Handles student flags on questions and instructor responses
  */
 
 const express = require('express');
 const router = express.Router();
 
-// Middleware to parse JSON bodies
+// Import the FlaggedQuestion model
+const FlaggedQuestionModel = require('../models/FlaggedQuestion');
+
+// Middleware for JSON parsing
 router.use(express.json());
 
 /**
  * POST /api/flags
- * Submit a flag for a bot response
+ * Create a new flagged question (student flags a question)
  */
 router.post('/', async (req, res) => {
     try {
-        const { messageText, flagType, timestamp, studentId } = req.body;
+        const {
+            questionId,
+            courseId,
+            unitName,
+            studentId,
+            studentName,
+            flagReason,
+            flagDescription,
+            questionContent
+        } = req.body;
         
         // Validate required fields
-        if (!messageText || !flagType || !timestamp || !studentId) {
+        if (!questionId || !courseId || !unitName || !studentId || !studentName || !flagReason || !flagDescription) {
             return res.status(400).json({
                 success: false,
-                message: 'Missing required fields: messageText, flagType, timestamp, studentId'
+                message: 'Missing required fields: questionId, courseId, unitName, studentId, studentName, flagReason, flagDescription'
             });
         }
         
-        // Validate flag type
-        const validFlagTypes = ['incorrectness', 'inappropriate', 'irrelevant'];
-        if (!validFlagTypes.includes(flagType)) {
-            return res.status(400).json({
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
                 success: false,
-                message: 'Invalid flag type. Must be one of: incorrectness, inappropriate, irrelevant'
+                message: 'Database connection not available'
             });
         }
         
-        // TODO: In a real implementation, this would:
-        // 1. Validate student permissions
-        // 2. Store flag in database
-        // 3. Notify instructors if needed
-        // 4. Log for analytics
-        
-        // For now, return a mock success response
-        const flagData = {
-            id: `flag-${Date.now()}`,
-            messageText: messageText,
-            flagType: flagType,
-            timestamp: timestamp,
-            studentId: studentId,
-            status: 'pending',
-            createdAt: new Date().toISOString()
-        };
-        
-        console.log('Flag submitted:', flagData);
-        
-        res.status(201).json({
-            success: true,
-            message: 'Flag submitted successfully',
-            data: flagData
+        // Create the flagged question
+        const result = await FlaggedQuestionModel.createFlaggedQuestion(db, {
+            questionId,
+            courseId,
+            unitName,
+            studentId,
+            studentName,
+            flagReason,
+            flagDescription,
+            questionContent
         });
         
-    } catch (error) {
-        console.error('Error submitting flag:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Internal server error'
-        });
-    }
-});
-
-/**
- * GET /api/flags
- * Get flags for an instructor (for dashboard)
- */
-router.get('/', async (req, res) => {
-    try {
-        const instructorId = req.query.instructorId;
-        const status = req.query.status || 'pending';
-        
-        if (!instructorId) {
+        if (!result.success) {
             return res.status(400).json({
                 success: false,
-                message: 'instructorId is required'
+                message: result.error || 'Failed to create flagged question'
             });
         }
         
-        // TODO: In a real implementation, this would:
-        // 1. Validate instructor permissions
-        // 2. Query database for flags in instructor's courses
-        // 3. Return filtered flags
-        
-        // Mock response for now
-        const mockFlags = [
-            {
-                id: 'flag-1',
-                messageText: 'The cell is the basic unit of life, and all living organisms are composed of one or more cells.',
-                flagType: 'incorrectness',
-                timestamp: '2024-01-15T10:30:00Z',
-                studentId: 'student-123',
-                status: 'pending',
-                createdAt: '2024-01-15T10:30:00Z',
-                courseId: 'course-1',
-                courseName: 'BIOC 202'
-            },
-            {
-                id: 'flag-2',
-                messageText: 'Photosynthesis is the process by which plants convert light energy into chemical energy.',
-                flagType: 'irrelevant',
-                timestamp: '2024-01-15T11:15:00Z',
-                studentId: 'student-456',
-                status: 'pending',
-                createdAt: '2024-01-15T11:15:00Z',
-                courseId: 'course-1',
-                courseName: 'BIOC 202'
-            }
-        ];
+        console.log(`Flagged question created by student ${studentId} for question ${questionId}`);
         
         res.json({
             success: true,
-            data: mockFlags
+            message: 'Question flagged successfully!',
+            data: {
+                flagId: result.flagId,
+                createdAt: new Date().toISOString()
+            }
         });
         
     } catch (error) {
-        console.error('Error fetching flags:', error);
+        console.error('Error creating flagged question:', error);
         res.status(500).json({
             success: false,
-            message: 'Internal server error'
+            message: 'Internal server error while creating flagged question'
         });
     }
 });
 
 /**
- * PUT /api/flags/:flagId
- * Update flag status (approve/reject)
+ * GET /api/flags/course/:courseId
+ * Get all flagged questions for a specific course
  */
-router.put('/:flagId', async (req, res) => {
+router.get('/course/:courseId', async (req, res) => {
+    try {
+        const { courseId } = req.params;
+        const { status } = req.query; // Optional status filter
+        
+        if (!courseId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Missing required parameter: courseId'
+            });
+        }
+        
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
+        
+        // Get flagged questions for the course
+        const flags = await FlaggedQuestionModel.getFlaggedQuestionsForCourse(db, courseId, status);
+        
+        console.log(`Retrieved ${flags.length} flagged questions for course ${courseId}`);
+        
+        res.json({
+            success: true,
+            data: {
+                courseId,
+                flags,
+                count: flags.length
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error retrieving flagged questions:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while retrieving flagged questions'
+        });
+    }
+});
+
+/**
+ * GET /api/flags/status/:status
+ * Get flagged questions by status
+ */
+router.get('/status/:status', async (req, res) => {
+    try {
+        const { status } = req.params;
+        
+        if (!status) {
+            return res.status(400).json({
+                success: false,
+                message: 'Missing required parameter: status'
+            });
+        }
+        
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
+        
+        // Get flagged questions by status
+        const flags = await FlaggedQuestionModel.getFlaggedQuestionsByStatus(db, status);
+        
+        console.log(`Retrieved ${flags.length} flagged questions with status ${status}`);
+        
+        res.json({
+            success: true,
+            data: {
+                status,
+                flags,
+                count: flags.length
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error retrieving flagged questions by status:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while retrieving flagged questions'
+        });
+    }
+});
+
+/**
+ * GET /api/flags/:flagId
+ * Get a specific flagged question by ID
+ */
+router.get('/:flagId', async (req, res) => {
     try {
         const { flagId } = req.params;
-        const { status, instructorComment } = req.body;
-        const instructorId = req.query.instructorId;
         
-        if (!instructorId) {
+        if (!flagId) {
             return res.status(400).json({
                 success: false,
-                message: 'instructorId is required'
+                message: 'Missing required parameter: flagId'
             });
         }
         
-        if (!status || !['approved', 'rejected', 'pending'].includes(status)) {
-            return res.status(400).json({
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
                 success: false,
-                message: 'Valid status is required: approved, rejected, or pending'
+                message: 'Database connection not available'
             });
         }
         
-        // TODO: In a real implementation, this would:
-        // 1. Validate instructor permissions for this flag
-        // 2. Update flag status in database
-        // 3. Notify student if needed
-        // 4. Log the action
+        // Get the flagged question
+        const flag = await FlaggedQuestionModel.getFlaggedQuestionById(db, flagId);
         
-        console.log('Flag updated:', { flagId, status, instructorComment, instructorId });
+        if (!flag) {
+            return res.status(404).json({
+                success: false,
+                message: 'Flagged question not found'
+            });
+        }
+        
+        console.log(`Retrieved flagged question: ${flagId}`);
         
         res.json({
             success: true,
-            message: 'Flag status updated successfully'
+            data: flag
         });
         
     } catch (error) {
-        console.error('Error updating flag:', error);
+        console.error('Error retrieving flagged question:', error);
         res.status(500).json({
             success: false,
-            message: 'Internal server error'
+            message: 'Internal server error while retrieving flagged question'
         });
     }
 });
 
 /**
- * GET /api/flags/stats
- * Get flag statistics for dashboard
+ * PUT /api/flags/:flagId/response
+ * Update instructor response to a flagged question
  */
-router.get('/stats', async (req, res) => {
+router.put('/:flagId/response', async (req, res) => {
     try {
-        const instructorId = req.query.instructorId;
+        const { flagId } = req.params;
+        const {
+            response,
+            instructorId,
+            instructorName,
+            flagStatus
+        } = req.body;
         
-        if (!instructorId) {
+        if (!flagId || !response || !instructorId || !instructorName) {
             return res.status(400).json({
                 success: false,
-                message: 'instructorId is required'
+                message: 'Missing required fields: response, instructorId, instructorName'
             });
         }
         
-        // TODO: In a real implementation, this would:
-        // 1. Query database for flag statistics
-        // 2. Return aggregated data
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
         
-        // Mock response for now
-        const mockStats = {
-            totalFlags: 15,
-            pendingFlags: 8,
-            approvedFlags: 4,
-            rejectedFlags: 3,
-            flagsByType: {
-                incorrectness: 7,
-                inappropriate: 3,
-                irrelevant: 5
-            },
-            flagsToday: 3
-        };
+        // Update the instructor response
+        const result = await FlaggedQuestionModel.updateInstructorResponse(db, flagId, {
+            response,
+            instructorId,
+            instructorName,
+            flagStatus
+        });
+        
+        if (!result.success) {
+            return res.status(400).json({
+                success: false,
+                message: result.error || 'Failed to update instructor response'
+            });
+        }
+        
+        console.log(`Instructor response updated for flag: ${flagId}`);
         
         res.json({
             success: true,
-            data: mockStats
+            message: 'Instructor response updated successfully!',
+            data: {
+                flagId,
+                updatedAt: new Date().toISOString()
+            }
         });
         
     } catch (error) {
-        console.error('Error fetching flag stats:', error);
+        console.error('Error updating instructor response:', error);
         res.status(500).json({
             success: false,
-            message: 'Internal server error'
+            message: 'Internal server error while updating instructor response'
+        });
+    }
+});
+
+/**
+ * PUT /api/flags/:flagId/status
+ * Update flag status
+ */
+router.put('/:flagId/status', async (req, res) => {
+    try {
+        const { flagId } = req.params;
+        const { status, instructorId } = req.body;
+        
+        if (!flagId || !status || !instructorId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Missing required fields: status, instructorId'
+            });
+        }
+        
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
+        
+        // Update the flag status
+        const result = await FlaggedQuestionModel.updateFlagStatus(db, flagId, status, instructorId);
+        
+        if (!result.success) {
+            return res.status(400).json({
+                success: false,
+                message: result.error || 'Failed to update flag status'
+            });
+        }
+        
+        console.log(`Flag status updated to ${status} for flag: ${flagId}`);
+        
+        res.json({
+            success: true,
+            message: 'Flag status updated successfully!',
+            data: {
+                flagId,
+                status,
+                updatedAt: new Date().toISOString()
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error updating flag status:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while updating flag status'
+        });
+    }
+});
+
+/**
+ * GET /api/flags/stats/:courseId
+ * Get flag statistics for a course
+ */
+router.get('/stats/:courseId', async (req, res) => {
+    try {
+        const { courseId } = req.params;
+        
+        if (!courseId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Missing required parameter: courseId'
+            });
+        }
+        
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
+        
+        // Get flag statistics
+        const stats = await FlaggedQuestionModel.getFlagStatistics(db, courseId);
+        
+        console.log(`Retrieved flag statistics for course ${courseId}:`, stats);
+        
+        res.json({
+            success: true,
+            data: {
+                courseId,
+                statistics: stats
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error retrieving flag statistics:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while retrieving flag statistics'
+        });
+    }
+});
+
+/**
+ * DELETE /api/flags/:flagId
+ * Delete a flagged question (for cleanup purposes)
+ */
+router.delete('/:flagId', async (req, res) => {
+    try {
+        const { flagId } = req.params;
+        
+        if (!flagId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Missing required parameter: flagId'
+            });
+        }
+        
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
+        
+        // Delete the flagged question
+        const result = await FlaggedQuestionModel.deleteFlaggedQuestion(db, flagId);
+        
+        if (!result.success) {
+            return res.status(400).json({
+                success: false,
+                message: result.error || 'Failed to delete flagged question'
+            });
+        }
+        
+        console.log(`Flagged question deleted: ${flagId}`);
+        
+        res.json({
+            success: true,
+            message: 'Flagged question deleted successfully!',
+            data: {
+                flagId,
+                deletedCount: result.deletedCount
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error deleting flagged question:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while deleting flagged question'
         });
     }
 });

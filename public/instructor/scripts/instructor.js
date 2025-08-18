@@ -61,10 +61,34 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
     
-    console.log('Instructor interface initialized');
+
     
     // Check for URL parameters to open modals
     checkUrlParameters();
+    
+    // Load the saved publish status from the database
+    loadPublishStatus();
+    
+    // Load the saved learning objectives from the database
+    loadLearningObjectives();
+    
+    // Load the saved documents from the database
+    loadDocuments();
+    
+    // Load the saved assessment questions from the database
+    loadAssessmentQuestions();
+    
+    // Load the saved pass thresholds from the database
+    loadPassThresholds();
+    
+    // Set up threshold input event listeners
+    setupThresholdInputListeners();
+    
+    // Load course data if available (either from onboarding or existing course)
+    loadCourseData();
+    
+    // Add global cleanup button
+    addGlobalCleanupButton();
     
     // Handle accordion toggling
     accordionHeaders.forEach(header => {
@@ -89,7 +113,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const selectedCourse = courseSelect.value;
             if (selectedCourse) {
                 // In a real implementation, this would load the course documents
-                console.log('Selected course:', selectedCourse);
                 
                 // For demonstration purposes, we'll just show a notification
                 showNotification(`Loaded documents for ${courseSelect.options[courseSelect.selectedIndex].text}`, 'info');
@@ -142,7 +165,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
         function handleFiles(files) {
             // This is just a UI skeleton, so we'll just log the files
-            console.log('Files selected:', files);
             
             // Check if a course is selected
             const selectedCourse = courseSelect.value;
@@ -209,12 +231,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const deleteButton = fileItem.querySelector('.delete');
         
         viewButton.addEventListener('click', () => {
-            console.log('View document:', file.name);
             // In a real implementation, this would open the document
         });
         
         deleteButton.addEventListener('click', () => {
-            console.log('Delete document:', file.name);
             fileItem.remove();
             // In a real implementation, this would delete the document from the server
             showNotification(`Document "${file.name}" deleted`, 'info');
@@ -492,25 +512,90 @@ async function handleUpload() {
     uploadBtn.disabled = true;
     
     try {
-        // Simulate upload delay
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        const courseId = await getCurrentCourseId();
+        const instructorId = getCurrentInstructorId();
+        const lectureName = currentWeek;
         
-        // Create content item based on what was provided
-        let contentDescription = '';
-        let fileName = '';
+        let uploadResult;
         
         if (uploadedFile) {
-            fileName = uploadedFile.name;
-            contentDescription = `Uploaded file: ${uploadedFile.name}`;
-        } else if (urlInput) {
-            fileName = `Content from URL`;
-            contentDescription = `Imported from: ${urlInput}`;
+            // Handle file upload
+            const formData = new FormData();
+            formData.append('file', uploadedFile);
+            formData.append('courseId', courseId);
+            formData.append('lectureName', lectureName);
+            formData.append('documentType', currentContentType);
+            formData.append('instructorId', instructorId);
+            
+            const response = await fetch('/api/documents/upload', {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Upload failed: ${response.status} ${errorText}`);
+            }
+            
+            uploadResult = await response.json();
+            
         } else if (textInput) {
-            fileName = `Direct text input`;
-            contentDescription = `Direct text content (${textInput.length} characters)`;
+            // Handle text submission
+            const title = materialNameInput || `${currentContentType} - ${currentWeek}`;
+            
+            const response = await fetch('/api/documents/text', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    courseId: courseId,
+                    lectureName: lectureName,
+                    documentType: currentContentType,
+                    instructorId: instructorId,
+                    content: textInput,
+                    title: title,
+                    description: urlInput || ''
+                })
+            });
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Text submission failed: ${response.status} ${errorText}`);
+            }
+            
+            uploadResult = await response.json();
+            
+        } else if (urlInput) {
+            // Handle URL import (treat as text with URL as description)
+            const title = materialNameInput || `Content from URL - ${currentWeek}`;
+            
+            const response = await fetch('/api/documents/text', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    courseId: courseId,
+                    lectureName: lectureName,
+                    documentType: currentContentType,
+                    instructorId: instructorId,
+                    content: `Content imported from: ${urlInput}`,
+                    title: title,
+                    description: urlInput
+                })
+            });
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`URL import failed: ${response.status} ${errorText}`);
+            }
+            
+            uploadResult = await response.json();
         }
         
         // Generate proper file name based on content type
+        let fileName = '';
         switch (currentContentType) {
             case 'lecture-notes':
                 fileName = `*Lecture Notes - ${currentWeek}`;
@@ -525,28 +610,23 @@ async function handleUpload() {
                 fileName = `Syllabus - ${currentWeek}`;
                 break;
             case 'additional':
-                // Use custom name if provided, otherwise use default
-                if (materialNameInput) {
-                    fileName = materialNameInput;
-                    contentDescription = `Additional Material: ${materialNameInput}`;
-                } else {
-                    fileName = `Additional Material - ${currentWeek}`;
-                }
+                fileName = materialNameInput || `Additional Material - ${currentWeek}`;
                 break;
             default:
-                fileName = fileName || `Content - ${currentWeek}`;
+                fileName = uploadResult?.data?.title || `Content - ${currentWeek}`;
         }
         
-        // Add the content to the appropriate week
-        addContentToWeek(currentWeek, fileName, contentDescription);
+        // Add the content to the appropriate week with document ID
+        const documentId = uploadResult?.data?.documentId;
+        addContentToWeek(currentWeek, fileName, `Uploaded successfully - ${uploadResult?.data?.filename || fileName}`, documentId);
         
         // Close modal and show success
         closeUploadModal();
-        showNotification('Content uploaded and processed successfully!', 'success');
+        showNotification(uploadResult?.message || 'Content uploaded successfully!', 'success');
         
     } catch (error) {
         console.error('Error uploading content:', error);
-        showNotification('Error uploading content. Please try again.', 'error');
+        showNotification(`Error uploading content: ${error.message}`, 'error');
         
         // Re-enable upload button
         uploadBtn.textContent = 'Upload';
@@ -559,8 +639,9 @@ async function handleUpload() {
  * @param {string} week - The week identifier
  * @param {string} fileName - The file name to display
  * @param {string} description - The file description
+ * @param {string} documentId - The document ID from the database
  */
-function addContentToWeek(week, fileName, description) {
+function addContentToWeek(week, fileName, description, documentId) {
     // Find the week accordion item
     const weekAccordion = findElementsContainingText('.accordion-item .folder-name', week)[0].closest('.accordion-item');
     
@@ -590,17 +671,42 @@ function addContentToWeek(week, fileName, description) {
         targetFileItem.querySelector('.status-text').textContent = 'Processed';
         targetFileItem.querySelector('.status-text').className = 'status-text processed';
         
+        // Set document ID for proper deletion
+        if (documentId) {
+            targetFileItem.dataset.documentId = documentId;
+        }
+        
         // Update action button to view instead of upload
         const uploadButton = targetFileItem.querySelector('.action-button.upload');
         if (uploadButton) {
             uploadButton.textContent = 'View';
             uploadButton.className = 'action-button view';
-            uploadButton.onclick = () => viewFileItem(uploadButton);
+            uploadButton.onclick = () => viewDocument(documentId);
+        }
+        
+        // Add delete button if it doesn't exist
+        let deleteButton = targetFileItem.querySelector('.action-button.delete');
+        if (!deleteButton) {
+            deleteButton = document.createElement('button');
+            deleteButton.className = 'action-button delete';
+            deleteButton.onclick = () => deleteDocument(documentId);
+            deleteButton.textContent = 'Delete';
+            
+            const fileActions = targetFileItem.querySelector('.file-actions');
+            if (fileActions) {
+                fileActions.appendChild(deleteButton);
+            }
         }
     } else {
         // Create new file item
         const fileItem = document.createElement('div');
         fileItem.className = 'file-item';
+        
+        // Set document ID if available
+        if (documentId) {
+            fileItem.dataset.documentId = documentId;
+        }
+        
         fileItem.innerHTML = `
             <span class="file-icon">📄</span>
             <div class="file-info">
@@ -609,8 +715,8 @@ function addContentToWeek(week, fileName, description) {
                 <span class="status-text processed">Processed</span>
             </div>
             <div class="file-actions">
-                <button class="action-button view" onclick="viewFileItem(this)">View</button>
-                <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
+                <button class="action-button view" onclick="${documentId ? `viewDocument('${documentId}')` : 'viewFileItem(this)'}">View</button>
+                <button class="action-button delete" onclick="${documentId ? `deleteDocument('${documentId}')` : 'deleteFileItem(this)'}">Delete</button>
             </div>
         `;
         
@@ -694,31 +800,53 @@ function togglePublish(lectureName, isPublished) {
  */
 async function updatePublishStatus(lectureName, isPublished) {
     try {
-        // Simulate API call to update publish status
+        // Get the current course ID (for now, using a default)
+        const courseId = await getCurrentCourseId();
+        
+        const requestBody = {
+            lectureName: lectureName,
+            isPublished: isPublished,
+            instructorId: getCurrentInstructorId(),
+            courseId: courseId
+        };
+        
         const response = await fetch('/api/lectures/publish', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-                lectureName: lectureName,
-                isPublished: isPublished,
-                instructorId: getCurrentInstructorId()
-            })
+            body: JSON.stringify(requestBody)
         });
         
         if (!response.ok) {
-            throw new Error('Failed to update publish status');
+            const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
+            console.error('Error response:', errorData);
+            
+            // Show specific error message
+            const errorMessage = errorData.message || errorData.error || `Failed to update publish status: ${response.status}`;
+            showNotification(`Error: ${errorMessage}`, 'error');
+            
+            // Revert the toggle if the API call failed
+            const toggleId = `publish-${lectureName.toLowerCase().replace(/\s+/g, '')}`;
+            const toggle = document.getElementById(toggleId);
+            if (toggle) {
+                toggle.checked = !isPublished;
+                togglePublish(lectureName, !isPublished);
+            }
+            return;
         }
         
-        console.log(`Publish status updated for ${lectureName}: ${isPublished}`);
+        const result = await response.json();
+        
+        // Show success notification
+        showNotification(result.message || 'Publish status updated successfully', 'success');
         
     } catch (error) {
         console.error('Error updating publish status:', error);
         showNotification('Error updating publish status. Please try again.', 'error');
         
         // Revert the toggle if the API call failed
-        const toggleId = `publish-${lectureName.toLowerCase().replace(/\s+/g, '-')}`;
+        const toggleId = `publish-${lectureName.toLowerCase().replace(/\s+/g, '')}`;
         const toggle = document.getElementById(toggleId);
         if (toggle) {
             toggle.checked = !isPublished;
@@ -735,6 +863,842 @@ function getCurrentInstructorId() {
     // In a real implementation, this would get the instructor ID from the session/token
     return 'instructor-123';
 }
+
+/**
+ * Get the current course ID for the instructor
+ * @returns {Promise<string>} Course ID
+ */
+async function getCurrentCourseId() {
+    // Check if we have a courseId from URL parameters (onboarding redirect)
+    const urlParams = new URLSearchParams(window.location.search);
+    const courseIdFromUrl = urlParams.get('courseId');
+    
+    if (courseIdFromUrl) {
+        return courseIdFromUrl;
+    }
+    
+    // If no course ID in URL, try to get it from the instructor's courses
+    try {
+        const instructorId = getCurrentInstructorId();
+        const response = await fetch(`/api/onboarding/instructor/${instructorId}`);
+        
+        if (response.ok) {
+            const result = await response.json();
+            if (result.data && result.data.courses && result.data.courses.length > 0) {
+                // Return the first course found
+                const firstCourse = result.data.courses[0];
+                return firstCourse.courseId;
+            }
+        }
+    } catch (error) {
+        console.error('Error fetching instructor courses:', error);
+    }
+    
+    // If no course found, show an error and redirect to onboarding
+    console.error('No course ID found. Redirecting to onboarding...');
+    showNotification('No course found. Please complete onboarding first.', 'error');
+    setTimeout(() => {
+        window.location.href = '/instructor/onboarding';
+    }, 2000);
+    
+    // Return a placeholder (this should not be reached due to redirect)
+    return null;
+}
+
+/**
+ * Load the saved publish status for all lectures from the database
+ */
+async function loadPublishStatus() {
+    try {
+        const courseId = await getCurrentCourseId();
+        const instructorId = getCurrentInstructorId();
+        
+        const response = await fetch(`/api/lectures/publish-status?instructorId=${instructorId}&courseId=${courseId}`);
+        
+        if (!response.ok) {
+            throw new Error('Failed to fetch publish status');
+        }
+        
+        const result = await response.json();
+        const publishStatus = result.data.publishStatus;
+        
+        // Update all toggle switches to reflect the saved state
+        Object.keys(publishStatus).forEach(lectureName => {
+            const isPublished = publishStatus[lectureName];
+            const toggleId = `publish-${lectureName.toLowerCase().replace(/\s+/g, '')}`;
+            const toggle = document.getElementById(toggleId);
+            
+            if (toggle) {
+                // Update the toggle state
+                toggle.checked = isPublished;
+                
+                // Update the visual state
+                const accordionItem = toggle.closest('.accordion-item');
+                if (accordionItem) {
+                    if (isPublished) {
+                        accordionItem.classList.add('published');
+                    } else {
+                        accordionItem.classList.remove('published');
+                    }
+                }
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error loading publish status:', error);
+        showNotification('Error loading publish status. Using default values.', 'warning');
+    }
+}
+
+/**
+ * Load the saved learning objectives for all lectures from the database
+ */
+async function loadLearningObjectives() {
+    try {
+        const courseId = await getCurrentCourseId();
+        
+        // Get all accordion items (units/weeks)
+        const accordionItems = document.querySelectorAll('.accordion-item');
+        
+        for (const item of accordionItems) {
+            const folderName = item.querySelector('.folder-name');
+            if (!folderName) continue;
+            
+            const lectureName = folderName.textContent;
+            
+            const response = await fetch(`/api/learning-objectives?week=${encodeURIComponent(lectureName)}&courseId=${courseId}`);
+            
+            if (response.ok) {
+                const result = await response.json();
+                const objectives = result.data.objectives;
+                
+                if (objectives && objectives.length > 0) {
+                    // Clear existing objectives
+                    const objectivesList = item.querySelector('.objectives-list');
+                    if (objectivesList) {
+                        objectivesList.innerHTML = '';
+                        
+                        // Add each objective
+                        objectives.forEach(objective => {
+                            const objectiveItem = document.createElement('div');
+                            objectiveItem.className = 'objective-display-item';
+                            objectiveItem.innerHTML = `
+                                <span class="objective-text">${objective}</span>
+                                <button class="remove-objective" onclick="removeObjective(this)">×</button>
+                            `;
+                            objectivesList.appendChild(objectiveItem);
+                        });
+                    }
+                }
+            }
+        }
+        
+
+        
+    } catch (error) {
+        console.error('Error loading learning objectives:', error);
+        showNotification('Error loading learning objectives. Using default values.', 'warning');
+    }
+}
+
+/**
+ * Load the saved documents for all lectures from the database
+ */
+async function loadDocuments() {
+    try {
+        const courseId = await getCurrentCourseId();
+        
+        // Get all accordion items (units/weeks)
+        const accordionItems = document.querySelectorAll('.accordion-item');
+        
+        for (const item of accordionItems) {
+            const folderName = item.querySelector('.folder-name');
+            if (!folderName) {
+                continue;
+            }
+            
+            const lectureName = folderName.textContent;
+            
+            // Load documents from the course structure instead of separate API
+            const response = await fetch(`/api/courses/${courseId}?instructorId=${getCurrentInstructorId()}`);
+            
+            if (response.ok) {
+                const result = await response.json();
+                const course = result.data;
+                
+                if (course && course.lectures) {
+                    const unit = course.lectures.find(l => l.name === lectureName);
+                    const documents = unit ? (unit.documents || []) : [];
+                    
+                    // Find the course materials section
+                    const courseMaterialsSection = item.querySelector('.course-materials-section .section-content');
+                    if (courseMaterialsSection) {
+                        
+                        // Clear ALL existing document items (both placeholders and actual documents)
+                        const existingItems = courseMaterialsSection.querySelectorAll('.file-item');
+                        
+                        existingItems.forEach(item => {
+                            item.remove();
+                        });
+                        
+                        // ADD ALL DOCUMENTS - BACKEND HANDLES DELETION FROM BOTH DBs
+                        if (documents && documents.length > 0) {
+                            
+                            // Add all documents - backend ensures they exist in both databases
+                            documents.forEach(doc => {
+                                const documentItem = createDocumentItem(doc);
+                                courseMaterialsSection.appendChild(documentItem);
+                            });
+                        }
+                        
+                        // Always add the required placeholder items if they don't exist
+                        addRequiredPlaceholders(courseMaterialsSection, lectureName);
+                        
+                        // Add the "Add Additional Material" button and "Confirm Course Materials" button
+                        addActionButtons(courseMaterialsSection, lectureName);
+                        
+                        // Add cleanup button if there are documents
+                        if (documents && documents.length > 0) {
+                            addCleanupButton(courseMaterialsSection, lectureName, courseId);
+                        } else {
+                            addCleanupButton(courseMaterialsSection, lectureName, courseId);
+                        }
+                    } else {
+                        console.error('Course materials section not found for', lectureName);
+                    }
+                } else {
+                    // No course or lectures data found
+                }
+            } else {
+                console.error('Failed to load course data:', response.status);
+            }
+        }
+        
+    } catch (error) {
+        console.error('Error loading documents:', error);
+        showNotification('Error loading documents. Using default values.', 'warning');
+    }
+}
+
+/**
+ * Create a document item element for display
+ * @param {Object} doc - Document object from database
+ * @returns {HTMLElement} Document item element
+ */
+function createDocumentItem(doc) {
+    const documentItem = document.createElement('div');
+    documentItem.className = 'file-item';
+    documentItem.dataset.documentId = doc.documentId;
+    
+    const fileIcon = doc.contentType === 'text' ? '📝' : '📄';
+    const statusText = doc.status === 'uploaded' ? 'Uploaded' : doc.status;
+    
+    documentItem.innerHTML = `
+        <span class="file-icon">${fileIcon}</span>
+        <div class="file-info">
+            <h3>${doc.originalName}</h3>
+            <p>${doc.metadata?.description || 'No description'}</p>
+            <span class="status-text">${statusText}</span>
+        </div>
+        <div class="file-actions">
+            <button class="action-button view" onclick="viewDocument('${doc.documentId}')">View</button>
+            <button class="action-button delete" onclick="deleteDocument('${doc.documentId}')">Delete</button>
+        </div>
+    `;
+    
+    return documentItem;
+}
+
+/**
+ * Delete a document
+ * @param {string} documentId - Document identifier
+ */
+async function deleteDocument(documentId) {
+    try {
+        const instructorId = getCurrentInstructorId();
+        const courseId = await getCurrentCourseId();
+        
+        // Step 1: Try to delete from documents collection first
+        let documentDeleted = false;
+        try {
+            const deleteResponse = await fetch(`/api/documents/${documentId}`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    instructorId: instructorId
+                })
+            });
+            
+            if (deleteResponse.ok) {
+                documentDeleted = true;
+            } else if (deleteResponse.status === 404) {
+                documentDeleted = true; // Consider it "deleted" if it doesn't exist
+            } else {
+                const errorText = await deleteResponse.text();
+                console.warn(`Document deletion warning: ${deleteResponse.status} ${errorText}`);
+                // Continue with course cleanup even if document deletion fails
+            }
+        } catch (deleteError) {
+            console.warn('Document deletion endpoint not available:', deleteError);
+            // Continue with course cleanup
+        }
+        
+        // Step 2: Always remove from course structure (regardless of document deletion status)
+        let courseUpdateSuccess = false;
+        
+        try {
+            const courseResponse = await fetch(`/api/courses/${courseId}/remove-document`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    documentId: documentId,
+                    instructorId: instructorId
+                })
+            });
+            
+            if (courseResponse.ok) {
+                courseUpdateSuccess = true;
+            } else {
+                const errorText = await courseResponse.text();
+                console.warn(`Course structure update failed: ${courseResponse.status} - ${errorText}`);
+            }
+        } catch (courseError) {
+            console.warn('Course structure update endpoint not available or failed:', courseError);
+        }
+        
+        // Step 3: If course structure update failed, use manual approach
+        if (!courseUpdateSuccess) {
+            try {
+                const manualResult = await removeDocumentFromCourseStructure(documentId, courseId, instructorId);
+                if (manualResult) {
+                    courseUpdateSuccess = true;
+                } else {
+                    console.warn('Manual cleanup returned false');
+                }
+            } catch (fallbackError) {
+                console.warn('Manual course structure update failed:', fallbackError);
+                // Last resort: try global cleanup
+                try {
+                    await cleanupOrphanedDocuments();
+                } catch (cleanupError) {
+                    console.warn('Global cleanup also failed:', cleanupError);
+                }
+            }
+        }
+        
+        // Remove the document item from the UI immediately
+        const documentItem = document.querySelector(`[data-document-id="${documentId}"]`);
+        if (documentItem) {
+            documentItem.remove();
+        }
+        
+        // Reload documents to sync with database
+        await loadDocuments();
+        
+        // Show appropriate success message
+        if (documentDeleted && courseUpdateSuccess) {
+            showNotification('Document deleted from both collections successfully!', 'success');
+        } else if (courseUpdateSuccess) {
+            showNotification('Document removed from course structure successfully!', 'success');
+        } else {
+            showNotification('Document deletion completed with some cleanup issues. Use cleanup button if needed.', 'warning');
+        }
+        
+    } catch (error) {
+        console.error('Error deleting document:', error);
+        showNotification(`Error deleting document: ${error.message}`, 'error');
+    }
+}
+
+
+
+/**
+ * Manually remove a document reference from the course structure
+ * This is a fallback when the backend endpoint is not available
+ * @param {string} documentId - Document ID to remove
+ * @param {string} courseId - Course ID
+ * @param {string} instructorId - Instructor ID
+ */
+async function removeDocumentFromCourseStructure(documentId, courseId, instructorId) {
+    try {
+        // Get the current course structure
+        const response = await fetch(`/api/courses/${courseId}?instructorId=${instructorId}`);
+        
+        if (!response.ok) {
+            throw new Error('Failed to fetch course structure');
+        }
+        
+        const result = await response.json();
+        const course = result.data;
+        
+        // Find and remove the document from all units
+        let documentRemoved = false;
+        
+        // Check different possible property names for units
+        const units = course.lectures || course.units || course.weeks || [];
+        
+        // Also check courseMaterials field
+        if (course.courseMaterials) {
+            // Course materials field exists
+        }
+        
+        units.forEach((unit, index) => {
+            // Check different possible property names for documents
+            const documents = unit.documents || unit.materials || unit.files || [];
+            
+            if (documents.length > 0) {
+                const initialLength = documents.length;
+                const filteredDocuments = documents.filter(doc => {
+                    const docId = doc.documentId || doc.id || doc._id;
+                    return docId !== documentId;
+                });
+                
+                if (filteredDocuments.length < initialLength) {
+                    documentRemoved = true;
+                    
+                    // Update the unit's documents array
+                    if (unit.documents) unit.documents = filteredDocuments;
+                    if (unit.materials) unit.materials = filteredDocuments;
+                    if (unit.files) unit.files = filteredDocuments;
+                }
+            }
+        });
+        
+        // Also check if document is in courseMaterials
+        if (course.courseMaterials && Array.isArray(course.courseMaterials)) {
+            const initialLength = course.courseMaterials.length;
+            course.courseMaterials = course.courseMaterials.filter(doc => {
+                const docId = doc.documentId || doc.id || doc._id;
+                return docId !== documentId;
+            });
+            
+            if (course.courseMaterials.length < initialLength) {
+                documentRemoved = true;
+            }
+        }
+        
+        // Also check unitFiles field
+        if (course.unitFiles && Array.isArray(course.unitFiles)) {
+            const initialLength = course.unitFiles.length;
+            course.unitFiles = course.unitFiles.filter(doc => {
+                const docId = doc.documentId || doc.id || doc._id;
+                return docId !== documentId;
+            });
+            
+            if (course.unitFiles.length < initialLength) {
+                documentRemoved = true;
+            }
+        }
+        
+        if (documentRemoved) {
+            // Update the course structure in the backend
+            const updateResponse = await fetch(`/api/courses/${courseId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    ...course,
+                    instructorId: instructorId
+                })
+            });
+            
+            if (updateResponse.ok) {
+                return true;
+            } else {
+                throw new Error('Failed to update course structure');
+            }
+        } else {
+            return true; // Document wasn't in course structure, so nothing to update
+        }
+        
+    } catch (error) {
+        console.error('Error manually updating course structure:', error);
+        throw error;
+    }
+}
+
+
+
+/**
+ * Clean up orphaned document references in the course structure
+ * This can be called manually to fix any existing orphaned documents
+ */
+async function cleanupOrphanedDocuments() {
+    try {
+        const courseId = await getCurrentCourseId();
+        const instructorId = getCurrentInstructorId();
+        
+        showNotification('Cleaning up orphaned documents...', 'info');
+        
+        const response = await fetch('/api/documents/cleanup-orphans', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                courseId: courseId,
+                instructorId: instructorId
+            })
+        });
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Cleanup failed: ${response.status} ${errorText}`);
+        }
+        
+        const result = await response.json();
+        
+        if (result.data.totalOrphans > 0) {
+            showNotification(`Cleanup completed! Removed ${result.data.totalOrphans} orphaned documents.`, 'success');
+            // Reload documents to reflect the cleanup
+            await loadDocuments();
+        } else {
+            showNotification('No orphaned documents found. Course structure is clean!', 'success');
+        }
+        
+    } catch (error) {
+        console.error('Error cleaning up orphaned documents:', error);
+        showNotification(`Error during cleanup: ${error.message}`, 'error');
+    }
+}
+
+/**
+ * View document content in a modal
+ * @param {string} documentId - Document identifier
+ */
+async function viewDocument(documentId) {
+    try {
+        // Fetch document content
+        const response = await fetch(`/api/documents/${documentId}`);
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Failed to fetch document: ${response.status} ${errorText}`);
+        }
+        
+        const result = await response.json();
+        const document = result.data;
+        
+        if (!document) {
+            throw new Error('Document not found');
+        }
+        
+        // Create and show modal with document content
+        showDocumentModal(document);
+        
+    } catch (error) {
+        console.error('Error viewing document:', error);
+        showNotification(`Error viewing document: ${error.message}`, 'error');
+    }
+}
+
+/**
+ * Load assessment questions directly from course data (for initial load)
+ * @param {Object} courseData - Course data with lectures and assessment questions
+ */
+function loadAssessmentQuestionsFromCourseData(courseData) {
+    if (!courseData.lectures) return;
+    
+    courseData.lectures.forEach(unit => {
+        if (unit.assessmentQuestions && unit.assessmentQuestions.length > 0) {
+            // Store questions in the local assessmentQuestions object
+            if (!assessmentQuestions[unit.name]) {
+                assessmentQuestions[unit.name] = [];
+            }
+            
+            // Clear existing questions and add new ones
+            assessmentQuestions[unit.name] = [];
+            
+            // Convert database questions to local format
+            unit.assessmentQuestions.forEach(dbQuestion => {
+                const localQuestion = {
+                    id: dbQuestion.questionId,
+                    questionId: dbQuestion.questionId,
+                    type: dbQuestion.questionType,
+                    question: dbQuestion.question,
+                    answer: dbQuestion.correctAnswer,
+                    options: dbQuestion.options || {}
+                };
+                
+                assessmentQuestions[unit.name].push(localQuestion);
+            });
+            
+            // Update the display for this unit
+            updateQuestionsDisplay(unit.name);
+        }
+    });
+}
+
+/**
+ * Load the saved assessment questions for all lectures from the database
+ */
+async function loadAssessmentQuestions() {
+    try {
+        const courseId = await getCurrentCourseId();
+        
+        // Get all accordion items (units/weeks)
+        const accordionItems = document.querySelectorAll('.accordion-item');
+        
+        if (accordionItems.length === 0) {
+            return;
+        }
+        
+        for (const item of accordionItems) {
+            const folderName = item.querySelector('.folder-name');
+            if (!folderName) continue;
+            
+            const lectureName = folderName.textContent;
+            
+            const response = await fetch(`/api/questions/lecture?courseId=${courseId}&lectureName=${encodeURIComponent(lectureName)}`);
+            
+            if (response.ok) {
+                const result = await response.json();
+                const questions = result.data.questions;
+                
+                if (questions && questions.length > 0) {
+                    // Store questions in the assessmentQuestions object
+                    if (!assessmentQuestions[lectureName]) {
+                        assessmentQuestions[lectureName] = [];
+                    }
+                    
+                    // Convert database questions to local format
+                    questions.forEach(dbQuestion => {
+                        const localQuestion = {
+                            id: dbQuestion.questionId,
+                            questionId: dbQuestion.questionId,
+                            type: dbQuestion.questionType,
+                            question: dbQuestion.question,
+                            answer: dbQuestion.correctAnswer,
+                            options: dbQuestion.options || {}
+                        };
+                        
+                        assessmentQuestions[lectureName].push(localQuestion);
+                    });
+                    
+                    // Update the display for this lecture
+                    updateQuestionsDisplay(lectureName);
+                }
+            }
+        }
+        
+    } catch (error) {
+        console.error('Error loading assessment questions:', error);
+        showNotification('Error loading assessment questions. Using default values.', 'warning');
+    }
+}
+
+/**
+ * Delete an assessment question
+ * @param {string} questionId - Question identifier
+ * @param {string} week - Week identifier
+ */
+async function deleteAssessmentQuestion(questionId, week) {
+    try {
+        const courseId = await getCurrentCourseId();
+        const instructorId = getCurrentInstructorId();
+        
+        const response = await fetch(`/api/questions/${questionId}`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                courseId: courseId,
+                lectureName: week,
+                instructorId: instructorId
+            })
+        });
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Delete failed: ${response.status} ${errorText}`);
+        }
+        
+        // Reload questions from database to ensure consistency
+        await reloadQuestionsForUnit(week);
+        
+        // Update the display
+        updateQuestionsDisplay(week);
+        
+        showNotification('Question deleted successfully!', 'success');
+        
+    } catch (error) {
+        console.error('Error deleting question:', error);
+        showNotification(`Error deleting question: ${error.message}`, 'error');
+    }
+}
+
+/**
+ * Save the pass threshold for a specific lecture
+ * @param {string} lectureName - Name of the lecture/unit
+ * @param {number} threshold - Number of questions required to pass
+ */
+async function savePassThreshold(lectureName, threshold) {
+    try {
+        const courseId = await getCurrentCourseId();
+        const instructorId = getCurrentInstructorId();
+        
+        const response = await fetch('/api/lectures/pass-threshold', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                courseId: courseId,
+                lectureName: lectureName,
+                passThreshold: threshold,
+                instructorId: instructorId
+            })
+        });
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Failed to save threshold: ${response.status} ${errorText}`);
+        }
+        
+        const result = await response.json();
+        
+        // Update local state to reflect the change
+        await reloadPassThresholds();
+        
+        // Show success notification
+        showNotification(result.message, 'success');
+        
+    } catch (error) {
+        console.error('Error saving pass threshold:', error);
+        showNotification(`Error saving pass threshold: ${error.message}`, 'error');
+    }
+}
+
+/**
+ * Reload pass thresholds from the database (for use after updates)
+ */
+async function reloadPassThresholds() {
+    try {
+        const courseId = await getCurrentCourseId();
+        
+        // Get all accordion items (units/weeks)
+        const accordionItems = document.querySelectorAll('.accordion-item');
+        
+        for (const item of accordionItems) {
+            const folderName = item.querySelector('.folder-name');
+            if (!folderName) continue;
+            
+            const lectureName = folderName.textContent;
+            
+            const response = await fetch(`/api/lectures/pass-threshold?courseId=${courseId}&lectureName=${encodeURIComponent(lectureName)}`);
+            
+            if (response.ok) {
+                const result = await response.json();
+                const passThreshold = result.data.passThreshold;
+                
+                // Find and update the threshold input for this lecture
+                // Convert lecture name to ID format (e.g., "Unit 1" -> "unit-1")
+                const thresholdId = `pass-threshold-${lectureName.toLowerCase().replace(/\s+/g, '-')}`;
+                const thresholdInput = item.querySelector(`#${thresholdId}`);
+                
+                if (thresholdInput) {
+                    thresholdInput.value = passThreshold;
+                    
+                    // Also update the display text if it exists
+                    const thresholdValue = item.querySelector(`#threshold-value-${lectureName.toLowerCase().replace(/\s+/g, '-')}`);
+                    if (thresholdValue) {
+                        thresholdValue.textContent = passThreshold;
+                    }
+                }
+            }
+        }
+        
+    } catch (error) {
+        console.error('Error reloading pass thresholds:', error);
+        showNotification('Error reloading pass thresholds.', 'warning');
+    }
+}
+
+/**
+ * Load the saved pass thresholds for all lectures from the database
+ */
+async function loadPassThresholds() {
+    try {
+        const courseId = await getCurrentCourseId();
+        
+        // Get all accordion items (units/weeks)
+        const accordionItems = document.querySelectorAll('.accordion-item');
+        
+        for (const item of accordionItems) {
+            const folderName = item.querySelector('.folder-name');
+            if (!folderName) continue;
+            
+            const lectureName = folderName.textContent;
+            
+            const response = await fetch(`/api/lectures/pass-threshold?courseId=${courseId}&lectureName=${encodeURIComponent(lectureName)}`);
+            
+            if (response.ok) {
+                const result = await response.json();
+                const passThreshold = result.data.passThreshold;
+                
+                // Find and update the threshold input for this lecture
+                // Convert lecture name to ID format (e.g., "Unit 1" -> "unit-1")
+                const thresholdId = `pass-threshold-${lectureName.toLowerCase().replace(/\s+/g, '-')}`;
+                const thresholdInput = item.querySelector(`#${thresholdId}`);
+                
+                if (thresholdInput) {
+                    thresholdInput.value = passThreshold;
+                    
+                    // Also update the display text if it exists
+                    const thresholdValue = item.querySelector(`#threshold-value-${lectureName.toLowerCase().replace(/\s+/g, '-')}`);
+                    if (thresholdValue) {
+                        thresholdValue.textContent = passThreshold;
+                    }
+                }
+            }
+        }
+        
+    } catch (error) {
+        console.error('Error loading pass thresholds:', error);
+        showNotification('Error loading pass thresholds. Using default values.', 'warning');
+    }
+}
+
+/**
+ * Set up event listeners for threshold inputs
+ */
+function setupThresholdInputListeners() {
+    // Get all threshold inputs
+    const thresholdInputs = document.querySelectorAll('input[id^="pass-threshold-"]');
+    
+    thresholdInputs.forEach(input => {
+        // Add change event listener
+        input.addEventListener('change', function() {
+            const threshold = parseInt(this.value);
+            // Extract the exact lecture name from the ID (e.g., "Unit-1" -> "Unit 1")
+            const lectureName = this.id.replace('pass-threshold-', '').replace(/-/g, ' ');
+            
+            // Save the threshold to MongoDB
+            savePassThreshold(lectureName, threshold);
+        });
+        
+        // Add input event listener for real-time updates
+        input.addEventListener('input', function() {
+            const threshold = parseInt(this.value);
+            // Extract the exact lecture name from the ID
+            const lectureName = this.id.replace('pass-threshold-', '').replace(/-/g, ' ');
+            
+            // Update the display text if it exists
+            const thresholdValue = document.querySelector(`#threshold-value-${lectureName.toLowerCase().replace(/\s+/g, '-')}`);
+            if (thresholdValue) {
+                thresholdValue.textContent = threshold;
+            }
+        });
+    });
+}
+
+
 
 // Mode Questions Modal functionality
 let currentQuestions = [];
@@ -754,63 +1718,6 @@ function closeModeQuestionsModal() {
     closeCalibrationModal();
 }
 
-/**
- * Load existing mode questions
- */
-async function loadModeQuestions() {
-    try {
-        // In a real implementation, this would fetch from the server
-        // For now, we'll use mock data
-        const mockQuestions = [
-            {
-                id: 1,
-                question: "What is the primary function of enzymes in biochemical reactions?",
-                options: [
-                    "To slow down reactions",
-                    "To speed up reactions",
-                    "To change the direction of reactions",
-                    "To prevent reactions from occurring"
-                ],
-                correctAnswer: 1
-            },
-            {
-                id: 2,
-                question: "Which of the following best describes the structure of an amino acid?",
-                options: [
-                    "A single carbon atom with various side chains",
-                    "A central carbon atom with an amino group, carboxyl group, hydrogen, and R group",
-                    "A chain of carbon atoms with oxygen at the end",
-                    "A ring structure with nitrogen atoms"
-                ],
-                correctAnswer: 1
-            },
-            {
-                id: 3,
-                question: "What is the role of ATP in cellular processes?",
-                options: [
-                    "To provide structural support",
-                    "To store and transfer energy",
-                    "To act as a genetic material",
-                    "To transport oxygen"
-                ],
-                correctAnswer: 1
-            }
-        ];
-        
-        currentQuestions = mockQuestions;
-        questionCounter = mockQuestions.length + 1;
-        renderQuestions();
-        
-        // Load threshold
-        const threshold = 70; // In real implementation, fetch from server
-        document.getElementById('mode-threshold').value = threshold;
-        document.getElementById('threshold-value').textContent = threshold + '%';
-        
-    } catch (error) {
-        console.error('Error loading mode questions:', error);
-        showNotification('Error loading questions. Please try again.', 'error');
-    }
-}
 
 /**
  * Render questions in the modal
@@ -933,191 +1840,31 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 }); 
 
-/**
- * Add a new week to the course structure
- */
-function addNewWeek() {
-    // Get the current number of weeks by counting existing week accordions
-    // Only count accordions that have "Week" in their folder name
-    const existingWeeks = document.querySelectorAll('.accordion-item');
-    let weekCount = 0;
-    
-    existingWeeks.forEach(item => {
-        const folderName = item.querySelector('.folder-name');
-        if (folderName && folderName.textContent.includes('Week')) {
-            weekCount++;
-        }
-    });
-    
-    const newWeekNumber = weekCount + 1;
-    
-    // Create the new week HTML
-    const newWeekHTML = `
-        <div class="accordion-item" id="week-${newWeekNumber}">
-            <div class="accordion-header">
-                <span class="folder-icon"></span>
-                <span class="folder-name">Week ${newWeekNumber}</span>
-                <div class="header-actions">
-                    <div class="publish-toggle">
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="publish-week${newWeekNumber}" onchange="togglePublish('Week ${newWeekNumber}', this.checked)">
-                            <span class="toggle-slider"></span>
-                        </label>
-                        <span class="toggle-label">Published</span>
-                    </div>
-                    <span class="accordion-toggle">▶</span>
-                </div>
-            </div>
-            <div class="accordion-content collapsed">
-                <!-- Learning Objectives Section -->
-                <div class="unit-section learning-objectives-section">
-                    <div class="section-header">
-                        <h3>Learning Objectives</h3>
-                        <button class="toggle-section">▼</button>
-                    </div>
-                    <div class="section-content">
-                        <div class="objectives-list" id="objectives-list-week${newWeekNumber}">
-                            <!-- Objectives will be added here -->
-                        </div>
-                        <div class="objective-input-container">
-                            <input type="text" id="objective-input-week${newWeekNumber}" class="objective-input" placeholder="Enter learning objective...">
-                            <button class="add-objective-btn-inline" onclick="addObjectiveFromInput('Week ${newWeekNumber}')">+</button>
-                        </div>
-                        <div class="save-objectives">
-                            <button class="save-btn" onclick="saveObjectives('Week ${newWeekNumber}')">Save Learning Objectives</button>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Course Materials Section -->
-                <div class="unit-section course-materials-section">
-                    <div class="section-header">
-                        <h3>Course Materials</h3>
-                        <button class="toggle-section">▼</button>
-                    </div>
-                    <div class="section-content">
-                        <div class="file-item">
-                            <span class="file-icon"></span>
-                            <div class="file-info">
-                                <h3>*Lecture Notes - Week ${newWeekNumber}</h3>
-                                <p>Placeholder for required lecture notes. Please upload content.</p>
-                                <span class="status-text">Not Uploaded</span>
-                            </div>
-                            <div class="file-actions">
-                                <button class="action-button upload" onclick="openUploadModal('Week ${newWeekNumber}', 'lecture-notes')">Upload</button>
-                                <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
-                            </div>
-                        </div>
-                        <div class="file-item">
-                            <span class="file-icon"></span>
-                            <div class="file-info">
-                                <h3>*Practice Questions/Tutorial</h3>
-                                <p>Placeholder for required practice questions. Please upload content.</p>
-                                <span class="status-text">Not Uploaded</span>
-                            </div>
-                            <div class="file-actions">
-                                <button class="action-button upload" onclick="openUploadModal('Week ${newWeekNumber}', 'practice-quiz')">Upload</button>
-                                <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
-                            </div>
-                        </div>
-                        <!-- Add Content Button -->
-                        <div class="add-content-section">
-                            <button class="add-content-btn additional-material" onclick="openUploadModal('Week ${newWeekNumber}', 'additional')">
-                                <span class="btn-icon">+</span>
-                                Add Additional Material
-                            </button>
-                        </div>
-                        <div class="save-objectives">
-                            <button class="save-btn" onclick="confirmCourseMaterials('Week ${newWeekNumber}')">Confirm Course Materials</button>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Probing Questions Section -->
-                <div class="unit-section probing-questions-section">
-                    <div class="section-header">
-                        <h3>Probing Questions</h3>
-                        <button class="toggle-section">▼</button>
-                    </div>
-                    <div class="section-content">
-                        <div class="objectives-list" id="questions-list-week${newWeekNumber}">
-                            <!-- Questions will be added here -->
-                        </div>
-                        <div class="generate-questions-container">
-                            <button class="generate-btn" onclick="generateProbingQuestions('Week ${newWeekNumber}')">
-                                Generate Probing Questions
-                            </button>
-                            <p class="generate-help-text">Let AI  based on your uploaded course materials</p>
-                        </div>
-                        <div class="objective-input-container">
-                            <input type="text" id="question-input-week${newWeekNumber}" class="objective-input" placeholder="Enter probing question...">
-                            <button class="add-objective-btn-inline" onclick="addQuestionFromInput('Week ${newWeekNumber}')">+</button>
-                        </div>
-                        <div class="save-objectives">
-                            <button class="save-btn" onclick="saveQuestions('Week ${newWeekNumber}')">Save Probing Questions</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    // Insert the new week before the "Add Week" button
-    const addWeekSection = document.querySelector('.add-week-section');
-    const accordionContainer = document.querySelector('.accordion-container');
-    
-    // Create a temporary container to parse the HTML
-    const temp = document.createElement('div');
-    temp.innerHTML = newWeekHTML;
-    const newWeekElement = temp.firstElementChild;
-    
-    // Insert the new week before the add week section
-    accordionContainer.insertBefore(newWeekElement, addWeekSection);
-    
-    // Add event listener to the new accordion header
-    const newHeader = newWeekElement.querySelector('.accordion-header');
-    newHeader.addEventListener('click', (e) => {
-        // Don't toggle if clicking on the toggle switch
-        if (e.target.closest('.publish-toggle')) {
-            return;
-        }
-        
-        const accordionItem = newHeader.parentElement;
-        const content = accordionItem.querySelector('.accordion-content');
-        const toggle = newHeader.querySelector('.accordion-toggle');
-        
-        // Use the improved toggle function
-        toggleAccordionDynamic(content, toggle);
-    });
-    
-    // Show success notification
-    showNotification(`Week ${newWeekNumber} added successfully!`, 'success');
-    
-    // Add event listeners to the new section headers
-    const newSectionHeaders = newWeekElement.querySelectorAll('.section-header');
-    newSectionHeaders.forEach(header => {
-        header.addEventListener('click', (e) => {
-            toggleSection(header, e);
-        });
-    });
-    
-    // Update the add week button to reflect the new week number
-    const addWeekBtn = document.querySelector('.add-week-btn');
-    addWeekBtn.innerHTML = `
-        <span class="btn-icon">+</span>
-        Add Week ${newWeekNumber + 1}
-    `;
-}
+
 
 /**
  * Delete a file item
  * @param {HTMLElement} button - The delete button element
  */
-function deleteFileItem(button) {
+async function deleteFileItem(button) {
     const fileItem = button.closest('.file-item');
     const fileName = fileItem.querySelector('h3').textContent;
     
-    // Show confirmation dialog
+    // Check if this is a placeholder item (shouldn't be deleted)
+    if (fileItem.classList.contains('placeholder-item')) {
+        showNotification('Cannot delete placeholder items. Please upload content first.', 'warning');
+        return;
+    }
+    
+    // Check if this is an actual document with a document ID
+    const documentId = fileItem.dataset.documentId;
+    if (documentId) {
+        // This is a real document, use the proper delete function
+        await deleteDocument(documentId);
+        return;
+    }
+    
+    // Show confirmation dialog for other file items
     if (confirm(`Are you sure you want to delete "${fileName}"?`)) {
         // Remove the file item from the DOM
         fileItem.remove();
@@ -1136,185 +1883,21 @@ function viewFileItem(button) {
     const fileName = fileItem.querySelector('h3').textContent;
     const fileDescription = fileItem.querySelector('p').textContent;
     
-    // Generate mock content based on the file name
-    const mockContent = generateMockContent(fileName, fileDescription);
+    // Show a placeholder message since we're not generating mock content anymore
+    const placeholderContent = `
+        <h2>${fileName}</h2>
+        <p><strong>Description:</strong> ${fileDescription}</p>
+        <div class="content-placeholder">
+            <p>Document content will be displayed here when the actual document is loaded.</p>
+            <p>This placeholder indicates that the document viewing functionality is being implemented.</p>
+        </div>
+    `;
     
     // Open the view modal
-    openViewModal(fileName, mockContent);
+    openViewModal(fileName, placeholderContent);
 }
 
-/**
- * Generate mock content based on file name
- * @param {string} fileName - The name of the file
- * @param {string} description - The file description
- * @returns {string} Mock content for the file
- */
-function generateMockContent(fileName, description) {
-    // Generate different content based on the file type/name
-    if (fileName.includes('Introduction')) {
-        return `
-            <h2>Introduction to Biochemistry</h2>
-            <p><strong>Course Overview:</strong> This course provides a comprehensive introduction to the fundamental principles of biochemistry and molecular biology. Students will explore the chemical basis of life, from simple molecules to complex cellular processes.</p>
-            
-            <h3>Learning Objectives:</h3>
-            <ul>
-                <li>Understand the basic principles of biochemistry</li>
-                <li>Identify the four major classes of biomolecules</li>
-                <li>Explain the relationship between structure and function in biological molecules</li>
-                <li>Describe the central dogma of molecular biology</li>
-            </ul>
-            
-            <h3>Key Concepts:</h3>
-            <p><strong>Biomolecules:</strong> The four major classes of biomolecules are carbohydrates, lipids, proteins, and nucleic acids. Each class has distinct chemical properties and biological functions.</p>
-            
-            <p><strong>Metabolism:</strong> The sum of all chemical reactions that occur within a living organism. These reactions are organized into metabolic pathways that convert molecules into other molecules.</p>
-            
-            <p><strong>Enzymes:</strong> Biological catalysts that speed up chemical reactions without being consumed in the process. They are typically proteins that bind specific substrates and lower the activation energy of reactions.</p>
-        `;
-    } else if (fileName.includes('Amino Acids')) {
-        return `
-            <h2>Amino Acids, Peptides, and Proteins</h2>
-            <p><strong>Structure of Amino Acids:</strong> Amino acids are the building blocks of proteins. Each amino acid contains a central carbon atom (α-carbon) bonded to an amino group (-NH₂), a carboxyl group (-COOH), a hydrogen atom, and a unique side chain (R-group).</p>
-            
-            <h3>The 20 Standard Amino Acids:</h3>
-            <p>Amino acids can be classified based on their side chain properties:</p>
-            <ul>
-                <li><strong>Nonpolar (hydrophobic):</strong> Alanine, Valine, Leucine, Isoleucine, Methionine, Phenylalanine, Tryptophan, Proline</li>
-                <li><strong>Polar (hydrophilic):</strong> Serine, Threonine, Cysteine, Asparagine, Glutamine, Tyrosine</li>
-                <li><strong>Charged:</strong> Lysine, Arginine, Histidine (basic); Aspartic acid, Glutamic acid (acidic)</li>
-            </ul>
-            
-            <h3>Peptide Bond Formation:</h3>
-            <p>Peptide bonds are formed through a condensation reaction between the carboxyl group of one amino acid and the amino group of another, releasing a water molecule. This creates a peptide chain with the backbone structure: -N-C-C-N-C-C-</p>
-            
-            <h3>Protein Structure Levels:</h3>
-            <ol>
-                <li><strong>Primary:</strong> Linear sequence of amino acids</li>
-                <li><strong>Secondary:</strong> Local folding patterns (α-helices, β-sheets)</li>
-                <li><strong>Tertiary:</strong> Overall 3D structure of a single polypeptide</li>
-                <li><strong>Quaternary:</strong> Assembly of multiple polypeptide subunits</li>
-            </ol>
-        `;
-    } else if (fileName.includes('Enzymes')) {
-        return `
-            <h2>Enzymes: Basic Concepts and Kinetics</h2>
-            <p><strong>Enzyme Definition:</strong> Enzymes are biological catalysts that accelerate chemical reactions by lowering the activation energy barrier. They are typically proteins (though some RNA molecules can also act as enzymes).</p>
-            
-            <h3>Enzyme-Substrate Interaction:</h3>
-            <p>The enzyme binds to its substrate(s) at the active site, forming an enzyme-substrate complex. This binding is highly specific due to the complementary shape and chemical properties of the active site and substrate.</p>
-            
-            <h3>Michaelis-Menten Kinetics:</h3>
-            <p>The relationship between substrate concentration and reaction rate follows the Michaelis-Menten equation:</p>
-            <p><em>v = Vmax[S] / (Km + [S])</em></p>
-            <ul>
-                <li><strong>Vmax:</strong> Maximum reaction rate when enzyme is saturated</li>
-                <li><strong>Km:</strong> Michaelis constant - substrate concentration at half Vmax</li>
-                <li><strong>[S]:</strong> Substrate concentration</li>
-            </ul>
-            
-            <h3>Factors Affecting Enzyme Activity:</h3>
-            <ul>
-                <li><strong>Temperature:</strong> Activity increases with temperature until denaturation occurs</li>
-                <li><strong>pH:</strong> Enzymes have optimal pH ranges for activity</li>
-                <li><strong>Substrate concentration:</strong> Rate increases with substrate until saturation</li>
-                <li><strong>Enzyme concentration:</strong> Rate is directly proportional to enzyme concentration</li>
-            </ul>
-        `;
-    } else if (fileName.includes('Readings')) {
-        return `
-            <h2>Week 1 Required Readings</h2>
-            <p><strong>Textbook Chapters:</strong></p>
-            <ul>
-                <li>Chapter 1: Introduction to Biochemistry</li>
-                <li>Chapter 2: Water and pH</li>
-                <li>Chapter 3: Amino Acids and Peptides</li>
-            </ul>
-            
-            <h3>Research Papers:</h3>
-            <ol>
-                <li><strong>"The Central Dogma of Molecular Biology"</strong> by Francis Crick (1970)</li>
-                <li><strong>"Structure and Function of Proteins"</strong> by Linus Pauling (1951)</li>
-            </ol>
-            
-            <h3>Key Concepts to Focus On:</h3>
-            <ul>
-                <li>Chemical properties of water and their biological significance</li>
-                <li>pH and buffer systems in biological systems</li>
-                <li>Structure and properties of the 20 standard amino acids</li>
-                <li>Peptide bond formation and protein primary structure</li>
-            </ul>
-            
-            <h3>Study Questions:</h3>
-            <ol>
-                <li>How does the structure of water contribute to its role as a biological solvent?</li>
-                <li>What are the Henderson-Hasselbalch equation and its applications?</li>
-                <li>How do amino acid side chains determine protein structure and function?</li>
-                <li>What is the significance of the peptide bond in protein structure?</li>
-            </ol>
-        `;
-    } else if (fileName.includes('Quiz')) {
-        return `
-            <h2>Practice Quiz: Protein Structure</h2>
-            <p><strong>Instructions:</strong> Answer the following questions to test your understanding of protein structure concepts. This quiz covers primary, secondary, tertiary, and quaternary protein structures.</p>
-            
-            <h3>Question 1:</h3>
-            <p><strong>Which of the following best describes the primary structure of a protein?</strong></p>
-            <ol type="a">
-                <li>The overall 3D shape of the protein</li>
-                <li>The linear sequence of amino acids</li>
-                <li>The local folding patterns like α-helices</li>
-                <li>The assembly of multiple polypeptide chains</li>
-            </ol>
-            <p><strong>Answer:</strong> b) The linear sequence of amino acids</p>
-            
-            <h3>Question 2:</h3>
-            <p><strong>What type of bonds are primarily responsible for maintaining secondary structure?</strong></p>
-            <ol type="a">
-                <li>Peptide bonds</li>
-                <li>Hydrogen bonds</li>
-                <li>Disulfide bonds</li>
-                <li>Ionic bonds</li>
-            </ol>
-            <p><strong>Answer:</strong> b) Hydrogen bonds</p>
-            
-            <h3>Question 3:</h3>
-            <p><strong>Which of the following is NOT a type of secondary structure?</strong></p>
-            <ol type="a">
-                <li>α-helix</li>
-                <li>β-sheet</li>
-                <li>β-turn</li>
-                <li>Random coil</li>
-            </ol>
-            <p><strong>Answer:</strong> d) Random coil (this is a tertiary structure element)</p>
-        `;
-    } else {
-        // Generic content for other files
-        return `
-            <h2>${fileName}</h2>
-            <p><strong>Description:</strong> ${description}</p>
-            
-            <h3>Content Overview:</h3>
-            <p>This document contains important course materials related to ${fileName.toLowerCase()}. The content has been processed and is ready for student access.</p>
-            
-            <h3>Key Topics Covered:</h3>
-            <ul>
-                <li>Fundamental concepts and principles</li>
-                <li>Important definitions and terminology</li>
-                <li>Practical applications and examples</li>
-                <li>Study questions and exercises</li>
-            </ul>
-            
-            <h3>Learning Objectives:</h3>
-            <p>After reviewing this material, students should be able to:</p>
-            <ul>
-                <li>Understand the core concepts presented</li>
-                <li>Apply the knowledge to solve related problems</li>
-                <li>Connect this material to other course topics</li>
-                <li>Demonstrate comprehension through assessments</li>
-            </ul>
-        `;
-    }
-}
+
 
 /**
  * Open the view modal with file content
@@ -1401,8 +1984,8 @@ function openCalibrationModal(week, topic) {
     modal.style.display = ''; // Clear any inline display style
     modal.classList.add('show');
     
-    // Load questions specific to this week/topic
-    loadCalibrationQuestions(week);
+    // TODO: Load questions specific to this week/topic from database
+    // This functionality will be implemented when the actual question loading is ready
 }
 
 /**
@@ -1417,122 +2000,7 @@ function closeCalibrationModal() {
     }
 }
 
-/**
- * Load calibration questions for a specific week
- * @param {string} week - The week identifier (e.g., 'Week 1')
- */
-async function loadCalibrationQuestions(week) {
-    try {
-        // In a real implementation, this would fetch questions specific to the week
-        // For now, we'll use mock data with week-specific content
-        let mockQuestions;
-        
-        if (week === 'Week 1') {
-            mockQuestions = [
-                {
-                    id: 1,
-                    question: "What is the primary focus of biochemistry?",
-                    options: [
-                        "The study of plant life",
-                        "The study of chemical processes in living organisms",
-                        "The study of ecosystems",
-                        "The study of microorganisms"
-                    ],
-                    correctAnswer: 1
-                },
-                {
-                    id: 2,
-                    question: "Which of the following is a major biomolecule studied in biochemistry?",
-                    options: [
-                        "Silicon",
-                        "Proteins",
-                        "Plastic",
-                        "Petroleum"
-                    ],
-                    correctAnswer: 1
-                }
-            ];
-        } else if (week === 'Week 2') {
-            mockQuestions = [
-                {
-                    id: 1,
-                    question: "What is the basic building block of proteins?",
-                    options: [
-                        "Nucleotides",
-                        "Amino acids",
-                        "Fatty acids",
-                        "Monosaccharides"
-                    ],
-                    correctAnswer: 1
-                },
-                {
-                    id: 2,
-                    question: "Which level of protein structure refers to the overall 3D arrangement?",
-                    options: [
-                        "Primary structure",
-                        "Secondary structure",
-                        "Tertiary structure",
-                        "Quaternary structure"
-                    ],
-                    correctAnswer: 2
-                }
-            ];
-        } else if (week === 'Week 3') {
-            mockQuestions = [
-                {
-                    id: 1,
-                    question: "What do enzymes primarily do in biochemical reactions?",
-                    options: [
-                        "Slow down reactions",
-                        "Speed up reactions",
-                        "Stop reactions",
-                        "Reverse reactions"
-                    ],
-                    correctAnswer: 1
-                },
-                {
-                    id: 2,
-                    question: "In enzyme kinetics, what does Km represent?",
-                    options: [
-                        "Maximum reaction rate",
-                        "Substrate concentration at half maximum velocity",
-                        "Enzyme concentration",
-                        "Inhibition constant"
-                    ],
-                    correctAnswer: 1
-                }
-            ];
-        } else {
-            // Default questions
-            mockQuestions = [
-                {
-                    id: 1,
-                    question: "Sample question for " + week,
-                    options: [
-                        "Option A",
-                        "Option B",
-                        "Option C",
-                        "Option D"
-                    ],
-                    correctAnswer: 1
-                }
-            ];
-        }
-        
-        currentQuestions = mockQuestions;
-        questionCounter = mockQuestions.length + 1;
-        renderQuestions();
-        
-        // Load threshold - in a real implementation, this would be specific to the week
-        const threshold = 70;
-        document.getElementById('mode-threshold').value = threshold;
-        document.getElementById('threshold-value').textContent = threshold + '%';
-        
-    } catch (error) {
-        console.error('Error loading calibration questions:', error);
-        showNotification('Error loading questions. Please try again.', 'error');
-    }
-}
+
 
 /**
  * Save calibration questions for the current week
@@ -1625,8 +2093,30 @@ function toggleSection(headerElement, e) {
 function addObjectiveFromInput(week) {
     // Find the week element using our custom helper function
     const folderElement = findElementsContainingText('.accordion-item .folder-name', week)[0];
+    if (!folderElement) {
+        console.error('Could not find folder element for:', week);
+        showNotification('Error: Could not find unit element', 'error');
+        return;
+    }
+    
     const weekElement = folderElement.closest('.accordion-item');
-    const inputField = weekElement.querySelector(`#objective-input-${week.toLowerCase().replace(/\s+/g, '')}`);
+    if (!weekElement) {
+        console.error('Could not find week element for:', week);
+        showNotification('Error: Could not find unit element', 'error');
+        return;
+    }
+    
+    // Convert unit name to ID format (e.g., "Unit 1" -> "Unit-1")
+    const unitId = week.toLowerCase().replace(/\s+/g, '-');
+    
+    const inputField = weekElement.querySelector(`#objective-input-${unitId}`);
+    
+    if (!inputField) {
+        console.error('Could not find input field for:', week, 'with ID:', `objective-input-${unitId}`);
+        showNotification('Error: Could not find input field', 'error');
+        return;
+    }
+    
     const objectiveText = inputField.value.trim();
     
     if (!objectiveText) {
@@ -1635,7 +2125,13 @@ function addObjectiveFromInput(week) {
     }
     
     // Get the objectives list
-    const objectivesList = weekElement.querySelector(`#objectives-list-${week.toLowerCase().replace(/\s+/g, '')}`);
+    const objectivesList = weekElement.querySelector(`#objectives-list-${unitId}`);
+    
+    if (!objectivesList) {
+        console.error('Could not find objectives list for:', week);
+        showNotification('Error: Could not find objectives list', 'error');
+        return;
+    }
     
     // Create new objective display item
     const objectiveItem = document.createElement('div');
@@ -1651,6 +2147,8 @@ function addObjectiveFromInput(week) {
     // Clear the input field
     inputField.value = '';
     inputField.focus();
+    
+    showNotification('Learning objective added successfully!', 'success');
 }
 
 /**
@@ -1659,7 +2157,51 @@ function addObjectiveFromInput(week) {
  */
 function removeObjective(button) {
     const objectiveItem = button.closest('.objective-display-item');
-    objectiveItem.remove();
+    if (objectiveItem) {
+        objectiveItem.remove();
+        showNotification('Learning objective removed.', 'info');
+    } else {
+        console.error('Could not find objective item to remove');
+    }
+}
+
+/**
+ * Add a new learning objective for a unit (used in onboarding)
+ * @param {string} unitName - The unit name (e.g., 'Unit 1')
+ */
+function addObjectiveForUnit(unitName) {
+    const inputField = document.getElementById('objective-input');
+    const objectivesList = document.getElementById('objectives-list');
+    
+    if (!inputField || !objectivesList) {
+        console.error('Could not find objective input or list elements');
+        showNotification('Error: Could not find objective elements', 'error');
+        return;
+    }
+    
+    const objectiveText = inputField.value.trim();
+    
+    if (!objectiveText) {
+        showNotification('Please enter a learning objective.', 'error');
+        return;
+    }
+    
+    // Create new objective display item
+    const objectiveItem = document.createElement('div');
+    objectiveItem.className = 'objective-display-item';
+    objectiveItem.innerHTML = `
+        <span class="objective-text">${objectiveText}</span>
+        <button class="remove-objective" onclick="removeObjective(this)">×</button>
+    `;
+    
+    // Add to the list
+    objectivesList.appendChild(objectiveItem);
+    
+    // Clear the input field
+    inputField.value = '';
+    inputField.focus();
+    
+    showNotification('Learning objective added successfully!', 'success');
 }
 
 /**
@@ -1669,7 +2211,19 @@ function removeObjective(button) {
 async function saveObjectives(week) {
     // Find the week element using our custom helper function
     const folderElement = findElementsContainingText('.accordion-item .folder-name', week)[0];
+    if (!folderElement) {
+        console.error('Could not find folder element for:', week);
+        showNotification('Error: Could not find unit element', 'error');
+        return;
+    }
+    
     const weekElement = folderElement.closest('.accordion-item');
+    if (!weekElement) {
+        console.error('Could not find week element for:', week);
+        showNotification('Error: Could not find unit element', 'error');
+        return;
+    }
+    
     const objectiveItems = weekElement.querySelectorAll('.objective-text');
     
     // Collect all objectives
@@ -1681,29 +2235,36 @@ async function saveObjectives(week) {
     }
     
     try {
-        // In a real implementation, this would save to the server
+        // Get the current course ID
+        const courseId = await getCurrentCourseId();
+        
+        const requestBody = {
+            lectureName: week, // Use lectureName for consistency
+            objectives: objectives,
+            instructorId: getCurrentInstructorId(),
+            courseId: courseId
+        };
+        
         const response = await fetch('/api/learning-objectives', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-                week: week,
-                objectives: objectives,
-                instructorId: getCurrentInstructorId()
-            })
+            body: JSON.stringify(requestBody)
         });
         
         if (!response.ok) {
-            throw new Error('Failed to save learning objectives');
+            const errorText = await response.text();
+            console.error('Error response:', errorText);
+            throw new Error(`Failed to save learning objectives: ${response.status} ${errorText}`);
         }
         
-        showNotification(`Learning objectives for ${week} saved successfully!`, 'success');
+        const result = await response.json();
+        showNotification(result.message, 'success');
         
     } catch (error) {
         console.error('Error saving learning objectives:', error);
-        // For demo purposes, still show success
-        showNotification(`Learning objectives for ${week} saved successfully! (Demo mode)`, 'success');
+        showNotification('Error saving learning objectives. Please try again.', 'error');
     }
 }
 
@@ -1722,12 +2283,22 @@ async function confirmCourseMaterials(week) {
     let hasPracticeQuestions = false;
     
     fileItems.forEach(item => {
-        const title = item.querySelector('.file-info h3').textContent;
-        if (title.includes('*Lecture Notes')) {
-            hasLectureNotes = true;
-        }
-        if (title.includes('*Practice Questions/Tutorial')) {
-            hasPracticeQuestions = true;
+        const title = item.querySelector('.file-info h3');
+        const statusText = item.querySelector('.status-text');
+        
+        if (title && statusText) {
+            const titleText = title.textContent;
+            const status = statusText.textContent;
+            
+            // Check if this is a lecture notes document that's uploaded
+            if (titleText.includes('Lecture Notes') && (status === 'Uploaded' || status === 'uploaded')) {
+                hasLectureNotes = true;
+            }
+            
+            // Check if this is a practice questions document that's uploaded
+            if ((titleText.includes('Practice Questions') || titleText.includes('Practice Questions/Tutorial')) && (status === 'Uploaded' || status === 'uploaded')) {
+                hasPracticeQuestions = true;
+            }
         }
     });
     
@@ -1861,8 +2432,6 @@ async function saveQuestions(week) {
  * @param {string} week - The week identifier (e.g., 'Week 1')
  */
 async function generateProbingQuestions(week) {
-    console.log('Generating probing questions for:', week);
-    
     const weekElement = findElementsContainingText('.accordion-item .folder-name', week)[0].closest('.accordion-item');
     const fileItems = weekElement.querySelectorAll('.course-materials-section .file-item');
     
@@ -1870,7 +2439,6 @@ async function generateProbingQuestions(week) {
     let hasMaterials = false;
     fileItems.forEach(item => {
         const statusText = item.querySelector('.status-text').textContent;
-        console.log('Found file item with status:', statusText);
         if (statusText === 'Processed') {
             hasMaterials = true;
         }
@@ -1888,13 +2456,17 @@ async function generateProbingQuestions(week) {
         // For now, we'll simulate a delay and generate some mock questions
         await new Promise(resolve => setTimeout(resolve, 2000));
 
-        // Generate mock probing questions based on the week
-        const mockQuestions = generateMockProbingQuestions(week);
-        console.log('Generated questions:', mockQuestions);
+        // TODO: Generate probing questions using AI API with course materials
+        // For now, using placeholder questions until AI integration is implemented
+        const mockQuestions = [
+            "How would you apply the concepts from this week to solve a real-world problem?",
+            "What connections can you make between this material and previous topics?",
+            "What questions would you ask to deepen your understanding of this subject?",
+            "How do these concepts relate to current research or applications in the field?"
+        ];
         
         // Get the questions list for this week
         const questionsList = weekElement.querySelector(`#questions-list-${week.toLowerCase().replace(/\s+/g, '')}`);
-        console.log('Questions list element:', questionsList);
         
         if (!questionsList) {
             console.error('Could not find questions list element for', week);
@@ -1921,41 +2493,7 @@ async function generateProbingQuestions(week) {
     }
 }
 
-/**
- * Generate mock probing questions based on the week
- * @param {string} week - The week identifier (e.g., 'Week 1')
- * @returns {Array<string>} Array of probing question texts
- */
-function generateMockProbingQuestions(week) {
-    const questionSets = {
-        'Week 1': [
-            "Can you explain the relationship between water's molecular structure and its role as a biological solvent?",
-            "How do buffer systems maintain pH homeostasis in living organisms?",
-            "What would happen to cellular processes if amino acids couldn't form peptide bonds?",
-            "How does the amphipathic nature of phospholipids contribute to membrane formation?"
-        ],
-        'Week 2': [
-            "Can you predict how a change in pH would affect protein structure and function?",
-            "How do you think the R-groups of amino acids influence protein folding patterns?",
-            "What role do chaperone proteins play in preventing misfolded proteins?",
-            "How might protein denaturation affect enzymatic activity in cells?"
-        ],
-        'Week 3': [
-            "Can you explain why enzymes are more efficient than inorganic catalysts?",
-            "How would competitive inhibition affect the Michaelis-Menten kinetics curve?",
-            "What factors would you consider when designing an enzyme for industrial use?",
-            "How do allosteric enzymes provide regulatory control in metabolic pathways?"
-        ]
-    };
 
-    // Return questions for the specific week, or default questions
-    return questionSets[week] || [
-        "Can you connect the concepts from this week to previous material?",
-        "How would you apply these principles to solve a real-world problem?",
-        "What questions would you ask to deepen understanding of this topic?",
-        "How do these concepts relate to current research in the field?"
-    ];
-}
 
 /**
  * Helper function to find elements containing specific text
@@ -2161,24 +2699,23 @@ function setupMCQValidation() {
 /**
  * Save the created question
  */
-function saveQuestion() {
+async function saveQuestion() {
     const questionType = document.getElementById('question-type').value;
     const questionText = document.getElementById('question-text').value.trim();
     
     // Validation
     if (!questionType) {
-        alert('Please select a question type.');
+        showNotification('Please select a question type.', 'error');
         return;
     }
     
     if (!questionText) {
-        alert('Please enter a question.');
+        showNotification('Please enter a question.', 'error');
         return;
     }
     
     let question = {
-        id: Date.now(), // Simple ID generation
-        type: questionType,
+        questionType: questionType,
         question: questionText
     };
     
@@ -2186,10 +2723,10 @@ function saveQuestion() {
     if (questionType === 'true-false') {
         const tfAnswer = document.querySelector('input[name="tf-answer"]:checked');
         if (!tfAnswer) {
-            alert('Please select the correct answer (True/False).');
+            showNotification('Please select the correct answer (True/False).', 'error');
             return;
         }
-        question.answer = tfAnswer.value;
+        question.correctAnswer = tfAnswer.value;
     } else if (questionType === 'multiple-choice') {
         // Get all options
         const options = {};
@@ -2211,41 +2748,135 @@ function saveQuestion() {
         });
         
         if (!hasOptions) {
-            alert('Please enter at least one answer option.');
+            showNotification('Please enter at least one answer option.', 'error');
             return;
         }
         
         if (!hasCorrectAnswer) {
-            alert('Please select the correct answer for the options you have entered.');
+            showNotification('Please select the correct answer for the options you have entered.', 'error');
             return;
         }
         
         const correctAnswer = document.querySelector('input[name="mcq-correct"]:checked');
         question.options = options;
-        question.answer = correctAnswer.value;
+        question.correctAnswer = correctAnswer.value;
     } else if (questionType === 'short-answer') {
         const saAnswer = document.getElementById('sa-answer').value.trim();
         if (!saAnswer) {
-            alert('Please provide expected answer or key points.');
+            showNotification('Please provide expected answer or key points.', 'error');
             return;
         }
-        question.answer = saAnswer;
+        question.correctAnswer = saAnswer;
     }
     
-    // Add question to the week's assessment
-    if (!assessmentQuestions[currentWeek]) {
-        assessmentQuestions[currentWeek] = [];
+    try {
+        // Save question to MongoDB
+        const courseId = await getCurrentCourseId();
+        const instructorId = getCurrentInstructorId();
+        const lectureName = currentWeek;
+        
+        const response = await fetch('/api/questions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                courseId: courseId,
+                lectureName: lectureName,
+                instructorId: instructorId,
+                questionType: question.questionType,
+                question: question.question,
+                options: question.options || {},
+                correctAnswer: question.correctAnswer,
+                explanation: '',
+                difficulty: 'medium',
+                tags: [],
+                points: 1
+            })
+        });
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Failed to save question: ${response.status} ${errorText}`);
+        }
+        
+        const result = await response.json();
+        
+        // Add the new question to local state immediately
+        if (!assessmentQuestions[currentWeek]) {
+            assessmentQuestions[currentWeek] = [];
+        }
+        
+        const savedQuestion = {
+            id: result.data.questionId,
+            questionId: result.data.questionId,
+            type: question.questionType,
+            question: question.question,
+            answer: question.correctAnswer,
+            options: question.options || {}
+        };
+        
+        assessmentQuestions[currentWeek].push(savedQuestion);
+        
+        // Update the display
+        updateQuestionsDisplay(currentWeek);
+        
+        // Close modal
+        closeQuestionModal();
+        
+        // Check if we should enable AI generation
+        checkAIGenerationAvailability(currentWeek);
+        
+        showNotification('Question saved successfully!', 'success');
+        
+    } catch (error) {
+        console.error('Error saving question:', error);
+        showNotification(`Error saving question: ${error.message}`, 'error');
     }
-    assessmentQuestions[currentWeek].push(question);
-    
-    // Update the display
-    updateQuestionsDisplay(currentWeek);
-    
-    // Close modal
-    closeQuestionModal();
-    
-    // Check if we should enable AI generation
-    checkAIGenerationAvailability(currentWeek);
+}
+
+/**
+ * Reload questions for a specific unit from the database
+ * @param {string} unitName - Unit name (e.g., 'Unit 1')
+ */
+async function reloadQuestionsForUnit(unitName) {
+    try {
+        const courseId = await getCurrentCourseId();
+        
+        const response = await fetch(`/api/questions/lecture?courseId=${courseId}&lectureName=${encodeURIComponent(unitName)}`);
+        
+        if (response.ok) {
+            const result = await response.json();
+            const questions = result.data.questions;
+            
+            // Store questions in the local assessmentQuestions object
+            if (!assessmentQuestions[unitName]) {
+                assessmentQuestions[unitName] = [];
+            }
+            
+            // Clear existing questions and add new ones
+            assessmentQuestions[unitName] = [];
+            
+            // Convert database questions to local format
+            questions.forEach(dbQuestion => {
+                const localQuestion = {
+                    id: dbQuestion.questionId,
+                    questionId: dbQuestion.questionId,
+                    type: dbQuestion.questionType,
+                    question: dbQuestion.question,
+                    answer: dbQuestion.correctAnswer,
+                    options: dbQuestion.options || {}
+                };
+                
+                assessmentQuestions[unitName].push(localQuestion);
+            });
+            
+        } else {
+            console.error('Failed to reload questions for unit:', unitName);
+        }
+    } catch (error) {
+        console.error('Error reloading questions for unit:', unitName, error);
+    }
 }
 
 /**
@@ -2253,8 +2884,13 @@ function saveQuestion() {
  * @param {string} week - Week identifier
  */
 function updateQuestionsDisplay(week) {
-    const questionsContainer = document.getElementById(`assessment-questions-${week.toLowerCase().replace(' ', '')}`);
-    if (!questionsContainer) return;
+    const containerId = `assessment-questions-${week.toLowerCase().replace(/\s+/g, '-')}`;
+    
+    const questionsContainer = document.getElementById(containerId);
+    if (!questionsContainer) {
+        console.error(`Container not found for week: ${week}, ID: ${containerId}`);
+        return;
+    }
     
     const questions = assessmentQuestions[week] || [];
     
@@ -2270,11 +2906,11 @@ function updateQuestionsDisplay(week) {
     let html = '';
     questions.forEach((question, index) => {
         html += `
-            <div class="question-item" data-question-id="${question.id}">
+            <div class="question-item" data-question-id="${question.questionId || question.id}">
                 <div class="question-header">
                     <span class="question-type-badge ${question.type}">${getQuestionTypeLabel(question.type)}</span>
                     <span class="question-number">Question ${index + 1}</span>
-                    <button class="delete-question-btn" onclick="deleteQuestion('${week}', ${question.id})">×</button>
+                    <button class="delete-question-btn" onclick="deleteQuestion('${week}', '${question.questionId || question.id}')">×</button>
                 </div>
                 <div class="question-content">
                     <p class="question-text">${question.question}</p>
@@ -2287,7 +2923,7 @@ function updateQuestionsDisplay(week) {
     questionsContainer.innerHTML = html;
     
     // Update pass threshold max value
-    const thresholdInput = document.getElementById(`pass-threshold-${week.toLowerCase().replace(' ', '')}`);
+    const thresholdInput = document.getElementById(`pass-threshold-${week.toLowerCase().replace(/\s+/g, '-')}`);
     if (thresholdInput) {
         thresholdInput.max = questions.length;
         if (parseInt(thresholdInput.value) > questions.length) {
@@ -2334,13 +2970,16 @@ function getQuestionAnswerDisplay(question) {
 /**
  * Delete a question
  * @param {string} week - Week identifier
- * @param {number} questionId - Question ID
+ * @param {string} questionId - Question ID
  */
-function deleteQuestion(week, questionId) {
+async function deleteQuestion(week, questionId) {
     if (confirm('Are you sure you want to delete this question?')) {
-        assessmentQuestions[week] = assessmentQuestions[week].filter(q => q.id !== questionId);
-        updateQuestionsDisplay(week);
-        checkAIGenerationAvailability(week);
+        try {
+            await deleteAssessmentQuestion(questionId, week);
+            checkAIGenerationAvailability(week);
+        } catch (error) {
+            console.error('Error deleting question:', error);
+        }
     }
 }
 
@@ -2599,8 +3238,6 @@ function saveAssessment(week) {
         savedAt: new Date().toISOString()
     };
     
-    console.log('Saving assessment:', assessmentData);
-    
     // Show success message
     alert(`Assessment saved for ${week}!\nTotal Questions: ${questions.length}\nPass Threshold: ${threshold}`);
 }
@@ -2612,4 +3249,829 @@ function initializeAssessmentSystem() {
         updateQuestionsDisplay(week);
         checkAIGenerationAvailability(week);
     });
+}
+
+/**
+ * Load onboarding data and populate the course upload page
+ */
+async function loadOnboardingData() {
+    try {
+        // Check if we have a courseId from URL parameters (onboarding redirect)
+        const urlParams = new URLSearchParams(window.location.search);
+        const courseId = urlParams.get('courseId');
+        
+        if (!courseId) {
+            return;
+        }
+        
+        // Fetch onboarding data from database
+        const response = await fetch(`/api/onboarding/${courseId}`);
+        
+        if (!response.ok) {
+            return;
+        }
+        
+        const result = await response.json();
+        const onboardingData = result.data;
+        
+        // Generate units dynamically based on course structure
+        if (onboardingData.courseStructure && onboardingData.courseStructure.totalUnits > 0) {
+            generateUnitsFromOnboarding(onboardingData);
+        }
+        
+        // Load existing data for the units
+        loadExistingUnitData(onboardingData);
+        
+        // Show success notification
+        showNotification('Onboarding data loaded successfully!', 'success');
+        
+    } catch (error) {
+        console.error('Error loading onboarding data:', error);
+        showNotification('Error loading onboarding data. Using default values.', 'warning');
+    }
+}
+
+/**
+ * Load course data (either from onboarding redirect or existing course)
+ */
+async function loadCourseData() {
+    try {
+        // First check if we have a courseId from URL parameters (onboarding redirect)
+        const urlParams = new URLSearchParams(window.location.search);
+        const courseId = urlParams.get('courseId');
+        
+        if (courseId) {
+            // Load specific course data
+            await loadSpecificCourse(courseId);
+            return;
+        }
+        
+        // If no courseId in URL, check if instructor has any existing courses
+        const instructorId = 'instructor-123'; // This would come from authentication
+        const response = await fetch(`/api/onboarding/instructor/${instructorId}`);
+        
+        if (response.ok) {
+            const result = await response.json();
+            if (result.data && result.data.courses && result.data.courses.length > 0) {
+                // Load the first available course
+                const firstCourse = result.data.courses[0];
+                await loadSpecificCourse(firstCourse.courseId);
+                return;
+            }
+        }
+        
+        // If no existing course, show empty state
+        showEmptyCourseState();
+        
+    } catch (error) {
+        console.error('Error loading course data:', error);
+        showNotification('Error loading course data. Using default values.', 'warning');
+        showEmptyCourseState();
+    }
+}
+
+/**
+ * Load a specific course by ID
+ */
+async function loadSpecificCourse(courseId) {
+    try {
+        const response = await fetch(`/api/onboarding/${courseId}`);
+        
+        if (!response.ok) {
+            showEmptyCourseState();
+            return;
+        }
+        
+        const result = await response.json();
+        const courseData = result.data;
+        
+        // Generate units dynamically based on course structure
+        if (courseData.courseStructure && courseData.courseStructure.totalUnits > 0) {
+            generateUnitsFromOnboarding(courseData);
+            
+            // Load existing data for the units (learning objectives, publish status, etc.)
+            loadExistingUnitData(courseData);
+        }
+        
+        // Show success notification
+        showNotification('Course data loaded successfully!', 'success');
+        
+    } catch (error) {
+        console.error('Error loading specific course:', error);
+        showNotification('Error loading course data. Using default values.', 'warning');
+        showEmptyCourseState();
+    }
+}
+
+/**
+ * Show empty course state when no course exists
+ */
+function showEmptyCourseState() {
+    const container = document.getElementById('dynamic-units-container');
+    if (container) {
+        container.innerHTML = `
+            <div class="empty-course-state">
+                <div class="empty-message">
+                    <h3>No Course Found</h3>
+                    <p>You haven't set up a course yet. Please complete the onboarding process first.</p>
+                    <a href="/instructor/onboarding" class="btn-primary">Go to Onboarding</a>
+                </div>
+            </div>
+        `;
+    }
+    
+    // Show onboarding navigation item when no course exists
+    const onboardingNavItem = document.getElementById('onboarding-nav-item');
+    if (onboardingNavItem) {
+        onboardingNavItem.style.display = 'block';
+    }
+}
+
+/**
+ * Generate units dynamically from onboarding data
+ * @param {Object} onboardingData - Onboarding data with course structure
+ */
+function generateUnitsFromOnboarding(onboardingData) {
+    const container = document.getElementById('dynamic-units-container');
+    if (!container) {
+        console.error('Dynamic units container not found');
+        return;
+    }
+    
+    // Hide onboarding navigation item when courses exist
+    const onboardingNavItem = document.getElementById('onboarding-nav-item');
+    if (onboardingNavItem) {
+        onboardingNavItem.style.display = 'none';
+    }
+    
+    // Clear existing content
+    container.innerHTML = '';
+    
+    const { courseStructure, lectures } = onboardingData;
+    const totalUnits = courseStructure.totalUnits;
+    
+    // Generate each unit
+    for (let i = 1; i <= totalUnits; i++) {
+        const unitName = `Unit ${i}`;
+        const unitData = lectures ? lectures.find(l => l.name === unitName) : null;
+        
+        const unitElement = createUnitElement(unitName, unitData, i === 1); // First unit is expanded
+        container.appendChild(unitElement);
+    }
+    
+    // Reinitialize event listeners for the new units
+    initializeUnitEventListeners();
+    
+    // Load existing data for the units (learning objectives, publish status, etc.)
+    loadExistingUnitData(onboardingData);
+    
+    // Load assessment questions after units are generated
+    setTimeout(() => {
+        loadAssessmentQuestionsFromCourseData(onboardingData);
+    }, 100);
+    
+    // Load documents from course structure
+    setTimeout(() => {
+        loadDocuments();
+    }, 500); // Increased timeout to ensure DOM is fully ready
+}
+
+/**
+ * Create a unit element with all its sections
+ * @param {string} unitName - Name of the unit (e.g., "Unit 1")
+ * @param {Object} unitData - Existing unit data from database
+ * @param {boolean} isExpanded - Whether the unit should be expanded by default
+ * @returns {HTMLElement} The unit element
+ */
+function createUnitElement(unitName, unitData, isExpanded = false) {
+    const unitDiv = document.createElement('div');
+    unitDiv.className = 'accordion-item';
+    unitDiv.setAttribute('data-unit-name', unitName);
+    
+    const unitId = unitName.toLowerCase().replace(/\s+/g, '-');
+    
+    unitDiv.innerHTML = `
+        <div class="accordion-header">
+            <span class="folder-name">${unitName}</span>
+            <div class="header-actions">
+                <div class="publish-toggle">
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="publish-${unitId}" onchange="togglePublish('${unitName}', this.checked)">
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span class="toggle-label">Published</span>
+                </div>
+
+                <span class="accordion-toggle">${isExpanded ? '▼' : '▶'}</span>
+            </div>
+        </div>
+        <div class="accordion-content ${isExpanded ? '' : 'collapsed'}">
+            <!-- Learning Objectives Section -->
+            <div class="unit-section learning-objectives-section">
+                <div class="section-header">
+                    <h3>Learning Objectives</h3>
+                    <button class="toggle-section">▼</button>
+                </div>
+                <div class="section-content">
+                    <div class="objectives-list" id="objectives-list-${unitId}">
+                        <!-- Objectives will be added here -->
+                    </div>
+                    <div class="objective-input-container">
+                        <input type="text" id="objective-input-${unitId}" class="objective-input" placeholder="Enter learning objective...">
+                        <button class="add-objective-btn-inline" onclick="addObjectiveFromInput('${unitName}')">+</button>
+                    </div>
+                    <div class="save-objectives">
+                        <button class="save-btn" onclick="saveObjectives('${unitName}')">Save Learning Objectives</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Course Materials Section -->
+            <div class="unit-section course-materials-section">
+                <div class="section-header">
+                    <h3>Course Materials</h3>
+                    <button class="toggle-section">▼</button>
+                </div>
+                <div class="section-content">
+                    <div class="content-type-header">
+                        <p><strong>Required Materials:</strong> *Lecture Notes and *Practice Questions/Tutorial are mandatory</p>
+                    </div>
+                    <div class="file-item placeholder-item">
+                        <div class="file-info">
+                            <h3>*Lecture Notes - ${unitName}</h3>
+                            <p>Placeholder for required lecture notes. Please upload content.</p>
+                            <span class="status-text">Not Uploaded</span>
+                        </div>
+                        <div class="file-actions">
+                            <button class="action-button upload" onclick="openUploadModal('${unitName}', 'lecture-notes')">Upload</button>
+                        </div>
+                    </div>
+                    <div class="file-item placeholder-item">
+                        <div class="file-info">
+                            <h3>*Practice Questions/Tutorial</h3>
+                            <p>Placeholder for required practice questions. Please upload content.</p>
+                            <span class="status-text">Not Uploaded</span>
+                        </div>
+                        <div class="file-actions">
+                            <button class="action-button upload" onclick="openUploadModal('${unitName}', 'practice-quiz')">Upload</button>
+                        </div>
+                    </div>
+                    <!-- Add Content Button -->
+                    <div class="add-content-section">
+                        <button class="add-content-btn additional-material" onclick="openUploadModal('${unitName}', 'additional')">
+                            <span class="btn-icon">➕</span>
+                            Add Additional Material
+                        </button>
+                    </div>
+                    <div class="save-objectives">
+                        <button class="save-btn" onclick="confirmCourseMaterials('${unitName}')">Confirm Course Materials</button>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Assessment Questions Section -->
+            <div class="unit-section assessment-questions-section">
+                <div class="section-header">
+                    <h3>Assessment Questions</h3>
+                    <button class="toggle-section">▼</button>
+                </div>
+                <div class="section-content">
+                    <div class="assessment-info">
+                        <p><strong>Assessment Settings:</strong> Create questions to determine student readiness for tutor/protégé mode</p>
+                    </div>
+                    
+                    <!-- Pass Threshold Setting -->
+                    <div class="threshold-setting">
+                        <label for="pass-threshold-${unitId}">Questions required to pass:</label>
+                        <input type="number" id="pass-threshold-${unitId}" min="1" max="10" value="2" class="threshold-input">
+                        <span class="threshold-help">out of total questions</span>
+                        <span class="threshold-display" id="threshold-value-${unitId}">2</span>
+                    </div>
+                    
+                    <!-- Questions List -->
+                    <div class="questions-list" id="assessment-questions-${unitId}">
+                        <!-- Assessment questions will be displayed here -->
+                        <div class="no-questions-message">
+                            <p>No assessment questions created yet. Click "Add Question" to get started.</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Action Buttons -->
+                    <div class="assessment-actions">
+                        <button class="add-question-btn" onclick="openQuestionModal('${unitName}')">
+                            <span class="btn-icon">➕</span>
+                            Add Question
+                        </button>
+                    </div>
+                    
+                    <div class="save-assessment">
+                        <button class="save-btn" onclick="saveAssessment('${unitName}')">Save Assessment</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    return unitDiv;
+}
+
+/**
+ * Load existing data for the generated units
+ * @param {Object} onboardingData - Onboarding data with existing unit information
+ */
+function loadExistingUnitData(onboardingData) {
+    if (!onboardingData.lectures) return;
+    
+    onboardingData.lectures.forEach(unit => {
+        const unitId = unit.name.toLowerCase().replace(/\s+/g, '-');
+        
+        // Load learning objectives
+        if (unit.learningObjectives && unit.learningObjectives.length > 0) {
+            const objectivesList = document.getElementById(`objectives-list-${unitId}`);
+            if (objectivesList) {
+                objectivesList.innerHTML = '';
+                unit.learningObjectives.forEach(objective => {
+                    const objectiveItem = document.createElement('div');
+                    objectiveItem.className = 'objective-display-item';
+                    objectiveItem.innerHTML = `
+                        <span class="objective-text">${objective}</span>
+                        <button class="remove-objective" onclick="removeObjective(this)">×</button>
+                    `;
+                    objectivesList.appendChild(objectiveItem);
+                });
+            } else {
+                console.error(`Could not find objectives list element with ID: objectives-list-${unitId}`);
+            }
+        }
+        
+        // Load pass threshold
+        if (unit.passThreshold) {
+            const thresholdInput = document.getElementById(`pass-threshold-${unitId}`);
+            if (thresholdInput) {
+                thresholdInput.value = unit.passThreshold;
+                
+                // Also update the threshold display
+                const thresholdDisplay = document.getElementById(`threshold-value-${unitId}`);
+                if (thresholdDisplay) {
+                    thresholdDisplay.textContent = unit.passThreshold;
+                }
+            }
+        }
+        
+        // Load assessment questions
+        if (unit.assessmentQuestions && unit.assessmentQuestions.length > 0) {
+            // Store questions in the local assessmentQuestions object
+            if (!assessmentQuestions[unit.name]) {
+                assessmentQuestions[unit.name] = [];
+            }
+            
+            // Convert database questions to local format
+            unit.assessmentQuestions.forEach(dbQuestion => {
+                const localQuestion = {
+                    id: dbQuestion.questionId,
+                    questionId: dbQuestion.questionId,
+                    type: dbQuestion.questionType,
+                    question: dbQuestion.question,
+                    answer: dbQuestion.correctAnswer,
+                    options: dbQuestion.options || {}
+                };
+                
+                assessmentQuestions[unit.name].push(localQuestion);
+            });
+            
+            // Update the display for this unit
+            updateQuestionsDisplay(unit.name);
+        }
+        
+        // Load publish status
+        if (unit.isPublished !== undefined) {
+            const publishToggle = document.getElementById(`publish-${unitId}`);
+            if (publishToggle) {
+                publishToggle.checked = unit.isPublished;
+            }
+        }
+        
+        // Load documents from course structure
+        if (unit.documents && unit.documents.length > 0) {
+            // Find the course materials section for this unit
+            const unitElement = document.querySelector(`[data-unit-name="${unit.name}"]`);
+            if (unitElement) {
+                const courseMaterialsSection = unitElement.querySelector('.course-materials-section .section-content');
+                if (courseMaterialsSection) {
+                    // Clear existing placeholder content
+                    const placeholders = courseMaterialsSection.querySelectorAll('.file-item');
+                    
+                    placeholders.forEach(placeholder => {
+                        placeholder.remove();
+                    });
+                    
+                    // Add each document
+                    unit.documents.forEach(doc => {
+                        const documentItem = createDocumentItem(doc);
+                        courseMaterialsSection.appendChild(documentItem);
+                    });
+                }
+            }
+        }
+    });
+}
+
+
+
+/**
+ * Initialize event listeners for dynamically generated units
+ */
+function initializeUnitEventListeners() {
+    // Setup accordion toggling
+    const accordionHeaders = document.querySelectorAll('.accordion-header');
+    accordionHeaders.forEach(header => {
+        header.addEventListener('click', (e) => {
+            // Don't toggle if clicking on the toggle switch
+            if (e.target.closest('.publish-toggle')) {
+                return;
+            }
+            
+            const accordionItem = header.parentElement;
+            const content = accordionItem.querySelector('.accordion-content');
+            const toggle = header.querySelector('.accordion-toggle');
+            
+            if (content.classList.contains('collapsed')) {
+                content.classList.remove('collapsed');
+                toggle.textContent = '▼';
+            } else {
+                content.classList.add('collapsed');
+                toggle.textContent = '▶';
+            }
+        });
+    });
+    
+    // Setup section toggling
+    const sectionHeaders = document.querySelectorAll('.section-header');
+    sectionHeaders.forEach(header => {
+        header.addEventListener('click', (e) => {
+            toggleSection(header, e);
+        });
+    });
+    
+    // Setup threshold input listeners
+    setupThresholdInputListeners();
+}
+
+/**
+ * Update file status display for uploaded files
+ */
+function updateFileStatus(contentType, unitName, status, fileName) {
+    // Find the file item for this content type and unit
+    const fileItems = document.querySelectorAll('.file-item');
+    
+    fileItems.forEach(item => {
+        const itemTitle = item.querySelector('h3');
+        if (itemTitle) {
+            const isLectureNotes = contentType === 'lecture-notes' && itemTitle.textContent.includes('Lecture Notes');
+            const isPracticeQuestions = contentType === 'practice-questions' && itemTitle.textContent.includes('Practice Questions');
+            
+            // Check if this item belongs to the specified unit
+            const isCorrectUnit = itemTitle.textContent.includes(unitName);
+            
+            if ((isLectureNotes || isPracticeQuestions) && isCorrectUnit) {
+                const statusText = item.querySelector('.status-text');
+                if (statusText) {
+                    statusText.textContent = status === 'uploaded' ? 'Uploaded' : 'Not Uploaded';
+                    statusText.className = status === 'uploaded' ? 'status-text uploaded' : 'status-text';
+                }
+                
+                // Update the file info
+                const fileInfo = item.querySelector('.file-info p');
+                if (fileInfo && status === 'uploaded') {
+                    fileInfo.textContent = `File: ${fileName}`;
+                    fileInfo.className = 'file-info uploaded';
+                }
+            }
+        }
+    });
+}
+
+/**
+ * Add additional material to the display
+ */
+function addAdditionalMaterial(unitName, materialName) {
+    // Find the add content section for Unit 1
+    const addContentSection = document.querySelector('.add-content-section');
+    if (addContentSection) {
+        const materialItem = document.createElement('div');
+        materialItem.className = 'file-item additional-material-item';
+        materialItem.innerHTML = `
+            <div class="file-info">
+                <h3>${materialName}</h3>
+                <p>Additional material uploaded during onboarding</p>
+                <span class="status-text uploaded">Uploaded</span>
+            </div>
+            <div class="file-actions">
+                <button class="action-button view" onclick="viewFile('${materialName}')">View</button>
+                <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
+            </div>
+        `;
+        
+        // Insert before the add content button
+        addContentSection.parentNode.insertBefore(materialItem, addContentSection);
+    }
 } 
+
+/**
+ * Show document content in a modal
+ * @param {Object} documentData - Document object with content and metadata
+ */
+function showDocumentModal(documentData) {
+    // Remove any existing modal
+    const existingModal = document.querySelector('.document-modal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    // Create modal HTML
+    const modalHTML = `
+        <div class="document-modal" style="
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        ">
+            <div class="modal-content" style="
+                background: white;
+                padding: 20px;
+                border-radius: 8px;
+                max-width: 80%;
+                max-height: 80%;
+                overflow-y: auto;
+                position: relative;
+            ">
+                <div class="modal-header" style="
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    margin-bottom: 20px;
+                    border-bottom: 1px solid #eee;
+                    padding-bottom: 10px;
+                ">
+                    <h2 style="margin: 0; color: #333;">${documentData.originalName}</h2>
+                    <button class="close-modal" onclick="closeDocumentModal()" style="
+                        background: none;
+                        border: none;
+                        font-size: 24px;
+                        cursor: pointer;
+                        color: #666;
+                    ">&times;</button>
+                </div>
+                
+                <div class="modal-body">
+                    <div class="document-info" style="margin-bottom: 20px;">
+                        <p><strong>Type:</strong> ${documentData.documentType}</p>
+                        <p><strong>Size:</strong> ${documentData.size} bytes</p>
+                        <p><strong>Uploaded:</strong> ${new Date(documentData.createdAt).toLocaleString()}</p>
+                    </div>
+                    
+                    <div class="document-content" style="
+                        background: #f8f9fa;
+                        padding: 15px;
+                        border-radius: 4px;
+                        border: 1px solid #e9ecef;
+                        white-space: pre-wrap;
+                        font-family: monospace;
+                        max-height: 400px;
+                        overflow-y: auto;
+                    ">${documentData.content || 'No content available'}</div>
+                </div>
+                
+                <div class="modal-footer" style="
+                    margin-top: 20px;
+                    text-align: right;
+                    border-top: 1px solid #eee;
+                    padding-top: 10px;
+                ">
+                    <button onclick="closeDocumentModal()" style="
+                        background: #6c757d;
+                        color: white;
+                        border: none;
+                        padding: 8px 16px;
+                        border-radius: 4px;
+                        cursor: pointer;
+                    ">Close</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // Add modal to page
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+    
+    // Add click outside to close functionality
+    const modal = document.querySelector('.document-modal');
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            closeDocumentModal();
+        }
+    });
+}
+
+/**
+ * Close the document modal
+ */
+function closeDocumentModal() {
+    const modal = document.querySelector('.document-modal');
+    if (modal) {
+        modal.remove();
+    }
+}
+
+/**
+ * Add required placeholder items for lecture notes and practice questions
+ * @param {HTMLElement} container - The container to add placeholders to
+ * @param {string} unitName - The name of the unit (e.g., 'Unit 1')
+ */
+function addRequiredPlaceholders(container, unitName) {
+    // Check if lecture notes placeholder already exists
+    let hasLectureNotes = false;
+    let hasPracticeQuestions = false;
+    
+    container.querySelectorAll('.file-item').forEach(item => {
+        const title = item.querySelector('h3');
+        if (title) {
+            if (title.textContent.includes('*Lecture Notes')) {
+                hasLectureNotes = true;
+            }
+            if (title.textContent.includes('*Practice Questions/Tutorial')) {
+                hasPracticeQuestions = true;
+            }
+        }
+    });
+    
+    // Add lecture notes placeholder if it doesn't exist
+    if (!hasLectureNotes) {
+        const lectureNotesItem = document.createElement('div');
+        lectureNotesItem.className = 'file-item';
+        lectureNotesItem.innerHTML = `
+            <span class="file-icon">📄</span>
+            <div class="file-info">
+                <h3>*Lecture Notes - ${unitName}</h3>
+                <p>Placeholder for required lecture notes. Please upload content.</p>
+                <span class="status-text">Not Uploaded</span>
+            </div>
+            <div class="file-actions">
+                <button class="action-button upload" onclick="openUploadModal('${unitName}', 'lecture-notes')">Upload</button>
+                <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
+            </div>
+        `;
+        container.appendChild(lectureNotesItem);
+    }
+    
+    // Add practice questions placeholder if it doesn't exist
+    if (!hasPracticeQuestions) {
+        const practiceQuestionsItem = document.createElement('div');
+        practiceQuestionsItem.className = 'file-item';
+        practiceQuestionsItem.innerHTML = `
+            <span class="file-icon">📄</span>
+            <div class="file-info">
+                <h3>*Practice Questions/Tutorial</h3>
+                <p>Placeholder for required practice questions. Please upload content.</p>
+                <span class="status-text">Not Uploaded</span>
+            </div>
+            <div class="file-actions">
+                <button class="action-button upload" onclick="openUploadModal('${unitName}', 'practice-quiz')">Upload</button>
+                <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
+            </div>
+        `;
+        container.appendChild(practiceQuestionsItem);
+    }
+}
+
+/**
+ * Add action buttons for additional materials and confirmation
+ * @param {HTMLElement} container - The container to add buttons to
+ * @param {string} unitName - The name of the unit (e.g., 'Unit 1')
+ */
+function addActionButtons(container, unitName) {
+    // Check if action buttons already exist
+    let hasAddContentSection = false;
+    let hasConfirmButton = false;
+    
+    container.querySelectorAll('.add-content-section, .save-objectives').forEach(item => {
+        if (item.classList.contains('add-content-section')) {
+            hasAddContentSection = true;
+        }
+        if (item.textContent.includes('Confirm Course Materials')) {
+            hasConfirmButton = true;
+        }
+    });
+    
+    // Add "Add Additional Material" button if it doesn't exist
+    if (!hasAddContentSection) {
+        const addContentSection = document.createElement('div');
+        addContentSection.className = 'add-content-section';
+        addContentSection.innerHTML = `
+            <button class="add-content-btn additional-material" onclick="openUploadModal('${unitName}', 'additional')">
+                <span class="btn-icon">➕</span>
+                Add Additional Material
+            </button>
+        `;
+        container.appendChild(addContentSection);
+    }
+    
+    // Add "Confirm Course Materials" button if it doesn't exist
+    if (!hasConfirmButton) {
+        const confirmSection = document.createElement('div');
+        confirmSection.className = 'save-objectives';
+        confirmSection.innerHTML = `
+            <button class="save-btn" onclick="confirmCourseMaterials('${unitName}')">Confirm Course Materials</button>
+        `;
+        container.appendChild(confirmSection);
+    }
+}
+
+/**
+ * Add cleanup button to clear all documents from a unit
+ * @param {HTMLElement} container - The container to add button to
+ * @param {string} unitName - The name of the unit (e.g., 'Unit 1')
+ * @param {string} courseId - The course ID
+ */
+function addCleanupButton(container, unitName, courseId) {
+    // Check if cleanup button already exists
+    let hasCleanupButton = false;
+    container.querySelectorAll('.cleanup-section').forEach(item => {
+        if (item.textContent.includes('Clear All Documents')) {
+            hasCleanupButton = true;
+        }
+    });
+    
+    if (!hasCleanupButton) {
+        const cleanupSection = document.createElement('div');
+        cleanupSection.className = 'cleanup-section';
+        cleanupSection.style.marginTop = '20px';
+        cleanupSection.style.padding = '15px';
+        cleanupSection.style.backgroundColor = '#fff3cd';
+        cleanupSection.style.border = '1px solid #ffeaa7';
+        cleanupSection.style.borderRadius = '5px';
+        cleanupSection.innerHTML = `
+            <h4 style="margin: 0 0 10px 0; color: #856404;">⚠️ Document Cleanup</h4>
+            <p style="margin: 0 0 15px 0; color: #856404; font-size: 14px;">
+                This will remove ALL documents from ${unitName} in the course structure. 
+                This action cannot be undone.
+            </p>
+            <button class="cleanup-btn" onclick="clearAllDocuments('${unitName}', '${courseId}')" 
+                    style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">
+                🗑️ Clear All Documents from ${unitName}
+            </button>
+        `;
+        container.appendChild(cleanupSection);
+    }
+}
+
+/**
+ * Clear all documents from a specific unit in the course structure
+ * @param {string} unitName - The name of the unit (e.g., 'Unit 1')
+ * @param {string} courseId - The course ID
+ */
+async function clearAllDocuments(unitName, courseId) {
+    // Confirm the action
+    if (!confirm(`Are you sure you want to clear ALL documents from ${unitName}? This action cannot be undone.`)) {
+        return;
+    }
+    
+    try {
+        const instructorId = getCurrentInstructorId();
+        
+        showNotification(`Clearing all documents from ${unitName}...`, 'info');
+        
+        const response = await fetch(`/api/courses/${courseId}/clear-documents`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                unitName: unitName,
+                instructorId: instructorId
+            })
+        });
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Failed to clear documents: ${response.status} ${errorText}`);
+        }
+        
+        const result = await response.json();
+        
+        showNotification(`Successfully cleared ${result.data.clearedCount} documents from ${unitName}!`, 'success');
+        
+        // Reload documents to reflect the changes
+        await loadDocuments();
+        
+    } catch (error) {
+        console.error('Error clearing documents:', error);
+        showNotification(`Error clearing documents: ${error.message}`, 'error');
+    }
+}

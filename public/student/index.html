@@ -58,8 +58,12 @@
                                             <span class="three-dots">⋯</span>
                                         </button>
                                         <div class="flag-menu">
-                                            <button class="flag-option" onclick="flagMessage(this, 'incorrectness')">Incorrectness</button>
+                                            <button class="flag-option" onclick="flagMessage(this, 'incorrect')">Incorrect</button>
                                             <button class="flag-option" onclick="flagMessage(this, 'inappropriate')">Inappropriate</button>
+                                            <button class="flag-option" onclick="flagMessage(this, 'unclear')">Unclear</button>
+                                            <button class="flag-option" onclick="flagMessage(this, 'confusing')">Confusing</button>
+                                            <button class="flag-option" onclick="flagMessage(this, 'typo')">Typo/Error</button>
+                                            <button class="flag-option" onclick="flagMessage(this, 'offensive')">Offensive</button>
                                             <button class="flag-option" onclick="flagMessage(this, 'irrelevant')">Irrelevant</button>
                                         </div>
                                     </div>
@@ -77,7 +81,7 @@
                     </form>
                     <div class="chat-footer">
                         <div class="chat-disclaimer">
-                            BiocBot can make mistakes. Verify important information with your course materials and instructor. Don't share personal information.
+                            BiocBot can make mistakes. Verify important information with your instructor. Don't share personal information.
                         </div>
                         <!-- Mode Toggle -->
                         <div class="mode-toggle-container">
