@@ -955,31 +955,41 @@ async function loadPublishStatus() {
  */
 async function loadLearningObjectives() {
     try {
+        console.log('📚 [LEARNING_OBJECTIVES] Starting to load learning objectives...');
         const courseId = await getCurrentCourseId();
+        console.log(`📚 [LEARNING_OBJECTIVES] Course ID: ${courseId}`);
         
         // Get all accordion items (units/weeks)
         const accordionItems = document.querySelectorAll('.accordion-item');
+        console.log(`📚 [LEARNING_OBJECTIVES] Found ${accordionItems.length} accordion items (units/weeks)`);
         
         for (const item of accordionItems) {
             const folderName = item.querySelector('.folder-name');
             if (!folderName) continue;
             
             const lectureName = folderName.textContent;
+            console.log(`📚 [LEARNING_OBJECTIVES] Processing lecture/unit: ${lectureName}`);
             
+            console.log(`📡 [MONGODB] Making API request to /api/learning-objectives?week=${encodeURIComponent(lectureName)}&courseId=${courseId}`);
             const response = await fetch(`/api/learning-objectives?week=${encodeURIComponent(lectureName)}&courseId=${courseId}`);
+            console.log(`📡 [MONGODB] API response status: ${response.status} ${response.statusText}`);
+            console.log(`📡 [MONGODB] API response headers:`, Object.fromEntries(response.headers.entries()));
             
             if (response.ok) {
                 const result = await response.json();
+                console.log(`📡 [MONGODB] Learning objectives data for ${lectureName}:`, result);
                 const objectives = result.data.objectives;
                 
                 if (objectives && objectives.length > 0) {
+                    console.log(`📚 [LEARNING_OBJECTIVES] Found ${objectives.length} objectives for ${lectureName}:`, objectives);
                     // Clear existing objectives
                     const objectivesList = item.querySelector('.objectives-list');
                     if (objectivesList) {
                         objectivesList.innerHTML = '';
                         
                         // Add each objective
-                        objectives.forEach(objective => {
+                        objectives.forEach((objective, index) => {
+                            console.log(`📚 [LEARNING_OBJECTIVES] Adding objective ${index + 1} to UI: ${objective}`);
                             const objectiveItem = document.createElement('div');
                             objectiveItem.className = 'objective-display-item';
                             objectiveItem.innerHTML = `
@@ -988,15 +998,22 @@ async function loadLearningObjectives() {
                             `;
                             objectivesList.appendChild(objectiveItem);
                         });
+                        console.log(`✅ [LEARNING_OBJECTIVES] Successfully added ${objectives.length} objectives to UI for ${lectureName}`);
+                    } else {
+                        console.warn(`⚠️ [LEARNING_OBJECTIVES] No objectives list found for ${lectureName}`);
                     }
+                } else {
+                    console.log(`📚 [LEARNING_OBJECTIVES] No objectives found for ${lectureName}`);
                 }
+            } else {
+                console.warn(`⚠️ [MONGODB] Failed to load learning objectives for ${lectureName}: ${response.status} ${response.statusText}`);
             }
         }
         
-
+        console.log('✅ [LEARNING_OBJECTIVES] Learning objectives loading process completed');
         
     } catch (error) {
-        console.error('Error loading learning objectives:', error);
+        console.error('❌ [LEARNING_OBJECTIVES] Error loading learning objectives:', error);
         showNotification('Error loading learning objectives. Using default values.', 'warning');
     }
 }
@@ -1006,36 +1023,48 @@ async function loadLearningObjectives() {
  */
 async function loadDocuments() {
     try {
+        console.log('📁 [DOCUMENTS] Starting to load documents...');
         const courseId = await getCurrentCourseId();
+        console.log(`📁 [DOCUMENTS] Course ID: ${courseId}`);
         
         // Get all accordion items (units/weeks)
         const accordionItems = document.querySelectorAll('.accordion-item');
+        console.log(`📁 [DOCUMENTS] Found ${accordionItems.length} accordion items (units/weeks)`);
         
         for (const item of accordionItems) {
             const folderName = item.querySelector('.folder-name');
             if (!folderName) {
+                console.warn(`⚠️ [DOCUMENTS] No folder name found for accordion item`);
                 continue;
             }
             
             const lectureName = folderName.textContent;
+            console.log(`📁 [DOCUMENTS] Processing lecture/unit: ${lectureName}`);
             
             // Load documents from the course structure instead of separate API
+            console.log(`📡 [MONGODB] Making API request to /api/courses/${courseId}?instructorId=${getCurrentInstructorId()}`);
             const response = await fetch(`/api/courses/${courseId}?instructorId=${getCurrentInstructorId()}`);
+            console.log(`📡 [MONGODB] API response status: ${response.status} ${response.statusText}`);
+            console.log(`📡 [MONGODB] API response headers:`, Object.fromEntries(response.headers.entries()));
             
             if (response.ok) {
                 const result = await response.json();
+                console.log(`📡 [MONGODB] Course data for ${lectureName}:`, result);
                 const course = result.data;
                 
                 if (course && course.lectures) {
                     const unit = course.lectures.find(l => l.name === lectureName);
                     const documents = unit ? (unit.documents || []) : [];
+                    console.log(`📁 [DOCUMENTS] Found ${documents.length} documents for ${lectureName}:`, documents);
                     
                     // Find the course materials section
                     const courseMaterialsSection = item.querySelector('.course-materials-section .section-content');
                     if (courseMaterialsSection) {
+                        console.log(`📁 [DOCUMENTS] Course materials section found for ${lectureName}`);
                         
                         // Clear ALL existing document items (both placeholders and actual documents)
                         const existingItems = courseMaterialsSection.querySelectorAll('.file-item');
+                        console.log(`📁 [DOCUMENTS] Clearing ${existingItems.length} existing document items for ${lectureName}`);
                         
                         existingItems.forEach(item => {
                             item.remove();
@@ -1043,12 +1072,17 @@ async function loadDocuments() {
                         
                         // ADD ALL DOCUMENTS - BACKEND HANDLES DELETION FROM BOTH DBs
                         if (documents && documents.length > 0) {
+                            console.log(`📁 [DOCUMENTS] Adding ${documents.length} documents to UI for ${lectureName}`);
                             
                             // Add all documents - backend ensures they exist in both databases
-                            documents.forEach(doc => {
+                            documents.forEach((doc, index) => {
+                                console.log(`📁 [DOCUMENTS] Adding document ${index + 1} to UI:`, doc);
                                 const documentItem = createDocumentItem(doc);
                                 courseMaterialsSection.appendChild(documentItem);
                             });
+                            console.log(`✅ [DOCUMENTS] Successfully added ${documents.length} documents to UI for ${lectureName}`);
+                        } else {
+                            console.log(`📁 [DOCUMENTS] No documents to add for ${lectureName}`);
                         }
                         
                         // Always add the required placeholder items if they don't exist
@@ -1439,35 +1473,49 @@ function loadAssessmentQuestionsFromCourseData(courseData) {
  */
 async function loadAssessmentQuestions() {
     try {
+        console.log('❓ [ASSESSMENT_QUESTIONS] Starting to load assessment questions...');
         const courseId = await getCurrentCourseId();
+        console.log(`❓ [ASSESSMENT_QUESTIONS] Course ID: ${courseId}`);
         
         // Get all accordion items (units/weeks)
         const accordionItems = document.querySelectorAll('.accordion-item');
+        console.log(`❓ [ASSESSMENT_QUESTIONS] Found ${accordionItems.length} accordion items (units/weeks)`);
         
         if (accordionItems.length === 0) {
+            console.log('❓ [ASSESSMENT_QUESTIONS] No accordion items found, skipping assessment questions loading');
             return;
         }
         
         for (const item of accordionItems) {
             const folderName = item.querySelector('.folder-name');
-            if (!folderName) continue;
+            if (!folderName) {
+                console.warn(`⚠️ [ASSESSMENT_QUESTIONS] No folder name found for accordion item`);
+                continue;
+            }
             
             const lectureName = folderName.textContent;
+            console.log(`❓ [ASSESSMENT_QUESTIONS] Processing lecture/unit: ${lectureName}`);
             
+            console.log(`📡 [MONGODB] Making API request to /api/questions/lecture?courseId=${courseId}&lectureName=${encodeURIComponent(lectureName)}`);
             const response = await fetch(`/api/questions/lecture?courseId=${courseId}&lectureName=${encodeURIComponent(lectureName)}`);
+            console.log(`📡 [MONGODB] API response status: ${response.status} ${response.statusText}`);
+            console.log(`📡 [MONGODB] API response headers:`, Object.fromEntries(response.headers.entries()));
             
             if (response.ok) {
                 const result = await response.json();
+                console.log(`📡 [MONGODB] Assessment questions data for ${lectureName}:`, result);
                 const questions = result.data.questions;
                 
                 if (questions && questions.length > 0) {
+                    console.log(`❓ [ASSESSMENT_QUESTIONS] Found ${questions.length} questions for ${lectureName}:`, questions);
                     // Store questions in the assessmentQuestions object
                     if (!assessmentQuestions[lectureName]) {
                         assessmentQuestions[lectureName] = [];
                     }
                     
                     // Convert database questions to local format
-                    questions.forEach(dbQuestion => {
+                    questions.forEach((dbQuestion, index) => {
+                        console.log(`❓ [ASSESSMENT_QUESTIONS] Converting question ${index + 1} for ${lectureName}:`, dbQuestion);
                         const localQuestion = {
                             id: dbQuestion.questionId,
                             questionId: dbQuestion.questionId,
@@ -1476,18 +1524,25 @@ async function loadAssessmentQuestions() {
                             answer: dbQuestion.correctAnswer,
                             options: dbQuestion.options || {}
                         };
-                        
+                        console.log(`❓ [ASSESSMENT_QUESTIONS] Converted question ${index + 1}:`, localQuestion);
                         assessmentQuestions[lectureName].push(localQuestion);
                     });
                     
+                    console.log(`✅ [ASSESSMENT_QUESTIONS] Successfully processed ${questions.length} questions for ${lectureName}`);
                     // Update the display for this lecture
                     updateQuestionsDisplay(lectureName);
+                } else {
+                    console.log(`❓ [ASSESSMENT_QUESTIONS] No questions found for ${lectureName}`);
                 }
+            } else {
+                console.warn(`⚠️ [MONGODB] Failed to load assessment questions for ${lectureName}: ${response.status} ${response.statusText}`);
             }
         }
         
+        console.log('✅ [ASSESSMENT_QUESTIONS] Assessment questions loading process completed');
+        
     } catch (error) {
-        console.error('Error loading assessment questions:', error);
+        console.error('❌ [ASSESSMENT_QUESTIONS] Error loading assessment questions:', error);
         showNotification('Error loading assessment questions. Using default values.', 'warning');
     }
 }

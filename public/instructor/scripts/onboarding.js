@@ -34,16 +34,24 @@ document.addEventListener('DOMContentLoaded', function() {
  */
 async function checkOnboardingStatus() {
     try {
+        console.log('🔍 [ONBOARDING] Checking onboarding status...');
+        
         // Check if there's a courseId in URL params (from redirect)
         const urlParams = new URLSearchParams(window.location.search);
         const courseId = urlParams.get('courseId');
         
         if (courseId) {
+            console.log(`🔍 [ONBOARDING] Found courseId in URL params: ${courseId}`);
             // Check if this course has onboarding complete
+            console.log(`📡 [MONGODB] Making API request to /api/onboarding/${courseId}`);
             const response = await fetch(`/api/onboarding/${courseId}`);
+            console.log(`📡 [MONGODB] API response status: ${response.status} ${response.statusText}`);
+            
             if (response.ok) {
                 const courseData = await response.json();
+                console.log('📡 [MONGODB] Course data retrieved:', courseData);
                 if (courseData.data && courseData.data.isOnboardingComplete) {
+                    console.log('✅ [ONBOARDING] Onboarding already complete for this course');
                     showOnboardingComplete();
                     return;
                 }
@@ -52,13 +60,19 @@ async function checkOnboardingStatus() {
         
         // Check if instructor has any completed courses
         const instructorId = 'instructor-123'; // This would come from authentication
+        console.log(`🔍 [ONBOARDING] Checking for existing courses for instructor: ${instructorId}`);
+        console.log(`📡 [MONGODB] Making API request to /api/onboarding/instructor/${instructorId}`);
         const response = await fetch(`/api/onboarding/instructor/${instructorId}`);
+        console.log(`📡 [MONGODB] API response status: ${response.status} ${response.statusText}`);
+        
         if (response.ok) {
             const result = await response.json();
+            console.log('📡 [MONGODB] Instructor courses data:', result);
             if (result.data && result.data.courses && result.data.courses.length > 0) {
                 // Check if any course has onboarding complete
                 const completedCourse = result.data.courses.find(course => course.isOnboardingComplete);
                 if (completedCourse) {
+                    console.log('✅ [ONBOARDING] Found completed course:', completedCourse);
                     // Store the course ID for potential redirect
                     onboardingState.existingCourseId = completedCourse.courseId;
                     showOnboardingComplete();
@@ -67,11 +81,12 @@ async function checkOnboardingStatus() {
             }
         }
         
+        console.log('🔍 [ONBOARDING] No completed onboarding found, showing normal flow');
         // If we get here, onboarding is not complete, show normal flow
         showOnboardingFlow();
         
     } catch (error) {
-        console.error('Error checking onboarding status:', error);
+        console.error('❌ [ONBOARDING] Error checking onboarding status:', error);
         // If there's an error, show normal onboarding flow
         showOnboardingFlow();
     }
@@ -343,6 +358,9 @@ async function checkExistingCourse() {
  */
 async function createCourse(courseData) {
     try {
+        console.log('🚀 [ONBOARDING] Starting course creation process...');
+        console.log('📋 [ONBOARDING] Course data:', courseData);
+        
         // Generate a course ID based on the course name
         let courseId = courseData.course.replace(/\s+/g, '-').toUpperCase();
         
@@ -354,14 +372,18 @@ async function createCourse(courseData) {
         
         // Add timestamp to ensure uniqueness
         courseId = `${courseId}-${Date.now()}`;
+        console.log(`🆔 [ONBOARDING] Generated course ID: ${courseId}`);
         
         const instructorId = 'instructor-123'; // This would come from authentication in real app
+        console.log(`👤 [ONBOARDING] Using instructor ID: ${instructorId}`);
         
         // Get learning objectives from the UI
         const learningObjectives = getLearningObjectivesFromUI();
+        console.log('📚 [ONBOARDING] Learning objectives from UI:', learningObjectives);
         
         // If no objectives found, show error
         if (learningObjectives.length === 0) {            
+            console.warn('⚠️ [ONBOARDING] No learning objectives found in UI');
             // Try to find objectives manually
             const objectivesList = document.getElementById('objectives-list');
             if (objectivesList) {
@@ -389,6 +411,8 @@ async function createCourse(courseData) {
             }
         };
         
+        console.log('📋 [ONBOARDING] Prepared onboarding data:', onboardingData);
+        
         // Initialize unit structure with Unit 1 learning objectives
         for (let i = 1; i <= courseData.totalUnits; i++) {
             const unitName = `Unit ${i}`;
@@ -407,6 +431,9 @@ async function createCourse(courseData) {
             }
         }
         
+        console.log('📋 [ONBOARDING] Final onboarding data with unit structure:', onboardingData);
+        console.log(`📡 [MONGODB] Making API request to /api/onboarding (POST)`);
+        console.log(`📡 [MONGODB] Request body size: ${JSON.stringify(onboardingData).length} characters`);
         
         const response = await fetch('/api/onboarding', {
             method: 'POST',
@@ -416,13 +443,18 @@ async function createCourse(courseData) {
             body: JSON.stringify(onboardingData)
         });
         
+        console.log(`📡 [MONGODB] API response status: ${response.status} ${response.statusText}`);
+        console.log(`📡 [MONGODB] API response headers:`, Object.fromEntries(response.headers.entries()));
         
         if (!response.ok) {
             const errorText = await response.text();
+            console.error(`❌ [MONGODB] API error response: ${response.status} ${errorText}`);
             throw new Error(`Failed to create course: ${response.status} ${errorText}`);
         }
         
-        const result = await response.json();        
+        const result = await response.json();
+        console.log('✅ [MONGODB] Course created successfully:', result);
+        
         // After successfully creating the course, save Unit 1 data using the same APIs
         // that the course upload functionality expects
         // Note: Learning objectives will be saved together when onboarding is completed
@@ -438,7 +470,7 @@ async function createCourse(courseData) {
         };
         
     } catch (error) {
-        console.error('Error creating course:', error);
+        console.error('❌ [ONBOARDING] Error creating course:', error);
         throw error;
     }
 }
@@ -1877,7 +1909,17 @@ function getDefaultTitle(documentType, fallback) {
  */
 async function saveUnit1Document(courseId, lectureName, documentType, file, instructorId) {
     try {
-        console.log(`Saving Unit 1 document for course ${courseId}:`, { documentType, filename: file.name });
+        console.log(`📁 [DOCUMENT] Starting document upload process...`);
+        console.log(`📁 [DOCUMENT] Course ID: ${courseId}`);
+        console.log(`📁 [DOCUMENT] Lecture/Unit: ${lectureName}`);
+        console.log(`📁 [DOCUMENT] Document type: ${documentType}`);
+        console.log(`📁 [DOCUMENT] File details:`, {
+            name: file.name,
+            size: file.size,
+            type: file.type,
+            lastModified: new Date(file.lastModified)
+        });
+        console.log(`📁 [DOCUMENT] Instructor ID: ${instructorId}`);
         
         const formData = new FormData();
         formData.append('file', file);
@@ -1886,24 +1928,42 @@ async function saveUnit1Document(courseId, lectureName, documentType, file, inst
         formData.append('documentType', documentType);
         formData.append('instructorId', instructorId);
         
+        console.log(`📡 [MONGODB] Making API request to /api/documents/upload (POST)`);
+        console.log(`📡 [MONGODB] FormData contents:`, {
+            courseId: formData.get('courseId'),
+            lectureName: formData.get('lectureName'),
+            documentType: formData.get('documentType'),
+            instructorId: formData.get('instructorId'),
+            fileName: formData.get('file')?.name,
+            fileSize: formData.get('file')?.size
+        });
+        
         const response = await fetch('/api/documents/upload', {
             method: 'POST',
             body: formData
         });
         
+        console.log(`📡 [MONGODB] API response status: ${response.status} ${response.statusText}`);
+        console.log(`📡 [MONGODB] API response headers:`, Object.fromEntries(response.headers.entries()));
+        
         if (!response.ok) {
             const errorText = await response.text();
+            console.error(`❌ [MONGODB] API error response: ${response.status} ${errorText}`);
             throw new Error(`Failed to save document: ${response.status} ${errorText}`);
         }
         
         const result = await response.json();
-        console.log('Unit 1 document saved successfully:', result);
+        console.log('✅ [MONGODB] Document saved successfully:', result);
+        console.log('📁 [DOCUMENT] Document ID from response:', result.data?.id);
         
         // After successfully saving the document, also link it to the course structure
+        console.log(`🔗 [MONGODB] Linking document to course structure...`);
         await linkDocumentToCourse(courseId, lectureName, documentType, result.data, instructorId);
         
+        console.log(`✅ [DOCUMENT] Document upload and linking completed successfully`);
+        
     } catch (error) {
-        console.error('Error saving Unit 1 document:', error);
+        console.error('❌ [DOCUMENT] Error saving Unit 1 document:', error);
         throw error;
     }
 }
@@ -1964,7 +2024,14 @@ async function saveUnit1URL(courseId, lectureName, documentType, url, name, inst
  */
 async function saveUnit1Text(courseId, lectureName, documentType, text, name, instructorId) {
     try {
-        console.log(`Saving Unit 1 text content for course ${courseId}:`, { documentType, name, textLength: text.length });
+        console.log(`📝 [TEXT] Starting text content upload process...`);
+        console.log(`📝 [TEXT] Course ID: ${courseId}`);
+        console.log(`📝 [TEXT] Lecture/Unit: ${lectureName}`);
+        console.log(`📝 [TEXT] Document type: ${documentType}`);
+        console.log(`📝 [TEXT] Content name: ${name}`);
+        console.log(`📝 [TEXT] Text content length: ${text.length} characters`);
+        console.log(`📝 [TEXT] Text content preview: ${text.substring(0, 100)}${text.length > 100 ? '...' : ''}`);
+        console.log(`📝 [TEXT] Instructor ID: ${instructorId}`);
         
         const requestBody = {
             courseId,
@@ -1975,8 +2042,10 @@ async function saveUnit1Text(courseId, lectureName, documentType, text, name, in
             instructorId
         };
         
-        console.log('API request body:', requestBody);
-        console.log('API endpoint:', '/api/documents/text');
+        console.log(`📡 [MONGODB] Making API request to /api/documents/text (POST)`);
+        console.log(`📡 [MONGODB] Request endpoint: /api/documents/text`);
+        console.log(`📡 [MONGODB] Request body:`, requestBody);
+        console.log(`📡 [MONGODB] Request body size: ${JSON.stringify(requestBody).length} characters`);
         
         const response = await fetch('/api/documents/text', {
             method: 'POST',
@@ -1986,17 +2055,21 @@ async function saveUnit1Text(courseId, lectureName, documentType, text, name, in
             body: JSON.stringify(requestBody)
         });
         
+        console.log(`📡 [MONGODB] API response status: ${response.status} ${response.statusText}`);
+        console.log(`📡 [MONGODB] API response headers:`, Object.fromEntries(response.headers.entries()));
+        
         if (!response.ok) {
             const errorText = await response.text();
-            console.error('API error response:', errorText);
+            console.error(`❌ [MONGODB] API error response: ${response.status} ${errorText}`);
             throw new Error(`Failed to save text content: ${response.status} ${errorText}`);
         }
         
         const result = await response.json();
-        console.log('Unit 1 text content saved successfully:', result);
+        console.log('✅ [MONGODB] Text content saved successfully:', result);
+        console.log('📝 [TEXT] Document ID from response:', result.data?.id);
         
     } catch (error) {
-        console.error('Error saving Unit 1 text content:', error);
+        console.error('❌ [TEXT] Error saving Unit 1 text content:', error);
         throw error;
     }
 }
@@ -2350,8 +2423,11 @@ async function removeExistingDocumentType(courseId, lectureName, documentType, i
  */
 async function saveUnit1AssessmentQuestion(courseId, lectureName, questionText, instructorId) {
     try {
-        console.log(`%c--- SAVING ASSESSMENT QUESTION ---`, 'font-weight: bold; color: green;');
-        console.log(`Saving assessment question for course ${courseId}:`, { lectureName, questionText });
+        console.log(`❓ [ASSESSMENT] Starting assessment question creation process...`);
+        console.log(`❓ [ASSESSMENT] Course ID: ${courseId}`);
+        console.log(`❓ [ASSESSMENT] Lecture/Unit: ${lectureName}`);
+        console.log(`❓ [ASSESSMENT] Question text: ${questionText}`);
+        console.log(`❓ [ASSESSMENT] Instructor ID: ${instructorId}`);
         
         const requestBody = {
             courseId,
@@ -2372,10 +2448,12 @@ async function saveUnit1AssessmentQuestion(courseId, lectureName, questionText, 
             points: 1
         };
         
-        console.log('Assessment question request body:', JSON.stringify(requestBody, null, 2));
-        console.log('Making API request to:', '/api/questions');
-        console.log('Request method: POST');
-        console.log('Request headers:', { 'Content-Type': 'application/json' });
+        console.log(`📡 [MONGODB] Making API request to /api/questions (POST)`);
+        console.log(`📡 [MONGODB] Request endpoint: /api/questions`);
+        console.log(`📡 [MONGODB] Request method: POST`);
+        console.log(`📡 [MONGODB] Request headers: { 'Content-Type': 'application/json' }`);
+        console.log(`📡 [MONGODB] Request body:`, JSON.stringify(requestBody, null, 2));
+        console.log(`📡 [MONGODB] Request body size: ${JSON.stringify(requestBody).length} characters`);
         
         const response = await fetch('/api/questions', {
             method: 'POST',
@@ -2385,23 +2463,23 @@ async function saveUnit1AssessmentQuestion(courseId, lectureName, questionText, 
             body: JSON.stringify(requestBody)
         });
         
-        console.log('API response status:', response.status);
-        console.log('API response status text:', response.statusText);
-        console.log('API response headers:', Object.fromEntries(response.headers.entries()));
+        console.log(`📡 [MONGODB] API response status: ${response.status} ${response.statusText}`);
+        console.log(`📡 [MONGODB] API response status text: ${response.statusText}`);
+        console.log(`📡 [MONGODB] API response headers:`, Object.fromEntries(response.headers.entries()));
         
         if (!response.ok) {
             const errorText = await response.text();
-            console.error('API error response:', errorText);
+            console.error(`❌ [MONGODB] API error response: ${response.status} ${errorText}`);
             throw new Error(`Failed to save assessment question: ${response.status} ${errorText}`);
         }
         
         const result = await response.json();
-        console.log('API success response:', result);
-        console.log('%c--- ASSESSMENT QUESTION SAVED SUCCESSFULLY ---', 'font-weight: bold; color: green;');
+        console.log('✅ [MONGODB] API success response:', result);
+        console.log('✅ [ASSESSMENT] Assessment question saved successfully!');
         return result;
         
     } catch (error) {
-        console.error('Error saving assessment question:', error);
+        console.error('❌ [ASSESSMENT] Error saving assessment question:', error);
         throw error;
     }
 }
@@ -2416,7 +2494,11 @@ async function saveUnit1AssessmentQuestion(courseId, lectureName, questionText, 
  */
 async function saveUnit1PassThreshold(courseId, lectureName, passThreshold, instructorId) {
     try {
-        console.log(`Saving pass threshold for course ${courseId}:`, { lectureName, passThreshold });
+        console.log(`🎯 [THRESHOLD] Starting pass threshold update process...`);
+        console.log(`🎯 [THRESHOLD] Course ID: ${courseId}`);
+        console.log(`🎯 [THRESHOLD] Lecture/Unit: ${lectureName}`);
+        console.log(`🎯 [THRESHOLD] Pass threshold value: ${passThreshold}`);
+        console.log(`🎯 [THRESHOLD] Instructor ID: ${instructorId}`);
         
         const requestBody = {
             courseId,
@@ -2425,7 +2507,10 @@ async function saveUnit1PassThreshold(courseId, lectureName, passThreshold, inst
             instructorId
         };
         
-        console.log('Pass threshold request body:', requestBody);
+        console.log(`📡 [MONGODB] Making API request to /api/lectures/pass-threshold (POST)`);
+        console.log(`📡 [MONGODB] Request endpoint: /api/lectures/pass-threshold`);
+        console.log(`📡 [MONGODB] Request body:`, requestBody);
+        console.log(`📡 [MONGODB] Request body size: ${JSON.stringify(requestBody).length} characters`);
         
         // Use the lectures API to update the pass threshold
         const response = await fetch(`/api/lectures/pass-threshold`, {
@@ -2436,18 +2521,22 @@ async function saveUnit1PassThreshold(courseId, lectureName, passThreshold, inst
             body: JSON.stringify(requestBody)
         });
         
+        console.log(`📡 [MONGODB] API response status: ${response.status} ${response.statusText}`);
+        console.log(`📡 [MONGODB] API response headers:`, Object.fromEntries(response.headers.entries()));
+        
         if (!response.ok) {
             const errorText = await response.text();
-            console.error('Error saving pass threshold:', response.status, errorText);
+            console.error(`❌ [MONGODB] Error saving pass threshold: ${response.status} ${errorText}`);
             throw new Error(`Failed to save pass threshold: ${response.status} ${errorText}`);
         }
         
         const result = await response.json();
-        console.log('Pass threshold saved successfully:', result);
+        console.log('✅ [MONGODB] Pass threshold saved successfully:', result);
+        console.log('🎯 [THRESHOLD] Pass threshold update completed successfully!');
         return result;
         
     } catch (error) {
-        console.error('Error saving pass threshold:', error);
+        console.error('❌ [THRESHOLD] Error saving pass threshold:', error);
         throw error;
     }
 }
