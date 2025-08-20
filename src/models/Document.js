@@ -99,6 +99,48 @@ async function getDocumentById(db, documentId) {
 }
 
 /**
+ * Update document content with extracted text
+ * @param {Object} db - MongoDB database instance
+ * @param {string} documentId - Document identifier
+ * @param {string} content - Extracted text content
+ * @returns {Promise<Object>} Update result
+ */
+async function updateDocumentContent(db, documentId, content) {
+    const collection = getDocumentsCollection(db);
+    
+    try {
+        const result = await collection.updateOne(
+            { documentId: documentId },
+            { 
+                $set: { 
+                    content: content,
+                    lastModified: new Date(),
+                    status: 'parsed'
+                }
+            }
+        );
+        
+        if (result.matchedCount > 0) {
+            return {
+                success: true,
+                message: 'Document content updated successfully',
+                modifiedCount: result.modifiedCount
+            };
+        } else {
+            return {
+                success: false,
+                error: 'Document not found'
+            };
+        }
+    } catch (error) {
+        return {
+            success: false,
+            error: error.message
+        };
+    }
+}
+
+/**
  * Update document status
  * @param {Object} db - MongoDB database instance
  * @param {string} documentId - Document identifier
@@ -168,6 +210,7 @@ module.exports = {
     uploadDocument,
     getDocumentsForLecture,
     getDocumentById,
+    updateDocumentContent,
     updateDocumentStatus,
     deleteDocument,
     getDocumentStats

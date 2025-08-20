@@ -1249,7 +1249,6 @@ async function deleteDocument(documentId) {
 }
 
 
-
 /**
  * Manually remove a document reference from the course structure
  * This is a fallback when the backend endpoint is not available
@@ -1417,6 +1416,15 @@ async function viewDocument(documentId) {
         
         const result = await response.json();
         const document = result.data;
+        
+        console.log('📄 Document data received:', {
+            documentId: document.documentId,
+            originalName: document.originalName,
+            contentType: document.contentType,
+            hasContent: !!document.content,
+            contentLength: document.content ? document.content.length : 0,
+            contentPreview: document.content ? document.content.substring(0, 100) + '...' : 'No content'
+        });
         
         if (!document) {
             throw new Error('Document not found');
@@ -3888,7 +3896,7 @@ function showDocumentModal(documentData) {
                     <div class="document-info" style="margin-bottom: 20px;">
                         <p><strong>Type:</strong> ${documentData.documentType}</p>
                         <p><strong>Size:</strong> ${documentData.size} bytes</p>
-                        <p><strong>Uploaded:</strong> ${new Date(documentData.createdAt).toLocaleString()}</p>
+                        <p><strong>Uploaded:</strong> ${documentData.uploadDate ? new Date(documentData.uploadDate).toLocaleString() : 'Unknown'}</p>
                     </div>
                     
                     <div class="document-content" style="

@@ -1,11 +1,22 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
+const fs = require('fs');
 
 // Import the Document model and Course model
 const DocumentModel = require('../models/Document');
 const CourseModel = require('../models/Course');
 const QdrantService = require('../services/qdrantService');
+
+// Import UBC GenAI Toolkit document parsing module
+const { DocumentParsingModule } = require('ubc-genai-toolkit-document-parsing');
+const { ConsoleLogger } = require('ubc-genai-toolkit-core');
+
+// Initialize document parsing module
+const docParser = new DocumentParsingModule({
+    logger: new ConsoleLogger(),
+    debug: true
+});
 
 // Initialize Qdrant service
 const qdrantService = new QdrantService();
@@ -24,7 +35,7 @@ const qdrantService = new QdrantService();
 const upload = multer({
     storage: multer.memoryStorage(),
     limits: {
-        fileSize: 10 * 1024 * 1024, // 10MB limit
+        fileSize: 50 * 1024 * 1024, // 50MB limit (increased from 10MB)
     },
     fileFilter: (req, file, cb) => {
         // Allow common document types
@@ -46,7 +57,7 @@ const upload = multer({
 });
 
 // Middleware for JSON parsing
-router.use(express.json({ limit: '10mb' }));
+router.use(express.json({ limit: '50mb' }));
 
 /**
  * POST /api/documents/upload
@@ -86,6 +97,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
             fileData: file.buffer,
             mimeType: file.mimetype,
             size: file.size,
+            content: '', // Initialize content field for extracted text
             metadata: {
                 description: req.body.description || '',
                 tags: req.body.tags ? req.body.tags.split(',').map(tag => tag.trim()) : [],
@@ -93,7 +105,65 @@ router.post('/upload', upload.single('file'), async (req, res) => {
             }
         };
         
-        // Upload document to MongoDB
+        // Extract text content from file using UBC GenAI Toolkit BEFORE creating the document
+        let textContent = '';
+        try {
+            if (file.mimetype === 'text/plain' || file.mimetype === 'text/markdown') {
+                // Handle text files directly
+                textContent = file.buffer.toString('utf8');
+                console.log(`✅ Text content extracted from ${file.mimetype}: ${textContent.length} characters`);
+            } else {
+                // Use UBC GenAI Toolkit for PDF, DOCX, and other document types
+                console.log(`🔄 Extracting text from ${file.mimetype} using UBC GenAI Toolkit...`);
+                console.log(`📊 File size: ${(file.size / 1024 / 1024).toFixed(2)} MB`);
+                
+                // Create a temporary file path for the parser
+                const tempFilePath = `/tmp/${Date.now()}_${file.originalname}`;
+                
+                try {
+                    // Write buffer to temporary file
+                    console.log(`💾 Writing file to temporary path: ${tempFilePath}`);
+                    fs.writeFileSync(tempFilePath, file.buffer);
+                    console.log(`✅ File written to temp path successfully`);
+                    
+                    // Parse document to extract text with timeout
+                    console.log(`🔍 Starting document parsing...`);
+                    const parsePromise = docParser.parse({ filePath: tempFilePath }, 'text');
+                    const timeoutPromise = new Promise((_, reject) => 
+                        setTimeout(() => reject(new Error('Document parsing timed out after 60 seconds')), 60000)
+                    );
+                    
+                    const parseResult = await Promise.race([parsePromise, timeoutPromise]);
+                    
+                    if (parseResult && parseResult.content) {
+                        textContent = parseResult.content;
+                        console.log(`✅ Text content extracted from ${file.mimetype}: ${textContent.length} characters`);
+                        console.log(`📝 Content preview: ${textContent.substring(0, 200)}...`);
+                    } else {
+                        throw new Error('Failed to extract text content from document');
+                    }
+                } finally {
+                    // Clean up temporary file
+                    try {
+                        fs.unlinkSync(tempFilePath);
+                        console.log(`🧹 Temporary file cleaned up: ${tempFilePath}`);
+                    } catch (cleanupError) {
+                        console.warn(`⚠️ Failed to clean up temp file: ${cleanupError.message}`);
+                    }
+                }
+            }
+        } catch (parseError) {
+            console.error(`❌ Error extracting text from ${file.mimetype}:`, parseError);
+            // Continue without text extraction - document will still be stored in MongoDB
+        }
+        
+        // Update documentData with extracted content
+        if (textContent) {
+            documentData.content = textContent;
+            console.log(`📝 Document will be created with ${textContent.length} characters of extracted text`);
+        }
+        
+        // Upload document to MongoDB with content already included
         const result = await DocumentModel.uploadDocument(db, documentData);
         
         // Also add document reference to the course structure
@@ -114,24 +184,15 @@ router.post('/upload', upload.single('file'), async (req, res) => {
         
         // Process document through Qdrant for vector search
         let qdrantResult = null;
-        try {
-            // Ensure Qdrant service is initialized
-            if (!qdrantService.embeddings) {
-                console.log('Initializing Qdrant service before processing document...');
-                await qdrantService.initialize();
-            }
-            
-            // Extract text content from file (for now, handle text files)
-            let textContent = '';
-            if (file.mimetype === 'text/plain' || file.mimetype === 'text/markdown') {
-                textContent = file.buffer.toString('utf8');
-            } else {
-                // For other file types, we'll need to implement text extraction
-                // For now, skip Qdrant processing for non-text files
-                console.log(`Skipping Qdrant processing for non-text file: ${file.mimetype}`);
-            }
-            
-            if (textContent) {
+        if (textContent) {
+            try {
+                // Ensure Qdrant service is initialized
+                if (!qdrantService.embeddings) {
+                    console.log('Initializing Qdrant service before processing document...');
+                    await qdrantService.initialize();
+                }
+                
+                // Try to process through Qdrant for vector search
                 console.log(`Processing document through Qdrant: ${file.originalname}`);
                 qdrantResult = await qdrantService.processAndStoreDocument({
                     courseId,
@@ -147,9 +208,9 @@ router.post('/upload', upload.single('file'), async (req, res) => {
                 } else {
                     console.warn(`⚠️ Qdrant processing failed: ${qdrantResult.error}`);
                 }
+            } catch (qdrantError) {
+                console.warn('Warning: Document uploaded but Qdrant processing failed:', qdrantError.message);
             }
-        } catch (qdrantError) {
-            console.warn('Warning: Document uploaded but Qdrant processing failed:', qdrantError.message);
         }
         
         console.log(`Document uploaded: ${file.originalname} for ${lectureName}`);
