@@ -39,11 +39,29 @@
             </header>
 
             <div class="settings-container">
-                <!-- Placeholder Section 1 -->
+                <!-- Database Management Section -->
                 <section class="settings-section">
-                    <h2>Placeholder Section</h2>
-                    <div class="placeholder-content">
-                        <p>TBD - Settings content will be implemented as needed</p>
+                    <h2>Database Management</h2>
+                    
+                    <!-- Development Disclaimer -->
+                    <div class="development-disclaimer">
+                        <div class="disclaimer-icon">⚠️</div>
+                        <div class="disclaimer-content">
+                            <h3>Development Mode</h3>
+                            <p><strong>Note:</strong> The database management tools below are temporary and only available during development. These features will be removed or restricted in production environments.</p>
+                        </div>
+                    </div>
+                    
+                    <div class="settings-content">
+                        <div class="setting-item">
+                            <div class="setting-info">
+                                <h3>Reset All Data</h3>
+                                <p>Delete all BiocBot data including vector embeddings (Qdrant) and document metadata (MongoDB). This will completely reset the system.</p>
+                            </div>
+                            <div class="setting-controls">
+                                <button id="delete-collection" class="danger-button">Delete All Data</button>
+                            </div>
+                        </div>
                     </div>
                 </section>
 

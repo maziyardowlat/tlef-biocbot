@@ -1,6 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
     const saveSettingsBtn = document.getElementById('save-settings');
     const resetSettingsBtn = document.getElementById('reset-settings');
+    const deleteCollectionBtn = document.getElementById('delete-collection');
     
     // Default settings - simplified to placeholder
     const defaultSettings = {
@@ -26,6 +27,67 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Show success message
             showNotification('Settings functionality will be implemented', 'info');
+        });
+    }
+
+    // Handle delete collection button click
+    if (deleteCollectionBtn) {
+        deleteCollectionBtn.addEventListener('click', async () => {
+            // Show confirmation dialog
+            const confirmed = confirm(
+                '⚠️ WARNING: This will permanently delete ALL BiocBot data!\n\n' +
+                'This includes:\n' +
+                '• Vector embeddings (Qdrant)\n' +
+                '• Document metadata (MongoDB)\n' +
+                '• Course information\n' +
+                '• Questions and assessments\n' +
+                '• Onboarding data\n\n' +
+                'This action cannot be undone and will completely reset the system.\n\n' +
+                'Are you absolutely sure you want to continue?'
+            );
+
+            if (!confirmed) {
+                return;
+            }
+
+            try {
+                // Disable button to prevent multiple clicks
+                deleteCollectionBtn.disabled = true;
+                deleteCollectionBtn.textContent = 'Deleting...';
+
+                // Call API to delete all collections
+                const response = await fetch('/api/qdrant/delete-all-collections', {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showNotification(
+                        `All data deleted successfully! Qdrant: ${result.data.qdrantDeletedCount}, MongoDB: ${result.data.mongoDeletedCount} documents removed.`, 
+                        'success'
+                    );
+                } else {
+                    showNotification(
+                        `Failed to delete data: ${result.message || 'Unknown error'}`, 
+                        'error'
+                    );
+                }
+
+            } catch (error) {
+                console.error('Error deleting data:', error);
+                showNotification(
+                    'Failed to delete data: Network or server error', 
+                    'error'
+                );
+            } finally {
+                // Re-enable button
+                deleteCollectionBtn.disabled = false;
+                deleteCollectionBtn.textContent = 'Delete All Data';
+            }
         });
     }
     
