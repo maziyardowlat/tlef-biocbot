@@ -14,6 +14,9 @@
     --warning-color: #ffc107;
     --danger-color: #dc3545;
     --info-color: #17a2b8;
+    --background-light: #ffffff;
+    --text-primary: #333333;
+    --text-secondary: #666666;
 }
 
 * {

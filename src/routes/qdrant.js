@@ -239,6 +239,135 @@ router.get('/collection-stats', async (req, res) => {
     }
 });
 
+/**
+ * DELETE /api/qdrant/collection
+ * Delete the entire collection (DANGEROUS - removes all data)
+ */
+router.delete('/collection', async (req, res) => {
+    try {
+        // Ensure service is initialized
+        if (!qdrantService.client) {
+            await qdrantService.initialize();
+        }
+
+        // Delete the entire collection
+        const result = await qdrantService.deleteCollection();
+
+        if (result.success) {
+            res.json({
+                success: true,
+                message: result.message,
+                data: {
+                    deletedCount: result.deletedCount
+                }
+            });
+        } else {
+            res.status(500).json({
+                success: false,
+                message: 'Failed to delete collection',
+                error: result.error
+            });
+        }
+
+    } catch (error) {
+        console.error('Error deleting collection:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while deleting collection',
+            error: error.message
+        });
+    }
+});
+
+/**
+ * DELETE /api/qdrant/delete-all-collections
+ * Delete all collections (Qdrant, MongoDB)
+ */
+router.delete('/delete-all-collections', async (req, res) => {
+    try {
+        // Delete Qdrant collection
+        const qdrantResult = await qdrantService.deleteCollection();
+        if (!qdrantResult.success) {
+            return res.status(500).json({
+                success: false,
+                message: 'Failed to delete Qdrant collection',
+                error: qdrantResult.error
+            });
+        }
+
+        // Delete MongoDB collections using existing connection
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(500).json({
+                success: false,
+                message: 'Database connection not available',
+                error: 'Database not initialized'
+            });
+        }
+
+        console.log('🗑️ Deleting all MongoDB collections...');
+        
+        // Get all collections that actually exist in the database
+        const existingCollections = await db.listCollections().toArray();
+        const collectionNames = existingCollections.map(col => col.name);
+        
+        console.log(`Found existing collections: ${collectionNames.join(', ')}`);
+
+        const mongoResults = {};
+        let totalDeleted = 0;
+
+        // Delete each existing collection
+        for (const collectionName of collectionNames) {
+            try {
+                const collection = db.collection(collectionName);
+                
+                // Get collection document count before deletion
+                const documentCount = await collection.countDocuments();
+                
+                // Delete the collection
+                await db.dropCollection(collectionName);
+                console.log(`✅ Deleted collection: ${collectionName} (${documentCount} documents)`);
+                
+                mongoResults[collectionName] = { 
+                    exists: true, 
+                    deleted: documentCount,
+                    success: true 
+                };
+                totalDeleted += documentCount;
+                
+            } catch (error) {
+                console.error(`❌ Error deleting collection ${collectionName}:`, error);
+                mongoResults[collectionName] = { 
+                    exists: true, 
+                    deleted: 0,
+                    success: false,
+                    error: error.message 
+                };
+            }
+        }
+
+        console.log(`✅ Completed deletion of MongoDB collections. Total documents removed: ${totalDeleted}`);
+
+        res.json({
+            success: true,
+            message: 'All collections deleted successfully',
+            data: {
+                qdrantDeletedCount: qdrantResult.deletedCount,
+                mongoDeletedCount: totalDeleted,
+                mongoResults: mongoResults
+            }
+        });
+
+    } catch (error) {
+        console.error('Error deleting all collections:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while deleting all collections',
+            error: error.message
+        });
+    }
+});
+
 module.exports = router;
 
 

@@ -303,6 +303,9 @@ class QdrantService {
      */
     async storeChunks(documentData, chunks, embeddings, strategyUsed = 'toolkit') {
         try {
+            // Ensure collection exists before storing chunks
+            await this.ensureCollectionExists();
+            
             const points = [];
             const storedChunks = [];
 
@@ -359,6 +362,9 @@ class QdrantService {
     async searchDocuments(query, filters = {}, limit = 10) {
         try {
             console.log(`Searching for: "${query}"`);
+
+            // Ensure collection exists before searching
+            await this.ensureCollectionExists();
 
             // Generate embedding for the search query
             const queryEmbedding = await this.embeddings.embed(query);
@@ -482,6 +488,11 @@ class QdrantService {
      */
     async getCollectionStats() {
         try {
+            // Ensure service is initialized
+            if (!this.client) {
+                await this.initialize();
+            }
+
             const collectionInfo = await this.client.getCollection(this.collectionName);
             const collectionStats = await this.client.getCollection(this.collectionName);
             
@@ -496,6 +507,52 @@ class QdrantService {
         } catch (error) {
             console.error('❌ Error getting collection stats:', error);
             throw error;
+        }
+    }
+
+    /**
+     * Delete the entire collection
+     * @returns {Promise<Object>} Result of collection deletion
+     */
+    async deleteCollection() {
+        try {
+            console.log(`Deleting entire collection: ${this.collectionName}`);
+
+            // Ensure service is initialized
+            if (!this.client) {
+                await this.initialize();
+            }
+
+            // Check if collection exists
+            const collections = await this.client.getCollections();
+            const collectionExists = collections.collections.some(
+                col => col.name === this.collectionName
+            );
+
+            if (!collectionExists) {
+                return {
+                    success: true,
+                    message: 'Collection does not exist',
+                    deletedCount: 0
+                };
+            }
+
+            // Delete the collection
+            await this.client.deleteCollection(this.collectionName);
+            console.log(`✅ Successfully deleted collection: ${this.collectionName}`);
+
+            return {
+                success: true,
+                message: `Collection ${this.collectionName} deleted successfully`,
+                deletedCount: 'all'
+            };
+
+        } catch (error) {
+            console.error('❌ Error deleting collection:', error);
+            return {
+                success: false,
+                error: error.message
+            };
         }
     }
 }
