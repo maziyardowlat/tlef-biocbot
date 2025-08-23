@@ -8,6 +8,8 @@ const { EmbeddingsModule } = require('ubc-genai-toolkit-embeddings');
 const { ChunkingModule } = require('ubc-genai-toolkit-chunking');
 const { ConsoleLogger } = require('ubc-genai-toolkit-core');
 const { randomUUID } = require('crypto');
+const config = require('./config');
+const llmService = require('./llm');
 
 console.log('✅ Successfully imported embeddings library:', typeof EmbeddingsModule);
 
@@ -17,7 +19,7 @@ class QdrantService {
         this.embeddings = null;
         this.chunker = null;
         this.collectionName = 'biocbot_documents';
-        this.vectorSize = 768; // nomic-embed-text model dimension
+        this.vectorSize = null; // Will be determined dynamically from embeddings
     }
 
     /**
@@ -27,9 +29,10 @@ class QdrantService {
         try {
             console.log('🔧 Initializing Qdrant service...');
             
-            // Initialize Qdrant client
+            // Initialize Qdrant client using centralized configuration
+            const vectorDBConfig = config.getVectorDBConfig();
             this.client = new QdrantClient({
-                url: process.env.QDRANT_URL || 'http://localhost:6333',
+                url: process.env.QDRANT_URL || `http://${vectorDBConfig.host}:${vectorDBConfig.port}`,
                 apiKey: process.env.QDRANT_API_KEY || 'super-secret-dev-key'
             });
 
@@ -38,52 +41,54 @@ class QdrantService {
             await this.client.getCollections();
             console.log('✅ Successfully connected to Qdrant');
 
-            // Initialize embeddings service
+            // Initialize embeddings service using centralized configuration
             console.log('Initializing embeddings service...');
             
-            // Use the correct initialization pattern from the example app
+            // Use the centralized LLM configuration from config service
+            const llmConfig = config.getLLMConfig();
             const logger = new ConsoleLogger('biocbot-qdrant');
             
-            const llmConfig = {
-                provider: process.env.LLM_PROVIDER || 'ollama',
-                apiKey: process.env.LLM_API_KEY || 'nokey',
-                endpoint: process.env.LLM_ENDPOINT || 'http://localhost:11434',
-                defaultModel: process.env.LLM_DEFAULT_MODEL || 'llama3.1',
-                embeddingModel: process.env.LLM_EMBEDDING_MODEL || 'nomic-embed-text',
-            };
-
-            const config = {
-                providerType: process.env.EMBEDDING_PROVIDER || 'ubc-genai-toolkit-llm',
+            // Add embedding-specific configuration
+            const embeddingConfig = {
+                providerType: 'ubc-genai-toolkit-llm',
                 logger: logger,
-                llmConfig: llmConfig,
+                llmConfig: {
+                    ...llmConfig,
+                    embeddingModel: process.env.LLM_EMBEDDING_MODEL || 'nomic-embed-text'
+                }
             };
 
-            this.embeddings = await EmbeddingsModule.create(config);
+            this.embeddings = await EmbeddingsModule.create(embeddingConfig);
             console.log('✅ Successfully initialized embeddings service');
 
-            // Initialize chunking service
+            // Initialize chunking service using centralized configuration
             console.log('Initializing chunking service...');
             const chunkLogger = new ConsoleLogger('biocbot-chunking');
-            const strategy = process.env.CHUNK_STRATEGY || 'recursiveCharacter';
-            const defaultOptions = {
-                chunkSize: Number(process.env.CHUNK_SIZE) || 1000,
-                chunkOverlap: Number(process.env.CHUNK_OVERLAP) || 200,
-                minChunkSize: Number(process.env.CHUNK_MIN) || 100
-            };
-            this.chunker = new ChunkingModule({
-                strategy,
-                defaultOptions,
+            
+            // Use centralized configuration for chunking parameters
+            const chunkingConfig = {
+                strategy: process.env.CHUNK_STRATEGY || 'recursiveCharacter',
+                defaultOptions: {
+                    chunkSize: Number(process.env.CHUNK_SIZE) || 1000,
+                    chunkOverlap: Number(process.env.CHUNK_OVERLAP) || 200,
+                    minChunkSize: Number(process.env.CHUNK_MIN) || 100
+                },
                 logger: chunkLogger
-            });
+            };
+            
+            this.chunker = new ChunkingModule(chunkingConfig);
             console.log(`✅ Successfully initialized chunking service (strategy=${this.chunker.getDefaultStrategyName()})`);
 
-            // Test embeddings service with a simple text
+            // Test embeddings service and determine vector size dynamically
             console.log('Testing embeddings service...');
             const testEmbedding = await this.embeddings.embed('test');
             if (!testEmbedding || !Array.isArray(testEmbedding)) {
                 throw new Error('Embeddings service returned invalid result');
             }
-            console.log(`✅ Successfully initialized embeddings service (test embedding: ${testEmbedding.length} dimensions)`);
+            
+            // Set vector size dynamically based on the embedding model
+            this.vectorSize = testEmbedding.length;
+            console.log(`✅ Successfully initialized embeddings service (vector size: ${this.vectorSize} dimensions)`);
 
             // Ensure collection exists
             await this.ensureCollectionExists();
@@ -553,6 +558,48 @@ class QdrantService {
                 success: false,
                 error: error.message
             };
+        }
+    }
+
+    /**
+     * Get service status and LLM integration information
+     * @returns {Object} Service status information
+     */
+    getStatus() {
+        return {
+            qdrant: {
+                isConnected: !!this.client,
+                collectionName: this.collectionName,
+                vectorSize: this.vectorSize
+            },
+            embeddings: {
+                isInitialized: !!this.embeddings,
+                provider: llmService.getProviderName(),
+                isReady: llmService.isReady()
+            },
+            chunking: {
+                isInitialized: !!this.chunker,
+                strategy: this.chunker ? this.chunker.getDefaultStrategyName() : null
+            },
+            timestamp: new Date().toISOString()
+        };
+    }
+
+    /**
+     * Test the LLM service connection through the embeddings
+     * @returns {Promise<boolean>} True if connection is working
+     */
+    async testLLMConnection() {
+        try {
+            if (!this.embeddings) {
+                await this.initialize();
+            }
+            
+            const testEmbedding = await this.embeddings.embed('connection test');
+            return Array.isArray(testEmbedding) && testEmbedding.length > 0;
+        } catch (error) {
+            console.error('❌ LLM connection test failed:', error.message);
+            return false;
         }
     }
 }
