@@ -98,11 +98,20 @@ async function loadAvailableCourses() {
         const courseSelect = document.getElementById('course-select');
         if (!courseSelect) return;
         
-        // For now, use a mock course list - in production this would come from an API
-        const courses = [
-            { courseId: 'BIOC-202-1755285146691', courseName: 'BIOC 202' },
-            { courseId: 'BIOC-303-1234567890', courseName: 'BIOC 303' }
-        ];
+        // Fetch courses from the API instead of hardcoding
+        const response = await fetch('/api/courses/available/all');
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        
+        if (!result.success) {
+            throw new Error(result.message || 'Failed to fetch courses');
+        }
+        
+        const courses = result.data;
         
         // Clear loading option
         courseSelect.innerHTML = '';
@@ -124,10 +133,10 @@ async function loadAvailableCourses() {
         
     } catch (error) {
         console.error('Error loading available courses:', error);
-        // Fallback to default course
+        // Fallback to default course if API fails
         const courseSelect = document.getElementById('course-select');
         if (courseSelect) {
-            courseSelect.innerHTML = '<option value="BIOC-202-1755285146691">BIOC 202</option>';
+            courseSelect.innerHTML = '<option value="default">Loading courses...</option>';
         }
     }
 }

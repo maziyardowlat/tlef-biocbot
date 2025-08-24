@@ -359,7 +359,7 @@ function flagMessage(button, flagType) {
 async function submitFlag(messageText, flagType) {
     try {
         // Get current course and student information
-        const courseId = getCurrentCourseId();
+        const courseId = await getCurrentCourseId();
         const studentId = getCurrentStudentId();
         const studentName = getCurrentStudentName();
         const unitName = getCurrentUnitName();
@@ -476,12 +476,39 @@ function getCurrentStudentName() {
 
 /**
  * Get current course ID (placeholder)
- * @returns {string} Course ID
+ * @returns {Promise<string>} Course ID
  */
-function getCurrentCourseId() {
-    // This would typically come from JWT token or session
-    // For now, return the actual course ID from your database
-    return 'BIOC-202-1755549256805';
+async function getCurrentCourseId() {
+    try {
+        // Fetch available courses from the API
+        const response = await fetch('/api/courses/available/all');
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        
+        if (!result.success) {
+            throw new Error(result.message || 'Failed to fetch courses');
+        }
+        
+        const courses = result.data;
+        
+        // For now, return the first available course ID
+        // In production, this would be based on student enrollment or selection
+        if (courses.length > 0) {
+            return courses[0].courseId;
+        }
+        
+        // Fallback to a default course ID if no courses are available
+        return 'default-course-id';
+        
+    } catch (error) {
+        console.error('Error fetching course ID:', error);
+        // Fallback to a default course ID if API fails
+        return 'default-course-id';
+    }
 }
 
 /**
@@ -539,7 +566,7 @@ async function checkPublishedUnitsAndLoadQuestions() {
         console.log('=== CHECKING FOR PUBLISHED UNITS ===');
         
         // Get current course ID
-        const courseId = getCurrentCourseId();
+        const courseId = await getCurrentCourseId();
         console.log('Checking course:', courseId);
         
         // Fetch course data to check which units are published
@@ -694,7 +721,8 @@ async function loadAssessmentQuestionsFromUnits(publishedUnits) {
                 
                 try {
                     // Fallback: try to fetch questions from API endpoint
-                    const questionsResponse = await fetch(`/api/questions/lecture?courseId=${getCurrentCourseId()}&lectureName=${unit.name}`);
+                    const courseId = await getCurrentCourseId();
+                    const questionsResponse = await fetch(`/api/questions/lecture?courseId=${courseId}&lectureName=${unit.name}`);
                     console.log(`API response for ${unit.name}:`, questionsResponse.status, questionsResponse.statusText);
                     
                     if (questionsResponse.ok) {
