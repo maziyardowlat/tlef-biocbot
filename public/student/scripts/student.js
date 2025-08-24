@@ -481,7 +481,7 @@ function getCurrentStudentName() {
 function getCurrentCourseId() {
     // This would typically come from JWT token or session
     // For now, return the actual course ID from your database
-    return 'BIOC-202-1755456577040';
+    return 'BIOC-202-1755549256805';
 }
 
 /**
