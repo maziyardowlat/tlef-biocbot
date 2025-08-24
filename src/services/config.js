@@ -6,15 +6,26 @@
 
 class ConfigService {
     constructor() {
-        // Validate configuration on startup
-        this.validateConfig();
+        // Don't validate immediately - wait for first use
+        this.isValidated = false;
     }
     
+    /**
+     * Ensure configuration is validated before use
+     */
+    ensureValidated() {
+        if (!this.isValidated) {
+            this.validateConfig();
+            this.isValidated = true;
+        }
+    }
+
     /**
      * Get LLM configuration based on environment variables
      * @returns {Object} LLM configuration object
      */
     getLLMConfig() {
+        this.ensureValidated();
         const provider = process.env.LLM_PROVIDER;
         
         switch (provider) {
@@ -50,6 +61,7 @@ class ConfigService {
      * @returns {Object} Server configuration object
      */
     getServerConfig() {
+        this.ensureValidated();
         return {
             port: process.env.TLEF_BIOCBOT_PORT || 8080,
             nodeEnv: process.env.NODE_ENV || 'development'
@@ -61,6 +73,7 @@ class ConfigService {
      * @returns {Object} Database configuration object
      */
     getDatabaseConfig() {
+        this.ensureValidated();
         return {
             mongoUri: process.env.MONGODB_URI || 'mongodb://localhost:27017/biocbot'
         };
@@ -71,6 +84,7 @@ class ConfigService {
      * @returns {Object} Vector database configuration object
      */
     getVectorDBConfig() {
+        this.ensureValidated();
         return {
             host: process.env.QDRANT_HOST || 'localhost',
             port: parseInt(process.env.QDRANT_PORT) || 6333
@@ -82,24 +96,25 @@ class ConfigService {
      * Throws error if configuration is invalid
      */
     validateConfig() {
-        const llmConfig = this.getLLMConfig();
+        // Get provider directly without calling getLLMConfig to avoid circular dependency
+        const provider = process.env.LLM_PROVIDER;
         
         // Validate provider-specific requirements
-        if (llmConfig.provider === 'ollama') {
+        if (provider === 'ollama') {
             if (!process.env.OLLAMA_ENDPOINT) {
                 throw new Error('OLLAMA_ENDPOINT is required for Ollama provider');
             }
             if (!process.env.OLLAMA_MODEL) {
                 throw new Error('OLLAMA_MODEL is required for Ollama provider');
             }
-        } else if (llmConfig.provider === 'openai') {
+        } else if (provider === 'openai') {
             if (!process.env.OPENAI_API_KEY) {
                 throw new Error('OPENAI_API_KEY is required for OpenAI provider');
             }
             if (!process.env.OPENAI_MODEL) {
                 throw new Error('OPENAI_MODEL is required for OpenAI provider');
             }
-        } else if (llmConfig.provider === 'ubc-llm-sandbox') {
+        } else if (provider === 'ubc-llm-sandbox') {
             if (!process.env.UBC_API_KEY) {
                 throw new Error('UBC_API_KEY is required for UBC LLM Sandbox provider');
             }
@@ -112,8 +127,8 @@ class ConfigService {
         }
         
         console.log(`✅ Configuration validated successfully`);
-        console.log(`🤖 LLM Provider: ${llmConfig.provider}`);
-        console.log(`🔑 Model: ${llmConfig.defaultModel}`);
+        console.log(`🤖 LLM Provider: ${provider}`);
+        console.log(`🔑 Model: ${process.env.OLLAMA_MODEL || process.env.OPENAI_MODEL || process.env.UBC_MODEL || 'Not specified'}`);
     }
     
     /**
