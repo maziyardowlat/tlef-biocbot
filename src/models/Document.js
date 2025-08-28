@@ -11,7 +11,8 @@
  *   courseId: String,             // Course this document belongs to
  *   lectureName: String,          // Unit/Week this document is for
  *   instructorId: String,         // ID of the instructor who uploaded
- *   documentType: String,         // "lecture-notes", "practice-quiz", "additional", "text"
+ *   documentType: String,         // "lecture-notes", "practice-quiz", "additional", "text" (legacy)
+ *   type: String,                 // "lecture_notes", "practice_q_tutorials", "additional" (new specific type)
  *   contentType: String,          // "file" or "text"
  *   filename: String,             // Original filename (for file uploads)
  *   originalName: String,         // Display name
@@ -40,6 +41,30 @@ function getDocumentsCollection(db) {
 }
 
 /**
+ * Map content type to specific document type for robust categorization
+ * @param {string} contentType - The content type from the upload modal
+ * @returns {string} The specific document type for database storage
+ */
+function mapContentTypeToDocumentType(contentType) {
+    switch (contentType) {
+        case 'lecture-notes':
+            return 'lecture_notes';
+        case 'practice-quiz':
+            return 'practice_q_tutorials';
+        case 'additional':
+            return 'additional';
+        case 'readings':
+            return 'readings';
+        case 'syllabus':
+            return 'syllabus';
+        case 'text':
+            return 'text';
+        default:
+            return 'additional'; // Default fallback
+    }
+}
+
+/**
  * Upload a new document (file or text)
  * @param {Object} db - MongoDB database instance
  * @param {Object} documentData - Document data object
@@ -49,8 +74,14 @@ async function uploadDocument(db, documentData) {
     const collection = getDocumentsCollection(db);
     
     const now = new Date();
+    
+    // Map content type to specific document type
+    const specificType = mapContentTypeToDocumentType(documentData.documentType);
+    console.log(`🔧 [DOCUMENT_UPLOAD] Mapping content type "${documentData.documentType}" to specific type "${specificType}"`);
+    
     const document = {
         ...documentData,
+        type: specificType, // Add the new specific type field
         uploadDate: now,
         lastModified: now,
         status: 'uploaded'
@@ -213,5 +244,6 @@ module.exports = {
     updateDocumentContent,
     updateDocumentStatus,
     deleteDocument,
-    getDocumentStats
+    getDocumentStats,
+    mapContentTypeToDocumentType
 };

@@ -105,6 +105,9 @@ router.post('/upload', upload.single('file'), async (req, res) => {
             }
         };
         
+        // Note: The DocumentModel.uploadDocument() function will automatically add the 'type' field
+        // based on the documentType using the mapContentTypeToDocumentType function
+        
         // Extract text content from file using UBC GenAI Toolkit BEFORE creating the document
         let textContent = '';
         try {
