@@ -720,11 +720,12 @@ function addContentToWeek(week, fileName, description, documentId) {
             </div>
         `;
         
-        // Insert before the add content section
-        const addContentSection = courseMaterialsContent.querySelector('.add-content-section');
-        if (addContentSection) {
-            courseMaterialsContent.insertBefore(fileItem, addContentSection);
+        // Insert before the action buttons section to maintain proper order
+        const actionButtonsSection = courseMaterialsContent.querySelector('.add-content-section, .save-objectives');
+        if (actionButtonsSection) {
+            courseMaterialsContent.insertBefore(fileItem, actionButtonsSection);
         } else {
+            // If no action buttons exist yet, add to the end
             courseMaterialsContent.appendChild(fileItem);
         }
     }
@@ -1070,6 +1071,12 @@ async function loadDocuments() {
                             item.remove();
                         });
                         
+                        // Clear action buttons and cleanup sections to ensure proper reordering
+                        const actionSections = courseMaterialsSection.querySelectorAll('.add-content-section, .save-objectives, .cleanup-section');
+                        actionSections.forEach(section => {
+                            section.remove();
+                        });
+                        
                         // ADD ALL DOCUMENTS - BACKEND HANDLES DELETION FROM BOTH DBs
                         if (documents && documents.length > 0) {
                             console.log(`📁 [DOCUMENTS] Adding ${documents.length} documents to UI for ${lectureName}`);
@@ -1083,19 +1090,45 @@ async function loadDocuments() {
                             console.log(`✅ [DOCUMENTS] Successfully added ${documents.length} documents to UI for ${lectureName}`);
                         } else {
                             console.log(`📁 [DOCUMENTS] No documents to add for ${lectureName}`);
+                            // Only add placeholder items when there are NO documents
+                            addRequiredPlaceholders(courseMaterialsSection, lectureName);
                         }
                         
-                        // Always add the required placeholder items if they don't exist
-                        addRequiredPlaceholders(courseMaterialsSection, lectureName);
-                        
-                        // Add the "Add Additional Material" button and "Confirm Course Materials" button
-                        addActionButtons(courseMaterialsSection, lectureName);
-                        
-                        // Add cleanup button if there are documents
+                        // Add cleanup button if there are documents (add this BEFORE action buttons)
                         if (documents && documents.length > 0) {
-                            addCleanupButton(courseMaterialsSection, lectureName, courseId);
+                            addCleanupButtonIfMissing(courseMaterialsSection, lectureName, courseId);
+                        }
+                        
+                        // ALWAYS add the "Add Additional Material" button and "Confirm Course Materials" button LAST
+                        // This ensures they stay at the bottom, regardless of whether there are documents
+                        console.log(`🔧 [DOCUMENTS] Adding action buttons for ${lectureName} - this should be LAST`);
+                        addActionButtonsIfMissing(courseMaterialsSection, lectureName);
+                        console.log(`✅ [DOCUMENTS] Action buttons added for ${lectureName}`);
+                        
+                        // Debug: Log the final DOM order to verify button positioning
+                        console.log(`🔍 [DOCUMENTS] Final DOM order for ${lectureName}:`);
+                        const finalItems = courseMaterialsSection.querySelectorAll('.file-item, .add-content-section, .save-objectives, .cleanup-section');
+                        finalItems.forEach((item, index) => {
+                            const itemType = item.classList.contains('file-item') ? 'File' : 
+                                           item.classList.contains('add-content-section') ? 'Add Content' :
+                                           item.classList.contains('save-objectives') ? 'Confirm Button' :
+                                           item.classList.contains('cleanup-section') ? 'Cleanup' : 'Unknown';
+                            console.log(`  ${index + 1}. ${itemType}: ${item.textContent.substring(0, 50)}...`);
+                        });
+                        
+                        // Additional debug: Check if buttons are actually at the bottom
+                        const allChildren = Array.from(courseMaterialsSection.children);
+                        const lastChild = allChildren[allChildren.length - 1];
+                        const secondLastChild = allChildren[allChildren.length - 2];
+                        
+                        console.log(`🔍 [DOCUMENTS] Last child: ${lastChild.className} - ${lastChild.textContent.substring(0, 30)}...`);
+                        console.log(`🔍 [DOCUMENTS] Second last child: ${secondLastChild.className} - ${secondLastChild.textContent.substring(0, 30)}...`);
+                        
+                        // Verify button positioning
+                        if (lastChild.classList.contains('save-objectives')) {
+                            console.log(`✅ [DOCUMENTS] Confirm button is correctly at the bottom!`);
                         } else {
-                            addCleanupButton(courseMaterialsSection, lectureName, courseId);
+                            console.warn(`⚠️ [DOCUMENTS] Confirm button is NOT at the bottom! Last child is: ${lastChild.className}`);
                         }
                     } else {
                         console.error('Course materials section not found for', lectureName);
@@ -1105,12 +1138,64 @@ async function loadDocuments() {
                 }
             } else {
                 console.error('Failed to load course data:', response.status);
+                
+                // Even if API fails, still add the required buttons and placeholders
+                const courseMaterialsSection = item.querySelector('.course-materials-section .section-content');
+                if (courseMaterialsSection) {
+                    console.log(`🔧 [DOCUMENTS] API failed for ${lectureName}, adding buttons anyway`);
+                    
+                    // Add required placeholders
+                    addRequiredPlaceholders(courseMaterialsSection, lectureName);
+                    
+                    // Add action buttons
+                    addActionButtonsIfMissing(courseMaterialsSection, lectureName);
+                }
             }
         }
+        
+        // Ensure all units have action buttons, regardless of API success/failure
+        console.log(`🔧 [DOCUMENTS] Final check: Ensuring all units have action buttons`);
+        const allAccordionItems = document.querySelectorAll('.accordion-item');
+        allAccordionItems.forEach(accordionItem => {
+            const folderName = accordionItem.querySelector('.folder-name');
+            if (!folderName) return;
+            
+            const unitName = folderName.textContent;
+            const courseMaterialsSection = accordionItem.querySelector('.course-materials-section .section-content');
+            
+            if (courseMaterialsSection) {
+                // Check if action buttons exist
+                const hasActionButtons = courseMaterialsSection.querySelector('.add-content-section, .save-objectives');
+                
+                if (!hasActionButtons) {
+                    console.log(`🔧 [DOCUMENTS] Adding missing action buttons for ${unitName} (final check)`);
+                    addActionButtonsIfMissing(courseMaterialsSection, unitName);
+                }
+            }
+        });
         
     } catch (error) {
         console.error('Error loading documents:', error);
         showNotification('Error loading documents. Using default values.', 'warning');
+        
+        // Even if there's an error, try to add buttons
+        try {
+            const allAccordionItems = document.querySelectorAll('.accordion-item');
+            allAccordionItems.forEach(accordionItem => {
+                const folderName = accordionItem.querySelector('.folder-name');
+                if (!folderName) return;
+                
+                const unitName = folderName.textContent;
+                const courseMaterialsSection = accordionItem.querySelector('.course-materials-section .section-content');
+                
+                if (courseMaterialsSection) {
+                    addRequiredPlaceholders(courseMaterialsSection, unitName);
+                    addActionButtonsIfMissing(courseMaterialsSection, unitName);
+                }
+            });
+        } catch (fallbackError) {
+            console.error('Fallback button addition also failed:', fallbackError);
+        }
     }
 }
 
@@ -1123,6 +1208,14 @@ function createDocumentItem(doc) {
     const documentItem = document.createElement('div');
     documentItem.className = 'file-item';
     documentItem.dataset.documentId = doc.documentId;
+    
+    // Add the document type to the dataset for robust placeholder checking
+    if (doc.type) {
+        documentItem.dataset.documentType = doc.type;
+    } else if (doc.documentType) {
+        // Fallback to legacy documentType field
+        documentItem.dataset.documentType = doc.documentType;
+    }
     
     const fileIcon = doc.contentType === 'text' ? '📝' : '📄';
     const statusText = doc.status === 'uploaded' ? 'Uploaded' : doc.status;
@@ -1226,11 +1319,51 @@ async function deleteDocument(documentId) {
         
         // Remove the document item from the UI immediately
         const documentItem = document.querySelector(`[data-document-id="${documentId}"]`);
+        let deletedDocumentType = null;
+        
         if (documentItem) {
+            // Get the document type before removing it
+            deletedDocumentType = documentItem.dataset.documentType;
+            console.log(`🗑️ [DELETE] Removing document with type: "${deletedDocumentType}"`);
             documentItem.remove();
         }
         
-        // Reload documents to sync with database
+        // Immediately check and add placeholder for the deleted material type
+        if (deletedDocumentType) {
+            console.log(`🔍 [DELETE] Document type "${deletedDocumentType}" was deleted, checking if placeholder is needed...`);
+            
+            // Find the unit this document belonged to
+            const unitName = await findUnitNameForDocument(documentId, courseId);
+            if (unitName) {
+                console.log(`🔍 [DELETE] Found unit: ${unitName} for deleted document`);
+                
+                // Find the course materials section for this unit
+                const unitElement = findUnitElementByName(unitName);
+                if (unitElement) {
+                    const courseMaterialsSection = unitElement.querySelector('.course-materials-section .section-content');
+                    if (courseMaterialsSection) {
+                        console.log(`🔍 [DELETE] Found course materials section for ${unitName}, updating placeholders...`);
+                        
+                        // Remove any existing placeholders first to prevent duplicates
+                        removeExistingPlaceholders(courseMaterialsSection);
+                        
+                        // Add required placeholders for this specific unit
+                        addRequiredPlaceholders(courseMaterialsSection, unitName);
+                        console.log(`✅ [DELETE] Placeholders successfully updated for ${unitName} after deletion`);
+                    } else {
+                        console.warn(`⚠️ [DELETE] Could not find course materials section for ${unitName}`);
+                    }
+                } else {
+                    console.warn(`⚠️ [DELETE] Could not find unit element for ${unitName}`);
+                }
+            } else {
+                console.warn(`⚠️ [DELETE] Could not determine unit name for deleted document ${documentId}`);
+            }
+        } else {
+            console.log(`ℹ️ [DELETE] No document type found, skipping placeholder update`);
+        }
+        
+        // Reload documents to sync with database (this will also refresh placeholders)
         await loadDocuments();
         
         // Show appropriate success message
@@ -1248,6 +1381,70 @@ async function deleteDocument(documentId) {
     }
 }
 
+
+/**
+ * Find the unit name for a specific document
+ * @param {string} documentId - Document ID to find
+ * @param {string} courseId - Course ID
+ * @returns {Promise<string|null>} Unit name or null if not found
+ */
+async function findUnitNameForDocument(documentId, courseId) {
+    try {
+        const instructorId = getCurrentInstructorId();
+        const response = await fetch(`/api/courses/${courseId}?instructorId=${instructorId}`);
+        
+        if (!response.ok) {
+            console.warn(`Failed to fetch course structure for document ${documentId}`);
+            return null;
+        }
+        
+        const result = await response.json();
+        const course = result.data;
+        
+        if (!course || !course.lectures) {
+            return null;
+        }
+        
+        // Search through all units to find which one contains this document
+        for (const unit of course.lectures) {
+            if (unit.documents && unit.documents.some(doc => doc.documentId === documentId)) {
+                return unit.name;
+            }
+        }
+        
+        return null;
+    } catch (error) {
+        console.warn(`Error finding unit for document ${documentId}:`, error);
+        return null;
+    }
+}
+
+/**
+ * Find a unit element by name in the DOM
+ * @param {string} unitName - Name of the unit to find
+ * @returns {HTMLElement|null} Unit element or null if not found
+ */
+function findUnitElementByName(unitName) {
+    // Use the existing helper function to find elements containing the unit name
+    const folderElements = findElementsContainingText('.accordion-item .folder-name', unitName);
+    if (folderElements.length > 0) {
+        return folderElements[0].closest('.accordion-item');
+    }
+    return null;
+}
+
+/**
+ * Remove existing placeholder items to prevent duplicates
+ * @param {HTMLElement} container - The container to clean up
+ */
+function removeExistingPlaceholders(container) {
+    const existingPlaceholders = container.querySelectorAll('.file-item.placeholder-item');
+    console.log(`🧹 [PLACEHOLDERS] Removing ${existingPlaceholders.length} existing placeholders`);
+    
+    existingPlaceholders.forEach(placeholder => {
+        placeholder.remove();
+    });
+}
 
 /**
  * Manually remove a document reference from the course structure
@@ -2341,11 +2538,14 @@ async function confirmCourseMaterials(week) {
     const weekElement = folderElement.closest('.accordion-item');
     const fileItems = weekElement.querySelectorAll('.course-materials-section .file-item');
     
+    console.log(`🔍 [CONFIRM_MATERIALS] Checking materials for ${week}`);
+    console.log(`🔍 [CONFIRM_MATERIALS] Found ${fileItems.length} file items`);
+    
     // Check if mandatory materials are present
     let hasLectureNotes = false;
     let hasPracticeQuestions = false;
     
-    fileItems.forEach(item => {
+    fileItems.forEach((item, index) => {
         const title = item.querySelector('.file-info h3');
         const statusText = item.querySelector('.status-text');
         
@@ -2353,17 +2553,23 @@ async function confirmCourseMaterials(week) {
             const titleText = title.textContent;
             const status = statusText.textContent;
             
-            // Check if this is a lecture notes document that's uploaded
-            if (titleText.includes('Lecture Notes') && (status === 'Uploaded' || status === 'uploaded')) {
+            console.log(`🔍 [CONFIRM_MATERIALS] Item ${index + 1}: "${titleText}" - Status: "${status}"`);
+            
+            // Check if this is a lecture notes document that's processed/uploaded
+            if (titleText.includes('Lecture Notes') && (status === 'Processed' || status === 'Uploaded' || status === 'uploaded')) {
                 hasLectureNotes = true;
+                console.log(`✅ [CONFIRM_MATERIALS] Found valid lecture notes with status: "${status}"`);
             }
             
-            // Check if this is a practice questions document that's uploaded
-            if ((titleText.includes('Practice Questions') || titleText.includes('Practice Questions/Tutorial')) && (status === 'Uploaded' || status === 'uploaded')) {
+            // Check if this is a practice questions document that's processed/uploaded
+            if ((titleText.includes('Practice Questions') || titleText.includes('Practice Questions/Tutorial')) && (status === 'Processed' || status === 'Uploaded' || status === 'uploaded')) {
                 hasPracticeQuestions = true;
+                console.log(`✅ [CONFIRM_MATERIALS] Found valid practice questions with status: "${status}"`);
             }
         }
     });
+    
+    console.log(`🔍 [CONFIRM_MATERIALS] Final check - Lecture Notes: ${hasLectureNotes}, Practice Questions: ${hasPracticeQuestions}`);
     
     // Validate mandatory materials
     if (!hasLectureNotes || !hasPracticeQuestions) {
@@ -2371,13 +2577,18 @@ async function confirmCourseMaterials(week) {
         if (!hasLectureNotes) missingItems.push('Lecture Notes');
         if (!hasPracticeQuestions) missingItems.push('Practice Questions/Tutorial');
         
-        showNotification(`Missing mandatory materials: ${missingItems.join(', ')}. Please add them before confirming.`, 'error');
+        const errorMsg = `Missing mandatory materials: ${missingItems.join(', ')}. Please add them before confirming.`;
+        console.warn(`❌ [CONFIRM_MATERIALS] ${errorMsg}`);
+        showNotification(errorMsg, 'error');
         return;
     }
     
     try {
-        // In a real implementation, this would save to the server
-        const response = await fetch('/api/course-materials/confirm', {
+        // Try to save to the server
+        console.log(`🔧 [CONFIRM_MATERIALS] Making API call to /api/courses/course-materials/confirm`);
+        console.log(`🔧 [CONFIRM_MATERIALS] Request body:`, { week, instructorId: getCurrentInstructorId() });
+        
+        const response = await fetch('/api/courses/course-materials/confirm', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -2388,16 +2599,31 @@ async function confirmCourseMaterials(week) {
             })
         });
         
-        if (!response.ok) {
-            throw new Error('Failed to confirm course materials');
-        }
+        console.log(`🔧 [CONFIRM_MATERIALS] Response status: ${response.status} ${response.statusText}`);
+        console.log(`🔧 [CONFIRM_MATERIALS] Response headers:`, Object.fromEntries(response.headers.entries()));
         
-        showNotification(`Course materials for ${week} confirmed successfully!`, 'success');
+        if (response.ok) {
+            const result = await response.json();
+            showNotification(result.message || `Course materials for ${week} confirmed successfully!`, 'success');
+        } else {
+            // If the endpoint doesn't exist yet, show a different message
+            if (response.status === 404) {
+                showNotification(`Course materials for ${week} validated successfully! (Backend endpoint not yet implemented)`, 'info');
+            } else {
+                const errorText = await response.text();
+                throw new Error(`Server error: ${response.status} ${errorText}`);
+            }
+        }
         
     } catch (error) {
         console.error('Error confirming course materials:', error);
-        // For demo purposes, still show success
-        showNotification(`Course materials for ${week} confirmed successfully! (Demo mode)`, 'success');
+        
+        // Check if it's a network/endpoint not found error
+        if (error.message.includes('Failed to fetch') || error.message.includes('NetworkError')) {
+            showNotification(`Course materials for ${week} validated successfully! (Backend not available)`, 'info');
+        } else {
+            showNotification(`Error confirming course materials: ${error.message}`, 'error');
+        }
     }
 }
 
@@ -3496,7 +3722,12 @@ function generateUnitsFromOnboarding(onboardingData) {
     // Load documents from course structure
     setTimeout(() => {
         loadDocuments();
-    }, 500); // Increased timeout to ensure DOM is fully ready
+    }, 100);
+    
+    // Also ensure buttons exist immediately (fallback)
+    setTimeout(() => {
+        ensureActionButtonsExist();
+    }, 200); // Reduced timeout since buttons are already there
 }
 
 /**
@@ -3579,16 +3810,9 @@ function createUnitElement(unitName, unitData, isExpanded = false) {
                             <button class="action-button upload" onclick="openUploadModal('${unitName}', 'practice-quiz')">Upload</button>
                         </div>
                     </div>
-                    <!-- Add Content Button -->
-                    <div class="add-content-section">
-                        <button class="add-content-btn additional-material" onclick="openUploadModal('${unitName}', 'additional')">
-                            <span class="btn-icon">➕</span>
-                            Add Additional Material
-                        </button>
-                    </div>
-                    <div class="save-objectives">
-                        <button class="save-btn" onclick="confirmCourseMaterials('${unitName}')">Confirm Course Materials</button>
-                    </div>
+                    <!-- Action buttons will be added dynamically by loadDocuments() -->
+                    <!-- Expected order: Documents → Placeholders → Cleanup → Action Buttons -->
+                    <!-- This ensures proper positioning below uploaded files -->
                 </div>
             </div>
             
@@ -3958,26 +4182,49 @@ function closeDocumentModal() {
  * @param {string} unitName - The name of the unit (e.g., 'Unit 1')
  */
 function addRequiredPlaceholders(container, unitName) {
-    // Check if lecture notes placeholder already exists
+    // Check if lecture notes and practice questions already exist as ACTUAL uploaded content
     let hasLectureNotes = false;
     let hasPracticeQuestions = false;
     
     container.querySelectorAll('.file-item').forEach(item => {
         const title = item.querySelector('h3');
-        if (title) {
-            if (title.textContent.includes('*Lecture Notes')) {
+        const statusText = item.querySelector('.status-text');
+        
+        if (title && statusText) {
+            const titleText = title.textContent;
+            const status = statusText.textContent;
+            const isPlaceholder = item.classList.contains('placeholder-item');
+            
+            // Check for actual uploaded content using the new type field from dataset
+            // Fallback to title matching for backward compatibility
+            const documentType = item.dataset.documentType || '';
+            const isLectureNotes = documentType === 'lecture_notes' || 
+                                  (titleText.includes('Lecture Notes') && !isPlaceholder && status !== 'Not Uploaded');
+            const isPracticeQuestions = documentType === 'practice_q_tutorials' || 
+                                      ((titleText.includes('Practice Questions') || titleText.includes('Practice Questions/Tutorial')) && !isPlaceholder && status !== 'Not Uploaded');
+            
+            if (isLectureNotes) {
                 hasLectureNotes = true;
+                console.log(`✅ [PLACEHOLDERS] Found actual lecture notes with type: "${documentType}" and status: "${status}"`);
             }
-            if (title.textContent.includes('*Practice Questions/Tutorial')) {
+            
+            if (isPracticeQuestions) {
                 hasPracticeQuestions = true;
+                console.log(`✅ [PLACEHOLDERS] Found actual practice questions with type: "${documentType}" and status: "${status}"`);
             }
         }
     });
     
+    console.log(`🔍 [PLACEHOLDERS] Status check for ${unitName}: Lecture Notes: ${hasLectureNotes}, Practice Questions: ${hasPracticeQuestions}`);
+    
+    // Remove any existing placeholders first to ensure clean state
+    removeExistingPlaceholders(container);
+    
     // Add lecture notes placeholder if it doesn't exist
     if (!hasLectureNotes) {
+        console.log(`📝 [PLACEHOLDERS] Adding lecture notes placeholder for ${unitName} - no actual content found`);
         const lectureNotesItem = document.createElement('div');
-        lectureNotesItem.className = 'file-item';
+        lectureNotesItem.className = 'file-item placeholder-item';
         lectureNotesItem.innerHTML = `
             <span class="file-icon">📄</span>
             <div class="file-info">
@@ -3987,16 +4234,19 @@ function addRequiredPlaceholders(container, unitName) {
             </div>
             <div class="file-actions">
                 <button class="action-button upload" onclick="openUploadModal('${unitName}', 'lecture-notes')">Upload</button>
-                <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
             </div>
         `;
         container.appendChild(lectureNotesItem);
+        console.log(`✅ [PLACEHOLDERS] Lecture notes placeholder added for ${unitName}`);
+    } else {
+        console.log(`✅ [PLACEHOLDERS] No lecture notes placeholder needed for ${unitName} - actual content exists`);
     }
     
     // Add practice questions placeholder if it doesn't exist
     if (!hasPracticeQuestions) {
+        console.log(`📝 [PLACEHOLDERS] Adding practice questions placeholder for ${unitName} - no actual content found`);
         const practiceQuestionsItem = document.createElement('div');
-        practiceQuestionsItem.className = 'file-item';
+        practiceQuestionsItem.className = 'file-item placeholder-item';
         practiceQuestionsItem.innerHTML = `
             <span class="file-icon">📄</span>
             <div class="file-info">
@@ -4006,10 +4256,12 @@ function addRequiredPlaceholders(container, unitName) {
             </div>
             <div class="file-actions">
                 <button class="action-button upload" onclick="openUploadModal('${unitName}', 'practice-quiz')">Upload</button>
-                <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
             </div>
         `;
         container.appendChild(practiceQuestionsItem);
+        console.log(`✅ [PLACEHOLDERS] Practice questions placeholder added for ${unitName}`);
+    } else {
+        console.log(`✅ [PLACEHOLDERS] No practice questions placeholder needed for ${unitName} - actual content exists`);
     }
 }
 
@@ -4057,12 +4309,121 @@ function addActionButtons(container, unitName) {
 }
 
 /**
+ * Add action buttons only if they don't already exist (prevents duplicates)
+ * @param {HTMLElement} container - The container to add buttons to
+ * @param {string} unitName - The name of the unit (e.g., 'Unit 1')
+ */
+function addActionButtonsIfMissing(container, unitName) {
+    // Check if action buttons already exist
+    let hasAddContentSection = false;
+    let hasConfirmButton = false;
+    
+    container.querySelectorAll('.add-content-section, .save-objectives').forEach(item => {
+        if (item.classList.contains('add-content-section')) {
+            hasAddContentSection = true;
+        }
+        if (item.textContent.includes('Confirm Course Materials')) {
+            hasConfirmButton = true;
+        }
+    });
+    
+    // Add "Add Additional Material" button if it doesn't exist
+    if (!hasAddContentSection) {
+        const addContentSection = document.createElement('div');
+        addContentSection.className = 'add-content-section';
+        addContentSection.innerHTML = `
+            <button class="add-content-btn additional-material" onclick="openUploadModal('${unitName}', 'additional')">
+                <span class="btn-icon">➕</span>
+                Add Additional Material
+            </button>
+        `;
+        container.appendChild(addContentSection);
+    }
+    
+    // Add "Confirm Course Materials" button if it doesn't exist
+    if (!hasConfirmButton) {
+        const confirmSection = document.createElement('div');
+        confirmSection.className = 'save-objectives';
+        confirmSection.innerHTML = `
+            <button class="save-btn" onclick="confirmCourseMaterials('${unitName}')">Confirm Course Materials</button>
+        `;
+        container.appendChild(confirmSection);
+    }
+}
+
+/**
  * Add cleanup button to clear all documents from a unit
  * @param {HTMLElement} container - The container to add button to
  * @param {string} unitName - The name of the unit (e.g., 'Unit 1')
  * @param {string} courseId - The course ID
  */
 function addCleanupButton(container, unitName, courseId) {
+    // Check if cleanup button already exists
+    let hasCleanupButton = false;
+    container.querySelectorAll('.cleanup-section').forEach(item => {
+        if (item.textContent.includes('Clear All Documents')) {
+            hasCleanupButton = true;
+        }
+    });
+    
+    if (!hasCleanupButton) {
+        const cleanupSection = document.createElement('div');
+        cleanupSection.className = 'cleanup-section';
+        cleanupSection.style.marginTop = '20px';
+        cleanupSection.style.padding = '15px';
+        cleanupSection.style.backgroundColor = '#fff3cd';
+        cleanupSection.style.border = '1px solid #ffeaa7';
+        cleanupSection.style.borderRadius = '5px';
+        cleanupSection.innerHTML = `
+            <h4 style="margin: 0 0 10px 0; color: #856404;">⚠️ Document Cleanup</h4>
+            <p style="margin: 0 0 15px 0; color: #856404; font-size: 14px;">
+                This will remove ALL documents from ${unitName} in the course structure. 
+                This action cannot be undone.
+            </p>
+            <button class="cleanup-btn" onclick="clearAllDocuments('${unitName}', '${courseId}')" 
+                    style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">
+                🗑️ Clear All Documents from ${unitName}
+            </button>
+        `;
+        container.appendChild(cleanupSection);
+    }
+}
+
+/**
+ * Ensure action buttons exist for all units (fallback function)
+ */
+function ensureActionButtonsExist() {
+    console.log('🔧 [FALLBACK] Ensuring action buttons exist for all units...');
+    
+    const accordionItems = document.querySelectorAll('.accordion-item');
+    accordionItems.forEach(item => {
+        const folderName = item.querySelector('.folder-name');
+        if (!folderName) return;
+        
+        const unitName = folderName.textContent;
+        const courseMaterialsSection = item.querySelector('.course-materials-section .section-content');
+        
+        if (courseMaterialsSection) {
+            // Check if action buttons already exist
+            const hasActionButtons = courseMaterialsSection.querySelector('.add-content-section, .save-objectives');
+            
+            if (!hasActionButtons) {
+                console.log(`🔧 [FALLBACK] Adding missing action buttons for ${unitName}`);
+                addActionButtonsIfMissing(courseMaterialsSection, unitName);
+            }
+        }
+    });
+    
+    console.log('✅ [FALLBACK] Action buttons check completed');
+}
+
+/**
+ * Add cleanup button only if it doesn't already exist (prevents duplicates)
+ * @param {HTMLElement} container - The container to add button to
+ * @param {string} unitName - The name of the unit (e.g., 'Unit 1')
+ * @param {string} courseId - The course ID
+ */
+function addCleanupButtonIfMissing(container, unitName, courseId) {
     // Check if cleanup button already exists
     let hasCleanupButton = false;
     container.querySelectorAll('.cleanup-section').forEach(item => {
