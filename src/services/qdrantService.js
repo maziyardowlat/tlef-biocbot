@@ -19,7 +19,7 @@ class QdrantService {
         this.embeddings = null;
         this.chunker = null;
         this.collectionName = 'biocbot_documents';
-        this.vectorSize = null; // Will be determined dynamically from embeddings
+        this.vectorSize = 768; // Will be determined dynamically from embeddings
     }
 
     /**
@@ -54,7 +54,11 @@ class QdrantService {
                 logger: logger,
                 llmConfig: {
                     ...llmConfig,
-                    embeddingModel: process.env.LLM_EMBEDDING_MODEL || 'nomic-embed-text'
+                    embeddingModel: process.env.LLM_EMBEDDING_MODEL,
+                    // // Drop unsupported parameters when talking to Ollama
+                    // litellm: {
+                    //     drop_params: true
+                    // }
                 }
             };
 
@@ -87,7 +91,7 @@ class QdrantService {
             }
             
             // Set vector size dynamically based on the embedding model
-            this.vectorSize = testEmbedding.length;
+            // this.vectorSize = testEmbedding.length;
             console.log(`✅ Successfully initialized embeddings service (vector size: ${this.vectorSize} dimensions)`);
 
             // Ensure collection exists
