@@ -1,4 +1,33 @@
+// API base URL configuration - change this if proxy isn't working
+const API_BASE_URL = ''; // Empty string for relative URLs, 'http://localhost:8085' for absolute
+
 document.addEventListener('DOMContentLoaded', () => {
+    console.log('🚀 [DOM_LOADED] Instructor page loaded');
+    
+    // Test if AI button exists
+    const aiButton = document.getElementById('ai-generate-btn');
+    console.log(`🔍 [DOM_LOADED] AI button found: ${!!aiButton}`);
+    if (aiButton) {
+        console.log(`🔍 [DOM_LOADED] AI button properties:`, {
+            display: aiButton.style.display,
+            disabled: aiButton.disabled,
+            className: aiButton.className,
+            textContent: aiButton.textContent
+        });
+        
+        // Test if button is clickable
+        aiButton.addEventListener('click', function() {
+            console.log('🔍 [TEST] AI button clicked successfully!');
+        });
+        
+        // Test button visibility
+        console.log(`🔍 [TEST] AI button computed styles:`, {
+            display: window.getComputedStyle(aiButton).display,
+            visibility: window.getComputedStyle(aiButton).visibility,
+            opacity: window.getComputedStyle(aiButton).opacity
+        });
+    }
+    
     const uploadDropArea = document.getElementById('upload-drop-area');
     const fileUpload = document.getElementById('file-upload');
     const documentSearch = document.getElementById('document-search');
@@ -113,8 +142,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const selectedCourse = courseSelect.value;
             if (selectedCourse) {
                 // In a real implementation, this would load the course documents
-                
-                // For demonstration purposes, we'll just show a notification
+                console.log(`Loading documents for course: ${selectedCourse}`);
                 showNotification(`Loaded documents for ${courseSelect.options[courseSelect.selectedIndex].text}`, 'info');
             }
         });
@@ -1701,8 +1729,8 @@ async function loadAssessmentQuestions() {
             const lectureName = folderName.textContent;
             console.log(`❓ [ASSESSMENT_QUESTIONS] Processing lecture/unit: ${lectureName}`);
             
-            console.log(`📡 [MONGODB] Making API request to /api/questions/lecture?courseId=${courseId}&lectureName=${encodeURIComponent(lectureName)}`);
-            const response = await fetch(`/api/questions/lecture?courseId=${courseId}&lectureName=${encodeURIComponent(lectureName)}`);
+            console.log(`📡 [MONGODB] Making API request to ${API_BASE_URL}/api/questions/lecture?courseId=${courseId}&lectureName=${encodeURIComponent(lectureName)}`);
+            const response = await fetch(`${API_BASE_URL}/api/questions/lecture?courseId=${courseId}&lectureName=${encodeURIComponent(lectureName)}`);
             console.log(`📡 [MONGODB] API response status: ${response.status} ${response.statusText}`);
             console.log(`📡 [MONGODB] API response headers:`, Object.fromEntries(response.headers.entries()));
             
@@ -1762,7 +1790,7 @@ async function deleteAssessmentQuestion(questionId, week) {
         const courseId = await getCurrentCourseId();
         const instructorId = getCurrentInstructorId();
         
-        const response = await fetch(`/api/questions/${questionId}`, {
+        const response = await fetch(`${API_BASE_URL}/api/questions/${questionId}`, {
             method: 'DELETE',
             headers: {
                 'Content-Type': 'application/json',
@@ -2724,38 +2752,83 @@ async function generateProbingQuestions(week) {
     const weekElement = findElementsContainingText('.accordion-item .folder-name', week)[0].closest('.accordion-item');
     const fileItems = weekElement.querySelectorAll('.course-materials-section .file-item');
     
-    // Check if there are uploaded materials
-    let hasMaterials = false;
+    // Collect all course materials and learning objectives
+    const materials = [];
+    const objectives = [];
+    
+    // Get learning objectives
+    const objectivesList = weekElement.querySelector('.objectives-list');
+    if (objectivesList) {
+        objectivesList.querySelectorAll('.objective-text').forEach(obj => {
+            objectives.push(obj.textContent.trim());
+        });
+    }
+    console.log('📚 [PROBING] Found learning objectives:', objectives);
+    
+    // Get course materials
     fileItems.forEach(item => {
-        const statusText = item.querySelector('.status-text').textContent;
-        if (statusText === 'Processed') {
-            hasMaterials = true;
+        const title = item.querySelector('.file-info h3')?.textContent;
+        const status = item.querySelector('.status-text')?.textContent;
+        const docId = item.dataset.documentId;
+        
+        if (status === 'Processed' || status === 'Uploaded') {
+            materials.push({ title, status, documentId: docId });
         }
     });
+    console.log('📚 [PROBING] Found course materials:', materials);
 
-    // For demo purposes, allow generation even without processed materials
-    if (!hasMaterials) {
-        showNotification('Generating probing questions based on general course content (no specific materials uploaded)...', 'info');
-    } else {
-        showNotification('Generating probing questions based on uploaded materials...', 'info');
+    if (materials.length === 0) {
+        showNotification('Please upload and process course materials before generating probing questions.', 'warning');
+        return;
     }
 
-    try {
-        // In a real implementation, this would call an AI API with the course materials
-        // For now, we'll simulate a delay and generate some mock questions
-        await new Promise(resolve => setTimeout(resolve, 2000));
+    showNotification('Generating probing questions based on course materials and learning objectives...', 'info');
 
-        // TODO: Generate probing questions using AI API with course materials
-        // For now, using placeholder questions until AI integration is implemented
-        const mockQuestions = [
-            "How would you apply the concepts from this week to solve a real-world problem?",
-            "What connections can you make between this material and previous topics?",
-            "What questions would you ask to deepen your understanding of this subject?",
-            "How do these concepts relate to current research or applications in the field?"
-        ];
+    try {
+        // Get the actual content of the materials
+        const courseId = await getCurrentCourseId();
+        const response = await fetch(`/api/questions/course-material?courseId=${courseId}&lectureName=${encodeURIComponent(week)}&instructorId=${getCurrentInstructorId()}`);
+        
+        if (!response.ok) {
+            throw new Error('Failed to fetch course materials');
+        }
+        
+        const result = await response.json();
+        console.log('📚 [PROBING] Course material content:', result);
+        
+        if (!result.success || !result.data.content) {
+            throw new Error('No course material content available');
+        }
+        
+        // Call the AI generation endpoint with both materials and objectives
+        const aiResponse = await fetch('/api/questions/generate-ai', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                courseId: courseId,
+                lectureName: week,
+                instructorId: getCurrentInstructorId(),
+                questionType: 'probing',
+                courseMaterial: result.data.content,
+                learningObjectives: objectives
+            })
+        });
+        
+        if (!aiResponse.ok) {
+            throw new Error('Failed to generate probing questions');
+        }
+        
+        const aiResult = await aiResponse.json();
+        console.log('🤖 [PROBING] AI generated questions:', aiResult);
+        
+        if (!aiResult.success || !aiResult.data?.questions) {
+            throw new Error('Failed to parse AI generated questions');
+        }
         
         // Get the questions list for this week
-        const questionsList = weekElement.querySelector(`#questions-list-${week.toLowerCase().replace(/\s+/g, '')}`);
+        const questionsList = weekElement.querySelector('.probing-questions-section .questions-list');
         
         if (!questionsList) {
             console.error('Could not find questions list element for', week);
@@ -2764,18 +2837,17 @@ async function generateProbingQuestions(week) {
         }
         
         // Add each generated question to the list
-        mockQuestions.forEach(questionText => {
+        aiResult.data.questions.forEach(question => {
             const questionItem = document.createElement('div');
             questionItem.className = 'objective-display-item';
             questionItem.innerHTML = `
-                <span class="objective-text">${questionText}</span>
+                <span class="objective-text">${question}</span>
                 <button class="remove-objective" onclick="removeQuestion(this)">×</button>
             `;
             questionsList.appendChild(questionItem);
         });
 
-        showNotification(`${mockQuestions.length} probing questions generated successfully!`, 'success');
-
+        showNotification(`${aiResult.data.questions.length} probing questions generated successfully!`, 'success');
     } catch (error) {
         console.error('Error generating probing questions:', error);
         showNotification('Failed to generate probing questions. Please try again.', 'error');
@@ -2927,6 +2999,9 @@ function resetQuestionForm() {
     if (aiButton) {
         aiButton.style.display = 'none';
         aiButton.disabled = false;
+        console.log(`🔍 [RESET_FORM] AI button hidden and reset`);
+    } else {
+        console.warn(`🔍 [RESET_FORM] AI button not found during reset`);
     }
 }
 
@@ -2953,6 +3028,12 @@ function updateQuestionForm() {
     }
     
     // Check if AI generation should be available
+    console.log(`🔍 [UPDATE_FORM] Calling checkAIGenerationInModal...`);
+    
+    // Debug: Check if AI button exists at this point
+    const aiButtonDebug = document.getElementById('ai-generate-btn');
+    console.log(`🔍 [UPDATE_FORM] AI button found during update: ${!!aiButtonDebug}`);
+    
     checkAIGenerationInModal();
 }
 
@@ -3064,7 +3145,7 @@ async function saveQuestion() {
         const instructorId = getCurrentInstructorId();
         const lectureName = currentWeek;
         
-        const response = await fetch('/api/questions', {
+        const response = await fetch(`${API_BASE_URL}/api/questions`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -3132,7 +3213,7 @@ async function reloadQuestionsForUnit(unitName) {
     try {
         const courseId = await getCurrentCourseId();
         
-        const response = await fetch(`/api/questions/lecture?courseId=${courseId}&lectureName=${encodeURIComponent(unitName)}`);
+        const response = await fetch(`${API_BASE_URL}/api/questions/lecture?courseId=${courseId}&lectureName=${encodeURIComponent(unitName)}`);
         
         if (response.ok) {
             const result = await response.json();
@@ -3331,43 +3412,54 @@ function monitorLectureNotesStatus() {
  * Check AI generation availability in the question modal
  */
 function checkAIGenerationInModal() {
+    console.log(`🔍 [AI_MODAL_CHECK] Starting check for currentWeek: ${currentWeek}`);
+    
     const questionType = document.getElementById('question-type').value;
     const aiButton = document.getElementById('ai-generate-btn');
     
+    console.log(`🔍 [AI_MODAL_CHECK] Question type: ${questionType}`);
+    console.log(`🔍 [AI_MODAL_CHECK] AI button found: ${!!aiButton}`);
+    
     if (!questionType) {
         // No question type selected, hide AI button
+        console.log(`🔍 [AI_MODAL_CHECK] No question type selected, hiding AI button`);
         aiButton.style.display = 'none';
         return;
     }
     
-    // Check if lecture notes are uploaded for the current week
-    if (!checkLectureNotesUploaded(currentWeek)) {
-        // Lecture notes not uploaded, disable AI button
+    // Check if course materials are available for the current week
+    const materialsAvailable = checkCourseMaterialsAvailable(currentWeek);
+    console.log(`🔍 [AI_MODAL_CHECK] Course materials available: ${materialsAvailable}`);
+    
+    if (!materialsAvailable) {
+        // No course materials available, disable AI button
+        console.log(`🔍 [AI_MODAL_CHECK] No materials available, disabling AI button`);
         aiButton.style.display = 'flex';
         aiButton.disabled = true;
-        aiButton.title = 'Please upload lecture notes before generating AI questions.';
+        aiButton.title = 'Please upload course materials (lecture notes, practice questions, etc.) before generating AI questions.';
         return;
     }
     
-    // Lecture notes uploaded and question type selected, enable AI button
+    // Course materials available and question type selected, enable AI button
+    console.log(`🔍 [AI_MODAL_CHECK] Materials available, enabling AI button`);
     aiButton.style.display = 'flex';
     aiButton.disabled = false;
-    aiButton.title = 'Generate AI question based on uploaded lecture notes.';
+    aiButton.title = 'Generate AI question based on uploaded course materials.';
 }
 
 /**
  * Generate AI content for the current question in the modal
  */
-function generateAIQuestionContent() {
+async function generateAIQuestionContent() {
     const questionType = document.getElementById('question-type').value;
     
     if (!questionType) {
-        alert('Please select a question type first.');
+        showNotification('Please select a question type first.', 'error');
         return;
     }
     
-    if (!checkLectureNotesUploaded(currentWeek)) {
-        alert('Please upload lecture notes before generating AI questions.');
+    if (!checkCourseMaterialsAvailable(currentWeek)) {
+        showNotification('Please upload course materials (lecture notes, practice questions, etc.) before generating AI questions.', 'error');
         return;
     }
     
@@ -3377,24 +3469,109 @@ function generateAIQuestionContent() {
     aiButton.innerHTML = '<span class="ai-icon">⏳</span> Generating...';
     aiButton.disabled = true;
     
-    // Generate AI content based on type
-    const aiContent = createAIQuestionContent(questionType, currentWeek);
-    
-    // Populate form fields with AI content
-    populateFormWithAIContent(aiContent);
-    
-    // Restore button state
-    aiButton.innerHTML = originalText;
-    aiButton.disabled = false;
+    try {
+        // Get current course ID and instructor ID
+        const courseId = await getCurrentCourseId();
+        const instructorId = getCurrentInstructorId();
+        
+        // Get course materials and learning objectives for the current week
+        const weekAccordionItem = Array.from(document.querySelectorAll('.accordion-item')).find(item => {
+            const folderName = item.querySelector('.folder-name')?.textContent;
+            return folderName === currentWeek;
+        });
+
+        if (!weekAccordionItem) {
+            throw new Error(`Could not find accordion item for week: ${currentWeek}`);
+        }
+
+        // Get materials
+        const materials = [];
+        const fileItems = weekAccordionItem.querySelectorAll('.course-materials-section .file-item');
+        fileItems.forEach(item => {
+            const title = item.querySelector('.file-info h3')?.textContent;
+            const status = item.querySelector('.status-text')?.textContent;
+            const docId = item.dataset.documentId;
+            materials.push({ title, status, documentId: docId });
+        });
+        console.log('📚 [MATERIALS] Available materials for AI generation:', materials);
+
+        // Get learning objectives
+        const objectives = [];
+        const objectivesList = weekAccordionItem.querySelector('.objectives-list');
+        if (objectivesList) {
+            objectivesList.querySelectorAll('.objective-text').forEach(obj => {
+                const text = obj.textContent.trim();
+                if (text) {
+                    objectives.push(text);
+                }
+            });
+        }
+        console.log('📚 [OBJECTIVES] Learning objectives for AI generation:', objectives);
+
+        // Call the AI question generation API
+        const apiUrl = API_BASE_URL + '/api/questions/generate-ai';
+        console.log('🔍 [API_CALL] Making request to:', apiUrl);
+        const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                courseId: courseId,
+                lectureName: currentWeek,
+                instructorId: instructorId,
+                questionType: questionType,
+                learningObjectives: objectives.length > 0 ? objectives : undefined
+            })
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
+            throw new Error(errorData.message || `Failed to generate question: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        console.log('🤖 [AI_RESPONSE] Raw response:', result);
+        console.log('🤖 [AI_RESPONSE] Full data structure:', JSON.stringify(result, null, 2));
+        
+        if (!result.success) {
+            throw new Error(result.message || 'Failed to generate question');
+        }
+        
+        const aiContent = result.data;
+        console.log('🤖 [AI_CONTENT] Processed content to populate form:', aiContent);
+        console.log('🤖 [AI_CONTENT] Content keys:', Object.keys(aiContent));
+        console.log('🤖 [AI_CONTENT] Options structure:', aiContent.options ? JSON.stringify(aiContent.options, null, 2) : 'No options');
+        
+        // Populate form fields with AI content
+        populateFormWithAIContent(aiContent);
+        
+        // Show success notification
+        showNotification('AI question generated successfully! You can now edit and save it.', 'success');
+        
+    } catch (error) {
+        console.error('Error generating AI question:', error);
+        showNotification(`Error generating AI question: ${error.message}`, 'error');
+        
+        // Show fallback content for demo purposes
+        const fallbackContent = createFallbackAIContent(questionType, currentWeek);
+        populateFormWithAIContent(fallbackContent);
+        showNotification('Using fallback content due to generation error. Please edit before saving.', 'warning');
+        
+    } finally {
+        // Restore button state
+        aiButton.innerHTML = originalText;
+        aiButton.disabled = false;
+    }
 }
 
 /**
- * Create AI question content for the modal
+ * Create fallback AI content when the API fails
  * @param {string} type - Question type
  * @param {string} week - Week identifier
- * @returns {Object} AI content object
+ * @returns {Object} Fallback content object
  */
-function createAIQuestionContent(type, week) {
+function createFallbackAIContent(type, week) {
     if (type === 'true-false') {
         return {
             question: `Based on the ${week} lecture notes, this concept is essential for understanding the course material.`,
@@ -3420,30 +3597,68 @@ function createAIQuestionContent(type, week) {
 }
 
 /**
- * Populate form fields with AI-generated content
- * @param {Object} aiContent - AI-generated content
+ * Populate the question modal form with AI-generated content
+ * @param {Object} aiContent - The AI-generated question content
  */
 function populateFormWithAIContent(aiContent) {
-    // Set question text
-    document.getElementById('question-text').value = aiContent.question;
+    console.log('🎯 [FORM_POPULATION] Starting to populate form with content:', aiContent);
+    console.log('🎯 [FORM_POPULATION] Content structure:', {
+        hasQuestion: 'question' in aiContent,
+        hasOptions: 'options' in aiContent,
+        optionsType: aiContent.options ? typeof aiContent.options : 'none',
+        allKeys: Object.keys(aiContent)
+    });
+    
+    // Set question text - check multiple possible locations
+    const questionText = aiContent.question || aiContent.options?.question || aiContent.prompt || '';
+    console.log('🎯 [FORM_POPULATION] Setting question text:', questionText);
+    document.getElementById('question-text').value = questionText;
     
     // Set answer based on type
     const questionType = document.getElementById('question-type').value;
+    console.log('🎯 [FORM_POPULATION] Question type:', questionType);
     
     if (questionType === 'true-false') {
+        console.log('🎯 [FORM_POPULATION] Handling true-false question');
+        console.log('🎯 [FORM_POPULATION] Answer value:', aiContent.answer);
+        
         // Set radio button
         const radioButton = document.querySelector(`input[name="tf-answer"][value="${aiContent.answer}"]`);
+        console.log('🎯 [FORM_POPULATION] Found radio button:', !!radioButton);
         if (radioButton) {
             radioButton.checked = true;
         }
     } else if (questionType === 'multiple-choice') {
+        console.log('🎯 [FORM_POPULATION] Handling multiple-choice question');
+        console.log('🎯 [FORM_POPULATION] Options:', aiContent.options);
+        
         // Set MCQ options
-        Object.keys(aiContent.options).forEach(option => {
-            const input = document.querySelector(`.mcq-input[data-option="${option}"]`);
-            if (input) {
-                input.value = aiContent.options[option];
+        if (aiContent.options && typeof aiContent.options === 'object') {
+            // Check if options are in the expected format or in choices array
+            const choices = aiContent.options.choices || aiContent.options;
+            console.log('🎯 [FORM_POPULATION] Processed choices:', choices);
+            
+            // Map choices to A, B, C, D if they're in an array
+            if (Array.isArray(choices)) {
+                choices.forEach((choice, index) => {
+                    const option = String.fromCharCode(65 + index); // Convert 0 to 'A', 1 to 'B', etc.
+                    console.log(`🎯 [FORM_POPULATION] Setting array option ${option}:`, choice);
+                    const input = document.querySelector(`.mcq-input[data-option="${option}"]`);
+                    if (input) {
+                        input.value = choice;
+                    }
+                });
+            } else {
+                // Handle object format
+                Object.keys(choices).forEach(option => {
+                    console.log(`🎯 [FORM_POPULATION] Setting object option ${option}:`, choices[option]);
+                    const input = document.querySelector(`.mcq-input[data-option="${option}"]`);
+                    if (input) {
+                        input.value = choices[option];
+                    }
+                });
             }
-        });
+        }
         
         // Enable all radio buttons since we have content
         const radioButtons = document.querySelectorAll('input[name="mcq-correct"]');
@@ -3451,29 +3666,36 @@ function populateFormWithAIContent(aiContent) {
             radio.disabled = false;
         });
         
-        // Set correct answer
-        const correctRadio = document.querySelector(`input[name="mcq-correct"][value="${aiContent.answer}"]`);
-        if (correctRadio) {
-            correctRadio.checked = true;
-        }
+        // Set correct answer - might be in different places in the response
+        const correctAnswer = aiContent.options?.correctAnswer || aiContent.answer || '';
+        console.log('🎯 [FORM_POPULATION] Correct answer:', correctAnswer);
         
-        // Force enable all radio buttons again after a short delay
-        setTimeout(() => {
-            const radioButtons = document.querySelectorAll('input[name="mcq-correct"]');
-            radioButtons.forEach(radio => {
-                radio.disabled = false;
-            });
+        if (correctAnswer) {
+            // Try both the original answer and uppercase version
+            let correctRadio = document.querySelector(`input[name="mcq-correct"][value="${correctAnswer}"]`) ||
+                             document.querySelector(`input[name="mcq-correct"][value="${correctAnswer.toUpperCase()}"]`);
             
-            // Re-set the correct answer
-            const correctRadio = document.querySelector(`input[name="mcq-correct"][value="${aiContent.answer}"]`);
+            console.log('🎯 [FORM_POPULATION] Found correct answer radio:', !!correctRadio);
             if (correctRadio) {
                 correctRadio.checked = true;
             }
-        }, 50);
+        }
     } else if (questionType === 'short-answer') {
+        console.log('🎯 [FORM_POPULATION] Handling short-answer question');
+        console.log('🎯 [FORM_POPULATION] Full content:', aiContent);
+        
+        // For short answer, check both EXPECTED_ANSWER and answer fields
+        const expectedAnswer = aiContent.EXPECTED_ANSWER || aiContent.answer || '';
+        console.log('🎯 [FORM_POPULATION] Expected answer sources:', {
+            fromExpectedAnswer: aiContent.EXPECTED_ANSWER,
+            fromAnswer: aiContent.answer,
+            final: expectedAnswer
+        });
+        
         // Set short answer
-        document.getElementById('sa-answer').value = aiContent.answer;
+        document.getElementById('sa-answer').value = expectedAnswer;
     }
+    
 }
 
 /**
@@ -4498,4 +4720,285 @@ async function clearAllDocuments(unitName, courseId) {
         console.error('Error clearing documents:', error);
         showNotification(`Error clearing documents: ${error.message}`, 'error');
     }
+}
+
+function renderMCQOptions() {
+    const container = document.getElementById('mcq-options');
+    container.innerHTML = `
+        ${['A', 'B', 'C', 'D'].map(option => `
+            <div class="form-group mcq-option">
+                <label for="mcq-option-${option}">Option ${option}</label>
+                <div class="input-group">
+                    <input type="text" id="mcq-option-${option}" class="form-control mcq-input" data-option="${option}" placeholder="Enter option ${option} text...">
+                    <div class="input-group-append">
+                        <div class="input-group-text">
+                            <input type="radio" name="mcq-correct" value="${option}" disabled>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `).join('')}
+    `;
+    
+    // Add event listeners to enable radio buttons when text is entered
+    container.querySelectorAll('.mcq-input').forEach(input => {
+        input.addEventListener('input', function() {
+            const radioButton = document.querySelector(`input[name="mcq-correct"][value="${this.dataset.option}"]`);
+            if (this.value.trim()) {
+                radioButton.disabled = false;
+            } else {
+                radioButton.disabled = true;
+                radioButton.checked = false;
+            }
+        });
+    });
+}
+
+/**
+ * Check if course materials are available for a specific week
+ * This is a simplified check that looks for any non-placeholder file item.
+ * @param {string} week - The week identifier (e.g., "Unit 1")
+ * @returns {boolean} True if materials are detected, false otherwise.
+ */
+function checkCourseMaterialsAvailable(week) {
+    if (!week) return false;
+
+    // Find the accordion item by looking for the folder name that matches the week
+    const accordionItems = document.querySelectorAll('.accordion-item');
+    const weekAccordionItem = Array.from(accordionItems).find(item => {
+        const folderName = item.querySelector('.folder-name')?.textContent;
+        return folderName === week;
+    });
+
+    if (!weekAccordionItem) {
+        console.warn(`Could not find accordion item for week: ${week}`);
+        return false;
+    }
+
+    // Look for course materials in the section-content
+    const courseMaterialsSection = weekAccordionItem.querySelector('.course-materials-section .section-content');
+    if (!courseMaterialsSection) return false;
+
+    // Check for any non-placeholder file items
+    const fileItems = courseMaterialsSection.querySelectorAll('.file-item');
+    console.log(`🔍 [MATERIALS_CHECK] Found ${fileItems.length} file items in ${week}`);
+    
+    for (const item of fileItems) {
+        const status = item.querySelector('.status-text');
+        if (status) {
+            const statusText = status.textContent;
+            // Consider both 'Processed' and 'Uploaded' as valid statuses
+            if (statusText === 'Processed' || statusText === 'Uploaded' || statusText === 'uploaded') {
+                console.log(`🔍 [MATERIALS_CHECK] Found valid material (${statusText}) in ${week}`);
+                return true;
+            }
+        }
+    }
+
+    console.log(`🔍 [MATERIALS_CHECK] No processed materials found in ${week}`);
+    return false;
+}
+
+/**
+ * @param {Array} units - Array of units/lectures for the course
+ */
+function renderCourseUnits(units) {
+    const accordionContainer = document.querySelector('.accordion-container');
+    accordionContainer.innerHTML = ''; // Clear existing content
+    
+    if (!units || units.length === 0) {
+        accordionContainer.innerHTML = '<p>No units found for this course.</p>';
+        return;
+    }
+    
+    units.forEach(unit => {
+        const unitName = (unit.name || 'Unnamed Unit').trim();
+        const weekId = unitName.toLowerCase().replace(/\s+/g, '-');
+        
+        const accordionItem = document.createElement('div');
+        accordionItem.className = 'accordion-item';
+        accordionItem.id = `accordion-${weekId}`; // Add this ID for the check function
+        
+        accordionItem.innerHTML = `
+            <div class="accordion-header">
+                <div class="header-left">
+                    <span class="folder-name">${unitName}</span>
+                    <div class="header-actions">
+                        <div class="publish-toggle">
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="publish-${weekId}" onchange="togglePublish('${unitName}', this.checked)">
+                                <span class="toggle-slider"></span>
+                            </label>
+                            <span class="toggle-label">Published</span>
+                        </div>
+                        <span class="accordion-toggle">${isExpanded ? '▼' : '▶'}</span>
+                    </div>
+                </div>
+            </div>
+            <div class="accordion-content ${isExpanded ? '' : 'collapsed'}">
+                <!-- Learning Objectives Section -->
+                <div class="unit-section learning-objectives-section">
+                    <div class="section-header">
+                        <h3>Learning Objectives</h3>
+                        <button class="toggle-section">▼</button>
+                    </div>
+                    <div class="section-content">
+                        <div class="objectives-list" id="objectives-list-${weekId}">
+                            <!-- Objectives will be added here -->
+                        </div>
+                        <div class="objective-input-container">
+                            <input type="text" id="objective-input-${weekId}" class="objective-input" placeholder="Enter learning objective...">
+                            <button class="add-objective-btn-inline" onclick="addObjectiveFromInput('${unitName}')">+</button>
+                        </div>
+                        <div class="save-objectives">
+                            <button class="save-btn" onclick="saveObjectives('${unitName}')">Save Learning Objectives</button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Course Materials Section -->
+                <div class="unit-section course-materials-section">
+                    <div class="section-header">
+                        <h3>Course Materials</h3>
+                        <button class="toggle-section">▼</button>
+                    </div>
+                    <div class="section-content">
+                        <div class="content-type-header">
+                            <p><strong>Required Materials:</strong> *Lecture Notes and *Practice Questions/Tutorial are mandatory</p>
+                        </div>
+                        <div class="file-item placeholder-item">
+                            <div class="file-info">
+                                <h3>*Lecture Notes - ${unitName}</h3>
+                                <p>Placeholder for required lecture notes. Please upload content.</p>
+                                <span class="status-text">Not Uploaded</span>
+                            </div>
+                            <div class="file-actions">
+                                <button class="action-button upload" onclick="openUploadModal('${unitName}', 'lecture-notes')">Upload</button>
+                            </div>
+                        </div>
+                        <div class="file-item placeholder-item">
+                            <div class="file-info">
+                                <h3>*Practice Questions/Tutorial</h3>
+                                <p>Placeholder for required practice questions. Please upload content.</p>
+                                <span class="status-text">Not Uploaded</span>
+                            </div>
+                            <div class="file-actions">
+                                <button class="action-button upload" onclick="openUploadModal('${unitName}', 'practice-quiz')">Upload</button>
+                            </div>
+                        </div>
+                        <!-- Action buttons will be added dynamically by loadDocuments() -->
+                        <!-- Expected order: Documents → Placeholders → Cleanup → Action Buttons -->
+                        <!-- This ensures proper positioning below uploaded files -->
+                    </div>
+                </div>
+                
+                <!-- Assessment Questions Section -->
+                <div class="unit-section assessment-questions-section">
+                    <div class="section-header">
+                        <h3>Assessment Questions</h3>
+                        <button class="toggle-section">▼</button>
+                    </div>
+                    <div class="section-content">
+                        <div class="assessment-info">
+                            <p><strong>Assessment Settings:</strong> Create questions to determine student readiness for tutor/protégé mode</p>
+                        </div>
+                        
+                        <!-- Pass Threshold Setting -->
+                        <div class="threshold-setting">
+                            <label for="pass-threshold-${weekId}">Questions required to pass:</label>
+                            <input type="number" id="pass-threshold-${weekId}" min="1" max="10" value="2" class="threshold-input">
+                            <span class="threshold-help">out of total questions</span>
+                            <span class="threshold-display" id="threshold-value-${weekId}">2</span>
+                        </div>
+                        
+                        <!-- Questions List -->
+                        <div class="questions-list" id="assessment-questions-${weekId}">
+                            <!-- Assessment questions will be displayed here -->
+                            <div class="no-questions-message">
+                                <p>No assessment questions created yet. Click "Add Question" to get started.</p>
+                            </div>
+                        </div>
+                        
+                        <!-- Action Buttons -->
+                        <div class="assessment-actions">
+                            <button class="add-question-btn" onclick="openQuestionModal('${unitName}')">
+                                <span class="btn-icon">➕</span>
+                                Add Question
+                            </button>
+                        </div>
+                        
+                        <div class="save-assessment">
+                            <button class="save-btn" onclick="saveAssessment('${unitName}')">Save Assessment</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        accordionContainer.appendChild(accordionItem);
+    });
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+    console.log('📄 [DOCUMENTS] DOM fully loaded and parsed');
+    
+    // Check for onboarding completion first
+    const instructorId = getCurrentInstructorId();
+    if (!instructorId) {
+        console.error('No instructor ID found.');
+        // Optional: Redirect to login or show an error
+        return;
+    }
+
+    // Initialize the main assessment system and load course structure from onboarding data
+    await initializeAssessmentSystem();
+    await loadOnboardingData();
+
+    // Handle course selection
+    const courseSelect = document.getElementById('course-select');
+    if (courseSelect) {
+        courseSelect.addEventListener('change', () => {
+            const selectedCourse = courseSelect.value;
+            if (selectedCourse) {
+                // In a real implementation, this would load the course documents
+                console.log(`Loading documents for course: ${selectedCourse}`);
+                showNotification(`Loaded documents for ${courseSelect.options[courseSelect.selectedIndex].text}`, 'info');
+            }
+        });
+    }
+});
+
+/**
+ * Show a notification to the user
+ * @param {string} message - The message to display
+ */
+function showNotification(message, type = 'info') {
+    // Check if notification container exists, if not create it
+    let notificationContainer = document.querySelector('.notification-container');
+    if (!notificationContainer) {
+        notificationContainer = document.createElement('div');
+        notificationContainer.classList.add('notification-container');
+        document.body.appendChild(notificationContainer);
+    }
+    
+    // Create notification element
+    const notification = document.createElement('div');
+    notification.classList.add('notification', type);
+    notification.textContent = message;
+    
+    // Add close button
+    const closeBtn = document.createElement('button');
+    closeBtn.classList.add('notification-close');
+    closeBtn.innerHTML = '&times;';
+    closeBtn.addEventListener('click', () => {
+        notification.remove();
+    });
+    
+    notification.appendChild(closeBtn);
+    notificationContainer.appendChild(notification);
+    
+    // Auto remove after 5 seconds
+    setTimeout(() => {
+        notification.remove();
+    }, 5000);
 }

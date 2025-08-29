@@ -510,4 +510,383 @@ router.post('/bulk', async (req, res) => {
     }
 });
 
+/**
+ * GET /api/questions/course-material
+ * Get course material content for AI question generation
+ */
+router.get('/course-material', async (req, res) => {
+    try {
+        const { courseId, lectureName, instructorId } = req.query;
+        
+        // Validate required fields
+        if (!courseId || !lectureName || !instructorId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Missing required fields: courseId, lectureName, instructorId'
+            });
+        }
+        
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
+        
+        // Get course data to find documents for the specific lecture/unit
+        const course = await CourseModel.getCourseWithOnboarding(db, courseId);
+        
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                message: 'Course not found'
+            });
+        }
+        
+        // Check if the instructor has access to this course
+        if (course.instructorId !== instructorId) {
+            return res.status(403).json({
+                success: false,
+                message: 'Access denied: You do not have permission to access this course'
+            });
+        }
+        
+        // Find the specific lecture/unit
+        const unit = course.lectures?.find(l => l.name === lectureName);
+        
+        if (!unit) {
+            return res.status(404).json({
+                success: false,
+                message: `Unit ${lectureName} not found in course`
+            });
+        }
+        
+        // Get documents for this unit
+        const documents = unit.documents || [];
+        
+        if (documents.length === 0) {
+            return res.status(404).json({
+                success: false,
+                message: `No course materials found for ${lectureName}`,
+                data: {
+                    hasMaterials: false,
+                    content: null
+                }
+            });
+        }
+        
+        // Combine content from all documents (prioritize lecture notes and practice questions)
+        let combinedContent = '';
+        let hasRequiredMaterials = false;
+        
+        // First, look for lecture notes and practice questions
+        const priorityDocuments = documents.filter(doc => 
+            doc.type === 'lecture_notes' || 
+            doc.type === 'practice_q_tutorials' ||
+            doc.documentType === 'lecture-notes' ||
+            doc.documentType === 'practice-quiz'
+        );
+        
+        if (priorityDocuments.length > 0) {
+            hasRequiredMaterials = true;
+            // Combine content from priority documents
+            priorityDocuments.forEach(doc => {
+                if (doc.content && doc.content.trim()) {
+                    combinedContent += `\n\n--- ${doc.originalName || 'Document'} ---\n${doc.content}`;
+                }
+            });
+        } else {
+            // Fallback to any document with content
+            documents.forEach(doc => {
+                if (doc.content && doc.content.trim()) {
+                    combinedContent += `\n\n--- ${doc.originalName || 'Document'} ---\n${doc.content}`;
+                }
+            });
+        }
+        
+        if (!combinedContent.trim()) {
+            return res.status(404).json({
+                success: false,
+                message: `No content found in documents for ${lectureName}`,
+                data: {
+                    hasMaterials: false,
+                    content: null
+                }
+            });
+        }
+        
+        // Handle content length intelligently
+        const maxContentLength = 8000; // Increased limit for better context
+        
+        if (combinedContent.length > maxContentLength) {
+            console.log(`📚 [CONTENT] Original content length: ${combinedContent.length} chars`);
+            
+            // Split content into sections
+            const sections = combinedContent.split('---').filter(s => s.trim());
+            console.log(`📚 [CONTENT] Found ${sections.length} sections`);
+            
+            // Sort sections: Priority docs first, then additional materials
+            const prioritizedSections = sections.sort((a, b) => {
+                const aIsPriority = a.includes('Lecture Notes') || a.includes('Practice Questions');
+                const bIsPriority = b.includes('Lecture Notes') || b.includes('Practice Questions');
+                if (aIsPriority && !bIsPriority) return -1;
+                if (!aIsPriority && bIsPriority) return 1;
+                return 0; // Keep original order for additional materials
+            });
+            
+            console.log('📚 [CONTENT] Section types:', prioritizedSections.map(s => {
+                if (s.includes('Lecture Notes')) return 'Lecture Notes';
+                if (s.includes('Practice Questions')) return 'Practice Questions';
+                return 'Additional Material';
+            }));
+            
+            // Rebuild content with prioritized sections up to limit
+            let newContent = '';
+            let sectionsIncluded = 0;
+            
+            for (const section of prioritizedSections) {
+                if ((newContent + section).length <= maxContentLength) {
+                    newContent += '---' + section;
+                    sectionsIncluded++;
+                } else {
+                    break;
+                }
+            }
+            
+            combinedContent = newContent.trim() + `\n\n[Content truncated: ${sectionsIncluded}/${sections.length} sections included]`;
+            console.log(`📚 [CONTENT] Truncated to ${combinedContent.length} chars, included ${sectionsIncluded} sections`);
+        }
+        
+        console.log(`📚 Retrieved course material content for ${lectureName}: ${combinedContent.length} characters`);
+        
+        res.json({
+            success: true,
+            message: 'Course material content retrieved successfully',
+            data: {
+                hasMaterials: true,
+                content: combinedContent,
+                documentCount: documents.length,
+                unitName: lectureName,
+                courseId: courseId
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error retrieving course material content:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while retrieving course material content',
+            error: error.message
+        });
+    }
+});
+
+/**
+ * POST /api/questions/generate-ai
+ * Generate an assessment question using AI based on course material
+ */
+router.post('/generate-ai', async (req, res) => {
+    try {
+        const { courseId, lectureName, instructorId, questionType, learningObjectives } = req.body;
+        
+        // Validate required fields
+        if (!courseId || !lectureName || !instructorId || !questionType) {
+            return res.status(400).json({
+                success: false,
+                message: 'Missing required fields: courseId, lectureName, instructorId, questionType'
+            });
+        }
+        
+        console.log('🎯 [GENERATE] Learning objectives:', learningObjectives);
+        
+        // Validate question type
+        const validQuestionTypes = ['true-false', 'multiple-choice', 'short-answer'];
+        if (!validQuestionTypes.includes(questionType)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid question type. Must be one of: true-false, multiple-choice, short-answer'
+            });
+        }
+        
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
+        const DocumentModel = require('../models/Document');
+        
+        // First, get the course material content
+        const course = await CourseModel.getCourseWithOnboarding(db, courseId);
+        
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                message: 'Course not found'
+            });
+        }
+        
+        // Check if the instructor has access to this course
+        if (course.instructorId !== instructorId) {
+            return res.status(403).json({
+                success: false,
+                message: 'Access denied: You do not have permission to access this course'
+            });
+        }
+        const unit = course.lectures?.find(l => l.name === lectureName);
+        
+        if (!unit) {
+            return res.status(404).json({
+                success: false,
+                message: `Unit ${lectureName} not found in course`
+            });
+        }
+        
+        const documents = unit.documents || [];
+        
+        if (documents.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: `No course materials found for ${lectureName}`,
+                data: {
+                    hasMaterials: false,
+                    content: null
+                }
+            });
+        }
+        
+        // Combine content from all documents, including additional materials
+        let combinedContent = '';
+        
+        // First process priority documents (lecture notes and practice quizzes)
+        const priorityDocumentTypes = ['lecture-notes', 'practice-quiz'];
+        const priorityDocuments = documents.filter(doc => priorityDocumentTypes.includes(doc.documentType));
+        
+        // Then process additional materials
+        const additionalDocuments = documents.filter(doc => !priorityDocumentTypes.includes(doc.documentType));
+        
+        // Process all documents, starting with priority ones
+        const docsToProcess = [...priorityDocuments, ...additionalDocuments];
+        console.log(`📚 [CONTENT] Processing ${priorityDocuments.length} priority docs and ${additionalDocuments.length} additional docs`);
+
+        for (const docRef of docsToProcess) {
+            if (docRef.documentId) {
+                const fullDoc = await DocumentModel.getDocumentById(db, docRef.documentId);
+                if (fullDoc && fullDoc.content && fullDoc.content.trim()) {
+                    combinedContent += `\n\n--- ${fullDoc.originalName || 'Document'} ---\n${fullDoc.content}`;
+                }
+            }
+        }
+        
+        if (!combinedContent.trim()) {
+            return res.status(400).json({
+                success: false,
+                message: `No content found in documents for ${lectureName}`,
+                data: {
+                    hasMaterials: false,
+                    content: null
+                }
+            });
+        }
+        
+        // Handle content length intelligently
+        const maxContentLength = 8000; // Increased limit for better context
+        
+        if (combinedContent.length > maxContentLength) {
+            console.log(`📚 [CONTENT] Original content length: ${combinedContent.length} chars`);
+            
+            // Split content into sections
+            const sections = combinedContent.split('---').filter(s => s.trim());
+            console.log(`📚 [CONTENT] Found ${sections.length} sections`);
+            
+            // Sort sections: Priority docs first, then additional materials
+            const prioritizedSections = sections.sort((a, b) => {
+                const aIsPriority = a.includes('Lecture Notes') || a.includes('Practice Questions');
+                const bIsPriority = b.includes('Lecture Notes') || b.includes('Practice Questions');
+                if (aIsPriority && !bIsPriority) return -1;
+                if (!aIsPriority && bIsPriority) return 1;
+                return 0; // Keep original order for additional materials
+            });
+            
+            console.log('📚 [CONTENT] Section types:', prioritizedSections.map(s => {
+                if (s.includes('Lecture Notes')) return 'Lecture Notes';
+                if (s.includes('Practice Questions')) return 'Practice Questions';
+                return 'Additional Material';
+            }));
+            
+            // Rebuild content with prioritized sections up to limit
+            let newContent = '';
+            let sectionsIncluded = 0;
+            
+            for (const section of prioritizedSections) {
+                if ((newContent + section).length <= maxContentLength) {
+                    newContent += '---' + section;
+                    sectionsIncluded++;
+                } else {
+                    break;
+                }
+            }
+            
+            combinedContent = newContent.trim() + `\n\n[Content truncated: ${sectionsIncluded}/${sections.length} sections included]`;
+            console.log(`📚 [CONTENT] Truncated to ${combinedContent.length} chars, included ${sectionsIncluded} sections`);
+        }
+        
+        // Import and use the LLM service to generate the question
+        const LLMService = require('../services/llm');
+        
+        try {
+            // Add learning objectives to the content if available
+            let contentWithObjectives = combinedContent;
+            if (learningObjectives && learningObjectives.length > 0) {
+                contentWithObjectives += '\n\nLearning Objectives:\n' + 
+                    learningObjectives.map((obj, i) => `${i + 1}. ${obj}`).join('\n');
+                console.log('🎯 [GENERATE] Added learning objectives to content');
+            }
+
+            const generatedQuestion = await LLMService.generateAssessmentQuestion(
+                questionType, 
+                contentWithObjectives, 
+                lectureName
+            );
+            
+            console.log(`🤖 AI question generated successfully for ${lectureName}: ${questionType}`);
+            
+            res.json({
+                success: true,
+                message: 'AI question generated successfully',
+                data: {
+                    question: generatedQuestion.question,
+                    answer: generatedQuestion.answer,
+                    options: generatedQuestion.options || {},
+                    questionType: questionType,
+                    unitName: lectureName,
+                    courseId: courseId,
+                    aiGenerated: true,
+                    timestamp: new Date().toISOString()
+                }
+            });
+            
+        } catch (llmError) {
+            console.error('LLM service error:', llmError);
+            return res.status(500).json({
+                success: false,
+                message: 'Failed to generate AI question. Please try again.',
+                error: llmError.message
+            });
+        }
+        
+    } catch (error) {
+        console.error('Error generating AI question:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while generating AI question',
+            error: error.message
+        });
+    }
+});
+
 module.exports = router;

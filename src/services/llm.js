@@ -268,6 +268,305 @@ Remember: You're here to help students learn, not to replace their course materi
             timestamp: new Date().toISOString()
         };
     }
+
+    /**
+     * Generate assessment questions based on course material content
+     * @param {string} questionType - Type of question to generate ('true-false', 'multiple-choice', 'short-answer')
+     * @param {string} courseMaterialContent - The course material text content
+     * @param {string} unitName - Name of the unit (e.g., 'Unit 1')
+     * @returns {Promise<Object>} Generated question content
+     */
+    async generateAssessmentQuestion(questionType, courseMaterialContent, unitName) {
+        try {
+            // Initialize LLM service on first use
+            if (!this.isInitialized) {
+                console.log(`🔄 Initializing LLM service for question generation...`);
+                await this.initialize();
+            }
+            
+            console.log(`🤖 Generating ${questionType} question for ${unitName}...`);
+            
+            // Create specific prompt based on question type
+            const prompt = this.createQuestionGenerationPrompt(questionType, courseMaterialContent, unitName);
+            
+            // Set specific options for question generation
+            const generationOptions = {
+                temperature: 0.7,
+                maxTokens: 800,
+                systemPrompt: this.getQuestionGenerationSystemPrompt()
+            };
+            
+            console.log('🤖 [LLM_REQUEST] Sending prompt to LLM:', prompt);
+            
+            const response = await this.llm.sendMessage(prompt, generationOptions);
+            console.log('🤖 [LLM_RESPONSE] Raw response from LLM:', response);
+            
+            if (!response || !response.content) {
+                throw new Error('No response content received from LLM');
+            }
+            
+            console.log('🤖 [LLM_CONTENT] Response content:', response.content);
+            
+            // Parse the response to extract question components
+            const parsedQuestion = this.parseGeneratedQuestion(response.content, questionType);
+            console.log('🤖 [LLM_PARSED] Parsed question:', parsedQuestion);
+            
+            console.log(`✅ Question generated successfully for ${unitName}`);
+            return parsedQuestion;
+            
+        } catch (error) {
+            console.error('❌ Error generating assessment question:', error.message);
+            throw error;
+        }
+    }
+    
+    /**
+     * Create a specific prompt for question generation based on type
+     * @param {string} questionType - Type of question to generate
+     * @param {string} courseMaterialContent - Course material content
+     * @param {string} unitName - Unit name
+     * @returns {string} Formatted prompt for the LLM
+     */
+    createQuestionGenerationPrompt(questionType, courseMaterialContent, unitName) {
+        const basePrompt = `Based on the following course material and learning objectives from ${unitName}, generate a high-quality ${questionType} question that will help gauge a student's understanding of the key concepts.
+
+Course Material Content:
+${courseMaterialContent}
+
+Please generate a question that:
+- Tests understanding of the main concepts from the material
+- Aligns with the provided learning objectives (if any)
+- Is appropriate for university-level students
+- Has clear, unambiguous wording
+- Includes the correct answer and explanation
+- Focuses on testing conceptual understanding rather than just recall
+
+Question Type: ${questionType}`;
+        
+        switch (questionType) {
+            case 'true-false':
+                return `${basePrompt}
+
+Format your response exactly as follows:
+QUESTION: [Your true/false question here]
+ANSWER: [true or false]
+EXPLANATION: [Brief explanation of why this answer is correct]`;
+                
+            case 'multiple-choice':
+                return `${basePrompt}
+
+You MUST format your response EXACTLY as follows:
+QUESTION: [Your multiple choice question here]
+OPTIONS:
+A: [The correct answer option]
+B: [A plausible but incorrect option]
+C: [Another plausible but incorrect option]
+D: [Another plausible but incorrect option]
+ANSWER: A
+EXPLANATION: [Brief explanation of why the chosen option is correct]
+
+IMPORTANT RULES:
+1. Generate 4 distinct, plausible options
+2. Place the correct answer randomly among A/B/C/D (don't always use A)
+3. Make incorrect options plausible but clearly wrong
+4. All options should be similar in length and style
+5. Avoid obvious wrong answers or joke options
+6. Update the ANSWER field to match whichever option (A/B/C/D) contains the correct answer`;
+                
+            case 'short-answer':
+                return `${basePrompt}
+
+You MUST format your response EXACTLY as follows, including ALL three sections:
+QUESTION: [Your short answer question here]
+EXPECTED_ANSWER: [Detailed key points or model answer that would constitute a complete response]
+EXPLANATION: [Brief explanation of the key concepts being tested and how to evaluate responses]
+
+Remember: The EXPECTED_ANSWER section is required and should provide clear guidance on what constitutes a complete answer.`;
+                
+            default:
+                return basePrompt;
+        }
+    }
+    
+    /**
+     * Get system prompt specifically for question generation
+     * @returns {string} System prompt for question generation
+     */
+    getQuestionGenerationSystemPrompt() {
+        return `You are an expert educational content creator specializing in creating assessment questions for university-level biology courses.
+
+Your task is to generate high-quality questions that:
+- Accurately reflect the course material content provided
+- Test students' understanding of key concepts
+- Are clear, unambiguous, and well-structured
+- Include appropriate difficulty for university students
+- STRICTLY follow the exact format specified in the user prompt
+
+CRITICAL FORMAT REQUIREMENTS:
+1. Your response MUST start with "QUESTION:" followed by the question text
+2. For short-answer questions:
+   - MUST include "EXPECTED_ANSWER:" with detailed key points
+   - MUST include "EXPLANATION:" with evaluation criteria
+3. For multiple-choice questions:
+   - MUST include all four options (A, B, C, D)
+   - MUST specify correct answer
+4. For true-false questions:
+   - MUST explicitly state "true" or "false"
+   - MUST include explanation
+
+Guidelines:
+- Base questions ONLY on the provided course material
+- Ensure questions are relevant and specific to the content
+- Make questions challenging but fair
+- Provide clear, concise explanations
+- Use academic language appropriate for university students
+- NEVER skip any required sections of the response format
+
+Remember: Formatting is critical. Always include ALL required sections exactly as specified in the user prompt.`;
+    }
+    
+    /**
+     * Parse the LLM response to extract question components
+     * @param {string} responseContent - Raw response from LLM
+     * @param {string} questionType - Type of question
+     * @returns {Object} Parsed question object
+     */
+    parseGeneratedQuestion(responseContent, questionType) {
+        try {
+            console.log('🔍 [PARSE] Starting to parse response content:', responseContent);
+            
+            // Split content into lines and clean them
+            const lines = responseContent.split('\n')
+                .map(line => line.trim())
+                .filter(line => line.length > 0);
+            
+            console.log('🔍 [PARSE] Split lines:', lines);
+            
+            const parsed = {};
+            
+            // First pass: Extract sections with their full content
+            let currentSection = null;
+            let currentContent = [];
+            
+            lines.forEach(line => {
+                // Check if this is a section header
+                if (line.includes(':') && line.split(':')[0].toUpperCase() === line.split(':')[0]) {
+                    // If we were building a previous section, save it
+                    if (currentSection && currentContent.length > 0) {
+                        parsed[currentSection] = currentContent.join('\n').trim();
+                        currentContent = [];
+                    }
+                    currentSection = line.split(':')[0].trim();
+                    const value = line.substring(line.indexOf(':') + 1).trim();
+                    if (value) currentContent.push(value);
+                } else if (currentSection) {
+                    currentContent.push(line);
+                }
+            });
+            
+            // Save the last section if any
+            if (currentSection && currentContent.length > 0) {
+                parsed[currentSection] = currentContent.join('\n').trim();
+            }
+            
+            console.log('🔍 [PARSE] Initial parsing result:', parsed);
+            
+            // Extract question text
+            if (parsed.QUESTION) {
+                parsed.question = parsed.QUESTION;
+            }
+            
+            // Extract answer based on question type
+            if (questionType === 'true-false') {
+                if (parsed.ANSWER) {
+                    parsed.answer = parsed.ANSWER.toLowerCase() === 'true' ? 'true' : 'false';
+                }
+                if (parsed.EXPLANATION) {
+                    parsed.explanation = parsed.EXPLANATION;
+                }
+            } else if (questionType === 'multiple-choice') {
+                if (parsed.ANSWER) {
+                    parsed.answer = parsed.ANSWER.toUpperCase();
+                }
+                // For multiple choice, we need to extract the options carefully
+                const options = {};
+                let inOptionsSection = false;
+                let currentOption = null;
+                
+                console.log('🔍 [PARSE_MCQ] Processing lines for options');
+                
+                lines.forEach(line => {
+                    // Check if we're entering the options section
+                    if (line.trim() === 'OPTIONS:') {
+                        inOptionsSection = true;
+                        return;
+                    }
+                    
+                    // If we're in the options section, look for options
+                    if (inOptionsSection) {
+                        // Check if this is an option line (A:, B:, etc.)
+                        if (line.match(/^[A-D]:/)) {
+                            currentOption = line[0]; // Get the option letter
+                            const optionText = line.substring(2).trim(); // Get text after the colon
+                            options[currentOption] = optionText;
+                            console.log(`🔍 [PARSE_MCQ] Found option ${currentOption}:`, optionText);
+                        } else if (line.startsWith('ANSWER:') || line.startsWith('EXPLANATION:')) {
+                            // We've reached the end of the options section
+                            inOptionsSection = false;
+                        } else if (currentOption && line.trim()) {
+                            // This is a continuation of the previous option
+                            options[currentOption] += ' ' + line.trim();
+                            console.log(`🔍 [PARSE_MCQ] Extended option ${currentOption}:`, options[currentOption]);
+                        }
+                    }
+                });
+                
+                // Verify we have all options
+                const hasAllOptions = ['A', 'B', 'C', 'D'].every(opt => options[opt]);
+                if (!hasAllOptions) {
+                    console.warn('⚠️ [PARSE_MCQ] Missing some options:', options);
+                } else {
+                    console.log('✅ [PARSE_MCQ] Successfully parsed all options:', options);
+                }
+                
+                parsed.options = options;
+                
+                if (parsed.EXPLANATION) {
+                    parsed.explanation = parsed.EXPLANATION;
+                }
+            } else if (questionType === 'short-answer') {
+                // For short answer, we want both the expected answer and explanation
+                if (parsed.EXPECTED_ANSWER) {
+                    parsed.answer = parsed.EXPECTED_ANSWER;
+                    // Also store it in expectedAnswer to ensure it's included
+                    parsed.expectedAnswer = parsed.EXPECTED_ANSWER;
+                }
+                if (parsed.EXPLANATION) {
+                    parsed.explanation = parsed.EXPLANATION;
+                }
+                
+                // Log the parsed content for debugging
+                console.log('🔍 [LLM_PARSE] Short answer content:', {
+                    rawExpectedAnswer: parsed.EXPECTED_ANSWER,
+                    parsedAnswer: parsed.answer,
+                    parsedExpectedAnswer: parsed.expectedAnswer,
+                    explanation: parsed.explanation
+                });
+            }
+            
+            return parsed;
+            
+        } catch (error) {
+            console.error('Error parsing generated question:', error);
+            // Return a fallback structure
+            return {
+                question: 'Error parsing generated question. Please try again.',
+                answer: questionType === 'true-false' ? 'true' : questionType === 'multiple-choice' ? 'A' : 'Please review the generated content.',
+                options: questionType === 'multiple-choice' ? { A: 'Option A', B: 'Option B', C: 'Option C', D: 'Option D' } : {},
+                explanation: 'Question generation completed but parsing failed. Please review and edit the content.'
+            };
+        }
+    }
 }
 
 module.exports = new LLMService(); 
