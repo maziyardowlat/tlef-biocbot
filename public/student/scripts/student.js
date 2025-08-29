@@ -1507,14 +1507,14 @@ async function calculateStudentMode() {
  */
 function showModeResult(mode, score) {
     const modeMessage = document.createElement('div');
-    modeMessage.classList.add('message', 'bot-message', 'mode-result');
+    modeMessage.classList.add('message', 'bot-message', 'mode-result', 'standard-mode-result');
     
     const avatarDiv = document.createElement('div');
     avatarDiv.classList.add('message-avatar');
     avatarDiv.textContent = 'B';
     
     const contentDiv = document.createElement('div');
-    contentDiv.classList.add('message-content');
+    contentDiv.classList.add('message-content', 'standard-mode-content');
     
     const resultText = document.createElement('p');
     
@@ -1660,7 +1660,9 @@ function initializeModeToggle() {
     
     // Add event listener for mode toggle
     modeToggleCheckbox.addEventListener('change', function() {
+        console.log('Mode toggle changed!');
         const newMode = this.checked ? 'tutor' : 'protege';
+        console.log(`New mode: ${newMode}`);
         
         // Update localStorage
         localStorage.setItem('studentMode', newMode);
@@ -1669,6 +1671,7 @@ function initializeModeToggle() {
         updateModeToggleUI(newMode);
         
         // Show mode confirmation popup
+        console.log('Calling showModeToggleResult...');
         showModeToggleResult(newMode);
         
         console.log(`Mode switched to: ${newMode}`);

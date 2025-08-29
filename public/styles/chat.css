@@ -903,4 +903,48 @@ input:checked + .toggle-slider:before {
 .assessment-start .message-content p {
     color: var(--primary-color);
     font-weight: 500;
+}
+
+/* Mode Result Message Styles - Override any rainbow styling */
+.standard-mode-result .standard-mode-content {
+    background-color: var(--background-color) !important;
+    color: var(--text-color) !important;
+}
+
+.standard-mode-result .standard-mode-content p,
+.standard-mode-result .standard-mode-content strong {
+    color: var(--text-color) !important;
+}
+
+.standard-mode-result .standard-mode-content .mode-explanation {
+    color: var(--text-color) !important;
+}
+
+/* Force override any gradient backgrounds on mode result messages */
+.mode-result .message-content,
+.mode-result .message-content * {
+    background: var(--background-color) !important;
+    background-image: none !important;
+    background: linear-gradient(none) !important;
+}
+
+.mode-result .message-content {
+    background-color: var(--background-color) !important;
+    background-image: none !important;
+}
+
+/* Override the mode-explanation gradient specifically */
+.mode-result .mode-explanation {
+    background: var(--background-color) !important;
+    background-image: none !important;
+    color: var(--text-color) !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
+    border: 1px solid var(--border-color) !important;
+}
+
+/* Additional override for any inline styles */
+.mode-result .message-content[style*="gradient"],
+.mode-result .message-content[style*="background"] {
+    background: var(--background-color) !important;
+    background-image: none !important;
 } 
