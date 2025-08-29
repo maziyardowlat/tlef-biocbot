@@ -778,3 +778,129 @@ input:checked + .toggle-slider:before {
         transform: translateX(20px);
     }
 } 
+
+/* Chat Header Styles */
+.chat-header {
+    background-color: var(--background-color);
+    padding: 15px 20px;
+    border-bottom: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    flex-wrap: wrap;
+}
+
+.chat-header h1 {
+    margin: 0;
+    color: var(--text-color);
+    font-size: 22px;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.current-course {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
+.course-label {
+    color: var(--secondary-text);
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.course-name {
+    color: var(--primary-color);
+    font-size: 16px;
+    font-weight: 600;
+    padding: 4px 12px;
+    background-color: var(--primary-light);
+    border-radius: 20px;
+}
+
+/* Unit Selection Dropdown Styles */
+.unit-selection-container {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    background-color: var(--background-color);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    max-width: 350px;
+    flex-shrink: 0;
+}
+
+.unit-label {
+    color: var(--text-color);
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.unit-select {
+    flex: 1;
+    padding: 6px 10px;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    background-color: white;
+    color: var(--text-color);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.unit-select:hover {
+    border-color: var(--primary-color);
+}
+
+.unit-select:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 2px var(--primary-light);
+}
+
+.unit-select option {
+    padding: 8px;
+    background-color: white;
+    color: var(--text-color);
+}
+
+.unit-select option:checked {
+    background-color: var(--primary-light);
+    color: var(--primary-color);
+}
+
+/* Unit Selection Option Styles */
+.unit-selection-option {
+    margin-top: 15px;
+}
+
+.unit-selection-option div {
+    margin-top: 15px;
+    padding: 12px;
+    background-color: #f8f9fa;
+    border-radius: 6px;
+    border-left: 4px solid var(--primary-color);
+    font-size: 14px;
+    line-height: 1.4;
+}
+
+.unit-selection-option strong {
+    color: var(--primary-color);
+}
+
+/* Assessment Start Message Styles */
+.assessment-start .message-content {
+    background-color: var(--primary-light);
+    border-left: 4px solid var(--primary-color);
+}
+
+.assessment-start .message-content p {
+    color: var(--primary-color);
+    font-weight: 500;
+} 
