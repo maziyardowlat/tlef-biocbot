@@ -614,9 +614,9 @@ async function checkPublishedUnitsAndLoadQuestions() {
             return;
         }
         
-        // Load assessment questions from published units
-        console.log('Loading assessment questions from published units...');
-        await loadAssessmentQuestionsFromUnits(publishedUnits);
+        // Show unit selection dropdown instead of automatically loading all questions
+        console.log('Showing unit selection dropdown for published units...');
+        showUnitSelectionDropdown(publishedUnits);
         
     } catch (error) {
         console.error('=== ERROR CHECKING PUBLISHED UNITS ===');
@@ -681,129 +681,313 @@ function showNoQuestionsMessage() {
 }
 
 /**
- * Load assessment questions from published units
+ * Show unit selection dropdown for published units
+ * @param {Array} publishedUnits - Array of published unit objects
  */
-async function loadAssessmentQuestionsFromUnits(publishedUnits) {
+function showUnitSelectionDropdown(publishedUnits) {
+    console.log('=== SHOWING UNIT SELECTION DROPDOWN ===');
+    console.log('Published units for dropdown:', publishedUnits);
+    
+    // Show the unit selection container
+    const unitSelectionContainer = document.getElementById('unit-selection-container');
+    if (unitSelectionContainer) {
+        unitSelectionContainer.style.display = 'flex';
+    }
+    
+    // Populate the dropdown with published units
+    const unitSelect = document.getElementById('unit-select');
+    if (unitSelect) {
+        // Clear existing options except the first placeholder
+        unitSelect.innerHTML = '<option value="">Choose a unit...</option>';
+        
+        // Add options for each published unit
+        publishedUnits.forEach(unit => {
+            const option = document.createElement('option');
+            option.value = unit.name;
+            option.textContent = unit.name;
+            unitSelect.appendChild(option);
+        });
+        
+        // Add event listener for unit selection
+        unitSelect.addEventListener('change', async function() {
+            const selectedUnit = this.value;
+            if (selectedUnit) {
+                console.log(`Unit selected: ${selectedUnit}`);
+                await loadQuestionsForSelectedUnit(selectedUnit);
+            }
+        });
+    }
+    
+    // Show welcome message with unit selection instructions
+    showUnitSelectionWelcomeMessage();
+    
+    // Hide chat input and mode toggle until assessment is completed
+    const chatInputContainer = document.querySelector('.chat-input-container');
+    if (chatInputContainer) {
+        chatInputContainer.style.display = 'none';
+    }
+    const modeToggleContainer = document.querySelector('.mode-toggle-container');
+    if (modeToggleContainer) {
+        modeToggleContainer.style.display = 'none';
+    }
+}
+
+/**
+ * Show welcome message with unit selection instructions
+ */
+function showUnitSelectionWelcomeMessage() {
+    console.log('Showing unit selection welcome message');
+    
+    // Add message to chat
+    const welcomeMessage = document.createElement('div');
+    welcomeMessage.classList.add('message', 'bot-message', 'unit-selection-welcome');
+    
+    const avatarDiv = document.createElement('div');
+    avatarDiv.classList.add('message-avatar');
+    avatarDiv.textContent = 'B';
+    
+    const contentDiv = document.createElement('div');
+    contentDiv.classList.add('message-content');
+    
+    const messageText = document.createElement('p');
+    messageText.innerHTML = `<strong>Welcome to BiocBot!</strong><br>
+    I can see you have access to published units. Please select a unit from the dropdown above to start your assessment, or feel free to chat with me about any topics you'd like to discuss.`;
+    
+    contentDiv.appendChild(messageText);
+    
+    // Add timestamp
+    const timestamp = document.createElement('span');
+    timestamp.classList.add('timestamp');
+    timestamp.textContent = 'Just now';
+    contentDiv.appendChild(timestamp);
+    
+    welcomeMessage.appendChild(avatarDiv);
+    welcomeMessage.appendChild(contentDiv);
+    
+    // Add to chat
+    const chatMessages = document.getElementById('chat-messages');
+    chatMessages.appendChild(welcomeMessage);
+    
+    // Scroll to bottom
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+/**
+ * Load assessment questions for a selected unit
+ * @param {string} unitName - Name of the selected unit
+ */
+async function loadQuestionsForSelectedUnit(unitName) {
     try {
-        console.log('=== LOADING ASSESSMENT QUESTIONS ===');
-        console.log('Loading questions from units:', publishedUnits.map(u => u.name));
+        console.log(`=== LOADING QUESTIONS FOR UNIT: ${unitName} ===`);
         
-        // Collect all assessment questions from published units
-        const allQuestions = [];
+        // Hide chat input and mode toggle when starting new assessment
+        const chatInputContainer = document.querySelector('.chat-input-container');
+        if (chatInputContainer) {
+            chatInputContainer.style.display = 'none';
+        }
+        const modeToggleContainer = document.querySelector('.mode-toggle-container');
+        if (modeToggleContainer) {
+            modeToggleContainer.style.display = 'none';
+        }
         
-        for (const unit of publishedUnits) {
-            console.log(`Loading questions for unit: ${unit.name}`);
-            console.log(`Unit data:`, unit);
-            console.log(`Unit has assessmentQuestions:`, !!unit.assessmentQuestions);
-            console.log(`Unit assessmentQuestions count:`, unit.assessmentQuestions ? unit.assessmentQuestions.length : 0);
+        // Get current course ID
+        const courseId = await getCurrentCourseId();
+        
+        // Find the selected unit from the published units
+        const courseResponse = await fetch(`/api/courses/${courseId}`);
+        if (!courseResponse.ok) {
+            throw new Error(`Failed to fetch course data: ${courseResponse.status}`);
+        }
+        
+        const courseData = await courseResponse.json();
+        const selectedUnit = courseData.data.lectures.find(unit => unit.name === unitName);
+        
+        if (!selectedUnit) {
+            throw new Error(`Unit ${unitName} not found`);
+        }
+        
+        console.log(`Selected unit data:`, selectedUnit);
+        
+        // Collect questions for this specific unit
+        const unitQuestions = [];
+        
+        // Check if the unit has assessment questions directly embedded
+        if (selectedUnit.assessmentQuestions && selectedUnit.assessmentQuestions.length > 0) {
+            console.log(`Found ${selectedUnit.assessmentQuestions.length} embedded questions in ${unitName}`);
             
-            // Check if the unit has assessment questions directly embedded
-            if (unit.assessmentQuestions && unit.assessmentQuestions.length > 0) {
-                console.log(`Found ${unit.assessmentQuestions.length} embedded questions in ${unit.name}`);
-                console.log(`Embedded questions:`, unit.assessmentQuestions);
+            // Transform embedded questions to match our format
+            const transformedQuestions = selectedUnit.assessmentQuestions.map(q => {
+                // Clean the options format - remove "A,", "B,", "C," prefixes if present
+                let cleanOptions = q.options || {};
+                if (q.options && typeof q.options === 'object') {
+                    cleanOptions = {};
+                    console.log(`Raw embedded options before cleaning:`, q.options);
+                    Object.keys(q.options).forEach(key => {
+                        let optionValue = q.options[key];
+                        console.log(`Processing embedded option key "${key}" with value "${optionValue}"`);
+                        if (typeof optionValue === 'string') {
+                            // Remove prefix like "A,", "B,", "C," - look for pattern of letter followed by comma
+                            if (/^[A-Z],/.test(optionValue)) {
+                                const originalValue = optionValue;
+                                optionValue = optionValue.substring(2); // Remove "A,", "B,", etc.
+                                console.log(`Cleaned embedded option from "${originalValue}" to "${optionValue}"`);
+                            } else {
+                                console.log(`Embedded option "${optionValue}" doesn't match pattern, keeping as is`);
+                            }
+                        }
+                        cleanOptions[key] = optionValue;
+                    });
+                    console.log(`Final cleaned embedded options:`, cleanOptions);
+                }
                 
-                // Transform embedded questions to match our format
-                const transformedQuestions = unit.assessmentQuestions.map(q => ({
+                return {
                     id: q.questionId || q.id || q._id,
                     type: q.questionType || 'multiple-choice',
                     question: q.question,
-                    options: q.options || {},
+                    options: cleanOptions,
                     correctAnswer: q.correctAnswer,
                     explanation: q.explanation || '',
-                    unitName: unit.name,
-                    passThreshold: unit.passThreshold || 2
-                }));
+                    unitName: selectedUnit.name,
+                    passThreshold: selectedUnit.passThreshold || 2
+                };
+            });
+            
+            unitQuestions.push(...transformedQuestions);
+            console.log(`Added ${transformedQuestions.length} embedded questions from ${unitName}`);
+        } else {
+            console.log(`No embedded questions found for ${unitName}, trying API endpoint...`);
+            
+            try {
+                // Try to fetch questions from API endpoint
+                const questionsResponse = await fetch(`/api/questions/lecture?courseId=${courseId}&lectureName=${unitName}`);
+                console.log(`API response for ${unitName}:`, questionsResponse.status, questionsResponse.statusText);
                 
-                allQuestions.push(...transformedQuestions);
-                console.log(`Added ${transformedQuestions.length} embedded questions from ${unit.name}`);
-            } else {
-                console.log(`No embedded questions found for ${unit.name}, trying API endpoint...`);
-                
-                try {
-                    // Fallback: try to fetch questions from API endpoint
-                    const courseId = await getCurrentCourseId();
-                    const questionsResponse = await fetch(`/api/questions/lecture?courseId=${courseId}&lectureName=${unit.name}`);
-                    console.log(`API response for ${unit.name}:`, questionsResponse.status, questionsResponse.statusText);
+                if (questionsResponse.ok) {
+                    const questionsData = await questionsResponse.json();
+                    console.log(`API questions for ${unitName}:`, questionsData);
                     
-                    if (questionsResponse.ok) {
-                        const questionsData = await questionsResponse.json();
-                        console.log(`API questions for ${unit.name}:`, questionsData);
-                        
-                        if (questionsData.data && questionsData.data.questions && questionsData.data.questions.length > 0) {
-                            // Transform API questions to match our format
-                            const transformedQuestions = questionsData.data.questions.map(q => {
-                                console.log(`Raw question from API:`, q);
-                                console.log(`Question ${q.question}: correctAnswer = "${q.correctAnswer}"`);
-                                console.log(`Raw options:`, q.options);
-                                
-                                // Fix the correct answer format - remove "A" prefix if present
-                                let cleanCorrectAnswer = q.correctAnswer;
-                                if (typeof cleanCorrectAnswer === 'string' && cleanCorrectAnswer.startsWith('A')) {
-                                    cleanCorrectAnswer = cleanCorrectAnswer.substring(1);
-                                    console.log(`Cleaned correct answer from "${q.correctAnswer}" to "${cleanCorrectAnswer}"`);
-                                }
-                                
-                                // Fix the options format - remove "A,", "B,", "C," prefixes if present
-                                let cleanOptions = q.options;
-                                if (q.options && typeof q.options === 'object') {
-                                    cleanOptions = {};
-                                    Object.keys(q.options).forEach(key => {
-                                        let optionValue = q.options[key];
-                                        if (typeof optionValue === 'string' && optionValue.includes(',')) {
-                                            // Remove prefix like "A,", "B,", "C,"
-                                            const parts = optionValue.split(',');
-                                            if (parts.length > 1) {
-                                                optionValue = parts.slice(1).join(','); // Join remaining parts in case there are commas in the actual text
-                                            }
-                                        }
-                                        cleanOptions[key] = optionValue;
-                                    });
-                                    console.log(`Cleaned options from:`, q.options, `to:`, cleanOptions);
-                                }
-                                
-                                return {
-                                    id: q.questionId || q.id || q._id,
-                                    type: q.questionType || 'multiple-choice',
-                                    question: q.question,
-                                    options: cleanOptions,
-                                    correctAnswer: cleanCorrectAnswer,
-                                    explanation: q.explanation || '',
-                                    unitName: unit.name,
-                                    passThreshold: unit.passThreshold || 2
-                                };
-                            });
+                    if (questionsData.data && questionsData.data.questions && questionsData.data.questions.length > 0) {
+                        // Transform API questions to match our format
+                        const transformedQuestions = questionsData.data.questions.map(q => {
+                            console.log(`Raw question from API:`, q);
                             
-                            allQuestions.push(...transformedQuestions);
-                            console.log(`Added ${transformedQuestions.length} API questions from ${unit.name}`);
-                            console.log(`Transformed questions:`, transformedQuestions);
-                        } else {
-                            console.log(`No API questions found for ${unit.name}`);
-                            console.log(`API response structure:`, questionsData);
-                        }
+                            // Fix the correct answer format - remove "A" prefix if present
+                            let cleanCorrectAnswer = q.correctAnswer;
+                            if (typeof cleanCorrectAnswer === 'string' && cleanCorrectAnswer.startsWith('A')) {
+                                cleanCorrectAnswer = cleanCorrectAnswer.substring(1);
+                                console.log(`Cleaned correct answer from "${q.correctAnswer}" to "${cleanCorrectAnswer}"`);
+                            }
+                            
+                            // Fix the options format - remove "A,", "B,", "C," prefixes if present
+                            let cleanOptions = q.options;
+                            if (q.options && typeof q.options === 'object') {
+                                cleanOptions = {};
+                                console.log(`Raw options before cleaning:`, q.options);
+                                Object.keys(q.options).forEach(key => {
+                                    let optionValue = q.options[key];
+                                    console.log(`Processing option key "${key}" with value "${optionValue}"`);
+                                    if (typeof optionValue === 'string') {
+                                        // Remove prefix like "A,", "B,", "C," - look for pattern of letter followed by comma
+                                        if (/^[A-Z],/.test(optionValue)) {
+                                            const originalValue = optionValue;
+                                            optionValue = optionValue.substring(2); // Remove "A,", "B,", etc.
+                                            console.log(`Cleaned option from "${originalValue}" to "${optionValue}"`);
+                                        } else {
+                                            console.log(`Option "${optionValue}" doesn't match pattern, keeping as is`);
+                                        }
+                                    }
+                                    cleanOptions[key] = optionValue;
+                                });
+                                console.log(`Final cleaned options:`, cleanOptions);
+                            }
+                            
+                            return {
+                                id: q.questionId || q.id || q._id,
+                                type: q.questionType || 'multiple-choice',
+                                question: q.question,
+                                options: cleanOptions,
+                                correctAnswer: cleanCorrectAnswer,
+                                explanation: q.explanation || '',
+                                unitName: selectedUnit.name,
+                                passThreshold: selectedUnit.passThreshold || 2
+                            };
+                        });
+                        
+                        unitQuestions.push(...transformedQuestions);
+                        console.log(`Added ${transformedQuestions.length} API questions from ${unitName}`);
                     } else {
-                        const errorText = await questionsResponse.text();
-                        console.warn(`Failed to fetch API questions for ${unit.name}:`, questionsResponse.status, errorText);
+                        console.log(`No API questions found for ${unitName}`);
                     }
-                } catch (error) {
-                    console.error(`Error loading API questions for ${unit.name}:`, error);
+                } else {
+                    const errorText = await questionsResponse.text();
+                    console.warn(`Failed to fetch API questions for ${unitName}:`, questionsResponse.status, errorText);
                 }
+            } catch (error) {
+                console.error(`Error loading API questions for ${unitName}:`, error);
             }
         }
         
-        console.log('Total questions loaded:', allQuestions.length);
+        console.log(`Total questions loaded for ${unitName}:`, unitQuestions.length);
         
-        if (allQuestions.length === 0) {
-            console.log('No assessment questions found in any published units');
-            showNoQuestionsMessage();
+        if (unitQuestions.length === 0) {
+            console.log(`No assessment questions found for ${unitName}`);
+            showNoQuestionsForUnitMessage(unitName);
             return;
         }
         
-        // Start the assessment process with real questions
-        startAssessmentWithQuestions(allQuestions);
+        // Start the assessment process with questions from the selected unit
+        startAssessmentWithQuestions(unitQuestions);
         
     } catch (error) {
-        console.error('Error loading assessment questions:', error);
-        showNoQuestionsMessage();
+        console.error(`Error loading questions for unit ${unitName}:`, error);
+        showNoQuestionsForUnitMessage(unitName);
+    }
+}
+
+/**
+ * Show message when no questions are available for a specific unit
+ * @param {string} unitName - Name of the unit that has no questions
+ */
+function showNoQuestionsForUnitMessage(unitName) {
+    console.log(`Showing no questions message for unit: ${unitName}`);
+    
+    // Add message to chat
+    const noQuestionsMessage = document.createElement('div');
+    noQuestionsMessage.classList.add('message', 'bot-message');
+    
+    const avatarDiv = document.createElement('div');
+    avatarDiv.classList.add('message-avatar');
+    avatarDiv.textContent = 'B';
+    
+    const contentDiv = document.createElement('div');
+    contentDiv.classList.add('message-content');
+    
+    const messageText = document.createElement('p');
+    messageText.innerHTML = `<strong>No Questions Available</strong><br>
+    There are no assessment questions available for ${unitName} at this time. You can select a different unit or chat directly with me about any topics you'd like to discuss.`;
+    
+    contentDiv.appendChild(messageText);
+    
+    // Add timestamp
+    const timestamp = document.createElement('span');
+    timestamp.classList.add('timestamp');
+    timestamp.textContent = 'Just now';
+    contentDiv.appendChild(timestamp);
+    
+    noQuestionsMessage.appendChild(avatarDiv);
+    noQuestionsMessage.appendChild(contentDiv);
+    
+    // Add to chat
+    const chatMessages = document.getElementById('chat-messages');
+    chatMessages.appendChild(noQuestionsMessage);
+    
+    // Scroll to bottom
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    
+    // Reset unit selection to allow choosing another unit
+    const unitSelect = document.getElementById('unit-select');
+    if (unitSelect) {
+        unitSelect.value = '';
     }
 }
 
@@ -833,13 +1017,46 @@ function startAssessmentWithQuestions(questions) {
         modeToggleContainer.style.display = 'none';
     }
     
-    // Clear any existing messages except the welcome message
+    // Clear any existing messages except the welcome message and unit selection dropdown
     const chatMessages = document.getElementById('chat-messages');
-    const welcomeMessage = chatMessages.querySelector('.message:not(.calibration-question):not(.mode-result)');
+    const welcomeMessage = chatMessages.querySelector('.message:not(.calibration-question):not(.mode-result):not(.unit-selection-welcome)');
     if (welcomeMessage) {
         chatMessages.innerHTML = '';
         chatMessages.appendChild(welcomeMessage);
     }
+    
+    // Add message about starting assessment for the selected unit
+    const unitName = questions.length > 0 ? questions[0].unitName : 'the selected unit';
+    const assessmentStartMessage = document.createElement('div');
+    assessmentStartMessage.classList.add('message', 'bot-message', 'assessment-start');
+    
+    const avatarDiv = document.createElement('div');
+    avatarDiv.classList.add('message-avatar');
+    avatarDiv.textContent = 'B';
+    
+    const contentDiv = document.createElement('div');
+    contentDiv.classList.add('message-content');
+    
+    const messageText = document.createElement('p');
+    messageText.innerHTML = `<strong>Starting Assessment for ${unitName}</strong><br>
+    I'll ask you a few questions to understand your current knowledge level. This will help me provide the most helpful responses for your learning needs.`;
+    
+    contentDiv.appendChild(messageText);
+    
+    // Add timestamp
+    const timestamp = document.createElement('span');
+    timestamp.classList.add('timestamp');
+    timestamp.textContent = 'Just now';
+    contentDiv.appendChild(timestamp);
+    
+    assessmentStartMessage.appendChild(avatarDiv);
+    assessmentStartMessage.appendChild(contentDiv);
+    
+    // Add to chat
+    chatMessages.appendChild(assessmentStartMessage);
+    
+    // Scroll to bottom
+    chatMessages.scrollTop = chatMessages.scrollHeight;
     
     // Show first question
     showCalibrationQuestion();
@@ -906,6 +1123,9 @@ function showCalibrationQuestion() {
             // Use the options from the question (handle both array and object formats)
             const optionEntries = Array.isArray(question.options) ? question.options : Object.entries(question.options);
             
+            console.log(`Displaying question options:`, question.options);
+            console.log(`Option entries for display:`, optionEntries);
+            
             optionEntries.forEach((option, index) => {
                 const optionContainer = document.createElement('div');
                 optionContainer.classList.add('calibration-option-container');
@@ -916,12 +1136,15 @@ function showCalibrationQuestion() {
                 // Handle both array and object formats
                 let optionText = '';
                 if (Array.isArray(option)) {
-                    optionText = option;
+                    // For Object.entries format: ["A", "MANGO"] -> use the second element (value)
+                    optionText = option[1] || `Option ${index + 1}`;
                 } else if (typeof option === 'object' && option !== null) {
                     optionText = option[1] || `Option ${index + 1}`;
                 } else {
                     optionText = option || `Option ${index + 1}`;
                 }
+                
+                console.log(`Final option text for button ${index}: "${optionText}"`);
                 
                 // Don't add extra letters since we're cleaning the options from the database
                 optionButton.textContent = `${String.fromCharCode(65 + index)}. ${optionText}`;
@@ -1312,6 +1535,17 @@ function showModeResult(mode, score) {
     }
     
     contentDiv.appendChild(modeExplanation);
+    
+    // Add unit selection option after assessment completion
+    const unitSelectionOption = document.createElement('div');
+    unitSelectionOption.classList.add('unit-selection-option');
+    unitSelectionOption.innerHTML = `
+        <div style="margin-top: 15px; padding: 12px; background-color: #f8f9fa; border-radius: 6px; border-left: 4px solid var(--primary-color);">
+            <strong>Want to try another unit?</strong><br>
+            You can select a different unit from the dropdown above to take another assessment, or continue chatting with me about any topics you'd like to discuss.
+        </div>
+    `;
+    contentDiv.appendChild(unitSelectionOption);
     
     // Add timestamp
     const timestamp = document.createElement('span');
