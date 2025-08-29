@@ -1054,7 +1054,9 @@ async function loadDocuments() {
                 const course = result.data;
                 
                 if (course && course.lectures) {
+                    console.log(`🔍 [DOCUMENTS] Course has ${course.lectures.length} lectures:`, course.lectures.map(l => ({ name: l.name, documentsCount: l.documents?.length || 0 })));
                     const unit = course.lectures.find(l => l.name === lectureName);
+                    console.log(`🔍 [DOCUMENTS] Looking for unit "${lectureName}" in lectures:`, unit);
                     const documents = unit ? (unit.documents || []) : [];
                     console.log(`📁 [DOCUMENTS] Found ${documents.length} documents for ${lectureName}:`, documents);
                     
@@ -1090,9 +1092,12 @@ async function loadDocuments() {
                             console.log(`✅ [DOCUMENTS] Successfully added ${documents.length} documents to UI for ${lectureName}`);
                         } else {
                             console.log(`📁 [DOCUMENTS] No documents to add for ${lectureName}`);
-                            // Only add placeholder items when there are NO documents
-                            addRequiredPlaceholders(courseMaterialsSection, lectureName);
                         }
+                        
+                        // ALWAYS check for missing placeholders, regardless of whether documents exist
+                        // This ensures placeholders appear for individual missing document types
+                        console.log(`🔍 [DOCUMENTS] Checking for missing placeholders in ${lectureName}`);
+                        addRequiredPlaceholders(courseMaterialsSection, lectureName);
                         
                         // Add cleanup button if there are documents (add this BEFORE action buttons)
                         if (documents && documents.length > 0) {
@@ -1218,7 +1223,25 @@ function createDocumentItem(doc) {
     }
     
     const fileIcon = doc.contentType === 'text' ? '📝' : '📄';
-    const statusText = doc.status === 'uploaded' ? 'Uploaded' : doc.status;
+    
+    // Map status values to display text consistently
+    let statusText;
+    switch (doc.status) {
+        case 'uploaded':
+            statusText = 'Uploaded';
+            break;
+        case 'parsed':
+            statusText = 'Processed';
+            break;
+        case 'parsing':
+            statusText = 'Processing';
+            break;
+        case 'error':
+            statusText = 'Error';
+            break;
+        default:
+            statusText = doc.status || 'Unknown';
+    }
     
     documentItem.innerHTML = `
         <span class="file-icon">${fileIcon}</span>
@@ -2541,6 +2564,19 @@ async function confirmCourseMaterials(week) {
     console.log(`🔍 [CONFIRM_MATERIALS] Checking materials for ${week}`);
     console.log(`🔍 [CONFIRM_MATERIALS] Found ${fileItems.length} file items`);
     
+    // Debug: Log all file items to see what we're working with
+    fileItems.forEach((item, index) => {
+        const title = item.querySelector('.file-info h3');
+        const statusText = item.querySelector('.status-text');
+        const documentType = item.dataset.documentType;
+        console.log(`🔍 [CONFIRM_MATERIALS] File item ${index + 1}:`, {
+            title: title ? title.textContent : 'No title',
+            status: statusText ? statusText.textContent : 'No status',
+            documentType: documentType || 'No document type',
+            isPlaceholder: item.classList.contains('placeholder-item')
+        });
+    });
+    
     // Check if mandatory materials are present
     let hasLectureNotes = false;
     let hasPracticeQuestions = false;
@@ -2548,23 +2584,26 @@ async function confirmCourseMaterials(week) {
     fileItems.forEach((item, index) => {
         const title = item.querySelector('.file-info h3');
         const statusText = item.querySelector('.status-text');
+        const documentType = item.dataset.documentType;
         
         if (title && statusText) {
             const titleText = title.textContent;
             const status = statusText.textContent;
             
-            console.log(`🔍 [CONFIRM_MATERIALS] Item ${index + 1}: "${titleText}" - Status: "${status}"`);
+            console.log(`🔍 [CONFIRM_MATERIALS] Item ${index + 1}: "${titleText}" - Status: "${status}" - Type: "${documentType}"`);
             
             // Check if this is a lecture notes document that's processed/uploaded
-            if (titleText.includes('Lecture Notes') && (status === 'Processed' || status === 'Uploaded' || status === 'uploaded')) {
+            // Use document type for more reliable checking, fallback to title text
+            if ((documentType === 'lecture_notes' || titleText.includes('Lecture Notes')) && (status === 'Processed' || status === 'Uploaded' || status === 'uploaded' || status === 'parsed' || status === 'Processing')) {
                 hasLectureNotes = true;
-                console.log(`✅ [CONFIRM_MATERIALS] Found valid lecture notes with status: "${status}"`);
+                console.log(`✅ [CONFIRM_MATERIALS] Found valid lecture notes with status: "${status}" and type: "${documentType}"`);
             }
             
             // Check if this is a practice questions document that's processed/uploaded
-            if ((titleText.includes('Practice Questions') || titleText.includes('Practice Questions/Tutorial')) && (status === 'Processed' || status === 'Uploaded' || status === 'uploaded')) {
+            // Use document type for more reliable checking, fallback to title text
+            if ((documentType === 'practice_q_tutorials' || titleText.includes('Practice Questions') || titleText.includes('Practice Questions/Tutorial')) && (status === 'Processed' || status === 'Uploaded' || status === 'uploaded' || status === 'parsed' || status === 'Processing')) {
                 hasPracticeQuestions = true;
-                console.log(`✅ [CONFIRM_MATERIALS] Found valid practice questions with status: "${status}"`);
+                console.log(`✅ [CONFIRM_MATERIALS] Found valid practice questions with status: "${status}" and type: "${documentType}"`);
             }
         }
     });
@@ -4194,14 +4233,22 @@ function addRequiredPlaceholders(container, unitName) {
             const titleText = title.textContent;
             const status = statusText.textContent;
             const isPlaceholder = item.classList.contains('placeholder-item');
-            
-            // Check for actual uploaded content using the new type field from dataset
-            // Fallback to title matching for backward compatibility
             const documentType = item.dataset.documentType || '';
+            
+            console.log(`🔍 [PLACEHOLDERS] Checking item: "${titleText}" - Status: "${status}" - Type: "${documentType}" - IsPlaceholder: ${isPlaceholder}`);
+            
+            // Check for lecture notes - look for both document type and title patterns
             const isLectureNotes = documentType === 'lecture_notes' || 
+                                  titleText.includes('lecture-notes') ||
                                   (titleText.includes('Lecture Notes') && !isPlaceholder && status !== 'Not Uploaded');
+            
+            // Check for practice questions - look for both document type and title patterns  
             const isPracticeQuestions = documentType === 'practice_q_tutorials' || 
+                                      titleText.includes('practice-quiz') ||
+                                      titleText.includes('practice_quiz') ||
                                       ((titleText.includes('Practice Questions') || titleText.includes('Practice Questions/Tutorial')) && !isPlaceholder && status !== 'Not Uploaded');
+            
+            console.log(`🔍 [PLACEHOLDERS] Item "${titleText}": isLectureNotes=${isLectureNotes}, isPracticeQuestions=${isPracticeQuestions}`);
             
             if (isLectureNotes) {
                 hasLectureNotes = true;
@@ -4432,27 +4479,6 @@ function addCleanupButtonIfMissing(container, unitName, courseId) {
         }
     });
     
-    if (!hasCleanupButton) {
-        const cleanupSection = document.createElement('div');
-        cleanupSection.className = 'cleanup-section';
-        cleanupSection.style.marginTop = '20px';
-        cleanupSection.style.padding = '15px';
-        cleanupSection.style.backgroundColor = '#fff3cd';
-        cleanupSection.style.border = '1px solid #ffeaa7';
-        cleanupSection.style.borderRadius = '5px';
-        cleanupSection.innerHTML = `
-            <h4 style="margin: 0 0 10px 0; color: #856404;">⚠️ Document Cleanup</h4>
-            <p style="margin: 0 0 15px 0; color: #856404; font-size: 14px;">
-                This will remove ALL documents from ${unitName} in the course structure. 
-                This action cannot be undone.
-            </p>
-            <button class="cleanup-btn" onclick="clearAllDocuments('${unitName}', '${courseId}')" 
-                    style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">
-                🗑️ Clear All Documents from ${unitName}
-            </button>
-        `;
-        container.appendChild(cleanupSection);
-    }
 }
 
 /**
