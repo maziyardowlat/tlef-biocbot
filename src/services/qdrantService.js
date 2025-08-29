@@ -56,13 +56,13 @@ class QdrantService {
                     ...llmConfig,
                     embeddingModel: process.env.LLM_EMBEDDING_MODEL,
                     // // Drop unsupported parameters when talking to Ollama
-                    // litellm: {
-                    //     drop_params: true
-                    // }
+                    litellm: {
+                        drop_params: true
+                    }
                 }
             };
 
-            // this.embeddings = await EmbeddingsModule.create(embeddingConfig);
+            this.embeddings = await EmbeddingsModule.create(embeddingConfig);
             console.log('✅ Successfully initialized embeddings service');
 
             // Initialize chunking service using centralized configuration
