@@ -62,7 +62,7 @@ class QdrantService {
                 }
             };
 
-            this.embeddings = await EmbeddingsModule.create(embeddingConfig);
+            // this.embeddings = await EmbeddingsModule.create(embeddingConfig);
             console.log('✅ Successfully initialized embeddings service');
 
             // Initialize chunking service using centralized configuration
