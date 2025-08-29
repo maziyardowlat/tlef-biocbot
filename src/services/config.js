@@ -46,9 +46,9 @@ class ConfigService {
             case 'ubc-llm-sandbox':
                 return {
                     provider: 'ubc-llm-sandbox',
-                    apiKey: process.env.UBC_API_KEY,
-                    endpoint: process.env.UBC_ENDPOINT,
-                    defaultModel: process.env.UBC_MODEL
+                    apiKey: process.env.LLM_API_KEY,
+                    endpoint: process.env.LLM_ENDPOINT,
+                    defaultModel: process.env.LLM_EMBEDDING_MODEL
                 };
                 
             default:
@@ -115,14 +115,14 @@ class ConfigService {
                 throw new Error('OPENAI_MODEL is required for OpenAI provider');
             }
         } else if (provider === 'ubc-llm-sandbox') {
-            if (!process.env.UBC_API_KEY) {
-                throw new Error('UBC_API_KEY is required for UBC LLM Sandbox provider');
+            if (!process.env.LLM_API_KEY) {
+                throw new Error('LLM_API_KEY is required for UBC LLM Sandbox provider');
             }
-            if (!process.env.UBC_ENDPOINT) {
-                throw new Error('UBC_ENDPOINT is required for UBC LLM Sandbox provider');
+            if (!process.env.LLM_ENDPOINT) {
+                throw new Error('LLM_ENDPOINT is required for UBC LLM Sandbox provider');
             }
-            if (!process.env.UBC_MODEL) {
-                throw new Error('UBC_MODEL is required for UBC LLM Sandbox provider');
+            if (!process.env.LLM_EMBEDDING_MODEL) {
+                throw new Error('LLM_EMBEDDING_MODEL is required for UBC LLM Sandbox provider');
             }
         }
         
