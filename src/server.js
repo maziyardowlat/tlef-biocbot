@@ -53,6 +53,8 @@ async function connectToMongoDB() {
     }
 }
 
+
+
 // Middleware for parsing request bodies
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -110,11 +112,16 @@ app.get('/student/settings', (req, res) => {
     res.sendFile(path.join(__dirname, '../public/student/settings.html'));
 });
 
-// Instructor routes - redirect to onboarding by default
+// Instructor routes - serve documents page directly
 app.get('/instructor', (req, res) => {
-    // Check if onboarding is complete (in a real app, this would check database)
-    // For now, always redirect to onboarding
-    res.redirect('/instructor/onboarding');
+    // Serve the documents page directly
+    res.sendFile(path.join(__dirname, '../public/instructor/index.html'));
+});
+
+// Also handle /instructor/ (with trailing slash)
+app.get('/instructor/', (req, res) => {
+    // Serve the documents page directly
+    res.sendFile(path.join(__dirname, '../public/instructor/index.html'));
 });
 
 // Check if user can access onboarding (not completed)
@@ -169,10 +176,6 @@ app.get('/instructor/flagged', (req, res) => {
 // Legacy routes (redirect to new structure)
 app.get('/settings', (req, res) => {
     res.redirect('/student/settings');
-});
-
-app.get('/documents', (req, res) => {
-    res.redirect('/instructor/documents');
 });
 
 // Health check endpoint to verify MongoDB connection
