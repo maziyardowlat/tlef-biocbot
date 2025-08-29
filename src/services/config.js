@@ -48,7 +48,7 @@ class ConfigService {
                     provider: 'ubc-llm-sandbox',
                     apiKey: process.env.LLM_API_KEY,
                     endpoint: process.env.LLM_ENDPOINT,
-                    defaultModel: process.env.LLM_EMBEDDING_MODEL
+                    defaultModel: process.env.LLM_DEFAULT_MODEL
                 };
                 
             default:
