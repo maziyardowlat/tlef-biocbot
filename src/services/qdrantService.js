@@ -54,7 +54,11 @@ class QdrantService {
                 logger: logger,
                 llmConfig: {
                     ...llmConfig,
-                    embeddingModel: process.env.LLM_EMBEDDING_MODEL || 'nomic-embed-text'
+                    embeddingModel: process.env.LLM_EMBEDDING_MODEL || 'nomic-embed-text',
+                    // Drop unsupported parameters when talking to Ollama
+                    litellm: {
+                        drop_params: true
+                    }
                 }
             };
 
