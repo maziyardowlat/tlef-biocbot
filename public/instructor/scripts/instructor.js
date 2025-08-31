@@ -2619,17 +2619,26 @@ async function confirmCourseMaterials(week) {
             const status = statusText.textContent;
             
             console.log(`🔍 [CONFIRM_MATERIALS] Item ${index + 1}: "${titleText}" - Status: "${status}" - Type: "${documentType}"`);
+            console.log(`🔍 [CONFIRM_MATERIALS] Debug - documentType === 'lecture-notes': ${documentType === 'lecture-notes'}, documentType === 'practice-quiz': ${documentType === 'practice-quiz'}`);
             
             // Check if this is a lecture notes document that's processed/uploaded
             // Use document type for more reliable checking, fallback to title text
-            if ((documentType === 'lecture_notes' || titleText.includes('Lecture Notes')) && (status === 'Processed' || status === 'Uploaded' || status === 'uploaded' || status === 'parsed' || status === 'Processing')) {
+            const isLectureNotesType = documentType === 'lecture-notes' || titleText.includes('Lecture Notes');
+            const isLectureNotesStatus = status === 'Processed' || status === 'Uploaded' || status === 'uploaded' || status === 'parsed' || status === 'Processing';
+            console.log(`🔍 [CONFIRM_MATERIALS] Lecture Notes check - Type match: ${isLectureNotesType}, Status match: ${isLectureNotesStatus}`);
+            
+            if (isLectureNotesType && isLectureNotesStatus) {
                 hasLectureNotes = true;
                 console.log(`✅ [CONFIRM_MATERIALS] Found valid lecture notes with status: "${status}" and type: "${documentType}"`);
             }
             
             // Check if this is a practice questions document that's processed/uploaded
             // Use document type for more reliable checking, fallback to title text
-            if ((documentType === 'practice_q_tutorials' || titleText.includes('Practice Questions') || titleText.includes('Practice Questions/Tutorial')) && (status === 'Processed' || status === 'Uploaded' || status === 'uploaded' || status === 'parsed' || status === 'Processing')) {
+            const isPracticeQuestionsType = documentType === 'practice-quiz' || titleText.includes('Practice Questions') || titleText.includes('Practice Questions/Tutorial');
+            const isPracticeQuestionsStatus = status === 'Processed' || status === 'Uploaded' || status === 'uploaded' || status === 'parsed' || status === 'Processing';
+            console.log(`🔍 [CONFIRM_MATERIALS] Practice Questions check - Type match: ${isPracticeQuestionsType}, Status match: ${isPracticeQuestionsStatus}`);
+            
+            if (isPracticeQuestionsType && isPracticeQuestionsStatus) {
                 hasPracticeQuestions = true;
                 console.log(`✅ [CONFIRM_MATERIALS] Found valid practice questions with status: "${status}" and type: "${documentType}"`);
             }
@@ -2637,6 +2646,7 @@ async function confirmCourseMaterials(week) {
     });
     
     console.log(`🔍 [CONFIRM_MATERIALS] Final check - Lecture Notes: ${hasLectureNotes}, Practice Questions: ${hasPracticeQuestions}`);
+    console.log(`🔍 [CONFIRM_MATERIALS] Summary - Found ${fileItems.length} file items, ${hasLectureNotes ? '1' : '0'} lecture notes, ${hasPracticeQuestions ? '1' : '0'} practice questions`);
     
     // Validate mandatory materials
     if (!hasLectureNotes || !hasPracticeQuestions) {
