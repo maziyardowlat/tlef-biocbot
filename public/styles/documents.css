@@ -398,7 +398,10 @@
 
 .file-item {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
+    padding: 15px;
+    background-color: white;
+    border-bottom: 1px solid var(--border-color);
 }
 
 /* Uploaded file status styling */
@@ -415,10 +418,6 @@
     border-left: 4px solid #17a2b8;
     background-color: #f8f9fa;
 }
-    padding: 15px;
-    border-bottom: 1px solid var(--border-color);
-    background-color: white;
-}
 
 .file-item:last-child {
     border-bottom: none;
@@ -432,6 +431,7 @@
 
 .file-info {
     flex: 1;
+    margin-right: 15px;
 }
 
 .file-info h3 {
@@ -450,7 +450,8 @@
     display: flex;
     gap: 8px;
     align-items: center;
-    margin-left: 15px;
+    margin-left: auto;
+    min-width: fit-content;
 }
 
 .status-text {
