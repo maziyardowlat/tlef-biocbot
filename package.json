@@ -23,7 +23,7 @@
     "ubc-genai-toolkit-chunking": "^0.1.0",
     "ubc-genai-toolkit-core": "^0.1.0",
     "ubc-genai-toolkit-document-parsing": "^0.1.0",
-    "ubc-genai-toolkit-embeddings": "^0.1.0",
+    "ubc-genai-toolkit-embeddings": "^0.1.1",
     "ubc-genai-toolkit-llm": "^0.2.3"
   },
   "devDependencies": {
