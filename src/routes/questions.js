@@ -618,7 +618,7 @@ router.get('/course-material', async (req, res) => {
         }
         
         // Handle content length intelligently
-        const maxContentLength = 8000; // Increased limit for better context
+        const maxContentLength = 16000; // Increased limit for better context
         
         if (combinedContent.length > maxContentLength) {
             console.log(`📚 [CONTENT] Original content length: ${combinedContent.length} chars`);
@@ -831,7 +831,7 @@ router.post('/generate-ai', async (req, res) => {
                 }
             }
             
-            combinedContent = newContent.trim() + `\n\n[Content truncated: ${sectionsIncluded}/${sections.length} sections included]`;
+            combinedContent = newContent.trim() + `\n\n[Content truncated: ${sectionsIncluded}/${sections.length} included]`;
             console.log(`📚 [CONTENT] Truncated to ${combinedContent.length} chars, included ${sectionsIncluded} sections`);
         }
         

@@ -87,10 +87,11 @@ class LLMService {
             // Set default options for BiocBot context
             const defaultOptions = {
                 systemPrompt: this.getSystemPrompt(),
-                temperature: 0.7,
-                maxTokens: 500,
+                temperature: 0.1,
+                num_ctx: 32768,
                 ...options
             };
+            console.log('🔍 [LLM_OPTIONS] Default options:', defaultOptions);
             
             const response = await this.llm.sendMessage(message, defaultOptions);
             
@@ -149,8 +150,8 @@ class LLMService {
             
             // Set default options for BiocBot
             const defaultOptions = {
-                temperature: 0.7,
-                maxTokens: 500,
+                temperature: 0.1,
+                num_ctx: 32768,
                 ...options
             };
             
@@ -290,9 +291,11 @@ Remember: You're here to help students learn, not to replace their course materi
             const prompt = this.createQuestionGenerationPrompt(questionType, courseMaterialContent, unitName);
             
             // Set specific options for question generation
+            // Use higher temperature (0.7) for more creative question generation
             const generationOptions = {
                 temperature: 0.7,
-                maxTokens: 800,
+                num_ctx: 32768,
+                // responseFormat: "json", 
                 systemPrompt: this.getQuestionGenerationSystemPrompt()
             };
             
