@@ -274,8 +274,19 @@ class QdrantService {
                         throw new Error(`Invalid embedding returned for chunk ${i + 1}: ${typeof embedding}`);
                     }
                     
-                    // The embed method returns an array, we want the first (and only) embedding
-                    const embeddingVector = embedding[0];
+                    // Handle different possible return formats from the embeddings service
+                    let embeddingVector;
+                    
+                    if (Array.isArray(embedding[0])) {
+                        // Nested array format: [[0.1, 0.2, ...]] - take the first vector
+                        embeddingVector = embedding[0];
+                    } else if (typeof embedding[0] === 'number') {
+                        // Flat array format: [0.1, 0.2, ...] - use directly
+                        embeddingVector = embedding;
+                    } else {
+                        throw new Error(`Unexpected embedding format for chunk ${i + 1}: ${typeof embedding[0]}`);
+                    }
+                    
                     if (!Array.isArray(embeddingVector)) {
                         throw new Error(`Embedding vector is not an array for chunk ${i + 1}: ${typeof embeddingVector}`);
                     }
@@ -377,10 +388,43 @@ class QdrantService {
 
             // Generate embedding for the search query
             const queryEmbedding = await this.embeddings.embed(query);
+            console.log(`Query embedding type: ${typeof queryEmbedding}, isArray: ${Array.isArray(queryEmbedding)}`);
+            
+            // Handle different possible return formats from the embeddings service
+            let embeddingVector;
+            
+            if (Array.isArray(queryEmbedding)) {
+                console.log(`Query embedding length: ${queryEmbedding.length}`);
+                
+                if (queryEmbedding.length === 0) {
+                    throw new Error('Empty embedding array returned');
+                }
+                
+                // Check if it's a nested array (like [[0.1, 0.2, ...]]) or flat array ([0.1, 0.2, ...])
+                if (Array.isArray(queryEmbedding[0])) {
+                    // Nested array format: [[0.1, 0.2, ...]] - take the first vector
+                    embeddingVector = queryEmbedding[0];
+                    console.log(`Using nested array format, vector length: ${embeddingVector.length}`);
+                } else if (typeof queryEmbedding[0] === 'number') {
+                    // Flat array format: [0.1, 0.2, ...] - use directly
+                    embeddingVector = queryEmbedding;
+                    console.log(`Using flat array format, vector length: ${embeddingVector.length}`);
+                } else {
+                    throw new Error(`Unexpected embedding format: ${typeof queryEmbedding[0]}`);
+                }
+            } else {
+                throw new Error(`Invalid embedding type: ${typeof queryEmbedding}`);
+            }
+            
+            if (!Array.isArray(embeddingVector) || embeddingVector.length === 0) {
+                throw new Error('Invalid embedding vector format for search query');
+            }
+            
+            console.log(`Final embedding vector length: ${embeddingVector.length}`);
 
             // Build search parameters
             const searchParams = {
-                vector: queryEmbedding,
+                vector: embeddingVector,
                 limit: limit,
                 with_payload: true,
                 with_vector: false

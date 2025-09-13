@@ -65,7 +65,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     /**
-     * Send message to LLM service
+     * Send message to LLM service with RAG support
      * @param {string} message - The message to send
      * @returns {Promise<Object>} Response from LLM service
      */
@@ -74,6 +74,20 @@ document.addEventListener('DOMContentLoaded', () => {
             // Get current student mode for context
             const currentMode = localStorage.getItem('studentMode') || 'tutor';
             
+            // Get selected unit from dropdown
+            const unitSelect = document.getElementById('unit-select');
+            const selectedUnit = unitSelect ? unitSelect.value : '';
+            
+            // Get current course ID
+            const courseId = await getCurrentCourseId();
+            
+            console.log('Sending message with RAG context:', {
+                message: message.substring(0, 50) + '...',
+                mode: currentMode,
+                unitName: selectedUnit,
+                courseId: courseId
+            });
+            
             const response = await fetch('/api/chat', {
                 method: 'POST',
                 headers: {
@@ -81,7 +95,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 },
                 body: JSON.stringify({
                     message: message,
-                    mode: currentMode
+                    mode: currentMode,
+                    unitName: selectedUnit,
+                    courseId: courseId
                 })
             });
             
@@ -128,8 +144,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Remove typing indicator
                 removeTypingIndicator();
                 
-                // Add real bot response
-                addMessage(response.message, 'bot', true);
+                // Add real bot response with citations if available
+                addMessage(response.message, 'bot', true, response.citations);
                 
             } catch (error) {
                 // Remove typing indicator
@@ -143,7 +159,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     // Function to add a message to the chat
-    function addMessage(content, sender, withSource = false) {
+    function addMessage(content, sender, withSource = false, citations = null) {
         const messageDiv = document.createElement('div');
         messageDiv.classList.add('message', sender + '-message');
         
@@ -163,8 +179,34 @@ document.addEventListener('DOMContentLoaded', () => {
         const footerDiv = document.createElement('div');
         footerDiv.classList.add('message-footer');
         
-        // Add source citation if needed
-        if (withSource && sender === 'bot') {
+        // Add citations if available
+        if (citations && citations.length > 0 && sender === 'bot') {
+            const citationsDiv = document.createElement('div');
+            citationsDiv.classList.add('message-citations');
+            
+            const citationsTitle = document.createElement('div');
+            citationsTitle.classList.add('citations-title');
+            citationsTitle.textContent = 'Sources:';
+            citationsDiv.appendChild(citationsTitle);
+            
+            const citationsList = document.createElement('div');
+            citationsList.classList.add('citations-list');
+            
+            citations.forEach(citation => {
+                const citationItem = document.createElement('div');
+                citationItem.classList.add('citation-item');
+                citationItem.innerHTML = `
+                    <span class="citation-number">[${citation.id}]</span>
+                    <span class="citation-text">${citation.fileName}</span>
+                    <span class="citation-unit">(${citation.lectureName})</span>
+                `;
+                citationsList.appendChild(citationItem);
+            });
+            
+            citationsDiv.appendChild(citationsList);
+            footerDiv.appendChild(citationsDiv);
+        } else if (withSource && sender === 'bot') {
+            // Fallback for old source display
             const sourceDiv = document.createElement('div');
             sourceDiv.classList.add('message-source');
             sourceDiv.innerHTML = 'Source: TBD';
