@@ -28,12 +28,28 @@ class QdrantService {
     async initialize() {
         try {
             console.log('🔧 Initializing Qdrant service...');
+            console.log('Environment variables for Qdrant:', {
+                QDRANT_URL: process.env.QDRANT_URL,
+                QDRANT_HOST: process.env.QDRANT_HOST,
+                QDRANT_PORT: process.env.QDRANT_PORT,
+                QDRANT_API_KEY: process.env.QDRANT_API_KEY ? 'SET' : 'NOT SET'
+            });
             
             // Initialize Qdrant client using centralized configuration
             const vectorDBConfig = config.getVectorDBConfig();
+            console.log('Vector DB config:', vectorDBConfig);
+            
+            const qdrantUrl = process.env.QDRANT_URL || `http://${vectorDBConfig.host}:${vectorDBConfig.port}`;
+            const qdrantApiKey = process.env.QDRANT_API_KEY || 'super-secret-dev-key';
+            
+            console.log('Qdrant connection details:', {
+                url: qdrantUrl,
+                apiKey: qdrantApiKey ? 'SET' : 'NOT SET'
+            });
+            
             this.client = new QdrantClient({
-                url: process.env.QDRANT_URL || `http://${vectorDBConfig.host}:${vectorDBConfig.port}`,
-                apiKey: process.env.QDRANT_API_KEY || 'super-secret-dev-key'
+                url: qdrantUrl,
+                apiKey: qdrantApiKey
             });
 
             // Test Qdrant connection
@@ -45,7 +61,19 @@ class QdrantService {
             console.log('Initializing embeddings service...');
             
             // Use the centralized LLM configuration from config service
-            const llmConfig = config.getLLMConfig();
+            let llmConfig;
+            try {
+                llmConfig = config.getLLMConfig();
+                console.log('LLM config retrieved:', {
+                    provider: llmConfig.provider,
+                    endpoint: llmConfig.endpoint || llmConfig.apiKey ? 'SET' : 'NOT SET',
+                    model: llmConfig.defaultModel
+                });
+            } catch (configError) {
+                console.error('❌ Failed to get LLM config:', configError);
+                throw new Error(`LLM configuration error: ${configError.message}`);
+            }
+            
             const logger = new ConsoleLogger('biocbot-qdrant');
             
             // Add embedding-specific configuration
@@ -62,8 +90,19 @@ class QdrantService {
                 }
             };
 
-            this.embeddings = await EmbeddingsModule.create(embeddingConfig);
-            console.log('✅ Successfully initialized embeddings service');
+            console.log('Embedding config:', {
+                providerType: embeddingConfig.providerType,
+                embeddingModel: embeddingConfig.llmConfig.embeddingModel,
+                llmProvider: embeddingConfig.llmConfig.provider
+            });
+
+            try {
+                this.embeddings = await EmbeddingsModule.create(embeddingConfig);
+                console.log('✅ Successfully initialized embeddings service');
+            } catch (embeddingError) {
+                console.error('❌ Failed to initialize embeddings service:', embeddingError);
+                throw new Error(`Embeddings initialization error: ${embeddingError.message}`);
+            }
 
             // Initialize chunking service using centralized configuration
             console.log('Initializing chunking service...');
