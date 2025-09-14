@@ -8,6 +8,7 @@
     "dev": "npm-run-all --parallel dev:*",
     "dev:server": "cross-env NODE_ENV=development nodemon src/server.js",
     "dev:client": "browser-sync start --proxy 'http://localhost:8085' --files 'public'",
+    "diagnose": "node diagnose.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
@@ -20,6 +21,7 @@
     "express": "^5.1.0",
     "mongodb": "^6.17.0",
     "multer": "^1.4.5-lts.1",
+    "node-fetch": "^2.7.0",
     "ubc-genai-toolkit-chunking": "^0.1.0",
     "ubc-genai-toolkit-core": "^0.1.0",
     "ubc-genai-toolkit-document-parsing": "^0.1.0",

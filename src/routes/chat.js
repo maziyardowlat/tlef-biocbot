@@ -22,10 +22,23 @@ const qdrantService = new QdrantService();
  */
 router.post('/', async (req, res) => {
     try {
+        console.log('=== CHAT REQUEST START ===');
+        console.log('Request body:', JSON.stringify(req.body, null, 2));
+        console.log('Environment variables check:', {
+            NODE_ENV: process.env.NODE_ENV,
+            LLM_PROVIDER: process.env.LLM_PROVIDER,
+            OLLAMA_ENDPOINT: process.env.OLLAMA_ENDPOINT,
+            OLLAMA_MODEL: process.env.OLLAMA_MODEL,
+            QDRANT_URL: process.env.QDRANT_URL,
+            QDRANT_HOST: process.env.QDRANT_HOST,
+            QDRANT_PORT: process.env.QDRANT_PORT
+        });
+        
         const { message, conversationId, mode, unitName, courseId } = req.body;
         
         // Validate required fields
         if (!message || typeof message !== 'string') {
+            console.log('❌ Validation failed: Message is required and must be a string');
             return res.status(400).json({
                 success: false,
                 message: 'Message is required and must be a string'
@@ -33,6 +46,7 @@ router.post('/', async (req, res) => {
         }
         
         if (!unitName || typeof unitName !== 'string') {
+            console.log('❌ Validation failed: Unit name is required for RAG functionality');
             return res.status(400).json({
                 success: false,
                 message: 'Unit name is required for RAG functionality'
@@ -44,21 +58,46 @@ router.post('/', async (req, res) => {
         console.log(`📚 Unit: ${unitName}`);
         console.log(`🏫 Course: ${courseId || 'default'}`);
         
-        // Step 1: Initialize Qdrant service if needed
+        // Step 1: Initialize Qdrant service if needed (optional for basic chat)
+        let qdrantAvailable = false;
         if (!qdrantService.client) {
             console.log('🔧 Initializing Qdrant service for RAG...');
-            await qdrantService.initialize();
+            try {
+                await qdrantService.initialize();
+                console.log('✅ Qdrant service initialized successfully');
+                qdrantAvailable = true;
+            } catch (qdrantError) {
+                console.error('❌ Failed to initialize Qdrant service:', qdrantError);
+                console.log('⚠️ Continuing without RAG functionality');
+                qdrantAvailable = false;
+            }
+        } else {
+            qdrantAvailable = true;
         }
         
-        // Step 2: Retrieve relevant document chunks using RAG
-        console.log('🔍 Retrieving relevant document chunks...');
-        const searchFilters = {
-            courseId: courseId || 'default',
-            lectureName: unitName
-        };
-        
-        const relevantChunks = await qdrantService.searchDocuments(message, searchFilters, 5);
-        console.log(`📄 Found ${relevantChunks.length} relevant chunks`);
+        // Step 2: Retrieve relevant document chunks using RAG (if available)
+        let relevantChunks = [];
+        if (qdrantAvailable) {
+            console.log('🔍 Retrieving relevant document chunks...');
+            const searchFilters = {
+                courseId: courseId || 'default',
+                lectureName: unitName
+            };
+            
+            console.log('Search filters:', searchFilters);
+            
+            try {
+                relevantChunks = await qdrantService.searchDocuments(message, searchFilters, 5);
+                console.log(`📄 Found ${relevantChunks.length} relevant chunks`);
+            } catch (searchError) {
+                console.error('❌ Error during document search:', searchError);
+                // Continue without RAG context if search fails
+                console.log('⚠️ Continuing without RAG context due to search error');
+                relevantChunks = [];
+            }
+        } else {
+            console.log('⚠️ Qdrant not available, skipping RAG search');
+        }
         
         // Step 3: Build context window with retrieved chunks and citations
         let contextWindow = '';
@@ -82,9 +121,12 @@ router.post('/', async (req, res) => {
             });
             
             contextWindow += 'Please use the above course material to answer the student\'s question. When referencing specific information, cite the source using [1], [2], etc.';
-        } else {
+        } else if (qdrantAvailable) {
             contextWindow = 'No specific course material found for this question. Please provide a general answer based on your knowledge of biology.';
             console.log('⚠️ No relevant chunks found, proceeding without RAG context');
+        } else {
+            contextWindow = 'Course material search is currently unavailable. Please provide a general answer based on your knowledge of biology.';
+            console.log('⚠️ RAG not available, using general knowledge mode');
         }
         
         // Step 4: Build enhanced system prompt with RAG context
@@ -101,11 +143,25 @@ ${contextWindow}`;
         
         // Step 5: Send enhanced prompt to LLM
         console.log('🤖 Sending enhanced prompt to LLM...');
-        const response = await llmService.sendMessage(message, {
-            temperature: mode === 'protege' ? 0.8 : 0.6,
-            maxTokens: mode === 'protege' ? 600 : 400,
-            systemPrompt: ragSystemPrompt
-        });
+        console.log('LLM service status:', llmService.getStatus());
+        
+        let response;
+        try {
+            response = await llmService.sendMessage(message, {
+                temperature: mode === 'protege' ? 0.8 : 0.6,
+                maxTokens: mode === 'protege' ? 600 : 400,
+                systemPrompt: ragSystemPrompt
+            });
+            console.log('✅ LLM response received successfully');
+        } catch (llmError) {
+            console.error('❌ Error calling LLM service:', llmError);
+            console.error('LLM error details:', {
+                message: llmError.message,
+                stack: llmError.stack,
+                name: llmError.name
+            });
+            throw new Error(`LLM service error: ${llmError.message}`);
+        }
         
         // Step 6: Format response with citations
         const chatResponse = {
@@ -117,8 +173,12 @@ ${contextWindow}`;
             mode: mode || 'default',
             unitName: unitName,
             citations: citations,
-            ragEnabled: true,
-            chunksRetrieved: relevantChunks.length
+            ragEnabled: qdrantAvailable,
+            chunksRetrieved: relevantChunks.length,
+            services: {
+                qdrant: qdrantAvailable ? 'available' : 'unavailable',
+                llm: 'available'
+            }
         };
         
         console.log(`✅ RAG response sent successfully with ${citations.length} citations`);
