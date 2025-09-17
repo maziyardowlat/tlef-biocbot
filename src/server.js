@@ -178,33 +178,63 @@ app.get('/settings', (req, res) => {
     res.redirect('/student/settings');
 });
 
-// Health check endpoint to verify MongoDB connection
+// Health check endpoint to verify all services
 app.get('/api/health', async (req, res) => {
+    const healthStatus = {
+        status: 'checking',
+        timestamp: new Date().toISOString(),
+        services: {}
+    };
+    
     try {
+        // Test MongoDB connection
         if (!db) {
-            return res.status(503).json({ 
-                status: 'error', 
-                message: 'Database not connected',
-                timestamp: new Date().toISOString()
-            });
+            healthStatus.services.mongodb = { status: 'error', message: 'Database not connected' };
+        } else {
+            try {
+                await db.admin().ping();
+                healthStatus.services.mongodb = { status: 'healthy', message: 'Connected' };
+            } catch (error) {
+                healthStatus.services.mongodb = { status: 'error', message: error.message };
+            }
         }
         
-        // Test database connection by running a simple command
-        await db.admin().ping();
+        // Test Qdrant connection
+        try {
+            const QdrantService = require('./services/qdrantService');
+            const qdrantService = new QdrantService();
+            await qdrantService.initialize();
+            healthStatus.services.qdrant = { status: 'healthy', message: 'Connected' };
+        } catch (error) {
+            healthStatus.services.qdrant = { status: 'error', message: error.message };
+        }
         
-        res.json({ 
-            status: 'healthy', 
-            message: 'Server and database are running',
-            timestamp: new Date().toISOString(),
-            database: 'connected'
-        });
+        // Test LLM connection
+        try {
+            const llmService = require('./services/llm');
+            const isConnected = await llmService.testConnection();
+            healthStatus.services.llm = { 
+                status: isConnected ? 'healthy' : 'error', 
+                message: isConnected ? 'Connected' : 'Connection failed',
+                provider: llmService.getProviderName()
+            };
+        } catch (error) {
+            healthStatus.services.llm = { status: 'error', message: error.message };
+        }
+        
+        // Determine overall status
+        const allHealthy = Object.values(healthStatus.services).every(service => service.status === 'healthy');
+        healthStatus.status = allHealthy ? 'healthy' : 'degraded';
+        healthStatus.message = allHealthy ? 'All services are running' : 'Some services are not available';
+        
+        const statusCode = allHealthy ? 200 : 503;
+        res.status(statusCode).json(healthStatus);
+        
     } catch (error) {
-        res.status(503).json({ 
-            status: 'error', 
-            message: 'Database connection failed',
-            error: error.message,
-            timestamp: new Date().toISOString()
-        });
+        healthStatus.status = 'error';
+        healthStatus.message = 'Health check failed';
+        healthStatus.error = error.message;
+        res.status(503).json(healthStatus);
     }
 });
 

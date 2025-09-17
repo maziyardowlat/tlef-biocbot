@@ -28,12 +28,28 @@ class QdrantService {
     async initialize() {
         try {
             console.log('🔧 Initializing Qdrant service...');
+            console.log('Environment variables for Qdrant:', {
+                QDRANT_URL: process.env.QDRANT_URL,
+                QDRANT_HOST: process.env.QDRANT_HOST,
+                QDRANT_PORT: process.env.QDRANT_PORT,
+                QDRANT_API_KEY: process.env.QDRANT_API_KEY ? 'SET' : 'NOT SET'
+            });
             
             // Initialize Qdrant client using centralized configuration
             const vectorDBConfig = config.getVectorDBConfig();
+            console.log('Vector DB config:', vectorDBConfig);
+            
+            const qdrantUrl = process.env.QDRANT_URL || `http://${vectorDBConfig.host}:${vectorDBConfig.port}`;
+            const qdrantApiKey = process.env.QDRANT_API_KEY || 'super-secret-dev-key';
+            
+            console.log('Qdrant connection details:', {
+                url: qdrantUrl,
+                apiKey: qdrantApiKey ? 'SET' : 'NOT SET'
+            });
+            
             this.client = new QdrantClient({
-                url: process.env.QDRANT_URL || `http://${vectorDBConfig.host}:${vectorDBConfig.port}`,
-                apiKey: process.env.QDRANT_API_KEY || 'super-secret-dev-key'
+                url: qdrantUrl,
+                apiKey: qdrantApiKey
             });
 
             // Test Qdrant connection
@@ -45,7 +61,19 @@ class QdrantService {
             console.log('Initializing embeddings service...');
             
             // Use the centralized LLM configuration from config service
-            const llmConfig = config.getLLMConfig();
+            let llmConfig;
+            try {
+                llmConfig = config.getLLMConfig();
+                console.log('LLM config retrieved:', {
+                    provider: llmConfig.provider,
+                    endpoint: llmConfig.endpoint || llmConfig.apiKey ? 'SET' : 'NOT SET',
+                    model: llmConfig.defaultModel
+                });
+            } catch (configError) {
+                console.error('❌ Failed to get LLM config:', configError);
+                throw new Error(`LLM configuration error: ${configError.message}`);
+            }
+            
             const logger = new ConsoleLogger('biocbot-qdrant');
             
             // Add embedding-specific configuration
@@ -62,8 +90,19 @@ class QdrantService {
                 }
             };
 
-            this.embeddings = await EmbeddingsModule.create(embeddingConfig);
-            console.log('✅ Successfully initialized embeddings service');
+            console.log('Embedding config:', {
+                providerType: embeddingConfig.providerType,
+                embeddingModel: embeddingConfig.llmConfig.embeddingModel,
+                llmProvider: embeddingConfig.llmConfig.provider
+            });
+
+            try {
+                this.embeddings = await EmbeddingsModule.create(embeddingConfig);
+                console.log('✅ Successfully initialized embeddings service');
+            } catch (embeddingError) {
+                console.error('❌ Failed to initialize embeddings service:', embeddingError);
+                throw new Error(`Embeddings initialization error: ${embeddingError.message}`);
+            }
 
             // Initialize chunking service using centralized configuration
             console.log('Initializing chunking service...');
@@ -274,8 +313,19 @@ class QdrantService {
                         throw new Error(`Invalid embedding returned for chunk ${i + 1}: ${typeof embedding}`);
                     }
                     
-                    // The embed method returns an array, we want the first (and only) embedding
-                    const embeddingVector = embedding[0];
+                    // Handle different possible return formats from the embeddings service
+                    let embeddingVector;
+                    
+                    if (Array.isArray(embedding[0])) {
+                        // Nested array format: [[0.1, 0.2, ...]] - take the first vector
+                        embeddingVector = embedding[0];
+                    } else if (typeof embedding[0] === 'number') {
+                        // Flat array format: [0.1, 0.2, ...] - use directly
+                        embeddingVector = embedding;
+                    } else {
+                        throw new Error(`Unexpected embedding format for chunk ${i + 1}: ${typeof embedding[0]}`);
+                    }
+                    
                     if (!Array.isArray(embeddingVector)) {
                         throw new Error(`Embedding vector is not an array for chunk ${i + 1}: ${typeof embeddingVector}`);
                     }
@@ -377,10 +427,43 @@ class QdrantService {
 
             // Generate embedding for the search query
             const queryEmbedding = await this.embeddings.embed(query);
+            console.log(`Query embedding type: ${typeof queryEmbedding}, isArray: ${Array.isArray(queryEmbedding)}`);
+            
+            // Handle different possible return formats from the embeddings service
+            let embeddingVector;
+            
+            if (Array.isArray(queryEmbedding)) {
+                console.log(`Query embedding length: ${queryEmbedding.length}`);
+                
+                if (queryEmbedding.length === 0) {
+                    throw new Error('Empty embedding array returned');
+                }
+                
+                // Check if it's a nested array (like [[0.1, 0.2, ...]]) or flat array ([0.1, 0.2, ...])
+                if (Array.isArray(queryEmbedding[0])) {
+                    // Nested array format: [[0.1, 0.2, ...]] - take the first vector
+                    embeddingVector = queryEmbedding[0];
+                    console.log(`Using nested array format, vector length: ${embeddingVector.length}`);
+                } else if (typeof queryEmbedding[0] === 'number') {
+                    // Flat array format: [0.1, 0.2, ...] - use directly
+                    embeddingVector = queryEmbedding;
+                    console.log(`Using flat array format, vector length: ${embeddingVector.length}`);
+                } else {
+                    throw new Error(`Unexpected embedding format: ${typeof queryEmbedding[0]}`);
+                }
+            } else {
+                throw new Error(`Invalid embedding type: ${typeof queryEmbedding}`);
+            }
+            
+            if (!Array.isArray(embeddingVector) || embeddingVector.length === 0) {
+                throw new Error('Invalid embedding vector format for search query');
+            }
+            
+            console.log(`Final embedding vector length: ${embeddingVector.length}`);
 
             // Build search parameters
             const searchParams = {
-                vector: queryEmbedding,
+                vector: embeddingVector,
                 limit: limit,
                 with_payload: true,
                 with_vector: false
