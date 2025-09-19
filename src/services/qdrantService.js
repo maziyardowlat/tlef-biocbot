@@ -19,7 +19,7 @@ class QdrantService {
         this.embeddings = null;
         this.chunker = null;
         this.collectionName = 'biocbot_documents';
-        this.vectorSize = 768; // Will be determined dynamically from embeddings
+        this.vectorSize = process.env.QDRANT_VECTOR_SIZE || 768; // Will be determined dynamically from embeddings
     }
 
     /**
