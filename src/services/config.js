@@ -85,6 +85,21 @@ class ConfigService {
      */
     getVectorDBConfig() {
         this.ensureValidated();
+        
+        // If QDRANT_URL is provided, parse it to extract host and port
+        if (process.env.QDRANT_URL) {
+            try {
+                const url = new URL(process.env.QDRANT_URL);
+                return {
+                    host: url.hostname,
+                    port: parseInt(url.port) || 6333
+                };
+            } catch (error) {
+                console.warn('Invalid QDRANT_URL format, falling back to defaults:', error.message);
+            }
+        }
+        
+        // Fallback to individual environment variables or defaults
         return {
             host: process.env.QDRANT_HOST || 'localhost',
             port: parseInt(process.env.QDRANT_PORT) || 6333

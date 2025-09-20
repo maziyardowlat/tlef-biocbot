@@ -88,6 +88,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 courseId: courseId
             });
             
+            // Create AbortController for timeout
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 45000); // 45 second timeout
+            
             const response = await fetch('/api/chat', {
                 method: 'POST',
                 headers: {
@@ -98,15 +102,32 @@ document.addEventListener('DOMContentLoaded', () => {
                     mode: currentMode,
                     unitName: selectedUnit,
                     courseId: courseId
-                })
+                }),
+                signal: controller.signal
             });
             
+            clearTimeout(timeoutId);
+            
             if (!response.ok) {
-                const errorData = await response.json();
+                let errorData;
+                try {
+                    errorData = await response.json();
+                } catch (parseError) {
+                    // If response is not JSON (e.g., HTML error page), create a generic error
+                    const responseText = await response.text();
+                    console.error('Non-JSON error response:', responseText.substring(0, 200));
+                    throw new Error(`Server error (${response.status}): ${response.statusText}`);
+                }
                 throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
             }
             
-            const data = await response.json();
+            let data;
+            try {
+                data = await response.json();
+            } catch (parseError) {
+                console.error('Failed to parse JSON response:', parseError);
+                throw new Error('Invalid response format from server');
+            }
             
             if (!data.success) {
                 throw new Error(data.message || 'Failed to get response from LLM');
@@ -116,6 +137,16 @@ document.addEventListener('DOMContentLoaded', () => {
             
         } catch (error) {
             console.error('Error sending message to LLM:', error);
+            
+            // Handle specific error types
+            if (error.name === 'AbortError') {
+                throw new Error('Request timed out. Please try again with a shorter message.');
+            } else if (error.message.includes('Failed to fetch')) {
+                throw new Error('Cannot connect to server. Please check your internet connection.');
+            } else if (error.message.includes('timeout')) {
+                throw new Error('Request timed out. Please try again.');
+            }
+            
             throw error;
         }
     }

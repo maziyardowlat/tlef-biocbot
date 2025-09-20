@@ -183,7 +183,13 @@ app.get('/api/health', async (req, res) => {
     const healthStatus = {
         status: 'checking',
         timestamp: new Date().toISOString(),
-        services: {}
+        services: {},
+        environment: {
+            NODE_ENV: process.env.NODE_ENV,
+            LLM_PROVIDER: process.env.LLM_PROVIDER,
+            QDRANT_URL: process.env.QDRANT_URL ? 'SET' : 'NOT SET',
+            OLLAMA_ENDPOINT: process.env.OLLAMA_ENDPOINT ? 'SET' : 'NOT SET'
+        }
     };
     
     try {
@@ -197,6 +203,22 @@ app.get('/api/health', async (req, res) => {
             } catch (error) {
                 healthStatus.services.mongodb = { status: 'error', message: error.message };
             }
+        }
+        
+        // Test configuration loading
+        try {
+            const config = require('./services/config');
+            const llmConfig = config.getLLMConfig();
+            const vectorConfig = config.getVectorDBConfig();
+            healthStatus.services.config = { 
+                status: 'healthy', 
+                message: 'Configuration loaded successfully',
+                llmProvider: llmConfig.provider,
+                vectorHost: vectorConfig.host,
+                vectorPort: vectorConfig.port
+            };
+        } catch (error) {
+            healthStatus.services.config = { status: 'error', message: error.message };
         }
         
         // Test Qdrant connection
