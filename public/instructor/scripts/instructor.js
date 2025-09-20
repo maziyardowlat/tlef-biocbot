@@ -1769,6 +1769,9 @@ async function loadAssessmentQuestions() {
                         assessmentQuestions[lectureName] = [];
                     }
                     
+                    // Clear existing questions first to prevent duplicates
+                    assessmentQuestions[lectureName] = [];
+                    
                     // Convert database questions to local format
                     questions.forEach((dbQuestion, index) => {
                         console.log(`❓ [ASSESSMENT_QUESTIONS] Converting question ${index + 1} for ${lectureName}:`, dbQuestion);
