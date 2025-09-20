@@ -596,6 +596,7 @@ document.addEventListener('click', function(event) {
 
 // Calibration Questions functionality
 let currentCalibrationQuestions = [];
+let currentPassThreshold = 2; // Default pass threshold
 let currentQuestionIndex = 0;
 let studentAnswers = [];
 
@@ -849,6 +850,7 @@ async function loadQuestionsForSelectedUnit(unitName) {
         }
         
         console.log(`Selected unit data:`, selectedUnit);
+        console.log(`Unit pass threshold:`, selectedUnit.passThreshold);
         
         // Collect questions for this specific unit
         const unitQuestions = [];
@@ -978,7 +980,7 @@ async function loadQuestionsForSelectedUnit(unitName) {
         }
         
         // Start the assessment process with questions from the selected unit
-        startAssessmentWithQuestions(unitQuestions);
+        startAssessmentWithQuestions(unitQuestions, selectedUnit.passThreshold || 2);
         
     } catch (error) {
         console.error(`Error loading questions for unit ${unitName}:`, error);
@@ -1036,14 +1038,16 @@ function showNoQuestionsForUnitMessage(unitName) {
 /**
  * Start assessment with loaded questions
  */
-function startAssessmentWithQuestions(questions) {
+function startAssessmentWithQuestions(questions, passThreshold = 2) {
     console.log('=== STARTING ASSESSMENT ===');
+    console.log(`Pass threshold set to: ${passThreshold}`);
     
     // Clear any existing mode
     localStorage.removeItem('studentMode');
     
-    // Set up the questions
+    // Set up the questions and pass threshold
     currentCalibrationQuestions = questions;
+    currentPassThreshold = passThreshold;
     currentQuestionIndex = 0;
     studentAnswers = [];
     
@@ -1457,12 +1461,12 @@ async function calculateStudentMode() {
                 
             } else if (question.type === 'multiple-choice') {
                 // For multiple choice, check if the answer index matches
-                // Convert correct answer to index if it's a string
+                // Convert correct answer key to index
                 let expectedIndex = question.correctAnswer;
                 if (typeof expectedIndex === 'string') {
-                    // Try to find the index of the correct answer in options
+                    // Find the index of the correct answer key in the options
                     const optionKeys = Object.keys(question.options);
-                    expectedIndex = optionKeys.findIndex(key => question.options[key] === expectedIndex);
+                    expectedIndex = optionKeys.indexOf(expectedIndex);
                     if (expectedIndex === -1) expectedIndex = 0; // Default to 0 if not found
                 }
                 isCorrect = (studentAnswerIndex === expectedIndex);
@@ -1484,20 +1488,26 @@ async function calculateStudentMode() {
         }
         
         console.log(`Total correct: ${totalCorrect}/${totalQuestions}`);
+        console.log(`Pass threshold: ${currentPassThreshold}`);
         
         // Calculate percentage
         const percentage = (totalCorrect / totalQuestions) * 100;
         console.log(`Percentage: ${percentage}%`);
         
-        // Determine mode based on performance
-        // If they get 70% or higher, they're in protégé mode (ready for advanced learning)
+        // Determine mode based on performance using the instructor's pass threshold
+        // If they get the required number of questions correct, they're in protégé mode
         // Otherwise, they're in tutor mode (need more guidance)
-        const mode = (percentage >= 70) ? 'protege' : 'tutor';
+        const passed = totalCorrect >= currentPassThreshold;
+        const mode = passed ? 'protege' : 'tutor';
+        
+        console.log(`Student passed: ${passed} (needed ${currentPassThreshold}, got ${totalCorrect})`);
         
         const score = {
             totalCorrect: totalCorrect,
             totalQuestions: totalQuestions,
             percentage: percentage,
+            passThreshold: currentPassThreshold,
+            passed: passed,
             mode: mode
         };
         
@@ -1559,7 +1569,6 @@ function showModeResult(mode, score) {
     contentDiv.classList.add('message-content', 'standard-mode-content');
     
     const resultText = document.createElement('p');
-    
     
     
     // Show mode explanation
