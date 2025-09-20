@@ -30,14 +30,18 @@ class QdrantService {
             console.log('🔧 Initializing Qdrant service...');
             console.log('Environment variables for Qdrant:', {
                 QDRANT_URL: process.env.QDRANT_URL,
-                QDRANT_HOST: process.env.QDRANT_HOST,
-                QDRANT_PORT: process.env.QDRANT_PORT,
                 QDRANT_API_KEY: process.env.QDRANT_API_KEY ? 'SET' : 'NOT SET'
             });
             
             // Initialize Qdrant client using centralized configuration
-            const vectorDBConfig = config.getVectorDBConfig();
-            console.log('Vector DB config:', vectorDBConfig);
+            let vectorDBConfig;
+            try {
+                vectorDBConfig = config.getVectorDBConfig();
+                console.log('Vector DB config:', vectorDBConfig);
+            } catch (configError) {
+                console.error('❌ Failed to get vector DB config:', configError);
+                throw new Error(`Vector DB configuration error: ${configError.message}`);
+            }
             
             const qdrantUrl = process.env.QDRANT_URL || `http://${vectorDBConfig.host}:${vectorDBConfig.port}`;
             const qdrantApiKey = process.env.QDRANT_API_KEY || 'super-secret-dev-key';

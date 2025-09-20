@@ -14,8 +14,6 @@ NODE_ENV=production
 
 # Qdrant Configuration
 QDRANT_URL=http://localhost:6333
-QDRANT_HOST=localhost
-QDRANT_PORT=6333
 QDRANT_API_KEY=super-secret-dev-key
 
 # LLM Provider Configuration

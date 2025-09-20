@@ -104,11 +104,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // Load the saved documents from the database
     loadDocuments();
     
-    // Load the saved assessment questions from the database
-    loadAssessmentQuestions();
-    
-    // Load the saved pass thresholds from the database
-    loadPassThresholds();
+    // Load the saved assessment questions from the database first
+    loadAssessmentQuestions().then(() => {
+        // Load the saved pass thresholds from the database after questions are loaded
+        loadPassThresholds();
+    });
     
     // Set up threshold input event listeners
     setupThresholdInputListeners();
@@ -1769,6 +1769,9 @@ async function loadAssessmentQuestions() {
                         assessmentQuestions[lectureName] = [];
                     }
                     
+                    // Clear existing questions first to prevent duplicates
+                    assessmentQuestions[lectureName] = [];
+                    
                     // Convert database questions to local format
                     questions.forEach((dbQuestion, index) => {
                         console.log(`❓ [ASSESSMENT_QUESTIONS] Converting question ${index + 1} for ${lectureName}:`, dbQuestion);
@@ -1854,6 +1857,8 @@ async function savePassThreshold(lectureName, threshold) {
         const courseId = await getCurrentCourseId();
         const instructorId = getCurrentInstructorId();
         
+        console.log(`[SAVE_PASS_THRESHOLD] Saving threshold for ${lectureName}: ${threshold} (courseId: ${courseId}, instructorId: ${instructorId})`);
+        
         const response = await fetch('/api/lectures/pass-threshold', {
             method: 'POST',
             headers: {
@@ -1873,12 +1878,13 @@ async function savePassThreshold(lectureName, threshold) {
         }
         
         const result = await response.json();
-        
-        // Update local state to reflect the change
-        await reloadPassThresholds();
+        console.log(`[SAVE_PASS_THRESHOLD] Success response:`, result);
         
         // Show success notification
         showNotification(result.message, 'success');
+        
+        // No need to reload all thresholds - the UI is already updated
+        // and the database has the correct value
         
     } catch (error) {
         console.error('Error saving pass threshold:', error);
@@ -1915,11 +1921,15 @@ async function reloadPassThresholds() {
                 
                 if (thresholdInput) {
                     thresholdInput.value = passThreshold;
+                    console.log(`[RELOAD_PASS_THRESHOLDS] Updated threshold input for ${lectureName}: ${passThreshold}`);
                     
-                    // Also update the display text if it exists
-                    const thresholdValue = item.querySelector(`#threshold-value-${lectureName.toLowerCase().replace(/\s+/g, '-')}`);
-                    if (thresholdValue) {
-                        thresholdValue.textContent = passThreshold;
+                    // Also update the display to show the loaded value
+                    const weekId = thresholdInput.id.replace('pass-threshold-', '');
+                    const thresholdDisplay = document.getElementById(`threshold-value-${weekId}`);
+                    if (thresholdDisplay) {
+                        const questionsContainer = document.getElementById(`assessment-questions-${weekId}`);
+                        const totalQuestions = questionsContainer ? questionsContainer.querySelectorAll('.question-item').length : 0;
+                        thresholdDisplay.textContent = `${passThreshold}/${totalQuestions}`;
                     }
                 }
             }
@@ -1953,6 +1963,8 @@ async function loadPassThresholds() {
                 const result = await response.json();
                 const passThreshold = result.data.passThreshold;
                 
+                console.log(`[LOAD_PASS_THRESHOLDS] API response for ${lectureName}:`, result);
+                
                 // Find and update the threshold input for this lecture
                 // Convert lecture name to ID format (e.g., "Unit 1" -> "unit-1")
                 const thresholdId = `pass-threshold-${lectureName.toLowerCase().replace(/\s+/g, '-')}`;
@@ -1960,13 +1972,21 @@ async function loadPassThresholds() {
                 
                 if (thresholdInput) {
                     thresholdInput.value = passThreshold;
+                    console.log(`[LOAD_PASS_THRESHOLDS] Updated threshold input for ${lectureName}: ${passThreshold}`);
                     
-                    // Also update the display text if it exists
-                    const thresholdValue = item.querySelector(`#threshold-value-${lectureName.toLowerCase().replace(/\s+/g, '-')}`);
-                    if (thresholdValue) {
-                        thresholdValue.textContent = passThreshold;
+                    // Also update the display to show the loaded value
+                    const weekId = thresholdInput.id.replace('pass-threshold-', '');
+                    const thresholdDisplay = document.getElementById(`threshold-value-${weekId}`);
+                    if (thresholdDisplay) {
+                        const questionsContainer = document.getElementById(`assessment-questions-${weekId}`);
+                        const totalQuestions = questionsContainer ? questionsContainer.querySelectorAll('.question-item').length : 0;
+                        thresholdDisplay.textContent = `${passThreshold}/${totalQuestions}`;
                     }
+                } else {
+                    console.log(`[LOAD_PASS_THRESHOLDS] Threshold input not found for ${lectureName} (ID: ${thresholdId})`);
                 }
+            } else {
+                console.log(`[LOAD_PASS_THRESHOLDS] Failed to load threshold for ${lectureName}: ${response.status}`);
             }
         }
         
@@ -1985,27 +2005,20 @@ function setupThresholdInputListeners() {
     
     thresholdInputs.forEach(input => {
         // Add change event listener
-        input.addEventListener('change', function() {
+        input.addEventListener('change', function(event) {
             const threshold = parseInt(this.value);
             // Extract the exact lecture name from the ID (e.g., "Unit-1" -> "Unit 1")
             const lectureName = this.id.replace('pass-threshold-', '').replace(/-/g, ' ');
+            
+            // Update the display first
+            handleThresholdInputChange(event);
             
             // Save the threshold to MongoDB
             savePassThreshold(lectureName, threshold);
         });
         
         // Add input event listener for real-time updates
-        input.addEventListener('input', function() {
-            const threshold = parseInt(this.value);
-            // Extract the exact lecture name from the ID
-            const lectureName = this.id.replace('pass-threshold-', '').replace(/-/g, ' ');
-            
-            // Update the display text if it exists
-            const thresholdValue = document.querySelector(`#threshold-value-${lectureName.toLowerCase().replace(/\s+/g, '-')}`);
-            if (thresholdValue) {
-                thresholdValue.textContent = threshold;
-            }
-        });
+        input.addEventListener('input', handleThresholdInputChange);
     });
 }
 
@@ -3341,13 +3354,45 @@ function updateQuestionsDisplay(week) {
     
     questionsContainer.innerHTML = html;
     
-    // Update pass threshold max value
-    const thresholdInput = document.getElementById(`pass-threshold-${week.toLowerCase().replace(/\s+/g, '-')}`);
+    // Update pass threshold max value and display
+    const weekId = week.toLowerCase().replace(/\s+/g, '-');
+    const thresholdInput = document.getElementById(`pass-threshold-${weekId}`);
+    const thresholdDisplay = document.getElementById(`threshold-value-${weekId}`);
+    
     if (thresholdInput) {
         thresholdInput.max = questions.length;
         if (parseInt(thresholdInput.value) > questions.length) {
             thresholdInput.value = questions.length;
         }
+    }
+    
+    // Update the threshold display text to show current total questions
+    if (thresholdDisplay) {
+        thresholdDisplay.textContent = questions.length;
+    }
+    
+    // Event listeners for threshold input are handled by setupThresholdInputListeners()
+    // No need to add them here to avoid duplicates
+}
+
+/**
+ * Handle threshold input change events
+ * @param {Event} event - The input event
+ */
+function handleThresholdInputChange(event) {
+    const thresholdInput = event.target;
+    const weekId = thresholdInput.id.replace('pass-threshold-', '');
+    const thresholdDisplay = document.getElementById(`threshold-value-${weekId}`);
+    
+    if (thresholdDisplay) {
+        // Get the current total questions count
+        const questionsContainer = document.getElementById(`assessment-questions-${weekId}`);
+        const totalQuestions = questionsContainer ? questionsContainer.querySelectorAll('.question-item').length : 0;
+        
+        // Update the display to show current input value vs total questions
+        thresholdDisplay.textContent = `${thresholdInput.value}/${totalQuestions}`;
+        
+        console.log(`Threshold input changed: ${thresholdInput.value}/${totalQuestions}`);
     }
 }
 
@@ -3774,8 +3819,15 @@ function checkAIGenerationAvailability(week) {
  * @param {string} week - Week identifier
  */
 function saveAssessment(week) {
-    const weekLower = week.toLowerCase().replace(' ', '');
+    const weekLower = week.toLowerCase().replace(/\s+/g, '-');
     const thresholdInput = document.getElementById(`pass-threshold-${weekLower}`);
+    
+    if (!thresholdInput) {
+        console.error(`Threshold input not found for week: ${week}, ID: pass-threshold-${weekLower}`);
+        alert('Error: Could not find threshold input for this assessment.');
+        return;
+    }
+    
     const threshold = parseInt(thresholdInput.value);
     const questions = assessmentQuestions[week] || [];
     
@@ -3789,17 +3841,14 @@ function saveAssessment(week) {
         return;
     }
     
-    // Save assessment data (this would normally go to backend)
-    const assessmentData = {
-        week: week,
-        questions: questions,
-        passThreshold: threshold,
-        totalQuestions: questions.length,
-        savedAt: new Date().toISOString()
-    };
-    
-    // Show success message
-    alert(`Assessment saved for ${week}!\nTotal Questions: ${questions.length}\nPass Threshold: ${threshold}`);
+    // Save the pass threshold to the backend
+    savePassThreshold(week, threshold).then(() => {
+        // Show success message
+        alert(`Assessment saved for ${week}!\nTotal Questions: ${questions.length}\nPass Threshold: ${threshold}`);
+    }).catch((error) => {
+        console.error('Error saving assessment:', error);
+        alert(`Error saving assessment: ${error.message}`);
+    });
 }
 
 // Initialize assessment system - this will be called from the main DOMContentLoaded listener
@@ -4103,7 +4152,7 @@ function createUnitElement(unitName, unitData, isExpanded = false) {
                         <label for="pass-threshold-${unitId}">Questions required to pass:</label>
                         <input type="number" id="pass-threshold-${unitId}" min="1" max="10" value="2" class="threshold-input">
                         <span class="threshold-help">out of total questions</span>
-                        <span class="threshold-display" id="threshold-value-${unitId}">2</span>
+                        <span class="threshold-display" id="threshold-value-${unitId}">0</span>
                     </div>
                     
                     <!-- Questions List -->
@@ -4168,10 +4217,13 @@ function loadExistingUnitData(onboardingData) {
             if (thresholdInput) {
                 thresholdInput.value = unit.passThreshold;
                 
-                // Also update the threshold display
+                // Update the threshold display to show total questions count
                 const thresholdDisplay = document.getElementById(`threshold-value-${unitId}`);
                 if (thresholdDisplay) {
-                    thresholdDisplay.textContent = unit.passThreshold;
+                    // Get the current total questions count for this unit
+                    const questionsContainer = document.getElementById(`assessment-questions-${unitId}`);
+                    const totalQuestions = questionsContainer ? questionsContainer.querySelectorAll('.question-item').length : 0;
+                    thresholdDisplay.textContent = totalQuestions;
                 }
             }
         }
@@ -4944,7 +4996,7 @@ function renderCourseUnits(units) {
                             <label for="pass-threshold-${weekId}">Questions required to pass:</label>
                             <input type="number" id="pass-threshold-${weekId}" min="1" max="10" value="2" class="threshold-input">
                             <span class="threshold-help">out of total questions</span>
-                            <span class="threshold-display" id="threshold-value-${weekId}">2</span>
+                            <span class="threshold-display" id="threshold-value-${weekId}">0</span>
                         </div>
                         
                         <!-- Questions List -->

@@ -21,42 +21,46 @@ const qdrantService = new QdrantService();
  * Retrieves relevant document chunks based on student's question and selected unit
  */
 router.post('/', async (req, res) => {
+    const requestId = Math.random().toString(36).substring(7);
+    const startTime = Date.now();
+    
     try {
-        console.log('=== CHAT REQUEST START ===');
-        console.log('Request body:', JSON.stringify(req.body, null, 2));
-        console.log('Environment variables check:', {
+        console.log(`=== CHAT REQUEST START [${requestId}] ===`);
+        console.log(`[${requestId}] Request body:`, JSON.stringify(req.body, null, 2));
+        console.log(`[${requestId}] Environment variables check:`, {
             NODE_ENV: process.env.NODE_ENV,
             LLM_PROVIDER: process.env.LLM_PROVIDER,
             OLLAMA_ENDPOINT: process.env.OLLAMA_ENDPOINT,
             OLLAMA_MODEL: process.env.OLLAMA_MODEL,
             QDRANT_URL: process.env.QDRANT_URL,
-            QDRANT_HOST: process.env.QDRANT_HOST,
-            QDRANT_PORT: process.env.QDRANT_PORT
+            LLM_EMBEDDING_MODEL: process.env.LLM_EMBEDDING_MODEL
         });
         
         const { message, conversationId, mode, unitName, courseId } = req.body;
         
         // Validate required fields
         if (!message || typeof message !== 'string') {
-            console.log('❌ Validation failed: Message is required and must be a string');
+            console.log(`[${requestId}] ❌ Validation failed: Message is required and must be a string`);
             return res.status(400).json({
                 success: false,
-                message: 'Message is required and must be a string'
+                message: 'Message is required and must be a string',
+                requestId: requestId
             });
         }
         
         if (!unitName || typeof unitName !== 'string') {
-            console.log('❌ Validation failed: Unit name is required for RAG functionality');
+            console.log(`[${requestId}] ❌ Validation failed: Unit name is required for RAG functionality`);
             return res.status(400).json({
                 success: false,
-                message: 'Unit name is required for RAG functionality'
+                message: 'Unit name is required for RAG functionality',
+                requestId: requestId
             });
         }
         
-        console.log(`💬 Chat request received: "${message.substring(0, 50)}..."`);
-        console.log(`🎯 Mode: ${mode || 'default'}`);
-        console.log(`📚 Unit: ${unitName}`);
-        console.log(`🏫 Course: ${courseId || 'default'}`);
+        console.log(`[${requestId}] 💬 Chat request received: "${message.substring(0, 50)}..."`);
+        console.log(`[${requestId}] 🎯 Mode: ${mode || 'default'}`);
+        console.log(`[${requestId}] 📚 Unit: ${unitName}`);
+        console.log(`[${requestId}] 🏫 Course: ${courseId || 'default'}`);
         
         // Step 1: Initialize Qdrant service if needed (optional for basic chat)
         let qdrantAvailable = false;
@@ -141,29 +145,49 @@ IMPORTANT: Use the provided course material context to answer questions. Always 
 
 ${contextWindow}`;
         
-        // Step 5: Send enhanced prompt to LLM
-        console.log('🤖 Sending enhanced prompt to LLM...');
-        console.log('LLM service status:', llmService.getStatus());
+        // Step 5: Send enhanced prompt to LLM with timeout
+        console.log(`[${requestId}] 🤖 Sending enhanced prompt to LLM...`);
+        console.log(`[${requestId}] LLM service status:`, llmService.getStatus());
         
         let response;
         try {
-            response = await llmService.sendMessage(message, {
+            // Add timeout wrapper for LLM call
+            const llmPromise = llmService.sendMessage(message, {
                 temperature: mode === 'protege' ? 0.8 : 0.6,
                 maxTokens: mode === 'protege' ? 600 : 400,
                 systemPrompt: ragSystemPrompt
             });
-            console.log('✅ LLM response received successfully');
+            
+            // Set timeout of 30 seconds for LLM response
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('LLM request timeout after 30 seconds')), 30000);
+            });
+            
+            response = await Promise.race([llmPromise, timeoutPromise]);
+            console.log(`[${requestId}] ✅ LLM response received successfully`);
         } catch (llmError) {
-            console.error('❌ Error calling LLM service:', llmError);
-            console.error('LLM error details:', {
+            console.error(`[${requestId}] ❌ Error calling LLM service:`, llmError);
+            console.error(`[${requestId}] LLM error details:`, {
                 message: llmError.message,
                 stack: llmError.stack,
-                name: llmError.name
+                name: llmError.name,
+                code: llmError.code
             });
-            throw new Error(`LLM service error: ${llmError.message}`);
+            
+            // Provide more specific error messages
+            if (llmError.message.includes('timeout')) {
+                throw new Error('LLM request timed out. Please try again with a shorter message.');
+            } else if (llmError.message.includes('ECONNREFUSED')) {
+                throw new Error('Cannot connect to LLM service. Please check if Ollama is running.');
+            } else if (llmError.message.includes('ENOTFOUND')) {
+                throw new Error('LLM service endpoint not found. Please check your configuration.');
+            } else {
+                throw new Error(`LLM service error: ${llmError.message}`);
+            }
         }
         
         // Step 6: Format response with citations
+        const processingTime = Date.now() - startTime;
         const chatResponse = {
             success: true,
             message: response.content,
@@ -175,24 +199,43 @@ ${contextWindow}`;
             citations: citations,
             ragEnabled: qdrantAvailable,
             chunksRetrieved: relevantChunks.length,
+            processingTime: processingTime,
+            requestId: requestId,
             services: {
                 qdrant: qdrantAvailable ? 'available' : 'unavailable',
                 llm: 'available'
             }
         };
         
-        console.log(`✅ RAG response sent successfully with ${citations.length} citations`);
+        console.log(`[${requestId}] ✅ RAG response sent successfully with ${citations.length} citations (${processingTime}ms)`);
         
         res.json(chatResponse);
         
     } catch (error) {
-        console.error('❌ Error in RAG chat endpoint:', error);
+        const processingTime = Date.now() - startTime;
+        console.error(`[${requestId}] ❌ Error in RAG chat endpoint:`, error);
+        console.error(`[${requestId}] Error details:`, {
+            message: error.message,
+            stack: error.stack,
+            name: error.name,
+            code: error.code,
+            processingTime: processingTime
+        });
         
         // Provide user-friendly error messages
         let errorMessage = 'Sorry, I encountered an error processing your message.';
         let statusCode = 500;
         
-        if (error.message.includes('OLLAMA_ENDPOINT')) {
+        if (error.message.includes('timeout')) {
+            errorMessage = 'Request timed out. Please try again with a shorter message.';
+            statusCode = 408;
+        } else if (error.message.includes('ECONNREFUSED')) {
+            errorMessage = 'Cannot connect to required services. Please try again later.';
+            statusCode = 503;
+        } else if (error.message.includes('ENOTFOUND')) {
+            errorMessage = 'Service endpoint not found. Please check your configuration.';
+            statusCode = 503;
+        } else if (error.message.includes('OLLAMA_ENDPOINT')) {
             errorMessage = 'Ollama service is not available. Please check if Ollama is running.';
             statusCode = 503;
         } else if (error.message.includes('API key')) {
@@ -209,6 +252,8 @@ ${contextWindow}`;
         res.status(statusCode).json({
             success: false,
             message: errorMessage,
+            requestId: requestId,
+            processingTime: processingTime,
             error: process.env.NODE_ENV === 'development' ? error.message : undefined,
             timestamp: new Date().toISOString()
         });
