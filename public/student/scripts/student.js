@@ -90,7 +90,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Create AbortController for timeout
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 45000); // 45 second timeout
+            const timeoutId = setTimeout(() => controller.abort(), 70000); // 70 second timeout
             
             const response = await fetch('/api/chat', {
                 method: 'POST',

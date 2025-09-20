@@ -64,43 +64,50 @@ router.post('/', async (req, res) => {
         
         // Step 1: Initialize Qdrant service if needed (optional for basic chat)
         let qdrantAvailable = false;
+        const qdrantStartTime = Date.now();
         if (!qdrantService.client) {
-            console.log('🔧 Initializing Qdrant service for RAG...');
+            console.log(`[${requestId}] 🔧 Initializing Qdrant service for RAG...`);
             try {
                 await qdrantService.initialize();
-                console.log('✅ Qdrant service initialized successfully');
+                const qdrantTime = Date.now() - qdrantStartTime;
+                console.log(`[${requestId}] ✅ Qdrant service initialized successfully (${qdrantTime}ms)`);
                 qdrantAvailable = true;
             } catch (qdrantError) {
-                console.error('❌ Failed to initialize Qdrant service:', qdrantError);
-                console.log('⚠️ Continuing without RAG functionality');
+                const qdrantTime = Date.now() - qdrantStartTime;
+                console.error(`[${requestId}] ❌ Failed to initialize Qdrant service (${qdrantTime}ms):`, qdrantError);
+                console.log(`[${requestId}] ⚠️ Continuing without RAG functionality`);
                 qdrantAvailable = false;
             }
         } else {
             qdrantAvailable = true;
+            console.log(`[${requestId}] ✅ Qdrant service already initialized`);
         }
         
         // Step 2: Retrieve relevant document chunks using RAG (if available)
         let relevantChunks = [];
+        const searchStartTime = Date.now();
         if (qdrantAvailable) {
-            console.log('🔍 Retrieving relevant document chunks...');
+            console.log(`[${requestId}] 🔍 Retrieving relevant document chunks...`);
             const searchFilters = {
                 courseId: courseId || 'default',
                 lectureName: unitName
             };
             
-            console.log('Search filters:', searchFilters);
+            console.log(`[${requestId}] Search filters:`, searchFilters);
             
             try {
                 relevantChunks = await qdrantService.searchDocuments(message, searchFilters, 5);
-                console.log(`📄 Found ${relevantChunks.length} relevant chunks`);
+                const searchTime = Date.now() - searchStartTime;
+                console.log(`[${requestId}] 📄 Found ${relevantChunks.length} relevant chunks (${searchTime}ms)`);
             } catch (searchError) {
-                console.error('❌ Error during document search:', searchError);
+                const searchTime = Date.now() - searchStartTime;
+                console.error(`[${requestId}] ❌ Error during document search (${searchTime}ms):`, searchError);
                 // Continue without RAG context if search fails
-                console.log('⚠️ Continuing without RAG context due to search error');
+                console.log(`[${requestId}] ⚠️ Continuing without RAG context due to search error`);
                 relevantChunks = [];
             }
         } else {
-            console.log('⚠️ Qdrant not available, skipping RAG search');
+            console.log(`[${requestId}] ⚠️ Qdrant not available, skipping RAG search`);
         }
         
         // Step 3: Build context window with retrieved chunks and citations
@@ -150,6 +157,7 @@ ${contextWindow}`;
         console.log(`[${requestId}] LLM service status:`, llmService.getStatus());
         
         let response;
+        const llmStartTime = Date.now();
         try {
             // Add timeout wrapper for LLM call
             const llmPromise = llmService.sendMessage(message, {
@@ -158,20 +166,23 @@ ${contextWindow}`;
                 systemPrompt: ragSystemPrompt
             });
             
-            // Set timeout of 30 seconds for LLM response
+            // Set timeout of 60 seconds for LLM response (increased for production)
             const timeoutPromise = new Promise((_, reject) => {
-                setTimeout(() => reject(new Error('LLM request timeout after 30 seconds')), 30000);
+                setTimeout(() => reject(new Error('LLM request timeout after 60 seconds')), 60000);
             });
             
             response = await Promise.race([llmPromise, timeoutPromise]);
-            console.log(`[${requestId}] ✅ LLM response received successfully`);
+            const llmTime = Date.now() - llmStartTime;
+            console.log(`[${requestId}] ✅ LLM response received successfully (${llmTime}ms)`);
         } catch (llmError) {
-            console.error(`[${requestId}] ❌ Error calling LLM service:`, llmError);
+            const llmTime = Date.now() - llmStartTime;
+            console.error(`[${requestId}] ❌ Error calling LLM service (${llmTime}ms):`, llmError);
             console.error(`[${requestId}] LLM error details:`, {
                 message: llmError.message,
                 stack: llmError.stack,
                 name: llmError.name,
-                code: llmError.code
+                code: llmError.code,
+                processingTime: llmTime
             });
             
             // Provide more specific error messages
@@ -280,6 +291,62 @@ router.get('/status', async (req, res) => {
             success: false,
             message: 'Failed to get chat status',
             error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+});
+
+/**
+ * POST /api/chat/simple
+ * Simple chat endpoint without RAG for debugging
+ */
+router.post('/simple', async (req, res) => {
+    const requestId = Math.random().toString(36).substring(7);
+    const startTime = Date.now();
+    
+    try {
+        console.log(`=== SIMPLE CHAT REQUEST START [${requestId}] ===`);
+        
+        const { message } = req.body;
+        
+        if (!message || typeof message !== 'string') {
+            return res.status(400).json({
+                success: false,
+                message: 'Message is required and must be a string',
+                requestId: requestId
+            });
+        }
+        
+        console.log(`[${requestId}] Simple chat request: "${message.substring(0, 50)}..."`);
+        
+        // Test LLM service directly
+        const llmStartTime = Date.now();
+        const response = await llmService.sendMessage(message, {
+            temperature: 0.6,
+            maxTokens: 200
+        });
+        const llmTime = Date.now() - llmStartTime;
+        
+        console.log(`[${requestId}] ✅ Simple LLM response received (${llmTime}ms)`);
+        
+        const processingTime = Date.now() - startTime;
+        res.json({
+            success: true,
+            message: response.content,
+            model: response.model,
+            processingTime: processingTime,
+            llmTime: llmTime,
+            requestId: requestId
+        });
+        
+    } catch (error) {
+        const processingTime = Date.now() - startTime;
+        console.error(`[${requestId}] ❌ Simple chat error (${processingTime}ms):`, error);
+        
+        res.status(500).json({
+            success: false,
+            message: error.message,
+            requestId: requestId,
+            processingTime: processingTime
         });
     }
 });
