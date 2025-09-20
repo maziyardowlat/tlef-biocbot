@@ -7,18 +7,13 @@
 const express = require('express');
 const router = express.Router();
 const llmService = require('../services/llm');
-const QdrantService = require('../services/qdrantService');
 
 // Middleware to parse JSON bodies
 router.use(express.json());
 
-// Initialize Qdrant service for RAG
-const qdrantService = new QdrantService();
-
 /**
  * POST /api/chat
- * Send a message to the LLM with RAG (Retrieval-Augmented Generation)
- * Retrieves relevant document chunks based on student's question and selected unit
+ * Send a message to the LLM and get a response
  */
 router.post('/', async (req, res) => {
     try {
