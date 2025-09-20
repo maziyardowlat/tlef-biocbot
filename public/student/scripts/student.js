@@ -310,7 +310,6 @@ function formatTimestamp(timestamp) {
         });
     }
 }
-
 /**
  * Toggle the flag menu visibility
  * @param {HTMLElement} button - The flag button element
