@@ -16,13 +16,33 @@ router.use(express.json());
  */
 router.post('/', async (req, res) => {
     try {
-        const { course, weeks, lecturesPerWeek, contentTypes, instructorId } = req.body;
+        // Get authenticated user information
+        const user = req.user;
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                message: 'Authentication required'
+            });
+        }
+        
+        // Only instructors can create courses
+        if (user.role !== 'instructor') {
+            return res.status(403).json({
+                success: false,
+                message: 'Only instructors can create courses'
+            });
+        }
+        
+        const { course, weeks, lecturesPerWeek, contentTypes } = req.body;
+        
+        // Use authenticated user's ID
+        const instructorId = user.userId;
         
         // Validate required fields
-        if (!course || !weeks || !lecturesPerWeek || !instructorId) {
+        if (!course || !weeks || !lecturesPerWeek) {
             return res.status(400).json({
                 success: false,
-                message: 'Missing required fields: course, weeks, lecturesPerWeek, instructorId'
+                message: 'Missing required fields: course, weeks, lecturesPerWeek'
             });
         }
         
@@ -220,14 +240,25 @@ router.post('/:courseId/content', async (req, res) => {
  */
 router.get('/', async (req, res) => {
     try {
-        const instructorId = req.query.instructorId;
-        
-        if (!instructorId) {
-            return res.status(400).json({
+        // Get authenticated user information
+        const user = req.user;
+        if (!user) {
+            return res.status(401).json({
                 success: false,
-                message: 'instructorId is required'
+                message: 'Authentication required'
             });
         }
+        
+        // Only instructors can access their courses
+        if (user.role !== 'instructor') {
+            return res.status(403).json({
+                success: false,
+                message: 'Only instructors can access courses'
+            });
+        }
+        
+        // Use authenticated user's ID
+        const instructorId = user.userId;
         
         // Get database instance from app.locals
         const db = req.app.locals.db;
@@ -277,10 +308,21 @@ router.get('/', async (req, res) => {
 router.get('/:courseId', async (req, res) => {
     try {
         const { courseId } = req.params;
-        const instructorId = req.query.instructorId;
         
-        // If no instructorId provided, treat as student request
-        if (!instructorId) {
+        // Get authenticated user information
+        const user = req.user;
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                message: 'Authentication required'
+            });
+        }
+        
+        // Use authenticated user's ID
+        const instructorId = user.userId;
+        
+        // Check if user is instructor or student
+        if (user.role === 'student') {
             console.log(`Student request for course: ${courseId}`);
             return await getCourseForStudent(req, res, courseId);
         }

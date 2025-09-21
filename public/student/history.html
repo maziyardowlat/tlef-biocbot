@@ -23,10 +23,11 @@
             </nav>
             <div class="user-info">
                 <div class="user-avatar">S</div>
-                <div class="user-name">Student Name</div>
-                <div class="user-role">Student - BIOC 202</div>
-                <div class="switch-role">
-                    <a href="/">Switch Role</a>
+                <div class="user-name" id="user-display-name">Student Name</div>
+                <div class="user-role">Student</div>
+                <div class="user-actions">
+                    <a href="/student/settings" class="user-action">Settings</a>
+                    <a href="#" id="logout-btn" class="user-action">Logout</a>
                 </div>
             </div>
         </aside>
@@ -106,6 +107,7 @@
             </div>
         </main>
     </div>
+    <script src="../common/scripts/auth.js"></script>
     <script src="./scripts/history.js"></script>
 </body>
 </html> 

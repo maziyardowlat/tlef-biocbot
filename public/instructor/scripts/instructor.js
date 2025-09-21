@@ -6,8 +6,11 @@ let aiGenerationCount = 0;
 let lastGeneratedContent = null;
 let currentQuestionType = null;
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     console.log('🚀 [DOM_LOADED] Instructor page loaded');
+    
+    // Wait for authentication to be initialized
+    await waitForAuth();
     
     // Test if AI button exists
     const aiButton = document.getElementById('ai-generate-btn');
@@ -118,11 +121,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // Set up threshold input event listeners
     setupThresholdInputListeners();
     
+    // Load available courses for the dropdown
+    loadAvailableCourses();
+    
     // Load course data if available (either from onboarding or existing course)
     loadCourseData();
     
     // Add global cleanup button
-    addGlobalCleanupButton();
+    // addGlobalCleanupButton(); // Function not implemented yet
     
     // Handle accordion toggling
     accordionHeaders.forEach(header => {
@@ -889,14 +895,7 @@ async function updatePublishStatus(lectureName, isPublished) {
     }
 }
 
-/**
- * Get current instructor ID (placeholder function)
- * @returns {string} Instructor ID
- */
-function getCurrentInstructorId() {
-    // In a real implementation, this would get the instructor ID from the session/token
-    return 'instructor-123';
-}
+// getCurrentInstructorId() is now provided by ../common/scripts/auth.js
 
 /**
  * Get the current course ID for the instructor
@@ -3999,7 +3998,11 @@ async function loadCourseData() {
         }
         
         // If no courseId in URL, check if instructor has any existing courses
-        const instructorId = 'instructor-123'; // This would come from authentication
+        const instructorId = getCurrentInstructorId();
+        if (!instructorId) {
+            console.error('No instructor ID found. User not authenticated.');
+            return;
+        }
         const response = await fetch(`/api/onboarding/instructor/${instructorId}`);
         
         if (response.ok) {
@@ -4037,6 +4040,12 @@ async function loadSpecificCourse(courseId) {
         const result = await response.json();
         const courseData = result.data;
         
+        // Update the course title in the header
+        const courseTitleElement = document.getElementById('course-title');
+        if (courseTitleElement && courseData.courseName) {
+            courseTitleElement.textContent = courseData.courseName;
+        }
+        
         // Generate units dynamically based on course structure
         if (courseData.courseStructure && courseData.courseStructure.totalUnits > 0) {
             generateUnitsFromOnboarding(courseData);
@@ -4059,6 +4068,12 @@ async function loadSpecificCourse(courseId) {
  * Show empty course state when no course exists
  */
 function showEmptyCourseState() {
+    // Update the course title to show no course state
+    const courseTitleElement = document.getElementById('course-title');
+    if (courseTitleElement) {
+        courseTitleElement.textContent = 'No Course Found';
+    }
+    
     const container = document.getElementById('dynamic-units-container');
     if (container) {
         container.innerHTML = `
@@ -5335,5 +5350,131 @@ async function submitRegenerate() {
         // Restore button state
         submitButton.innerHTML = originalText;
         submitButton.disabled = false;
+    }
+}
+
+/**
+ * Wait for authentication to be initialized
+ * @returns {Promise<void>}
+ */
+async function waitForAuth() {
+    // Wait for auth.js to initialize
+    let attempts = 0;
+    const maxAttempts = 50; // 5 seconds max wait
+    
+    while (attempts < maxAttempts) {
+        if (typeof getCurrentInstructorId === 'function' && getCurrentInstructorId()) {
+            console.log('✅ [AUTH] Authentication ready');
+            return;
+        }
+        
+        // Wait 100ms before next attempt
+        await new Promise(resolve => setTimeout(resolve, 100));
+        attempts++;
+    }
+    
+    console.warn('⚠️ [AUTH] Authentication not ready after 5 seconds, proceeding anyway');
+}
+
+/**
+ * Load available courses for the instructor dropdown
+ */
+async function loadAvailableCourses() {
+    try {
+        const courseSelect = document.getElementById('course-select');
+        const courseTitle = document.getElementById('course-title');
+        
+        if (!courseSelect) return;
+        
+        // Fetch courses from the API
+        const response = await fetch('/api/courses/available/all');
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        
+        if (!result.success) {
+            throw new Error(result.message || 'Failed to fetch courses');
+        }
+        
+        const courses = result.data;
+        
+        console.log('All available courses from API:', courses);
+        
+        // Filter out duplicate courses by courseId
+        const uniqueCourses = courses.filter((course, index, self) => 
+            index === self.findIndex(c => c.courseId === course.courseId)
+        );
+        
+        console.log('Unique courses after deduplication:', uniqueCourses);
+        
+        // Clear loading option
+        courseSelect.innerHTML = '';
+        
+        // Add course options
+        uniqueCourses.forEach(course => {
+            const option = document.createElement('option');
+            option.value = course.courseId;
+            option.textContent = course.courseName;
+            courseSelect.appendChild(option);
+        });
+        
+        // Set default selection to the most recent course (or first if only one)
+        if (uniqueCourses.length > 0) {
+            // Sort by creation date to get the most recent course first
+            const sortedCourses = uniqueCourses.sort((a, b) => {
+                const dateA = new Date(a.createdAt || 0);
+                const dateB = new Date(b.createdAt || 0);
+                return dateB - dateA; // Most recent first
+            });
+            
+            const defaultCourse = sortedCourses[0];
+            courseSelect.value = defaultCourse.courseId;
+            
+            // Update the course title to match the selected course
+            if (courseTitle) {
+                courseTitle.textContent = defaultCourse.courseName;
+            }
+            
+            console.log('Default course selected:', defaultCourse.courseName);
+        } else {
+            // No courses available
+            const option = document.createElement('option');
+            option.value = '';
+            option.textContent = 'No courses available';
+            courseSelect.appendChild(option);
+            
+            if (courseTitle) {
+                courseTitle.textContent = 'No Course Available';
+            }
+        }
+        
+        // Add event listener for course selection changes
+        courseSelect.addEventListener('change', function() {
+            const selectedCourseId = this.value;
+            const selectedCourse = uniqueCourses.find(course => course.courseId === selectedCourseId);
+            
+            if (selectedCourse && courseTitle) {
+                courseTitle.textContent = selectedCourse.courseName;
+                console.log('Course changed to:', selectedCourse.courseName);
+            }
+        });
+        
+        console.log('Available courses loaded and deduplicated:', uniqueCourses);
+        
+    } catch (error) {
+        console.error('Error loading available courses:', error);
+        // Fallback to default course if API fails
+        const courseSelect = document.getElementById('course-select');
+        const courseTitle = document.getElementById('course-title');
+        
+        if (courseSelect) {
+            courseSelect.innerHTML = '<option value="default">No courses available</option>';
+        }
+        if (courseTitle) {
+            courseTitle.textContent = 'No Course Available';
+        }
     }
 }

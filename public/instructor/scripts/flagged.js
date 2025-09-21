@@ -23,8 +23,12 @@ const appState = {
 /**
  * Initialize the flagged content page
  */
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
     initializeEventListeners();
+    
+    // Wait for authentication to be ready before loading courses
+    await waitForAuth();
+    
     loadAvailableCourses();
     // Wait for courses to load before loading content
     setTimeout(() => {
@@ -113,23 +117,40 @@ async function loadAvailableCourses() {
         
         const courses = result.data;
         
+        console.log('All available courses from API:', courses);
+        
+        // Filter out duplicate courses by courseId
+        const uniqueCourses = courses.filter((course, index, self) => 
+            index === self.findIndex(c => c.courseId === course.courseId)
+        );
+        
+        console.log('Unique courses after deduplication:', uniqueCourses);
+        
         // Clear loading option
         courseSelect.innerHTML = '';
         
         // Add course options
-        courses.forEach(course => {
+        uniqueCourses.forEach(course => {
             const option = document.createElement('option');
             option.value = course.courseId;
             option.textContent = course.courseName;
             courseSelect.appendChild(option);
         });
         
-        // Set default selection
-        if (courses.length > 0) {
-            courseSelect.value = courses[0].courseId;
+        // Set default selection to the most recent course (or first if only one)
+        if (uniqueCourses.length > 0) {
+            // Sort by creation date to get the most recent course first
+            const sortedCourses = uniqueCourses.sort((a, b) => {
+                const dateA = new Date(a.createdAt || 0);
+                const dateB = new Date(b.createdAt || 0);
+                return dateB - dateA; // Most recent first
+            });
+            
+            courseSelect.value = sortedCourses[0].courseId;
+            console.log('Default course selected:', sortedCourses[0].courseName, sortedCourses[0].courseId);
         }
         
-        console.log('Available courses loaded:', courses);
+        console.log('Available courses loaded and deduplicated:', uniqueCourses);
         
     } catch (error) {
         console.error('Error loading available courses:', error);
@@ -521,7 +542,11 @@ async function sendApprovalMessage(flagId) {
         }
         
         // TODO: Replace with actual instructor ID from auth
-        const instructorId = 'instructor-123';
+        const instructorId = getCurrentInstructorId();
+        if (!instructorId) {
+            console.error('No instructor ID found. User not authenticated.');
+            return;
+        }
         const instructorName = 'Instructor Name';
         
         // Send instructor response using the new API
@@ -604,7 +629,11 @@ async function handleFlagAction(flagId, action, skipSuccessMessage = false) {
         buttons.forEach(btn => btn.disabled = true);
         
         // TODO: Replace with actual instructor ID from auth
-        const instructorId = 'instructor-123';
+        const instructorId = getCurrentInstructorId();
+        if (!instructorId) {
+            console.error('No instructor ID found. User not authenticated.');
+            return;
+        }
         const instructorName = 'Instructor Name';
         
         // Map old action names to new ones
@@ -914,4 +943,27 @@ function showErrorMessage(message) {
 function getAuthToken() {
     // TODO: Implement actual token retrieval from localStorage/sessionStorage
     return null;
+}
+
+/**
+ * Wait for authentication to be initialized
+ * @returns {Promise<void>}
+ */
+async function waitForAuth() {
+    // Wait for auth.js to initialize
+    let attempts = 0;
+    const maxAttempts = 50; // 5 seconds max wait
+    
+    while (attempts < maxAttempts) {
+        if (typeof getCurrentInstructorId === 'function' && getCurrentInstructorId()) {
+            console.log('✅ [AUTH] Authentication ready');
+            return;
+        }
+        
+        // Wait 100ms before next attempt
+        await new Promise(resolve => setTimeout(resolve, 100));
+        attempts++;
+    }
+    
+    console.warn('⚠️ [AUTH] Authentication not ready after 5 seconds, proceeding anyway');
 }
