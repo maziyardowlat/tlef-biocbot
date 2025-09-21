@@ -14,12 +14,29 @@ const documentsRoutes = require('./routes/documents');
 const questionsRoutes = require('./routes/questions');
 const onboardingRoutes = require('./routes/onboarding');
 const qdrantRoutes = require('./routes/qdrant');
+const LLMService = require('./services/llm');
 
 const app = express();
 const port = process.env.TLEF_BIOCBOT_PORT || 8080;
 
-// MongoDB connection
+// Service connections
 let db;
+let llmService;
+
+/**
+ * Initialize the LLM service
+ * @returns {Promise<void>}
+ */
+async function initializeLLM() {
+    try {
+        console.log('🤖 Starting LLM service initialization...');
+        llmService = await LLMService.create();
+        app.locals.llm = llmService;
+    } catch (error) {
+        console.error('❌ Failed to initialize LLM service:', error.message);
+        throw error;
+    }
+}
 
 /**
  * Connect to MongoDB using the connection string from environment variables
@@ -275,12 +292,18 @@ app.use('/api/chat', chatRoutes);
 // Initialize the application
 async function startServer() {
     try {
-        // Connect to MongoDB first
-        await connectToMongoDB();
+        console.log('🚀 Starting BiocBot server...');
+        
+        // Initialize core services
+        await Promise.all([
+            connectToMongoDB(),
+            initializeLLM()
+        ]);
         
         // Start the Express server
         app.listen(port, () => {
-            console.log(`🚀 Server is running on http://localhost:${port}`);
+            console.log('\n✨ All services initialized successfully!');
+            console.log(`🌐 Server is running on http://localhost:${port}`);
             console.log(`👨‍🎓 Student interface: http://localhost:${port}/student`);
             console.log(`👨‍🏫 Instructor interface: http://localhost:${port}/instructor`);
             console.log(`🔍 Health check: http://localhost:${port}/api/health`);

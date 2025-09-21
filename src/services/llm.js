@@ -6,46 +6,31 @@
 
 const { LLMModule } = require('ubc-genai-toolkit-llm');
 const config = require('./config');
+const prompts = require('./prompts');
 
 class LLMService {
     constructor() {
-        // Don't initialize immediately - wait for first use
         this.llm = null;
         this.isInitialized = false;
         this.llmConfig = null;
-        this.initializationPromise = null;
         
-        console.log(`🔧 LLM service created (lazy initialization enabled)`);
+        console.log(`🔧 Creating LLM service...`);
     }
     
     /**
-     * Initialize the LLM service on first use
-     * @returns {Promise<void>}
+     * Initialize the LLM service instance
+     * @returns {Promise<LLMService>} The initialized service
      */
-    async initialize() {
-        // If already initialized, return immediately
-        if (this.isInitialized) {
-            return;
-        }
-        
-        // If initialization is in progress, wait for it
-        if (this.initializationPromise) {
-            return this.initializationPromise;
-        }
-        
-        // Start initialization
-        this.initializationPromise = this._performInitialization();
-        
-        try {
-            await this.initializationPromise;
-        } finally {
-            this.initializationPromise = null;
-        }
+    static async create() {
+        const service = new LLMService();
+        await service._performInitialization();
+        return service;
     }
     
     /**
-     * Perform the actual LLM initialization
+     * Perform LLM initialization
      * @returns {Promise<void>}
+     * @private
      */
     async _performInitialization() {
         try {
@@ -79,7 +64,7 @@ class LLMService {
             // Initialize LLM service on first use
             if (!this.isInitialized) {
                 console.log(`🔄 Initializing LLM service for first use...`);
-                await this.initialize();
+                await this._performInitialization();
             }
             
             console.log(`📤 Sending message to LLM: "${message.substring(0, 50)}..."`);
@@ -113,7 +98,7 @@ class LLMService {
             // Initialize LLM service on first use
             if (!this.isInitialized) {
                 console.log(`🔄 Initializing LLM service for first use...`);
-                await this.initialize();
+                await this._performInitialization();
             }
             
             const conversation = this.llm.createConversation();
@@ -142,7 +127,7 @@ class LLMService {
             // Initialize LLM service on first use
             if (!this.isInitialized) {
                 console.log(`🔄 Initializing LLM service for first use...`);
-                await this.initialize();
+                await this._performInitialization();
             }
             
             // Add user message to conversation
@@ -176,7 +161,7 @@ class LLMService {
             // Initialize LLM service on first use
             if (!this.isInitialized) {
                 console.log(`🔄 Initializing LLM service for first use...`);
-                await this.initialize();
+                await this._performInitialization();
             }
             
             const models = await this.llm.getAvailableModels();
@@ -204,25 +189,7 @@ class LLMService {
      * @returns {string} System prompt
      */
     getSystemPrompt() {
-        return `You are BiocBot, an AI-powered study assistant for biology courses at UBC. 
-
-Your role is to help students understand course material by:
-- Providing clear, accurate explanations of biological concepts
-- Citing specific course materials when possible
-- Adapting your teaching style based on the student's level
-- Encouraging critical thinking and deeper understanding
-- Being helpful while maintaining academic integrity
-
-Current course: BIOC 202 (Cellular Processes and Reactions)
-
-Guidelines:
-- Keep responses focused and relevant to the course material
-- Use clear, accessible language appropriate for university students
-- If you're unsure about something, acknowledge the limitation
-- Encourage students to verify important information with their course materials
-- Be supportive and encouraging of student learning
-
-Remember: You're here to help students learn, not to replace their course materials or instructors.`;
+        return prompts.BASE_SYSTEM_PROMPT;
     }
     
     /**
@@ -275,33 +242,55 @@ Remember: You're here to help students learn, not to replace their course materi
      * @param {string} questionType - Type of question to generate ('true-false', 'multiple-choice', 'short-answer')
      * @param {string} courseMaterialContent - The course material text content
      * @param {string} unitName - Name of the unit (e.g., 'Unit 1')
+     * @param {string} learningObjectives - Learning objectives for the unit (optional)
      * @returns {Promise<Object>} Generated question content
      */
-    async generateAssessmentQuestion(questionType, courseMaterialContent, unitName) {
+    async generateAssessmentQuestion(questionType, courseMaterialContent, unitName, learningObjectives = '') {
         try {
-            // Initialize LLM service on first use
+            // Initialize LLM service on first use if not already initialized
             if (!this.isInitialized) {
                 console.log(`🔄 Initializing LLM service for question generation...`);
-                await this.initialize();
+                await this._performInitialization();
             }
             
             console.log(`🤖 Generating ${questionType} question for ${unitName}...`);
             
             // Create specific prompt based on question type
-            const prompt = this.createQuestionGenerationPrompt(questionType, courseMaterialContent, unitName);
+            const prompt = this.createQuestionGenerationPrompt(questionType, courseMaterialContent, unitName, learningObjectives);
+            
+            // Create system prompt using template function
+            const systemPrompt = prompts.createQuestionGenerationSystemPrompt(
+                questionType, 
+                this.getJsonSchemaForQuestionType(questionType)
+            );
             
             // Set specific options for question generation
             // Use higher temperature (0.7) for more creative question generation
             const generationOptions = {
                 temperature: 0.7,
-                num_ctx: 32768,
-                // responseFormat: "json", 
-                systemPrompt: this.getQuestionGenerationSystemPrompt()
+                num_ctx: 16384,  // Reduced context window for better performance
+                timeout: 120000,  // 2 minute timeout for complex questions
+                systemPrompt: systemPrompt
             };
             
-            console.log('🤖 [LLM_REQUEST] Sending prompt to LLM:', prompt);
+            // Log prompt length and content for debugging
+            console.log(`🤖 [LLM_REQUEST] Sending prompt to LLM (${prompt.length} chars)`);
+            console.log('🤖 [LLM_PROMPT] Full prompt being sent:', prompt);
             
-            const response = await this.llm.sendMessage(prompt, generationOptions);
+            // Create a promise that rejects after the timeout
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('LLM request timed out after 2 minutes')), 120000);
+            });
+
+            // Race between the LLM response and the timeout
+            console.log('📝 Generating question...');
+            console.log('⏳ This may take up to 2 minutes for complex questions...');
+            
+            const response = await Promise.race([
+                this.llm.sendMessage(prompt, generationOptions),
+                timeoutPromise
+            ]);
+
             console.log('🤖 [LLM_RESPONSE] Raw response from LLM:', response);
             
             if (!response || !response.content) {
@@ -328,104 +317,61 @@ Remember: You're here to help students learn, not to replace their course materi
      * @param {string} questionType - Type of question to generate
      * @param {string} courseMaterialContent - Course material content
      * @param {string} unitName - Unit name
+     * @param {string} learningObjectives - Learning objectives (optional)
      * @returns {string} Formatted prompt for the LLM
      */
-    createQuestionGenerationPrompt(questionType, courseMaterialContent, unitName) {
-        const basePrompt = `Based on the following course material and learning objectives from ${unitName}, generate a high-quality ${questionType} question that will help gauge a student's understanding of the key concepts.
-
-Course Material Content:
-${courseMaterialContent}
-
-Please generate a question that:
-- Tests understanding of the main concepts from the material
-- Aligns with the provided learning objectives (if any)
-- Is appropriate for university-level students
-- Has clear, unambiguous wording
-- Includes the correct answer and explanation
-- Focuses on testing conceptual understanding rather than just recall
-
-Question Type: ${questionType}`;
-        
+    createQuestionGenerationPrompt(questionType, courseMaterialContent, unitName, learningObjectives = '') {
         switch (questionType) {
             case 'true-false':
-                return `${basePrompt}
-
-Format your response exactly as follows:
-QUESTION: [Your true/false question here]
-ANSWER: [true or false]
-EXPLANATION: [Brief explanation of why this answer is correct]`;
-                
+                return prompts.QUESTION_GENERATION_PROMPT_TEMPLATE.trueFalse(learningObjectives, courseMaterialContent, unitName);
             case 'multiple-choice':
-                return `${basePrompt}
-
-You MUST format your response EXACTLY as follows:
-QUESTION: [Your multiple choice question here]
-OPTIONS:
-A: [The correct answer option]
-B: [A plausible but incorrect option]
-C: [Another plausible but incorrect option]
-D: [Another plausible but incorrect option]
-ANSWER: A
-EXPLANATION: [Brief explanation of why the chosen option is correct]
-
-IMPORTANT RULES:
-1. Generate 4 distinct, plausible options
-2. Place the correct answer randomly among A/B/C/D (don't always use A)
-3. Make incorrect options plausible but clearly wrong
-4. All options should be similar in length and style
-5. Avoid obvious wrong answers or joke options
-6. Update the ANSWER field to match whichever option (A/B/C/D) contains the correct answer`;
-                
+                return prompts.QUESTION_GENERATION_PROMPT_TEMPLATE.multipleChoice(learningObjectives, courseMaterialContent, unitName);
             case 'short-answer':
-                return `${basePrompt}
-
-You MUST format your response EXACTLY as follows, including ALL three sections:
-QUESTION: [Your short answer question here]
-EXPECTED_ANSWER: [Detailed key points or model answer that would constitute a complete response]
-EXPLANATION: [Brief explanation of the key concepts being tested and how to evaluate responses]
-
-Remember: The EXPECTED_ANSWER section is required and should provide clear guidance on what constitutes a complete answer.`;
-                
+                return prompts.QUESTION_GENERATION_PROMPT_TEMPLATE.shortAnswer(learningObjectives, courseMaterialContent, unitName);
             default:
-                return basePrompt;
+                throw new Error(`Unsupported question type: ${questionType}`);
         }
     }
     
+    
     /**
-     * Get system prompt specifically for question generation
-     * @returns {string} System prompt for question generation
+     * Get JSON schema for specific question type
+     * @param {string} questionType - Type of question
+     * @returns {string} JSON schema string
      */
-    getQuestionGenerationSystemPrompt() {
-        return `You are an expert educational content creator specializing in creating assessment questions for university-level biology courses.
-
-Your task is to generate high-quality questions that:
-- Accurately reflect the course material content provided
-- Test students' understanding of key concepts
-- Are clear, unambiguous, and well-structured
-- Include appropriate difficulty for university students
-- STRICTLY follow the exact format specified in the user prompt
-
-CRITICAL FORMAT REQUIREMENTS:
-1. Your response MUST start with "QUESTION:" followed by the question text
-2. For short-answer questions:
-   - MUST include "EXPECTED_ANSWER:" with detailed key points
-   - MUST include "EXPLANATION:" with evaluation criteria
-3. For multiple-choice questions:
-   - MUST include all four options (A, B, C, D)
-   - MUST specify correct answer
-4. For true-false questions:
-   - MUST explicitly state "true" or "false"
-   - MUST include explanation
-
-Guidelines:
-- Base questions ONLY on the provided course material
-- Ensure questions are relevant and specific to the content
-- Make questions challenging but fair
-- Provide clear, concise explanations
-- Use academic language appropriate for university students
-- NEVER skip any required sections of the response format
-
-Remember: Formatting is critical. Always include ALL required sections exactly as specified in the user prompt.`;
+    getJsonSchemaForQuestionType(questionType) {
+        switch (questionType) {
+            case 'true-false':
+                return `{
+    "type": "true-false",
+    "question": "string - the question text",
+    "correctAnswer": "boolean - true or false",
+    "explanation": "string - explanation of the correct answer"
+}`;
+            case 'multiple-choice':
+                return `{
+    "type": "multiple-choice",
+    "question": "string - the question text",
+    "options": {
+        "A": "string - option A",
+        "B": "string - option B", 
+        "C": "string - option C",
+        "D": "string - option D"
+    },
+    "correctAnswer": "string - letter of correct answer (A, B, C, or D)",
+    "explanation": "string - explanation of the correct answer"
+}`;
+            case 'short-answer':
+                return `{
+    "type": "short-answer",
+    "question": "string - the question text",
+    "expectedAnswer": "string - model answer",
+    "keyPoints": "array - key points for the answer",
+    "explanation": "string - explanation of the answer"
+}`;
+            default:
+                return '{}';
+        }
     }
     
     /**
@@ -438,131 +384,86 @@ Remember: Formatting is critical. Always include ALL required sections exactly a
         try {
             console.log('🔍 [PARSE] Starting to parse response content:', responseContent);
             
-            // Split content into lines and clean them
-            const lines = responseContent.split('\n')
-                .map(line => line.trim())
-                .filter(line => line.length > 0);
-            
-            console.log('🔍 [PARSE] Split lines:', lines);
-            
-            const parsed = {};
-            
-            // First pass: Extract sections with their full content
-            let currentSection = null;
-            let currentContent = [];
-            
-            lines.forEach(line => {
-                // Check if this is a section header
-                if (line.includes(':') && line.split(':')[0].toUpperCase() === line.split(':')[0]) {
-                    // If we were building a previous section, save it
-                    if (currentSection && currentContent.length > 0) {
-                        parsed[currentSection] = currentContent.join('\n').trim();
-                        currentContent = [];
-                    }
-                    currentSection = line.split(':')[0].trim();
-                    const value = line.substring(line.indexOf(':') + 1).trim();
-                    if (value) currentContent.push(value);
-                } else if (currentSection) {
-                    currentContent.push(line);
+            // Try to parse the response as JSON
+            let jsonResponse;
+            try {
+                // Find the first '{' and last '}' to handle any extra text before or after the JSON
+                const jsonStart = responseContent.indexOf('{');
+                const jsonEnd = responseContent.lastIndexOf('}') + 1;
+                if (jsonStart === -1 || jsonEnd === 0) {
+                    throw new Error('No JSON object found in response');
                 }
-            });
-            
-            // Save the last section if any
-            if (currentSection && currentContent.length > 0) {
-                parsed[currentSection] = currentContent.join('\n').trim();
+                const jsonStr = responseContent.substring(jsonStart, jsonEnd);
+                jsonResponse = JSON.parse(jsonStr);
+            } catch (jsonError) {
+                console.error('❌ [PARSE] Failed to parse JSON:', jsonError);
+                throw new Error('Invalid JSON format in response');
             }
             
-            console.log('🔍 [PARSE] Initial parsing result:', parsed);
+            console.log('🔍 [PARSE] Parsed JSON response:', jsonResponse);
             
-            // Extract question text
-            if (parsed.QUESTION) {
-                parsed.question = parsed.QUESTION;
+            // Validate the parsed response based on question type
+            if (!jsonResponse.type || !jsonResponse.question || !jsonResponse.explanation) {
+                throw new Error('Missing required fields in response');
             }
             
-            // Extract answer based on question type
-            if (questionType === 'true-false') {
-                if (parsed.ANSWER) {
-                    parsed.answer = parsed.ANSWER.toLowerCase() === 'true' ? 'true' : 'false';
-                }
-                if (parsed.EXPLANATION) {
-                    parsed.explanation = parsed.EXPLANATION;
-                }
-            } else if (questionType === 'multiple-choice') {
-                if (parsed.ANSWER) {
-                    parsed.answer = parsed.ANSWER.toUpperCase();
-                }
-                // For multiple choice, we need to extract the options carefully
-                const options = {};
-                let inOptionsSection = false;
-                let currentOption = null;
-                
-                console.log('🔍 [PARSE_MCQ] Processing lines for options');
-                
-                lines.forEach(line => {
-                    // Check if we're entering the options section
-                    if (line.trim() === 'OPTIONS:') {
-                        inOptionsSection = true;
-                        return;
+            // Ensure the response type matches the expected type
+            if (jsonResponse.type !== questionType) {
+                console.warn(`⚠️ [PARSE] Question type mismatch. Expected: ${questionType}, Got: ${jsonResponse.type}`);
+            }
+            
+            const parsed = {
+                type: questionType,
+                question: jsonResponse.question,
+                explanation: jsonResponse.explanation
+            };
+            
+            // Handle type-specific fields
+            switch (questionType) {
+                case 'true-false':
+                    if (typeof jsonResponse.correctAnswer !== 'boolean') {
+                        throw new Error('True/False question must have a boolean correctAnswer');
                     }
+                    parsed.answer = jsonResponse.correctAnswer.toString();
+                    break;
                     
-                    // If we're in the options section, look for options
-                    if (inOptionsSection) {
-                        // Check if this is an option line (A:, B:, etc.)
-                        if (line.match(/^[A-D]:/)) {
-                            currentOption = line[0]; // Get the option letter
-                            const optionText = line.substring(2).trim(); // Get text after the colon
-                            options[currentOption] = optionText;
-                            console.log(`🔍 [PARSE_MCQ] Found option ${currentOption}:`, optionText);
-                        } else if (line.startsWith('ANSWER:') || line.startsWith('EXPLANATION:')) {
-                            // We've reached the end of the options section
-                            inOptionsSection = false;
-                        } else if (currentOption && line.trim()) {
-                            // This is a continuation of the previous option
-                            options[currentOption] += ' ' + line.trim();
-                            console.log(`🔍 [PARSE_MCQ] Extended option ${currentOption}:`, options[currentOption]);
-                        }
+                case 'multiple-choice':
+                    if (!jsonResponse.options || !jsonResponse.correctAnswer) {
+                        throw new Error('Multiple choice question must have options and correctAnswer');
                     }
-                });
-                
-                // Verify we have all options
-                const hasAllOptions = ['A', 'B', 'C', 'D'].every(opt => options[opt]);
-                if (!hasAllOptions) {
-                    console.warn('⚠️ [PARSE_MCQ] Missing some options:', options);
-                } else {
-                    console.log('✅ [PARSE_MCQ] Successfully parsed all options:', options);
-                }
-                
-                parsed.options = options;
-                
-                if (parsed.EXPLANATION) {
-                    parsed.explanation = parsed.EXPLANATION;
-                }
-            } else if (questionType === 'short-answer') {
-                // For short answer, we want both the expected answer and explanation
-                if (parsed.EXPECTED_ANSWER) {
-                    parsed.answer = parsed.EXPECTED_ANSWER;
-                    // Also store it in expectedAnswer to ensure it's included
-                    parsed.expectedAnswer = parsed.EXPECTED_ANSWER;
-                }
-                if (parsed.EXPLANATION) {
-                    parsed.explanation = parsed.EXPLANATION;
-                }
-                
-                // Log the parsed content for debugging
-                console.log('🔍 [LLM_PARSE] Short answer content:', {
-                    rawExpectedAnswer: parsed.EXPECTED_ANSWER,
-                    parsedAnswer: parsed.answer,
-                    parsedExpectedAnswer: parsed.expectedAnswer,
-                    explanation: parsed.explanation
-                });
+                    // Validate options
+                    const options = jsonResponse.options;
+                    const hasAllOptions = ['A', 'B', 'C', 'D'].every(opt => options[opt]);
+                    if (!hasAllOptions) {
+                        throw new Error('Multiple choice question must have all options (A, B, C, D)');
+                    }
+                    parsed.options = options;
+                    parsed.answer = jsonResponse.correctAnswer.toUpperCase();
+                    break;
+                    
+                case 'short-answer':
+                    if (!jsonResponse.expectedAnswer) {
+                        throw new Error('Short answer question must have an expectedAnswer');
+                    }
+                    parsed.answer = jsonResponse.expectedAnswer;
+                    parsed.expectedAnswer = jsonResponse.expectedAnswer;
+                    if (jsonResponse.keyPoints) {
+                        parsed.keyPoints = jsonResponse.keyPoints;
+                    }
+                    break;
+                    
+                default:
+                    console.warn(`⚠️ [PARSE] Unknown question type: ${questionType}`);
             }
             
+            console.log('✅ [PARSE] Successfully parsed question:', parsed);
             return parsed;
             
         } catch (error) {
-            console.error('Error parsing generated question:', error);
+            console.error('❌ Error parsing generated question:', error);
             // Return a fallback structure
             return {
+                type: questionType,
                 question: 'Error parsing generated question. Please try again.',
                 answer: questionType === 'true-false' ? 'true' : questionType === 'multiple-choice' ? 'A' : 'Please review the generated content.',
                 options: questionType === 'multiple-choice' ? { A: 'Option A', B: 'Option B', C: 'Option C', D: 'Option D' } : {},
@@ -572,4 +473,5 @@ Remember: Formatting is critical. Always include ALL required sections exactly a
     }
 }
 
-module.exports = new LLMService(); 
+// Export the class instead of an instance
+module.exports = LLMService; 

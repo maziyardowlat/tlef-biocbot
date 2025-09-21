@@ -794,7 +794,7 @@ router.post('/generate-ai', async (req, res) => {
         }
         
         // Handle content length intelligently
-        const maxContentLength = 8000; // Increased limit for better context
+        const maxContentLength = 6000; // Optimized limit for better performance
         
         if (combinedContent.length > maxContentLength) {
             console.log(`📚 [CONTENT] Original content length: ${combinedContent.length} chars`);
@@ -835,22 +835,29 @@ router.post('/generate-ai', async (req, res) => {
             console.log(`📚 [CONTENT] Truncated to ${combinedContent.length} chars, included ${sectionsIncluded} sections`);
         }
         
-        // Import and use the LLM service to generate the question
-        const LLMService = require('../services/llm');
+        // Get the initialized LLM service from app.locals
+        const llmService = req.app.locals.llm;
+        if (!llmService) {
+            return res.status(503).json({
+                success: false,
+                message: 'LLM service not available'
+            });
+        }
         
         try {
-            // Add learning objectives to the content if available
-            let contentWithObjectives = combinedContent;
-            if (learningObjectives && learningObjectives.length > 0) {
-                contentWithObjectives += '\n\nLearning Objectives:\n' + 
-                    learningObjectives.map((obj, i) => `${i + 1}. ${obj}`).join('\n');
-                console.log('🎯 [GENERATE] Added learning objectives to content');
-            }
+            // Format learning objectives for the prompt
+            const formattedLearningObjectives = learningObjectives && learningObjectives.length > 0 
+                ? learningObjectives.map((obj, i) => `${i + 1}. ${obj}`).join('\n')
+                : '';
 
-            const generatedQuestion = await LLMService.generateAssessmentQuestion(
+            console.log('🎯 [GENERATE] Learning objectives available:', formattedLearningObjectives ? 'Yes' : 'No');
+
+            const generatedQuestion = await llmService.generateAssessmentQuestion(
                 questionType, 
-                contentWithObjectives, 
-                lectureName
+                combinedContent, 
+                lectureName,
+                formattedLearningObjectives,
+                '' // practiceQuestions - empty for now, can be added later
             );
             
             console.log(`🤖 AI question generated successfully for ${lectureName}: ${questionType}`);
@@ -872,10 +879,33 @@ router.post('/generate-ai', async (req, res) => {
             
         } catch (llmError) {
             console.error('LLM service error:', llmError);
-            return res.status(500).json({
+            
+            // Provide specific error messages based on the type of error
+            let errorMessage = 'Failed to generate AI question. Please try again.';
+            let statusCode = 500;
+            
+            if (llmError.message.includes('timed out')) {
+                errorMessage = 'AI question generation is taking longer than expected. This may be due to high server load. Please try again with a shorter document or try again later.';
+                statusCode = 408; // Request Timeout
+            } else if (llmError.message.includes('JSON')) {
+                errorMessage = 'AI generated an invalid response format. Please try again.';
+                statusCode = 422; // Unprocessable Entity
+            } else if (llmError.message.includes('not initialized')) {
+                errorMessage = 'AI service is not available. Please contact support.';
+                statusCode = 503; // Service Unavailable
+            }
+            
+            return res.status(statusCode).json({
                 success: false,
-                message: 'Failed to generate AI question. Please try again.',
-                error: llmError.message
+                message: errorMessage,
+                error: llmError.message,
+                troubleshooting: {
+                    suggestions: [
+                        'Try again in a few moments',
+                        'Ensure your course materials are not too lengthy',
+                        'Check that all required services are running'
+                    ]
+                }
             });
         }
         
