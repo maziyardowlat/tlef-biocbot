@@ -22,33 +22,18 @@ router.post('/', async (req, res) => {
             questionId,
             courseId,
             unitName,
+            studentId,
+            studentName,
             flagReason,
             flagDescription,
             questionContent
         } = req.body;
         
-        // Get authenticated user information
-        const user = req.user;
-        if (!user) {
-            return res.status(401).json({
-                success: false,
-                message: 'Authentication required'
-            });
-        }
-        
-        // Only students can flag questions
-        if (user.role !== 'student') {
-            return res.status(403).json({
-                success: false,
-                message: 'Only students can flag questions'
-            });
-        }
-        
         // Validate required fields
-        if (!questionId || !courseId || !unitName || !flagReason || !flagDescription) {
+        if (!questionId || !courseId || !unitName || !studentId || !studentName || !flagReason || !flagDescription) {
             return res.status(400).json({
                 success: false,
-                message: 'Missing required fields: questionId, courseId, unitName, flagReason, flagDescription'
+                message: 'Missing required fields: questionId, courseId, unitName, studentId, studentName, flagReason, flagDescription'
             });
         }
         
@@ -61,13 +46,13 @@ router.post('/', async (req, res) => {
             });
         }
         
-        // Create the flagged question with authenticated user info
+        // Create the flagged question
         const result = await FlaggedQuestionModel.createFlaggedQuestion(db, {
             questionId,
             courseId,
             unitName,
-            studentId: user.userId,
-            studentName: user.displayName || user.username,
+            studentId,
+            studentName,
             flagReason,
             flagDescription,
             questionContent
@@ -80,7 +65,7 @@ router.post('/', async (req, res) => {
             });
         }
         
-        console.log(`Flagged question created by student ${user.userId} for question ${questionId}`);
+        console.log(`Flagged question created by student ${studentId} for question ${questionId}`);
         
         res.json({
             success: true,
@@ -254,30 +239,15 @@ router.put('/:flagId/response', async (req, res) => {
         const { flagId } = req.params;
         const {
             response,
+            instructorId,
+            instructorName,
             flagStatus
         } = req.body;
         
-        // Get authenticated user information
-        const user = req.user;
-        if (!user) {
-            return res.status(401).json({
-                success: false,
-                message: 'Authentication required'
-            });
-        }
-        
-        // Only instructors can respond to flags
-        if (user.role !== 'instructor') {
-            return res.status(403).json({
-                success: false,
-                message: 'Only instructors can respond to flagged questions'
-            });
-        }
-        
-        if (!flagId || !response) {
+        if (!flagId || !response || !instructorId || !instructorName) {
             return res.status(400).json({
                 success: false,
-                message: 'Missing required fields: response'
+                message: 'Missing required fields: response, instructorId, instructorName'
             });
         }
         
@@ -290,11 +260,11 @@ router.put('/:flagId/response', async (req, res) => {
             });
         }
         
-        // Update the instructor response with authenticated user info
+        // Update the instructor response
         const result = await FlaggedQuestionModel.updateInstructorResponse(db, flagId, {
             response,
-            instructorId: user.userId,
-            instructorName: user.displayName || user.username,
+            instructorId,
+            instructorName,
             flagStatus
         });
         
@@ -305,7 +275,7 @@ router.put('/:flagId/response', async (req, res) => {
             });
         }
         
-        console.log(`Instructor response updated for flag: ${flagId} by ${user.userId}`);
+        console.log(`Instructor response updated for flag: ${flagId}`);
         
         res.json({
             success: true,
@@ -332,29 +302,12 @@ router.put('/:flagId/response', async (req, res) => {
 router.put('/:flagId/status', async (req, res) => {
     try {
         const { flagId } = req.params;
-        const { status } = req.body;
+        const { status, instructorId } = req.body;
         
-        // Get authenticated user information
-        const user = req.user;
-        if (!user) {
-            return res.status(401).json({
-                success: false,
-                message: 'Authentication required'
-            });
-        }
-        
-        // Only instructors can update flag status
-        if (user.role !== 'instructor') {
-            return res.status(403).json({
-                success: false,
-                message: 'Only instructors can update flag status'
-            });
-        }
-        
-        if (!flagId || !status) {
+        if (!flagId || !status || !instructorId) {
             return res.status(400).json({
                 success: false,
-                message: 'Missing required fields: status'
+                message: 'Missing required fields: status, instructorId'
             });
         }
         
@@ -367,8 +320,8 @@ router.put('/:flagId/status', async (req, res) => {
             });
         }
         
-        // Update the flag status with authenticated user info
-        const result = await FlaggedQuestionModel.updateFlagStatus(db, flagId, status, user.userId);
+        // Update the flag status
+        const result = await FlaggedQuestionModel.updateFlagStatus(db, flagId, status, instructorId);
         
         if (!result.success) {
             return res.status(400).json({
@@ -377,7 +330,7 @@ router.put('/:flagId/status', async (req, res) => {
             });
         }
         
-        console.log(`Flag status updated to ${status} for flag: ${flagId} by ${user.userId}`);
+        console.log(`Flag status updated to ${status} for flag: ${flagId}`);
         
         res.json({
             success: true,

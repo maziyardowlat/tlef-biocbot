@@ -24,26 +24,10 @@ router.get('/test', (req, res) => {
  * Create or update onboarding data for a course
  */
 router.post('/', async (req, res) => {
-    // Get authenticated user information
-    const user = req.user;
-    if (!user) {
-        return res.status(401).json({
-            success: false,
-            message: 'Authentication required'
-        });
-    }
-    
-    // Only instructors can create courses
-    if (user.role !== 'instructor') {
-        return res.status(403).json({
-            success: false,
-            message: 'Only instructors can create courses'
-        });
-    }
-    
     const {
         courseId,
         courseName,
+        instructorId,
         courseDescription,
         learningOutcomes,
         assessmentCriteria,
@@ -52,14 +36,11 @@ router.post('/', async (req, res) => {
         courseStructure
     } = req.body;
     
-    // Use authenticated user's ID
-    const instructorId = user.userId;
-    
     // Validate required fields
-    if (!courseId || !courseName) {
+    if (!courseId || !courseName || !instructorId) {
         return res.status(400).json({
             success: false,
-            message: 'Missing required fields: courseId, courseName'
+            message: 'Missing required fields: courseId, courseName, instructorId'
         });
     }
     

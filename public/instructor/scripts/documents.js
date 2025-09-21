@@ -1,14 +1,8 @@
-document.addEventListener('DOMContentLoaded', async () => {
+document.addEventListener('DOMContentLoaded', () => {
     const uploadDropArea = document.getElementById('upload-drop-area');
     const fileUpload = document.getElementById('file-upload');
     const documentSearch = document.getElementById('document-search');
     const documentFilter = document.getElementById('document-filter');
-    
-    // Wait for authentication to be ready before loading courses
-    await waitForAuth();
-    
-    // Load available courses and initialize course selection
-    loadAvailableCourses();
     
     // Handle drag and drop functionality
     if (uploadDropArea) {
@@ -146,117 +140,4 @@ document.addEventListener('DOMContentLoaded', async () => {
     function capitalizeFirstLetter(string) {
         return string.charAt(0).toUpperCase() + string.slice(1);
     }
-});
-
-/**
- * Load available courses for the instructor
- */
-async function loadAvailableCourses() {
-    try {
-        const courseSelect = document.getElementById('course-select');
-        const courseTitle = document.getElementById('course-title');
-        
-        if (!courseSelect) return;
-        
-        // Fetch courses from the API
-        const response = await fetch('/api/courses/available/all');
-        
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        const result = await response.json();
-        
-        if (!result.success) {
-            throw new Error(result.message || 'Failed to fetch courses');
-        }
-        
-        const courses = result.data;
-        
-        console.log('All available courses from API:', courses);
-        
-        // Filter out duplicate courses by courseId
-        const uniqueCourses = courses.filter((course, index, self) => 
-            index === self.findIndex(c => c.courseId === course.courseId)
-        );
-        
-        console.log('Unique courses after deduplication:', uniqueCourses);
-        
-        // Clear loading option
-        courseSelect.innerHTML = '';
-        
-        // Add course options
-        uniqueCourses.forEach(course => {
-            const option = document.createElement('option');
-            option.value = course.courseId;
-            option.textContent = course.courseName;
-            courseSelect.appendChild(option);
-        });
-        
-        // Set default selection to the most recent course (or first if only one)
-        if (uniqueCourses.length > 0) {
-            // Sort by creation date to get the most recent course first
-            const sortedCourses = uniqueCourses.sort((a, b) => {
-                const dateA = new Date(a.createdAt || 0);
-                const dateB = new Date(b.createdAt || 0);
-                return dateB - dateA; // Most recent first
-            });
-            
-            courseSelect.value = sortedCourses[0].courseId;
-            
-            // Update course title
-            if (courseTitle) {
-                courseTitle.textContent = sortedCourses[0].courseName;
-            }
-            
-            console.log('Default course selected:', sortedCourses[0].courseName, sortedCourses[0].courseId);
-        }
-        
-        // Add event listener for course selection changes
-        courseSelect.addEventListener('change', function() {
-            const selectedCourse = uniqueCourses.find(course => course.courseId === this.value);
-            if (selectedCourse && courseTitle) {
-                courseTitle.textContent = selectedCourse.courseName;
-                console.log('Course changed to:', selectedCourse.courseName);
-            }
-        });
-        
-        console.log('Available courses loaded and deduplicated:', uniqueCourses);
-        
-    } catch (error) {
-        console.error('Error loading available courses:', error);
-        // Fallback to default course if API fails
-        const courseSelect = document.getElementById('course-select');
-        const courseTitle = document.getElementById('course-title');
-        
-        if (courseSelect) {
-            courseSelect.innerHTML = '<option value="default">No courses available</option>';
-        }
-        if (courseTitle) {
-            courseTitle.textContent = 'No Course Available';
-        }
-    }
-}
-
-/**
- * Wait for authentication to be initialized
- * @returns {Promise<void>}
- */
-async function waitForAuth() {
-    // Wait for auth.js to initialize
-    let attempts = 0;
-    const maxAttempts = 50; // 5 seconds max wait
-    
-    while (attempts < maxAttempts) {
-        if (typeof getCurrentInstructorId === 'function' && getCurrentInstructorId()) {
-            console.log('✅ [AUTH] Authentication ready');
-            return;
-        }
-        
-        // Wait 100ms before next attempt
-        await new Promise(resolve => setTimeout(resolve, 100));
-        attempts++;
-    }
-    
-    console.warn('⚠️ [AUTH] Authentication not ready after 5 seconds, proceeding anyway');
-} 
+}); 
