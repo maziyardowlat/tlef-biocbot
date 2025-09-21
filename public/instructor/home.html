@@ -24,10 +24,11 @@
             </nav>
             <div class="user-info">
                 <div class="user-avatar">I</div>
-                <div class="user-name">Instructor Name</div>
+                <div class="user-name" id="user-display-name">Instructor Name</div>
                 <div class="user-role">Instructor</div>
-                <div class="switch-role">
-                    <a href="/">Switch Role</a>
+                <div class="user-actions">
+                    <a href="/instructor/settings" class="user-action">Settings</a>
+                    <a href="#" id="logout-btn" class="user-action">Logout</a>
                 </div>
             </div>
         </aside>
@@ -62,6 +63,7 @@
         </main>
     </div>
     
+    <script src="../common/scripts/auth.js"></script>
     <script src="../instructor/scripts/home.js"></script>
 </body>
 </html> 

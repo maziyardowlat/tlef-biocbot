@@ -21,12 +21,18 @@ let uploadedFile = null;
 let currentWeek = null;
 let currentContentType = null;
 
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
     // Initialize onboarding functionality
     initializeOnboarding();
     
     // Initialize guided substep functionality
     initializeGuidedSubsteps();
+    
+    // Wait for authentication to be ready before loading courses
+    await waitForAuth();
+    
+    // Load available courses for course selection
+    loadAvailableCourses();
 });
 
 /**
@@ -44,7 +50,7 @@ async function checkOnboardingStatus() {
             console.log(`🔍 [ONBOARDING] Found courseId in URL params: ${courseId}`);
             // Check if this course has onboarding complete
             console.log(`📡 [MONGODB] Making API request to /api/onboarding/${courseId}`);
-            const response = await fetch(`/api/onboarding/${courseId}`);
+            const response = await authenticatedFetch(`/api/onboarding/${courseId}`);
             console.log(`📡 [MONGODB] API response status: ${response.status} ${response.statusText}`);
             
             if (response.ok) {
@@ -59,10 +65,14 @@ async function checkOnboardingStatus() {
         }
         
         // Check if instructor has any completed courses
-        const instructorId = 'instructor-123'; // This would come from authentication
+        const instructorId = getCurrentInstructorId();
+        if (!instructorId) {
+            console.error('No instructor ID found. User not authenticated.');
+            return;
+        }
         console.log(`🔍 [ONBOARDING] Checking for existing courses for instructor: ${instructorId}`);
         console.log(`📡 [MONGODB] Making API request to /api/onboarding/instructor/${instructorId}`);
-        const response = await fetch(`/api/onboarding/instructor/${instructorId}`);
+        const response = await authenticatedFetch(`/api/onboarding/instructor/${instructorId}`);
         console.log(`📡 [MONGODB] API response status: ${response.status} ${response.statusText}`);
         
         if (response.ok) {
@@ -335,8 +345,12 @@ async function handleCourseSetup(event) {
  */
 async function checkExistingCourse() {
     try {
-        const instructorId = 'instructor-123'; // This would come from authentication
-        const response = await fetch(`/api/onboarding/instructor/${instructorId}`);
+        const instructorId = getCurrentInstructorId();
+        if (!instructorId) {
+            console.error('No instructor ID found. User not authenticated.');
+            return;
+        }
+        const response = await authenticatedFetch(`/api/onboarding/instructor/${instructorId}`);
         
         if (response.ok) {
             const result = await response.json();
@@ -374,7 +388,11 @@ async function createCourse(courseData) {
         courseId = `${courseId}-${Date.now()}`;
         console.log(`🆔 [ONBOARDING] Generated course ID: ${courseId}`);
         
-        const instructorId = 'instructor-123'; // This would come from authentication in real app
+        const instructorId = getCurrentInstructorId();
+        if (!instructorId) {
+            console.error('No instructor ID found. User not authenticated.');
+            return;
+        }
         console.log(`👤 [ONBOARDING] Using instructor ID: ${instructorId}`);
         
         // Get learning objectives from the UI
@@ -435,7 +453,7 @@ async function createCourse(courseData) {
         console.log(`📡 [MONGODB] Making API request to /api/onboarding (POST)`);
         console.log(`📡 [MONGODB] Request body size: ${JSON.stringify(onboardingData).length} characters`);
         
-        const response = await fetch('/api/onboarding', {
+        const response = await authenticatedFetch('/api/onboarding', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -1349,7 +1367,11 @@ async function saveAssessment(week) {
     try {
         // Get the current course ID and instructor ID
         const courseId = onboardingState.createdCourseId;
-        const instructorId = 'instructor-123';
+        const instructorId = getCurrentInstructorId();
+        if (!instructorId) {
+            console.error('No instructor ID found. User not authenticated.');
+            return;
+        }
         
         if (!courseId) {
             throw new Error('No course ID available. Please complete course setup first.');
@@ -1397,7 +1419,11 @@ async function saveAssessment(week) {
 async function saveOnboardingData() {
     try {
         const courseId = onboardingState.createdCourseId;
-        const instructorId = 'instructor-123';
+        const instructorId = getCurrentInstructorId();
+        if (!instructorId) {
+            console.error('No instructor ID found. User not authenticated.');
+            return;
+        }
         
         // Collect learning objectives
         const objectivesList = document.getElementById('objectives-list');
@@ -1457,7 +1483,7 @@ async function saveOnboardingData() {
         };
         
         // Update the onboarding data in the database
-        const response = await fetch(`/api/onboarding/${courseId}`, {
+        const response = await authenticatedFetch(`/api/onboarding/${courseId}`, {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
@@ -1539,7 +1565,11 @@ async function completeUnit1Setup() {
 async function saveAllUnit1Data() {
     try {
         const courseId = onboardingState.createdCourseId;
-        const instructorId = 'instructor-123'; // This would come from authentication in real app
+        const instructorId = getCurrentInstructorId();
+        if (!instructorId) {
+            console.error('No instructor ID found. User not authenticated.');
+            return;
+        }
         
         if (!courseId) {
             console.error('No course ID available for saving Unit 1 data');
@@ -1781,7 +1811,11 @@ async function handleUpload() {
     try {
         // Get the current course ID and instructor ID
         const courseId = onboardingState.createdCourseId;
-        const instructorId = 'instructor-123'; // This would come from authentication in real app
+        const instructorId = getCurrentInstructorId();
+        if (!instructorId) {
+            console.error('No instructor ID found. User not authenticated.');
+            return;
+        }
         
         console.log('Course creation state:', {
             createdCourseId: onboardingState.createdCourseId,
@@ -2343,11 +2377,7 @@ function showNotification(message, type) {
 /**
  * Auth utility functions (placeholders - replace with actual auth implementation)
  */
-function getCurrentInstructorId() {
-    // This would typically come from JWT token or session
-    // For now, return a placeholder
-    return 'instructor-123';
-}
+// getCurrentInstructorId() is now provided by ../common/scripts/auth.js
 
 function getAuthToken() {
     // This would typically come from localStorage or sessionStorage
@@ -2539,4 +2569,94 @@ async function saveUnit1PassThreshold(courseId, lectureName, passThreshold, inst
         console.error('❌ [THRESHOLD] Error saving pass threshold:', error);
         throw error;
     }
+}
+
+/**
+ * Load available courses for the instructor
+ */
+async function loadAvailableCourses() {
+    try {
+        const courseSelect = document.getElementById('course-select');
+        
+        if (!courseSelect) return;
+        
+        // Fetch courses from the API
+        const response = await fetch('/api/courses/available/all');
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        
+        if (!result.success) {
+            throw new Error(result.message || 'Failed to fetch courses');
+        }
+        
+        const courses = result.data;
+        
+        console.log('All available courses from API:', courses);
+        
+        // Filter out duplicate courses by courseId
+        const uniqueCourses = courses.filter((course, index, self) => 
+            index === self.findIndex(c => c.courseId === course.courseId)
+        );
+        
+        console.log('Unique courses after deduplication:', uniqueCourses);
+        
+        // Clear existing options except the first placeholder
+        courseSelect.innerHTML = '<option value="">Choose a course...</option>';
+        
+        // Add course options
+        uniqueCourses.forEach(course => {
+            const option = document.createElement('option');
+            option.value = course.courseId;
+            option.textContent = course.courseName;
+            courseSelect.appendChild(option);
+        });
+        
+        // Add custom course option
+        const customOption = document.createElement('option');
+        customOption.value = 'custom';
+        customOption.textContent = 'Enter custom course name...';
+        courseSelect.appendChild(customOption);
+        
+        console.log('Available courses loaded and deduplicated:', uniqueCourses);
+        
+    } catch (error) {
+        console.error('Error loading available courses:', error);
+        // Keep the placeholder option if API fails
+        const courseSelect = document.getElementById('course-select');
+        if (courseSelect) {
+            courseSelect.innerHTML = '<option value="">Choose a course...</option>';
+            // Add custom course option even if API fails
+            const customOption = document.createElement('option');
+            customOption.value = 'custom';
+            customOption.textContent = 'Enter custom course name...';
+            courseSelect.appendChild(customOption);
+        }
+    }
+}
+
+/**
+ * Wait for authentication to be initialized
+ * @returns {Promise<void>}
+ */
+async function waitForAuth() {
+    // Wait for auth.js to initialize
+    let attempts = 0;
+    const maxAttempts = 50; // 5 seconds max wait
+    
+    while (attempts < maxAttempts) {
+        if (typeof getCurrentInstructorId === 'function' && getCurrentInstructorId()) {
+            console.log('✅ [AUTH] Authentication ready');
+            return;
+        }
+        
+        // Wait 100ms before next attempt
+        await new Promise(resolve => setTimeout(resolve, 100));
+        attempts++;
+    }
+    
+    console.warn('⚠️ [AUTH] Authentication not ready after 5 seconds, proceeding anyway');
 }

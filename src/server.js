@@ -1,6 +1,9 @@
 require('dotenv').config();
 const express = require('express');
 const path = require('path');
+const session = require('express-session');
+const MongoStore = require('connect-mongo');
+const cors = require('cors');
 
 const { MongoClient } = require('mongodb');
 const coursesRoutes = require('./routes/courses');
@@ -8,6 +11,7 @@ const flagsRoutes = require('./routes/flags');
 const lecturesRoutes = require('./routes/lectures');
 const modeQuestionsRoutes = require('./routes/mode-questions');
 const chatRoutes = require('./routes/chat');
+const authRoutes = require('./routes/auth');
 
 const learningObjectivesRoutes = require('./routes/learning-objectives');
 const documentsRoutes = require('./routes/documents');
@@ -15,13 +19,28 @@ const questionsRoutes = require('./routes/questions');
 const onboardingRoutes = require('./routes/onboarding');
 const qdrantRoutes = require('./routes/qdrant');
 const LLMService = require('./services/llm');
+const AuthService = require('./services/authService');
+const createAuthMiddleware = require('./middleware/auth');
 
 const app = express();
 const port = process.env.TLEF_BIOCBOT_PORT || 8080;
 
+// Configure CORS to allow requests from localhost:3002 (browser-sync proxy)
+app.use(cors({
+    origin: ['http://localhost:3000', 'http://localhost:3002', 'http://localhost:8085'],
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'Cookie']
+}));
+
+// Serve static files from the public directory
+app.use(express.static(path.join(__dirname, '../public')));
+
 // Service connections
 let db;
 let llmService;
+let authService;
+let authMiddleware;
 
 /**
  * Initialize the LLM service
@@ -34,6 +53,33 @@ async function initializeLLM() {
         app.locals.llm = llmService;
     } catch (error) {
         console.error('❌ Failed to initialize LLM service:', error.message);
+        throw error;
+    }
+}
+
+/**
+ * Initialize the authentication service
+ * @returns {Promise<void>}
+ */
+async function initializeAuth() {
+    try {
+        console.log('🔐 Starting authentication service initialization...');
+        authService = new AuthService(db);
+        authMiddleware = createAuthMiddleware(db);
+        
+        // Make auth service available to routes
+        app.locals.authService = authService;
+        
+        // Initialize default users for development
+        const initResult = await authService.initializeDefaultUsers();
+        if (initResult.success) {
+            console.log('✅ Default users initialized');
+        } else {
+            console.log('ℹ️ Default users already exist or failed to initialize');
+        }
+        
+    } catch (error) {
+        console.error('❌ Failed to initialize authentication service:', error.message);
         throw error;
     }
 }
@@ -60,6 +106,23 @@ async function connectToMongoDB() {
         // Make the database available to routes
         app.locals.db = db;
         
+        // Configure session store after MongoDB connection
+        app.use(session({
+            secret: process.env.SESSION_SECRET || 'biocbot-session-secret-change-in-production',
+            resave: false,
+            saveUninitialized: false,
+            store: MongoStore.create({
+                client: client,
+                dbName: process.env.MONGO_DB_NAME || 'biocbot'
+            }),
+            cookie: {
+                secure: process.env.NODE_ENV === 'production',
+                httpOnly: true,
+                sameSite: 'lax',
+                maxAge: 24 * 60 * 60 * 1000 // 24 hours
+            }
+        }));
+        
         // Test the connection by listing collections
         const collections = await db.listCollections().toArray();
         console.log(`📚 Available collections: ${collections.map(c => c.name).join(', ') || 'None'}`);
@@ -76,17 +139,19 @@ async function connectToMongoDB() {
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Session configuration will be set up after MongoDB connection
+
 // Serve static files from the 'public' directory
 app.use(express.static(path.join(__dirname, '../public')));
 
-// Home page route now shows role selection
+// Home page route - redirect to login
 app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, '../public/index.html'));
+    res.redirect('/login');
 });
 
-// Qdrant test page
-app.get('/qdrant-test', (req, res) => {
-    res.sendFile(path.join(__dirname, '../public/qdrant-test.html'));
+// Login page
+app.get('/login', (req, res) => {
+    res.sendFile(path.join(__dirname, '../public/index.html'));
 });
 
 // Quick Qdrant test endpoint
@@ -116,79 +181,86 @@ app.get('/test-qdrant', async (req, res) => {
     }
 });
 
-// Student routes
-app.get('/student', (req, res) => {
-    res.sendFile(path.join(__dirname, '../public/student/index.html'));
-});
+/**
+ * Set up protected routes after authentication middleware is initialized
+ */
+function setupProtectedRoutes() {
+    // Qdrant test page (protected)
+    app.get('/qdrant-test', authMiddleware.requireAuth, (req, res) => {
+        res.sendFile(path.join(__dirname, '../public/qdrant-test.html'));
+    });
 
-app.get('/student/history', (req, res) => {
-    res.sendFile(path.join(__dirname, '../public/student/history.html'));
-});
+    // Student routes (protected)
+    app.get('/student', authMiddleware.requireStudent, (req, res) => {
+        res.sendFile(path.join(__dirname, '../public/student/index.html'));
+    });
 
-app.get('/student/settings', (req, res) => {
-    res.sendFile(path.join(__dirname, '../public/student/settings.html'));
-});
+    app.get('/student/history', authMiddleware.requireStudent, (req, res) => {
+        res.sendFile(path.join(__dirname, '../public/student/history.html'));
+    });
 
-// Instructor routes - serve documents page directly
-app.get('/instructor', (req, res) => {
-    // Serve the documents page directly
-    res.sendFile(path.join(__dirname, '../public/instructor/index.html'));
-});
+    app.get('/student/settings', authMiddleware.requireStudent, (req, res) => {
+        res.sendFile(path.join(__dirname, '../public/student/settings.html'));
+    });
 
-// Also handle /instructor/ (with trailing slash)
-app.get('/instructor/', (req, res) => {
-    // Serve the documents page directly
-    res.sendFile(path.join(__dirname, '../public/instructor/index.html'));
-});
+    // Instructor routes (protected)
+    app.get('/instructor', authMiddleware.requireInstructor, (req, res) => {
+        // Serve the documents page directly
+        res.sendFile(path.join(__dirname, '../public/instructor/index.html'));
+    });
 
-// Check if user can access onboarding (not completed)
-app.get('/instructor/onboarding', async (req, res) => {
-    try {
-        // In a real app, you'd check authentication here
-        const instructorId = 'instructor-123'; // This would come from auth
-        
-        // Check if instructor has completed onboarding
-        const db = req.app.locals.db;
-        if (db) {
-            const collection = db.collection('courses');
-            const existingCourse = await collection.findOne({ 
-                instructorId,
-                isOnboardingComplete: true 
-            });
+    // Also handle /instructor/ (with trailing slash)
+    app.get('/instructor/', authMiddleware.requireInstructor, (req, res) => {
+        // Serve the documents page directly
+        res.sendFile(path.join(__dirname, '../public/instructor/index.html'));
+    });
+
+    // Check if user can access onboarding (not completed)
+    app.get('/instructor/onboarding', authMiddleware.requireInstructor, async (req, res) => {
+        try {
+            const instructorId = req.user.userId; // Get from authenticated user
             
-            if (existingCourse) {
-                // Redirect to course upload page if onboarding is complete
-                return res.redirect(`/instructor/documents?courseId=${existingCourse.courseId}`);
+            // Check if instructor has completed onboarding
+            const db = req.app.locals.db;
+            if (db) {
+                const collection = db.collection('courses');
+                const existingCourse = await collection.findOne({ 
+                    instructorId,
+                    isOnboardingComplete: true 
+                });
+                
+                if (existingCourse) {
+                    // Redirect to course upload page if onboarding is complete
+                    return res.redirect(`/instructor/documents?courseId=${existingCourse.courseId}`);
+                }
             }
+            
+            // If no completed course, show onboarding
+            res.sendFile(path.join(__dirname, '../public/instructor/onboarding.html'));
+            
+        } catch (error) {
+            console.error('Error checking onboarding status:', error);
+            // If there's an error, show onboarding
+            res.sendFile(path.join(__dirname, '../public/instructor/onboarding.html'));
         }
-        
-        // If no completed course, show onboarding
-        res.sendFile(path.join(__dirname, '../public/instructor/onboarding.html'));
-        
-    } catch (error) {
-        console.error('Error checking onboarding status:', error);
-        // If there's an error, show onboarding
-        res.sendFile(path.join(__dirname, '../public/instructor/onboarding.html'));
-    }
-});
+    });
 
-app.get('/instructor/settings', (req, res) => {
-    res.sendFile(path.join(__dirname, '../public/instructor/settings.html'));
-});
+    app.get('/instructor/settings', authMiddleware.requireInstructor, (req, res) => {
+        res.sendFile(path.join(__dirname, '../public/instructor/settings.html'));
+    });
 
+    app.get('/instructor/home', authMiddleware.requireInstructor, (req, res) => {
+        res.sendFile(path.join(__dirname, '../public/instructor/home.html'));
+    });
 
+    app.get('/instructor/documents', authMiddleware.requireInstructor, (req, res) => {
+        res.sendFile(path.join(__dirname, '../public/instructor/index.html'));
+    });
 
-app.get('/instructor/home', (req, res) => {
-    res.sendFile(path.join(__dirname, '../public/instructor/home.html'));
-});
-
-app.get('/instructor/documents', (req, res) => {
-    res.sendFile(path.join(__dirname, '../public/instructor/index.html'));
-});
-
-app.get('/instructor/flagged', (req, res) => {
-    res.sendFile(path.join(__dirname, '../public/instructor/flagged.html'));
-});
+    app.get('/instructor/flagged', authMiddleware.requireInstructor, (req, res) => {
+        res.sendFile(path.join(__dirname, '../public/instructor/flagged.html'));
+    });
+}
 
 // Legacy routes (redirect to new structure)
 app.get('/settings', (req, res) => {
@@ -277,17 +349,25 @@ app.get('/api/health', async (req, res) => {
     }
 });
 
-// API endpoints
-app.use('/api/courses', coursesRoutes);
-app.use('/api/flags', flagsRoutes);
-app.use('/api/lectures', lecturesRoutes);
-app.use('/api/mode-questions', modeQuestionsRoutes);
-app.use('/api/learning-objectives', learningObjectivesRoutes);
-app.use('/api/documents', documentsRoutes);
-app.use('/api/questions', questionsRoutes);
-app.use('/api/onboarding', onboardingRoutes);
-app.use('/api/qdrant', qdrantRoutes);
-app.use('/api/chat', chatRoutes);
+/**
+ * Set up API routes after authentication middleware is initialized
+ */
+function setupAPIRoutes() {
+    // Authentication routes (no auth required)
+    app.use('/api/auth', authRoutes);
+
+    // API endpoints (protected)
+    app.use('/api/courses', authMiddleware.requireAuth, coursesRoutes);
+    app.use('/api/flags', authMiddleware.requireAuth, flagsRoutes);
+    app.use('/api/lectures', authMiddleware.requireAuth, lecturesRoutes);
+    app.use('/api/mode-questions', authMiddleware.requireAuth, modeQuestionsRoutes);
+    app.use('/api/learning-objectives', authMiddleware.requireAuth, learningObjectivesRoutes);
+    app.use('/api/documents', authMiddleware.requireAuth, documentsRoutes);
+    app.use('/api/questions', authMiddleware.requireAuth, questionsRoutes);
+    app.use('/api/onboarding', authMiddleware.requireAuth, onboardingRoutes);
+    app.use('/api/qdrant', authMiddleware.requireAuth, qdrantRoutes);
+    app.use('/api/chat', authMiddleware.requireAuth, chatRoutes);
+}
 
 // Initialize the application
 async function startServer() {
@@ -295,10 +375,13 @@ async function startServer() {
         console.log('🚀 Starting BiocBot server...');
         
         // Initialize core services
-        await Promise.all([
-            connectToMongoDB(),
-            initializeLLM()
-        ]);
+        await connectToMongoDB();
+        await initializeLLM();
+        await initializeAuth();
+        
+        // Set up routes after authentication is initialized
+        setupProtectedRoutes();
+        setupAPIRoutes();
         
         // Start the Express server
         app.listen(port, () => {

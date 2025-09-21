@@ -6,6 +6,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize chat
     console.log('Student chat interface initialized');
     
+    // Load current course information and update UI
+    loadCurrentCourseInfo();
+    
     // Check for published units and load real assessment questions
     // If no units are published, allow direct chat
     checkPublishedUnitsAndLoadQuestions();
@@ -454,6 +457,290 @@ function replaceMessageWithThankYou(messageContent, flagType) {
 
 
 /**
+ * Load current course information and update the UI
+ */
+async function loadCurrentCourseInfo() {
+    try {
+        console.log('Loading current course information...');
+        
+        // Get student name first
+        const studentName = await getCurrentStudentName();
+        console.log('Student name loaded:', studentName);
+        
+        // Update student name display
+        const userNameElement = document.getElementById('user-display-name');
+        if (userNameElement && studentName) {
+            userNameElement.textContent = studentName;
+        }
+        
+        // Load available courses and show course selection
+        await loadAvailableCourses();
+        
+    } catch (error) {
+        console.error('Error loading course information:', error);
+        // Keep default display if course loading fails
+    }
+}
+
+/**
+ * Load available courses and show course selection
+ */
+async function loadAvailableCourses() {
+    try {
+        console.log('Loading available courses...');
+        
+        // Check if there's already a selected course in localStorage
+        const storedCourseId = localStorage.getItem('selectedCourseId');
+        if (storedCourseId) {
+            console.log('Found stored course ID, verifying it exists:', storedCourseId);
+            // Try to load the stored course, but if it fails, clear localStorage and fetch fresh
+            try {
+                await loadCourseData(storedCourseId);
+                return;
+            } catch (error) {
+                console.warn('Stored course ID is invalid, clearing localStorage and fetching fresh courses');
+                localStorage.removeItem('selectedCourseId');
+                // Continue to fetch fresh courses below
+            }
+        }
+        
+        // Fetch available courses
+        const response = await fetch('/api/courses/available/all');
+        if (!response.ok) {
+            throw new Error(`Failed to fetch courses: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        if (!result.success || !result.data) {
+            throw new Error('Invalid courses data received');
+        }
+        
+        const courses = result.data;
+        console.log('Available courses loaded:', courses);
+        
+        if (courses.length === 0) {
+            console.log('No courses available');
+            showNoCoursesMessage();
+            return;
+        }
+        
+        if (courses.length === 1) {
+            // Only one course available, use it directly
+            console.log('Only one course available, using it directly');
+            await loadCourseData(courses[0].courseId);
+        } else {
+            // Multiple courses available, show selection dropdown
+            console.log('Multiple courses available, showing selection');
+            showCourseSelection(courses);
+        }
+        
+    } catch (error) {
+        console.error('Error loading available courses:', error);
+        showNoCoursesMessage();
+    }
+}
+
+/**
+ * Show course selection dropdown
+ * @param {Array} courses - Array of available courses
+ */
+function showCourseSelection(courses) {
+    console.log('Showing course selection for courses:', courses);
+    
+    // Create course selection dropdown
+    const courseSelectionHTML = `
+        <div class="course-selection-container" style="margin: 20px 0; padding: 15px; background-color: #f8f9fa; border-radius: 8px; border-left: 4px solid var(--primary-color);">
+            <h3 style="margin: 0 0 10px 0; color: #333;">Select Your Course</h3>
+            <p style="margin: 0 0 15px 0; color: #666;">Choose the course you want to access:</p>
+            <select id="course-select" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                <option value="">Choose a course...</option>
+                ${courses.map(course => `<option value="${course.courseId}">${course.courseName}</option>`).join('')}
+            </select>
+        </div>
+    `;
+    
+    // Insert course selection before the chat messages
+    const chatMessages = document.getElementById('chat-messages');
+    const existingWelcome = chatMessages.querySelector('.message.bot-message');
+    
+    // Create a container for the course selection
+    const courseSelectionDiv = document.createElement('div');
+    courseSelectionDiv.innerHTML = courseSelectionHTML;
+    courseSelectionDiv.id = 'course-selection-wrapper';
+    
+    // Insert before the existing welcome message
+    if (existingWelcome) {
+        chatMessages.insertBefore(courseSelectionDiv, existingWelcome);
+    } else {
+        chatMessages.appendChild(courseSelectionDiv);
+    }
+    
+    // Add event listener for course selection
+    const courseSelect = document.getElementById('course-select');
+    if (courseSelect) {
+        courseSelect.addEventListener('change', async function() {
+            const selectedCourseId = this.value;
+            if (selectedCourseId) {
+                console.log('Course selected:', selectedCourseId);
+                await loadCourseData(selectedCourseId);
+                
+                // Hide the course selection after selection
+                const courseSelectionWrapper = document.getElementById('course-selection-wrapper');
+                if (courseSelectionWrapper) {
+                    courseSelectionWrapper.style.display = 'none';
+                }
+            }
+        });
+    }
+}
+
+/**
+ * Load course data and update display
+ * @param {string} courseId - Course ID to load
+ */
+async function loadCourseData(courseId) {
+    try {
+        console.log('Loading course data for:', courseId);
+        
+        // Store the selected course in localStorage
+        localStorage.setItem('selectedCourseId', courseId);
+        
+        // Fetch course details
+        const response = await fetch(`/api/courses/${courseId}`);
+        if (!response.ok) {
+            throw new Error(`Failed to fetch course data: ${response.status}`);
+        }
+        
+        const courseData = await response.json();
+        if (!courseData.success || !courseData.data) {
+            throw new Error('Invalid course data received');
+        }
+        
+        const course = courseData.data;
+        console.log('Course data loaded:', course);
+        
+        // Update UI elements with actual course information
+        updateCourseDisplay(course);
+        
+    } catch (error) {
+        console.error('Error loading course data:', error);
+        
+        // If this was a 404 error, clear localStorage and try to load available courses
+        if (error.message.includes('404')) {
+            console.log('Course not found, clearing localStorage and loading available courses');
+            localStorage.removeItem('selectedCourseId');
+            await loadAvailableCourses();
+            return;
+        }
+        
+        showCourseLoadError();
+    }
+}
+
+/**
+ * Show message when no courses are available
+ */
+function showNoCoursesMessage() {
+    const noCoursesMessage = document.createElement('div');
+    noCoursesMessage.classList.add('message', 'bot-message');
+    
+    const avatarDiv = document.createElement('div');
+    avatarDiv.classList.add('message-avatar');
+    avatarDiv.textContent = 'B';
+    
+    const contentDiv = document.createElement('div');
+    contentDiv.classList.add('message-content');
+    
+    const messageText = document.createElement('p');
+    messageText.innerHTML = `<strong>No Courses Available</strong><br>
+    There are no courses available at this time. Please contact your instructor or administrator.`;
+    
+    contentDiv.appendChild(messageText);
+    
+    // Add timestamp
+    const timestamp = document.createElement('span');
+    timestamp.classList.add('timestamp');
+    timestamp.textContent = 'Just now';
+    contentDiv.appendChild(timestamp);
+    
+    noCoursesMessage.appendChild(avatarDiv);
+    noCoursesMessage.appendChild(contentDiv);
+    
+    // Add to chat
+    const chatMessages = document.getElementById('chat-messages');
+    chatMessages.appendChild(noCoursesMessage);
+}
+
+/**
+ * Show error message when course loading fails
+ */
+function showCourseLoadError() {
+    const errorMessage = document.createElement('div');
+    errorMessage.classList.add('message', 'bot-message');
+    
+    const avatarDiv = document.createElement('div');
+    avatarDiv.classList.add('message-avatar');
+    avatarDiv.textContent = 'B';
+    
+    const contentDiv = document.createElement('div');
+    contentDiv.classList.add('message-content');
+    
+    const messageText = document.createElement('p');
+    messageText.innerHTML = `<strong>Error Loading Course</strong><br>
+    There was an error loading the course information. Please try refreshing the page or contact support.`;
+    
+    contentDiv.appendChild(messageText);
+    
+    // Add timestamp
+    const timestamp = document.createElement('span');
+    timestamp.classList.add('timestamp');
+    timestamp.textContent = 'Just now';
+    contentDiv.appendChild(timestamp);
+    
+    errorMessage.appendChild(avatarDiv);
+    errorMessage.appendChild(contentDiv);
+    
+    // Add to chat
+    const chatMessages = document.getElementById('chat-messages');
+    chatMessages.appendChild(errorMessage);
+}
+
+/**
+ * Update the UI with current course information
+ * @param {Object} course - Course object with course details
+ * @param {string} studentName - Student's display name (optional)
+ */
+function updateCourseDisplay(course, studentName) {
+    // Update course name in header
+    const courseNameElement = document.querySelector('.course-name');
+    if (courseNameElement && course.courseName) {
+        courseNameElement.textContent = course.courseName;
+    }
+    
+    // Update user role display
+    const userRoleElement = document.querySelector('.user-role');
+    if (userRoleElement && course.courseName) {
+        userRoleElement.textContent = `Student - ${course.courseName}`;
+    }
+    
+    // Update student name display if provided
+    if (studentName) {
+        const userNameElement = document.getElementById('user-display-name');
+        if (userNameElement) {
+            userNameElement.textContent = studentName;
+        }
+    }
+    
+    // Update welcome message
+    const welcomeMessage = document.querySelector('.message.bot-message p');
+    if (welcomeMessage && course.courseName) {
+        welcomeMessage.textContent = `Hello! I'm BiocBot, your AI study assistant for ${course.courseName}. How can I help you today?`;
+    }
+    
+    console.log('Course display updated with:', course.courseName, 'Student:', studentName || 'not provided');
+}
+
+/**
  * Get current student ID (placeholder)
  * @returns {string} Student ID
  */
@@ -464,22 +751,50 @@ function getCurrentStudentId() {
 }
 
 /**
- * Get current student name (placeholder)
- * @returns {string} Student name
+ * Get current student name from user session
+ * @returns {Promise<string>} Student name
  */
-function getCurrentStudentName() {
-    // This would typically come from JWT token or session
-    // For now, return a placeholder
+async function getCurrentStudentName() {
+    try {
+        const response = await fetch('/api/auth/me');
+        if (response.ok) {
+            const userData = await response.json();
+            if (userData.success && userData.user && userData.user.displayName) {
+                return userData.user.displayName;
+            }
+        }
+    } catch (error) {
+        console.error('Error fetching student name:', error);
+    }
+    
+    // Fallback to placeholder
     return 'Student Name';
 }
 
 /**
- * Get current course ID (placeholder)
+ * Get current course ID from user's session, preferences, or localStorage
  * @returns {Promise<string>} Course ID
  */
 async function getCurrentCourseId() {
     try {
-        // Fetch available courses from the API
+        // First, try to get the user's current course context from their session
+        const userResponse = await fetch('/api/auth/me');
+        if (userResponse.ok) {
+            const userData = await userResponse.json();
+            if (userData.success && userData.user && userData.user.preferences && userData.user.preferences.courseId) {
+                console.log('Using course from user preferences:', userData.user.preferences.courseId);
+                return userData.user.preferences.courseId;
+            }
+        }
+        
+        // Check localStorage for previously selected course
+        const storedCourseId = localStorage.getItem('selectedCourseId');
+        if (storedCourseId) {
+            console.log('Found stored course ID, will verify it exists:', storedCourseId);
+            return storedCourseId;
+        }
+        
+        // If no course context, fetch available courses and use the first one
         const response = await fetch('/api/courses/available/all');
         
         if (!response.ok) {
@@ -494,13 +809,16 @@ async function getCurrentCourseId() {
         
         const courses = result.data;
         
-        // For now, return the first available course ID
-        // In production, this would be based on student enrollment or selection
+        // Return the first available course ID
         if (courses.length > 0) {
+            console.log('Using first available course:', courses[0].courseId);
+            // Store it in localStorage for future use
+            localStorage.setItem('selectedCourseId', courses[0].courseId);
             return courses[0].courseId;
         }
         
         // Fallback to a default course ID if no courses are available
+        console.log('No courses available, using fallback');
         return 'default-course-id';
         
     } catch (error) {
@@ -578,6 +896,15 @@ async function checkPublishedUnitsAndLoadQuestions() {
         if (!response.ok) {
             const errorText = await response.text();
             console.error('API error response body:', errorText);
+            
+            // If course not found, clear localStorage and try to load available courses
+            if (response.status === 404) {
+                console.log('Course not found, clearing localStorage and loading available courses');
+                localStorage.removeItem('selectedCourseId');
+                await loadAvailableCourses();
+                return;
+            }
+            
             throw new Error(`Failed to fetch course data: ${response.status} - ${errorText}`);
         }
         
