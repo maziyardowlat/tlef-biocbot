@@ -311,6 +311,90 @@ class LLMService {
             throw error;
         }
     }
+
+    /**
+     * Regenerate an assessment question with instructor feedback
+     * @param {string} questionType - Type of question to regenerate
+     * @param {string} courseMaterialContent - Course material content
+     * @param {string} unitName - Unit name
+     * @param {string} learningObjectives - Learning objectives (optional)
+     * @param {Object} previousQuestion - The previous question that needs improvement
+     * @param {string} feedback - Instructor feedback on what to improve
+     * @returns {Promise<Object>} Generated question object
+     */
+    async regenerateAssessmentQuestion(questionType, courseMaterialContent, unitName, learningObjectives = '', previousQuestion, feedback) {
+        try {
+            // Initialize LLM service on first use if not already initialized
+            if (!this.isInitialized) {
+                console.log(`🔄 Initializing LLM service for question regeneration...`);
+                await this._performInitialization();
+            }
+            
+            console.log(`🔄 Regenerating ${questionType} question for ${unitName} based on feedback...`);
+            
+            // Create regeneration prompt with feedback
+            const prompt = this.createQuestionRegenerationPrompt(
+                questionType, 
+                courseMaterialContent, 
+                unitName, 
+                learningObjectives, 
+                previousQuestion, 
+                feedback
+            );
+            
+            // Create system prompt using template function
+            const systemPrompt = prompts.createQuestionGenerationSystemPrompt(
+                questionType, 
+                this.getJsonSchemaForQuestionType(questionType)
+            );
+            
+            // Set specific options for question regeneration
+            // Use lower temperature (0.5) for more focused improvements based on feedback
+            const generationOptions = {
+                temperature: 0.5,  // Lower temperature for more focused regeneration
+                num_ctx: 16384,
+                timeout: 120000,
+                systemPrompt: systemPrompt
+            };
+            
+            // Log prompt length and content for debugging
+            console.log(`🔄 [LLM_REGENERATE] Sending regeneration prompt to LLM (${prompt.length} chars)`);
+            console.log('🔄 [LLM_REGENERATE_PROMPT] Full prompt being sent:', prompt);
+            
+            // Create a promise that rejects after the timeout
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('LLM regeneration request timed out after 2 minutes')), 120000);
+            });
+
+            // Race between the LLM response and the timeout
+            console.log('🔄 Regenerating question based on feedback...');
+            console.log('⏳ This may take up to 2 minutes...');
+            
+            const response = await Promise.race([
+                this.llm.sendMessage(prompt, generationOptions),
+                timeoutPromise
+            ]);
+
+            console.log('🔄 [LLM_REGENERATE_RESPONSE] Raw response from LLM:', response);
+            
+            if (!response || !response.content) {
+                throw new Error('No response content received from LLM during regeneration');
+            }
+            
+            console.log('🔄 [LLM_REGENERATE_CONTENT] Response content:', response.content);
+            
+            // Parse the response to extract question components
+            const parsedQuestion = this.parseGeneratedQuestion(response.content, questionType);
+            console.log('🔄 [LLM_REGENERATE_PARSED] Parsed regenerated question:', parsedQuestion);
+            
+            console.log(`✅ Question regenerated successfully for ${unitName}`);
+            return parsedQuestion;
+            
+        } catch (error) {
+            console.error('❌ Error regenerating assessment question:', error.message);
+            throw error;
+        }
+    }
     
     /**
      * Create a specific prompt for question generation based on type
@@ -331,6 +415,73 @@ class LLMService {
             default:
                 throw new Error(`Unsupported question type: ${questionType}`);
         }
+    }
+
+    /**
+     * Create a regeneration prompt based on instructor feedback
+     * @param {string} questionType - Type of question to regenerate
+     * @param {string} courseMaterialContent - Course material content
+     * @param {string} unitName - Unit name
+     * @param {string} learningObjectives - Learning objectives (optional)
+     * @param {Object} previousQuestion - The previous question that needs improvement
+     * @param {string} feedback - Instructor feedback on what to improve
+     * @returns {string} Formatted regeneration prompt for the LLM
+     */
+    createQuestionRegenerationPrompt(questionType, courseMaterialContent, unitName, learningObjectives = '', previousQuestion, feedback) {
+        // Base regeneration prompt template
+        let regenerationPrompt = `You are tasked with regenerating an assessment question based on instructor feedback.
+
+ORIGINAL QUESTION TO IMPROVE:
+Question Type: ${questionType}
+Question: ${previousQuestion.question || 'No question text'}`;
+
+        // Add question-specific details
+        if (questionType === 'multiple-choice' && previousQuestion.options) {
+            regenerationPrompt += `
+Options:
+A) ${previousQuestion.options.A || 'No option A'}
+B) ${previousQuestion.options.B || 'No option B'}
+C) ${previousQuestion.options.C || 'No option C'}
+D) ${previousQuestion.options.D || 'No option D'}
+Correct Answer: ${previousQuestion.answer || 'No answer'}`;
+        } else if (questionType === 'true-false') {
+            regenerationPrompt += `
+Correct Answer: ${previousQuestion.answer || 'No answer'}`;
+        } else if (questionType === 'short-answer') {
+            regenerationPrompt += `
+Expected Answer: ${previousQuestion.answer || 'No answer'}`;
+        }
+
+        regenerationPrompt += `
+
+INSTRUCTOR FEEDBACK:
+${feedback}
+
+COURSE MATERIAL CONTEXT:
+${courseMaterialContent}
+
+UNIT: ${unitName}`;
+
+        if (learningObjectives) {
+            regenerationPrompt += `
+
+LEARNING OBJECTIVES:
+${learningObjectives}`;
+        }
+
+        regenerationPrompt += `
+
+INSTRUCTIONS:
+Please create a NEW and IMPROVED question that addresses the instructor's feedback while:
+1. Staying relevant to the course material and learning objectives
+2. Maintaining the same question type (${questionType})
+3. Being clearly different from the original question
+4. Incorporating the specific improvements requested in the feedback
+5. Ensuring the question is pedagogically sound and appropriate for the unit
+
+Generate a completely new question that addresses the feedback, don't just modify the existing one.`;
+
+        return regenerationPrompt;
     }
     
     

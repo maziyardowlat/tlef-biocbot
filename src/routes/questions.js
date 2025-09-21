@@ -689,13 +689,30 @@ router.get('/course-material', async (req, res) => {
  */
 router.post('/generate-ai', async (req, res) => {
     try {
-        const { courseId, lectureName, instructorId, questionType, learningObjectives } = req.body;
+        const { 
+            courseId, 
+            lectureName, 
+            instructorId, 
+            questionType, 
+            learningObjectives,
+            regenerate,
+            feedback,
+            previousQuestion
+        } = req.body;
         
         // Validate required fields
         if (!courseId || !lectureName || !instructorId || !questionType) {
             return res.status(400).json({
                 success: false,
                 message: 'Missing required fields: courseId, lectureName, instructorId, questionType'
+            });
+        }
+        
+        // Additional validation for regeneration requests
+        if (regenerate && !feedback) {
+            return res.status(400).json({
+                success: false,
+                message: 'Feedback is required for regeneration requests'
             });
         }
         
@@ -851,16 +868,35 @@ router.post('/generate-ai', async (req, res) => {
                 : '';
 
             console.log('🎯 [GENERATE] Learning objectives available:', formattedLearningObjectives ? 'Yes' : 'No');
-
-            const generatedQuestion = await llmService.generateAssessmentQuestion(
-                questionType, 
-                combinedContent, 
-                lectureName,
-                formattedLearningObjectives,
-                '' // practiceQuestions - empty for now, can be added later
-            );
             
-            console.log(`🤖 AI question generated successfully for ${lectureName}: ${questionType}`);
+            let generatedQuestion;
+            
+            if (regenerate) {
+                console.log('🔄 [REGENERATE] Processing regeneration request with feedback:', feedback);
+                
+                // Call regenerate method with lower temperature and feedback
+                generatedQuestion = await llmService.regenerateAssessmentQuestion(
+                    questionType,
+                    combinedContent,
+                    lectureName,
+                    formattedLearningObjectives,
+                    previousQuestion,
+                    feedback
+                );
+                
+                console.log(`🔄 AI question regenerated successfully for ${lectureName}: ${questionType}`);
+            } else {
+                // Normal generation
+                generatedQuestion = await llmService.generateAssessmentQuestion(
+                    questionType, 
+                    combinedContent, 
+                    lectureName,
+                    formattedLearningObjectives,
+                    '' // practiceQuestions - empty for now, can be added later
+                );
+                
+                console.log(`🤖 AI question generated successfully for ${lectureName}: ${questionType}`);
+            }
             
             res.json({
                 success: true,
