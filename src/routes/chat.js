@@ -6,7 +6,20 @@
 
 const express = require('express');
 const router = express.Router();
-const llmService = require('../services/llm');
+const LLMService = require('../services/llm');
+const QdrantService = require('../services/qdrantService');
+const prompts = require('../services/prompts');
+
+// Initialize LLM service
+let llmService;
+(async () => {
+    try {
+        llmService = await LLMService.create();
+        console.log('✅ LLM service initialized successfully');
+    } catch (error) {
+        console.error('❌ Failed to initialize LLM service:', error);
+    }
+})();
 
 // Middleware to parse JSON bodies
 router.use(express.json());
@@ -17,7 +30,15 @@ router.use(express.json());
  */
 router.post('/', async (req, res) => {
     try {
-        const { message, conversationId, mode } = req.body;
+        // Check if LLM service is initialized
+        if (!llmService) {
+            return res.status(503).json({
+                success: false,
+                message: 'LLM service is not yet initialized. Please try again in a moment.'
+            });
+        }
+
+        const { message, conversationId, mode, unitName, courseId } = req.body;
         
         // Validate required fields
         if (!message || typeof message !== 'string') {
@@ -91,6 +112,15 @@ router.post('/', async (req, res) => {
  */
 router.get('/status', async (req, res) => {
     try {
+        const llmService = req.app.locals.llm;
+        
+        if (!llmService) {
+            return res.status(503).json({
+                success: false,
+                message: 'LLM service is not initialized'
+            });
+        }
+        
         const status = llmService.getStatus();
         
         res.json({
@@ -118,6 +148,15 @@ router.get('/status', async (req, res) => {
 router.post('/test', async (req, res) => {
     try {
         console.log('🧪 Testing LLM connection...');
+        
+        const llmService = req.app.locals.llm;
+        
+        if (!llmService) {
+            return res.status(503).json({
+                success: false,
+                message: 'LLM service is not initialized'
+            });
+        }
         
         const isConnected = await llmService.testConnection();
         
@@ -155,6 +194,15 @@ router.post('/test', async (req, res) => {
  */
 router.get('/models', async (req, res) => {
     try {
+        const llmService = req.app.locals.llm;
+        
+        if (!llmService) {
+            return res.status(503).json({
+                success: false,
+                message: 'LLM service is not initialized'
+            });
+        }
+        
         const models = await llmService.getAvailableModels();
         
         res.json({
