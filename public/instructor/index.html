@@ -25,11 +25,10 @@
             </nav>
             <div class="user-info">
                 <div class="user-avatar">I</div>
-                <div class="user-name" id="user-display-name">Instructor Name</div>
+                <div class="user-name">Instructor Name</div>
                 <div class="user-role">Instructor</div>
-                <div class="user-actions">
-                    <a href="/instructor/settings" class="user-action">Settings</a>
-                    <a href="#" id="logout-btn" class="user-action">Logout</a>
+                <div class="switch-role">
+                    <a href="/">Switch Role</a>
                 </div>
             </div>
         </aside>
@@ -37,10 +36,11 @@
         <!-- Main Content Area -->
         <main class="main-content">
             <header class="documents-header">
-                <h1 id="course-title">Loading Course...</h1>
+                <h1>BIOC 202</h1>
                 <div class="course-selector">
                     <select id="course-select">
-                        <option value="">Loading courses...</option>
+                        <option value="bioc202">BIOC 202</option>
+                        <option value="bioc303">BIOC 303</option>
                     </select>
                 </div>
             </header>
@@ -317,7 +317,8 @@
     </div>
     
 
-    <script src="../common/scripts/auth.js"></script>
     <script src="./scripts/instructor.js"></script>
+    <script src="./scripts/notificationManager.js"></script>
+    <script src="./scripts/assessmentManager.js"></script>
 </body>
 </html> 
