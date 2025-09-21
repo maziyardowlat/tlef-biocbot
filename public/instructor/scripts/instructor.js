@@ -1,6 +1,11 @@
 // API base URL configuration - change this if proxy isn't working
 const API_BASE_URL = ''; // Empty string for relative URLs, 'http://localhost:8085' for absolute
 
+// AI generation tracking variables
+let aiGenerationCount = 0;
+let lastGeneratedContent = null;
+let currentQuestionType = null;
+
 document.addEventListener('DOMContentLoaded', () => {
     console.log('🚀 [DOM_LOADED] Instructor page loaded');
     
@@ -3056,11 +3061,17 @@ function resetQuestionForm() {
     // Clear short answer
     document.getElementById('sa-answer').value = '';
     
+    // Reset AI generation tracking
+    aiGenerationCount = 0;
+    lastGeneratedContent = null;
+    currentQuestionType = null;
+    
     // Hide AI generation button
     const aiButton = document.getElementById('ai-generate-btn');
     if (aiButton) {
         aiButton.style.display = 'none';
         aiButton.disabled = false;
+        aiButton.innerHTML = '<span class="ai-icon">🤖</span> Generate with AI'; // Reset button text
         console.log(`🔍 [RESET_FORM] AI button hidden and reset`);
     } else {
         console.warn(`🔍 [RESET_FORM] AI button not found during reset`);
@@ -3068,10 +3079,58 @@ function resetQuestionForm() {
 }
 
 /**
+ * Clear all form fields (question text and answers for all types)
+ */
+function clearAllFormFields() {
+    console.log('🧹 [CLEAR_FORM] Clearing all form fields due to question type change');
+    
+    // Clear question text
+    const questionTextInput = document.getElementById('question-text');
+    if (questionTextInput) {
+        questionTextInput.value = '';
+    }
+    
+    // Clear True/False answers
+    const tfRadios = document.querySelectorAll('input[name="tf-answer"]');
+    tfRadios.forEach(radio => radio.checked = false);
+    
+    // Clear Multiple Choice answers
+    const mcqInputs = document.querySelectorAll('.mcq-input');
+    mcqInputs.forEach(input => input.value = '');
+    
+    const mcqRadios = document.querySelectorAll('input[name="mcq-correct"]');
+    mcqRadios.forEach(radio => radio.checked = false);
+    
+    // Clear Short Answer
+    const saAnswer = document.getElementById('sa-answer');
+    if (saAnswer) {
+        saAnswer.value = '';
+    }
+    
+    console.log('✅ [CLEAR_FORM] All form fields cleared');
+}
+
+/**
  * Update question form based on selected question type
  */
 function updateQuestionForm() {
     const questionType = document.getElementById('question-type').value;
+    
+    // Reset AI generation tracking and clear form if question type changed
+    if (questionType !== currentQuestionType) {
+        aiGenerationCount = 0;
+        lastGeneratedContent = null;
+        currentQuestionType = questionType;
+        
+        // Reset button text if it exists
+        const aiButton = document.getElementById('ai-generate-btn');
+        if (aiButton) {
+            aiButton.innerHTML = '<span class="ai-icon">🤖</span> Generate with AI';
+        }
+        
+        // Clear all form fields when switching question types
+        clearAllFormFields();
+    }
     
     // Hide all sections first
     document.getElementById('tf-answer-section').style.display = 'none';
@@ -3556,6 +3615,20 @@ async function generateAIQuestionContent() {
         showNotification('Please upload course materials (lecture notes, practice questions, etc.) before generating AI questions.', 'error');
         return;
     }
+
+    // Check if this is the second click with existing content
+    if (aiGenerationCount > 0 && lastGeneratedContent && questionType === currentQuestionType) {
+        // Show regenerate modal instead of generating new content
+        openRegenerateModal();
+        return;
+    }
+
+    // Reset tracking if question type changed
+    if (questionType !== currentQuestionType) {
+        aiGenerationCount = 0;
+        lastGeneratedContent = null;
+        currentQuestionType = questionType;
+    }
     
     // Show loading state
     const aiButton = document.getElementById('ai-generate-btn');
@@ -3637,8 +3710,18 @@ async function generateAIQuestionContent() {
         console.log('🤖 [AI_CONTENT] Content keys:', Object.keys(aiContent));
         console.log('🤖 [AI_CONTENT] Options structure:', aiContent.options ? JSON.stringify(aiContent.options, null, 2) : 'No options');
         
+        // Store the generated content for potential regeneration
+        lastGeneratedContent = aiContent;
+        aiGenerationCount++;
+        currentQuestionType = questionType;
+        
         // Populate form fields with AI content
         populateFormWithAIContent(aiContent);
+        
+        // Update button text to indicate regeneration is available
+        if (aiGenerationCount === 1) {
+            aiButton.innerHTML = '<span class="ai-icon">🔄</span> Regenerate with AI';
+        }
         
         // Show success notification
         showNotification('AI question generated successfully! You can now edit and save it.', 'success');
@@ -5089,4 +5172,168 @@ function showNotification(message, type = 'info') {
     setTimeout(() => {
         notification.remove();
     }, 5000);
+}
+/**
+ * Open the regenerate modal with current question content
+ */
+function openRegenerateModal() {
+    const modal = document.getElementById('regenerate-modal');
+    const currentQuestionDisplay = document.getElementById('current-question-display');
+    const feedbackTextarea = document.getElementById('regenerate-feedback');
+    
+    if (!modal || !currentQuestionDisplay || !lastGeneratedContent) {
+        console.error('Missing elements for regenerate modal');
+        return;
+    }
+    
+    // Clear previous feedback
+    feedbackTextarea.value = '';
+    
+    // Display current question content
+    displayCurrentQuestion(currentQuestionDisplay, lastGeneratedContent);
+    
+    // Show modal
+    modal.classList.add('show');
+    
+    // Focus on textarea
+    setTimeout(() => feedbackTextarea.focus(), 100);
+}
+
+/**
+ * Close the regenerate modal
+ */
+function closeRegenerateModal() {
+    const modal = document.getElementById('regenerate-modal');
+    if (modal) {
+        modal.classList.remove('show');
+    }
+}
+
+/**
+ * Display the current question in a readable format
+ * @param {HTMLElement} container - The container element to display the question
+ * @param {Object} questionContent - The question content object
+ */
+function displayCurrentQuestion(container, questionContent) {
+    const questionType = document.getElementById('question-type').value;
+    let html = '';
+    
+    // Question text
+    html += `<div class="question-text">${questionContent.question || 'No question text'}</div>`;
+    
+    // Show options/answers based on type
+    if (questionType === 'multiple-choice' && questionContent.options) {
+        html += '<div class="question-options">';
+        const options = questionContent.options;
+        const correctAnswer = questionContent.answer;
+        
+        ['A', 'B', 'C', 'D'].forEach(letter => {
+            if (options[letter]) {
+                const isCorrect = letter === correctAnswer;
+                html += `<div class="option ${isCorrect ? 'correct' : ''}">${letter}. ${options[letter]} ${isCorrect ? '(Correct)' : ''}</div>`;
+            }
+        });
+        html += '</div>';
+    } else if (questionType === 'true-false') {
+        html += `<div class="question-answer">Correct Answer: ${questionContent.answer}</div>`;
+    } else if (questionType === 'short-answer') {
+        html += `<div class="question-answer">Expected Answer: ${questionContent.answer || 'No answer provided'}</div>`;
+    }
+    
+    container.innerHTML = html;
+}
+
+/**
+ * Submit regenerate request with feedback
+ */
+async function submitRegenerate() {
+    const feedbackTextarea = document.getElementById('regenerate-feedback');
+    const submitButton = document.getElementById('regenerate-submit-btn');
+    const feedback = feedbackTextarea.value.trim();
+    
+    if (!feedback) {
+        showNotification('Please provide feedback about what you\'d like to improve.', 'error');
+        return;
+    }
+    
+    // Show loading state
+    const originalText = submitButton.innerHTML;
+    submitButton.innerHTML = '⏳ Regenerating...';
+    submitButton.disabled = true;
+    
+    try {
+        // Get current form data
+        const questionType = document.getElementById('question-type').value;
+        const courseId = await getCurrentCourseId();
+        const instructorId = getCurrentInstructorId();
+        
+        // Get learning objectives (same as original generation)
+        const weekAccordionItem = Array.from(document.querySelectorAll('.accordion-item')).find(item => {
+            const folderName = item.querySelector('.folder-name')?.textContent;
+            return folderName === currentWeek;
+        });
+
+        const objectives = [];
+        if (weekAccordionItem) {
+            const objectivesList = weekAccordionItem.querySelector('.objectives-list');
+            if (objectivesList) {
+                objectivesList.querySelectorAll('.objective-text').forEach(obj => {
+                    const text = obj.textContent.trim();
+                    if (text) {
+                        objectives.push(text);
+                    }
+                });
+            }
+        }
+        
+        // Call the regenerate API
+        const response = await fetch(API_BASE_URL + '/api/questions/generate-ai', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                courseId: courseId,
+                lectureName: currentWeek,
+                instructorId: instructorId,
+                questionType: questionType,
+                learningObjectives: objectives.length > 0 ? objectives : undefined,
+                regenerate: true,
+                feedback: feedback,
+                previousQuestion: lastGeneratedContent
+            })
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
+            throw new Error(errorData.message || `Failed to regenerate question: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        
+        if (!result.success) {
+            throw new Error(result.message || 'Failed to regenerate question');
+        }
+        
+        // Update the stored content
+        lastGeneratedContent = result.data;
+        
+        // Populate form with new content
+        populateFormWithAIContent(result.data);
+        
+        // Close modal
+        closeRegenerateModal();
+        
+        // Show success notification
+        showNotification('Question regenerated successfully based on your feedback!', 'success');
+        
+    } catch (error) {
+        console.error('Error regenerating question:', error);
+        showNotification(`Error regenerating question: ${error.message}`, 'error');
+        
+    } finally {
+        // Restore button state
+        submitButton.innerHTML = originalText;
+        submitButton.disabled = false;
+    }
 }

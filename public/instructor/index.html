@@ -176,6 +176,43 @@
         </div>
     </div>
 
+    <!-- Regenerate Question Modal -->
+    <div id="regenerate-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Regenerate AI Question</h2>
+                <button class="modal-close" onclick="closeRegenerateModal()">×</button>
+            </div>
+            
+            <div class="modal-body">
+                <div class="current-question-section">
+                    <h3>Current Question</h3>
+                    <div class="current-question-display" id="current-question-display">
+                        <!-- Current question will be displayed here -->
+                    </div>
+                </div>
+                
+                <div class="feedback-section">
+                    <label for="regenerate-feedback">What would you like to improve about this question?</label>
+                    <textarea 
+                        id="regenerate-feedback" 
+                        rows="4" 
+                        placeholder="Describe what you'd like to change about the question (e.g., make it more specific, focus on different concepts, adjust difficulty level, etc.)...">
+                    </textarea>
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <div class="modal-actions">
+                    <button class="btn-secondary" onclick="closeRegenerateModal()">Cancel</button>
+                    <button class="btn-primary" onclick="submitRegenerate()" id="regenerate-submit-btn">
+                        Regenerate Question
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Upload Modal -->
     <div id="upload-modal" class="modal">
         <div class="modal-content">
