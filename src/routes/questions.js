@@ -845,18 +845,19 @@ router.post('/generate-ai', async (req, res) => {
         }
         
         try {
-            // Add learning objectives to the content if available
-            let contentWithObjectives = combinedContent;
-            if (learningObjectives && learningObjectives.length > 0) {
-                contentWithObjectives += '\n\nLearning Objectives:\n' + 
-                    learningObjectives.map((obj, i) => `${i + 1}. ${obj}`).join('\n');
-                console.log('🎯 [GENERATE] Added learning objectives to content');
-            }
+            // Format learning objectives for the prompt
+            const formattedLearningObjectives = learningObjectives && learningObjectives.length > 0 
+                ? learningObjectives.map((obj, i) => `${i + 1}. ${obj}`).join('\n')
+                : '';
+
+            console.log('🎯 [GENERATE] Learning objectives available:', formattedLearningObjectives ? 'Yes' : 'No');
 
             const generatedQuestion = await llmService.generateAssessmentQuestion(
                 questionType, 
-                contentWithObjectives, 
-                lectureName
+                combinedContent, 
+                lectureName,
+                formattedLearningObjectives,
+                '' // practiceQuestions - empty for now, can be added later
             );
             
             console.log(`🤖 AI question generated successfully for ${lectureName}: ${questionType}`);

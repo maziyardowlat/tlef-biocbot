@@ -242,9 +242,10 @@ class LLMService {
      * @param {string} questionType - Type of question to generate ('true-false', 'multiple-choice', 'short-answer')
      * @param {string} courseMaterialContent - The course material text content
      * @param {string} unitName - Name of the unit (e.g., 'Unit 1')
+     * @param {string} learningObjectives - Learning objectives for the unit (optional)
      * @returns {Promise<Object>} Generated question content
      */
-    async generateAssessmentQuestion(questionType, courseMaterialContent, unitName) {
+    async generateAssessmentQuestion(questionType, courseMaterialContent, unitName, learningObjectives = '') {
         try {
             // Initialize LLM service on first use if not already initialized
             if (!this.isInitialized) {
@@ -255,7 +256,13 @@ class LLMService {
             console.log(`🤖 Generating ${questionType} question for ${unitName}...`);
             
             // Create specific prompt based on question type
-            const prompt = this.createQuestionGenerationPrompt(questionType, courseMaterialContent, unitName);
+            const prompt = this.createQuestionGenerationPrompt(questionType, courseMaterialContent, unitName, learningObjectives);
+            
+            // Create system prompt using template function
+            const systemPrompt = prompts.createQuestionGenerationSystemPrompt(
+                questionType, 
+                this.getJsonSchemaForQuestionType(questionType)
+            );
             
             // Set specific options for question generation
             // Use higher temperature (0.7) for more creative question generation
@@ -263,7 +270,7 @@ class LLMService {
                 temperature: 0.7,
                 num_ctx: 16384,  // Reduced context window for better performance
                 timeout: 120000,  // 2 minute timeout for complex questions
-                systemPrompt: this.getQuestionGenerationSystemPrompt()
+                systemPrompt: systemPrompt
             };
             
             // Log prompt length and content for debugging
@@ -310,27 +317,61 @@ class LLMService {
      * @param {string} questionType - Type of question to generate
      * @param {string} courseMaterialContent - Course material content
      * @param {string} unitName - Unit name
+     * @param {string} learningObjectives - Learning objectives (optional)
      * @returns {string} Formatted prompt for the LLM
      */
-    createQuestionGenerationPrompt(questionType, courseMaterialContent, unitName) {
+    createQuestionGenerationPrompt(questionType, courseMaterialContent, unitName, learningObjectives = '') {
         switch (questionType) {
             case 'true-false':
-                return prompts.QUESTION_GENERATION_PROMPT_TEMPLATE.trueFalse(courseMaterialContent, unitName);
+                return prompts.QUESTION_GENERATION_PROMPT_TEMPLATE.trueFalse(learningObjectives, courseMaterialContent, unitName);
             case 'multiple-choice':
-                return prompts.QUESTION_GENERATION_PROMPT_TEMPLATE.multipleChoice(courseMaterialContent, unitName);
+                return prompts.QUESTION_GENERATION_PROMPT_TEMPLATE.multipleChoice(learningObjectives, courseMaterialContent, unitName);
             case 'short-answer':
-                return prompts.QUESTION_GENERATION_PROMPT_TEMPLATE.shortAnswer(courseMaterialContent, unitName);
+                return prompts.QUESTION_GENERATION_PROMPT_TEMPLATE.shortAnswer(learningObjectives, courseMaterialContent, unitName);
             default:
                 throw new Error(`Unsupported question type: ${questionType}`);
         }
     }
     
+    
     /**
-     * Get system prompt specifically for question generation
-     * @returns {string} System prompt for question generation
+     * Get JSON schema for specific question type
+     * @param {string} questionType - Type of question
+     * @returns {string} JSON schema string
      */
-    getQuestionGenerationSystemPrompt() {
-        return prompts.QUESTION_GENERATION_SYSTEM_PROMPT;
+    getJsonSchemaForQuestionType(questionType) {
+        switch (questionType) {
+            case 'true-false':
+                return `{
+    "type": "true-false",
+    "question": "string - the question text",
+    "correctAnswer": "boolean - true or false",
+    "explanation": "string - explanation of the correct answer"
+}`;
+            case 'multiple-choice':
+                return `{
+    "type": "multiple-choice",
+    "question": "string - the question text",
+    "options": {
+        "A": "string - option A",
+        "B": "string - option B", 
+        "C": "string - option C",
+        "D": "string - option D"
+    },
+    "correctAnswer": "string - letter of correct answer (A, B, C, or D)",
+    "explanation": "string - explanation of the correct answer"
+}`;
+            case 'short-answer':
+                return `{
+    "type": "short-answer",
+    "question": "string - the question text",
+    "expectedAnswer": "string - model answer",
+    "keyPoints": "array - key points for the answer",
+    "explanation": "string - explanation of the answer"
+}`;
+            default:
+                return '{}';
+        }
     }
     
     /**
