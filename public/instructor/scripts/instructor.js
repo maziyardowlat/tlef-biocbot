@@ -938,6 +938,68 @@ async function getCurrentCourseId() {
     return null;
 }
 
+// Settings page: wire additive retrieval toggle if present
+document.addEventListener('DOMContentLoaded', async function() {
+    try {
+        const toggle = document.getElementById('additive-retrieval-toggle');
+        if (!toggle) return;
+
+        async function initToggleWithCourse() {
+            const courseId = await getCurrentCourseId();
+            if (!courseId) {
+                // No course context yet; disable toggle gracefully
+                toggle.disabled = true;
+                return;
+            }
+
+            // Load current setting
+            const res = await fetch(`/api/courses/${courseId}`);
+            if (res.ok) {
+                const data = await res.json();
+                if (data && data.data) {
+                    toggle.checked = !!data.data.isAdditiveRetrieval;
+                }
+            }
+
+            toggle.disabled = false;
+
+            // Save on change
+            toggle.addEventListener('change', async function() {
+                try {
+                    const saveRes = await fetch(`/api/courses/${courseId}/retrieval-mode`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ isAdditiveRetrieval: this.checked })
+                    });
+                    const result = await saveRes.json();
+                    if (!saveRes.ok || !result.success) throw new Error(result.message || 'Failed to save');
+                    showNotification && showNotification('Retrieval mode updated', 'success');
+                } catch (e) {
+                    console.error(e);
+                    this.checked = !this.checked;
+                    showNotification && showNotification('Failed to update retrieval mode', 'error');
+                }
+            });
+        }
+
+        // If auth not ready yet, wait for it
+        if (typeof getCurrentUser === 'function' && !getCurrentUser()) {
+            toggle.disabled = true;
+            const onAuthReady = async () => {
+                document.removeEventListener('auth:ready', onAuthReady);
+                await initToggleWithCourse();
+            };
+            document.addEventListener('auth:ready', onAuthReady);
+        } else {
+            await initToggleWithCourse();
+        }
+    } catch (err) {
+        // Non-fatal for unrelated pages
+    }
+});
+
+// Removed: documents page retrieval toggle wiring (settings-only per user request)
+
 /**
  * Load the saved publish status for all lectures from the database
  */

@@ -565,6 +565,8 @@ async function createCourseFromOnboarding(db, onboardingData) {
             courseDescription: courseDescription || '',
             assessmentCriteria: assessmentCriteria || '',
             courseMaterials: courseMaterials || [],
+            // Retrieval behavior setting for student chat (false = single-unit, true = additive)
+            isAdditiveRetrieval: false,
             courseStructure: {
                 weeks: courseStructure.weeks,
                 lecturesPerWeek: courseStructure.lecturesPerWeek,

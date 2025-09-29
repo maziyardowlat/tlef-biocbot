@@ -13,7 +13,7 @@ document.addEventListener('DOMContentLoaded', function() {
  */
 function initializeHomePage() {
     console.log('Home page initialized');
-    // Add future functionality here
+    // Home page initialized
 }
 
 /**

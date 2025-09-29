@@ -18,6 +18,12 @@ async function initAuth() {
             currentUser = result.user;
             updateUserDisplay();
             setupLogoutHandler();
+            // Notify listeners that auth/user state is ready
+            try {
+                document.dispatchEvent(new CustomEvent('auth:ready', { detail: currentUser }));
+            } catch (e) {
+                console.warn('auth:ready event dispatch failed', e);
+            }
         } else {
             // User not authenticated, redirect to login
             window.location.href = '/login';

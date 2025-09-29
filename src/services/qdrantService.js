@@ -418,12 +418,36 @@ class QdrantService {
             // Ensure collection exists before searching
             await this.ensureCollectionExists();
 
-            // Generate embedding for the search query
-            const queryEmbedding = await this.embeddings.embed(query);
+            // Generate embedding for the search query and normalize to number[]
+            const rawEmbedding = await this.embeddings.embed(query);
+            let queryVector = rawEmbedding;
+            if (Array.isArray(rawEmbedding)) {
+                // If provider returns a batch ([[...]]), unwrap the first vector
+                if (rawEmbedding.length > 0 && Array.isArray(rawEmbedding[0])) {
+                    if (rawEmbedding.length !== 1) {
+                        console.warn(`Embed returned ${rawEmbedding.length} vectors for a single query; using the first`);
+                    }
+                    queryVector = rawEmbedding[0];
+                }
+            } else if (rawEmbedding && typeof rawEmbedding === 'object') {
+                // Handle possible object wrappers
+                if (Array.isArray(rawEmbedding.embedding)) {
+                    queryVector = rawEmbedding.embedding;
+                } else if (Array.isArray(rawEmbedding.data) && Array.isArray(rawEmbedding.data[0])) {
+                    queryVector = rawEmbedding.data[0];
+                }
+            }
+
+            if (!Array.isArray(queryVector) || !queryVector.every(n => typeof n === 'number')) {
+                throw new Error('Invalid query embedding shape: expected number[]');
+            }
+            if (this.vectorSize && queryVector.length !== this.vectorSize) {
+                console.warn(`Query embedding size (${queryVector.length}) does not match expected collection size (${this.vectorSize})`);
+            }
 
             // Build search parameters
             const searchParams = {
-                vector: queryEmbedding,
+                vector: queryVector,
                 limit: limit,
                 with_payload: true,
                 with_vector: false
@@ -448,6 +472,17 @@ class QdrantService {
                 searchParams.filter.must.push({
                     key: 'lectureName',
                     match: { value: filters.lectureName }
+                });
+            }
+
+            // Support array of lecture names (any-of match)
+            if (filters.lectureNames && Array.isArray(filters.lectureNames) && filters.lectureNames.length > 0) {
+                if (!searchParams.filter) {
+                    searchParams.filter = { must: [] };
+                }
+                searchParams.filter.must.push({
+                    key: 'lectureName',
+                    match: { any: filters.lectureNames }
                 });
             }
 
