@@ -7,6 +7,7 @@ BiocBot is an AI-powered study assistant platform that enables students to inter
 - **Document Management**: Upload and organize course materials
 - **Vector Search**: Semantic search across documents using Qdrant
 - **AI Chat Interface**: Student interaction with course content
+- **Per-Course Retrieval Mode**: Instructor-controlled additive vs single-unit retrieval for chat
 - **Assessment Questions**: Create and manage course assessments
 - **Course Structure**: Organize content by units/lectures
 - **User Management**: Separate interfaces for instructors and students
@@ -119,13 +120,14 @@ Visit `/qdrant-test` to test the Qdrant functionality:
 3. **Upload Documents**: Add course materials to units
 4. **Create Questions**: Build assessments for students
 5. **Publish Units**: Make content available to students
+6. **Retrieval Mode**: On the course Home page, toggle “Use additive retrieval” to allow chat to include earlier published units in addition to the selected unit. When off, chat uses only the selected unit.
 
 ### For Students
 
 1. **Access**: Navigate to `/student`
 2. **Course Selection**: Choose your course
 3. **Assessment**: Complete calibration questions
-4. **Chat Interface**: Ask questions about course material
+4. **Chat Interface**: Select a unit, then ask questions about course material. Chat retrieval respects the course’s retrieval mode.
 5. **Semantic Search**: Find relevant content using natural language
 
 ## 🔧 Development

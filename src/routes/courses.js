@@ -355,6 +355,7 @@ router.get('/:courseId', async (req, res) => {
             name: course.courseName,
             weeks: course.courseStructure?.weeks || 0,
             lecturesPerWeek: course.courseStructure?.lecturesPerWeek || 0,
+            isAdditiveRetrieval: !!course.isAdditiveRetrieval,
             instructorId: course.instructorId,
             createdAt: course.createdAt?.toISOString() || new Date().toISOString(),
             status: course.status || 'active',
@@ -437,6 +438,7 @@ async function getCourseForStudent(req, res, courseId) {
             name: course.courseName,
             weeks: course.courseStructure?.weeks || 0,
             lecturesPerWeek: course.courseStructure?.lecturesPerWeek || 0,
+            isAdditiveRetrieval: !!course.isAdditiveRetrieval,
             createdAt: course.createdAt?.toISOString() || new Date().toISOString(),
             status: course.status || 'active',
             // Include lectures array that students expect
@@ -492,7 +494,7 @@ async function getCourseForStudent(req, res, courseId) {
 router.put('/:courseId', async (req, res) => {
     try {
         const { courseId } = req.params;
-        const { name, weeks, lecturesPerWeek, status } = req.body;
+        const { name, weeks, lecturesPerWeek, status, isAdditiveRetrieval } = req.body;
         const instructorId = req.query.instructorId;
         
         if (!instructorId) {
@@ -519,6 +521,7 @@ router.put('/:courseId', async (req, res) => {
         
         if (name) updateData.courseName = name;
         if (status) updateData.status = status;
+        if (typeof isAdditiveRetrieval === 'boolean') updateData.isAdditiveRetrieval = isAdditiveRetrieval;
         if (weeks || lecturesPerWeek) {
             updateData.courseStructure = {
                 weeks: weeks || 0,
@@ -553,6 +556,56 @@ router.put('/:courseId', async (req, res) => {
             success: false,
             message: 'Internal server error'
         });
+    }
+});
+
+/**
+ * PUT /api/courses/:courseId/retrieval-mode
+ * Update the course's additive retrieval setting (instructor-only)
+ */
+router.put('/:courseId/retrieval-mode', async (req, res) => {
+    try {
+        const { courseId } = req.params;
+        const { isAdditiveRetrieval } = req.body;
+        
+        // Validate body
+        if (typeof isAdditiveRetrieval !== 'boolean') {
+            return res.status(400).json({
+                success: false,
+                message: 'isAdditiveRetrieval must be a boolean'
+            });
+        }
+        
+        // Auth check
+        const user = req.user;
+        if (!user) {
+            return res.status(401).json({ success: false, message: 'Authentication required' });
+        }
+        if (user.role !== 'instructor') {
+            return res.status(403).json({ success: false, message: 'Only instructors can update retrieval mode' });
+        }
+        
+        // Get DB
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({ success: false, message: 'Database connection not available' });
+        }
+        
+        // Update course owned by instructor
+        const collection = db.collection('courses');
+        const result = await collection.updateOne(
+            { courseId, instructorId: user.userId },
+            { $set: { isAdditiveRetrieval, updatedAt: new Date() } }
+        );
+        
+        if (result.matchedCount === 0) {
+            return res.status(404).json({ success: false, message: 'Course not found' });
+        }
+        
+        res.json({ success: true, message: 'Retrieval mode updated', data: { courseId, isAdditiveRetrieval } });
+    } catch (error) {
+        console.error('Error updating retrieval mode:', error);
+        res.status(500).json({ success: false, message: 'Internal server error' });
     }
 });
 

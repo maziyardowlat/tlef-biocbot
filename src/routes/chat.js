@@ -50,13 +50,103 @@ router.post('/', async (req, res) => {
         
         console.log(`💬 Chat request received: "${message.substring(0, 50)}..."`);
         console.log(`🎯 Mode: ${mode || 'default'}`);
+
+        // Require courseId and unitName per requirements
+        if (!courseId || !unitName) {
+            return res.status(400).json({
+                success: false,
+                message: 'courseId and unitName are required to start chat'
+            });
+        }
+
+        // Initialize Qdrant and DB
+        const qdrant = new QdrantService();
+        await qdrant.initialize();
+
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({ success: false, message: 'Database connection not available' });
+        }
+
+        // Load course to get retrieval mode and published lectures
+        const coursesCol = db.collection('courses');
+        const course = await coursesCol.findOne({ courseId });
+        if (!course) {
+            return res.status(404).json({ success: false, message: 'Course not found' });
+        }
+
+        const isAdditive = !!course.isAdditiveRetrieval;
+
+        // Build lectureNames filter using published units only, ordered by lectures array
+        const publishedLectures = (course.lectures || []).filter(l => l.isPublished).map(l => l.name);
+        if (!publishedLectures.includes(unitName)) {
+            return res.status(400).json({ success: false, message: 'Selected unit is not published or does not exist' });
+        }
+
+        let lectureNames = [unitName];
+        if (isAdditive) {
+            const order = (course.lectures || []).filter(l => l.isPublished).map(l => l.name);
+            const idx = order.indexOf(unitName);
+            lectureNames = idx >= 0 ? order.slice(0, idx + 1) : [unitName];
+        }
+
+        // Debug logging to verify retrieval mode and scope
+        console.log(`🔎 [CHAT_RAG] RetrievalMode=${isAdditive ? 'additive' : 'single'} | Course=${courseId} | Unit=${unitName} | LectureNames=${JSON.stringify(lectureNames)}`);
+
+        // Retrieve top chunks from Qdrant
+        const searchResults = await qdrant.searchDocuments(message, { courseId, lectureNames }, 12);
+
+        // Log summary of results by lecture to validate scope
+        try {
+            const lecturesHit = Array.from(new Set((searchResults || []).map(r => r.lectureName)));
+            console.log(`📚 [CHAT_RAG] Retrieved ${searchResults.length} chunks from lectures: ${lecturesHit.join(', ')}`);
+            // Group by document to see which files contributed
+            const byDoc = {};
+            for (const r of (searchResults || [])) {
+                const docId = r.documentId || 'unknown-doc';
+                if (!byDoc[docId]) {
+                    byDoc[docId] = {
+                        fileName: r.fileName || 'unknown-filename',
+                        lectures: new Set(),
+                        count: 0,
+                        maxScore: 0
+                    };
+                }
+                byDoc[docId].count += 1;
+                byDoc[docId].lectures.add(r.lectureName);
+                if (typeof r.score === 'number' && r.score > byDoc[docId].maxScore) {
+                    byDoc[docId].maxScore = r.score;
+                }
+            }
+            const docKeys = Object.keys(byDoc);
+            console.log(`📄 [CHAT_RAG] Documents contributing (${docKeys.length}):`);
+            for (const k of docKeys) {
+                const info = byDoc[k];
+                const lecturesList = Array.from(info.lectures).join(', ');
+                const scoreStr = info.maxScore ? info.maxScore.toFixed(3) : 'n/a';
+                console.log(`   - ${info.fileName} (id=${k}) | lectures=[${lecturesList}] | chunks=${info.count} | maxScore=${scoreStr}`);
+            }
+        } catch (_) {}
+
+        // Build concise context window with citations
+        const citations = searchResults.map(r => ({
+            lectureName: r.lectureName,
+            fileName: r.fileName,
+            score: r.score
+        }));
+        const contextText = searchResults
+            .map(r => `From ${r.lectureName} (${r.fileName}):\n${r.chunkText}`)
+            .join('\n\n---\n\n');
         
         // For now, we'll use single message approach
         // In the future, we can implement conversation persistence
-        const response = await llmService.sendMessage(message, {
+        let response = await llmService.sendMessage(
+            `Use only the provided course context to answer. Cite which unit a fact came from.
+\n\nCourse context:\n${contextText}\n\nStudent question: ${message}`,
+            {
             // Adjust response based on student mode
-            temperature: mode === 'protege' ? 0.8 : 0.6,
-            maxTokens: mode === 'protege' ? 600 : 400,
+            temperature: mode === 'protege' ? 0.5 : 0.5,
+            maxTokens: mode === 'protege' ? 1000 : 1000,
             systemPrompt: llmService.getSystemPrompt() + 
                 (mode === 'protege' ? 
                     '\n\nYou are in protégé mode. The student has demonstrated good understanding. Engage them as a study partner, ask follow-up questions, and explore topics together.' :
@@ -64,14 +154,60 @@ router.post('/', async (req, res) => {
                 )
         });
         
+        let fullContent = response && response.content ? response.content : '';
+
+        // Detect truncation and auto-continue up to N times
+        function extractFinishReason(resp) {
+            try {
+                return (resp && (resp.finishReason || resp.finish_reason || (resp.usage && resp.usage.finish_reason) || resp.stopReason || resp.stop_reason)) || '';
+            } catch (e) { return ''; }
+        }
+        function isLikelyTruncated(resp, content) {
+            const fr = (extractFinishReason(resp) + '').toLowerCase();
+            if (fr.includes('length') || fr.includes('token')) return true;
+            if (!content) return false;
+            const tail = content.slice(-60);
+            const endsClean = /[\.\!\?]\s*$/.test(tail);
+            return !endsClean && content.length > 300;
+        }
+        
+        const MAX_CONTINUATIONS = 2;
+        let cont = 0;
+        while (cont < MAX_CONTINUATIONS && isLikelyTruncated(response, fullContent)) {
+            cont += 1;
+            console.log(`⏩ [CHAT_CONTINUE] Requesting continuation ${cont}; current length=${fullContent.length}`);
+            const tailSnippet = fullContent.slice(-200);
+            const contPrompt = `Continue the previous answer. Do not repeat earlier content. Pick up seamlessly from here: "${tailSnippet}"`;
+            const contResp = await llmService.sendMessage(contPrompt, {
+                temperature: mode === 'protege' ? 0.8 : 0.6,
+                maxTokens: mode === 'protege' ? 800 : 800,
+                systemPrompt: llmService.getSystemPrompt() + 
+                    (mode === 'protege' ? 
+                        '\n\nYou are in protégé mode. The student has demonstrated good understanding. Continue the explanation succinctly.' :
+                        '\n\nYou are in tutor mode. Continue the explanation clearly and step-by-step.'
+                    )
+            });
+            const chunk = contResp && contResp.content ? contResp.content : '';
+            console.log(`📎 [CHAT_CONTINUE] Received chunk ${cont} length=${chunk.length}`);
+            if (chunk) {
+                fullContent += (fullContent.endsWith('\n') ? '' : '\n') + chunk;
+            }
+            response = contResp;
+        }
+        
         // Format response for frontend
         const chatResponse = {
             success: true,
-            message: response.content,
+            message: fullContent,
             model: response.model,
             usage: response.usage,
             timestamp: new Date().toISOString(),
-            mode: mode || 'default'
+            mode: mode || 'default',
+            citations,
+            retrieval: {
+                mode: isAdditive ? 'additive' : 'single',
+                lectureNames
+            }
         };
         
         console.log(`✅ Chat response sent successfully`);

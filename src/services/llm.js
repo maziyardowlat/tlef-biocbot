@@ -73,7 +73,8 @@ class LLMService {
             const defaultOptions = {
                 systemPrompt: this.getSystemPrompt(),
                 temperature: 0.1,
-                num_ctx: 32768,
+                //TEMP CTX TODO
+                num_ctx: 2048,
                 ...options
             };
             console.log('🔍 [LLM_OPTIONS] Default options:', defaultOptions);
@@ -136,7 +137,9 @@ class LLMService {
             // Set default options for BiocBot
             const defaultOptions = {
                 temperature: 0.1,
-                num_ctx: 32768,
+                //TEMP CTX TODO
+
+                num_ctx: 2048,
                 ...options
             };
             
@@ -268,7 +271,8 @@ class LLMService {
             // Use higher temperature (0.7) for more creative question generation
             const generationOptions = {
                 temperature: 0.7,
-                num_ctx: 16384,  // Reduced context window for better performance
+                //TEMP CTX TODO
+                num_ctx: 2048,  // Reduced context window for better performance
                 timeout: 120000,  // 2 minute timeout for complex questions
                 systemPrompt: systemPrompt
             };
@@ -352,7 +356,8 @@ class LLMService {
             // Use lower temperature (0.5) for more focused improvements based on feedback
             const generationOptions = {
                 temperature: 0.5,  // Lower temperature for more focused regeneration
-                num_ctx: 16384,
+                //TEMP CTX TODO
+                num_ctx: 2048,
                 timeout: 120000,
                 systemPrompt: systemPrompt
             };

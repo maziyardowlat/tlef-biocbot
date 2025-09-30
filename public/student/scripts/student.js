@@ -77,6 +77,8 @@ document.addEventListener('DOMContentLoaded', () => {
             // Get current student mode for context
             const currentMode = localStorage.getItem('studentMode') || 'tutor';
             
+            const courseId = await getCurrentCourseId();
+            const unitName = localStorage.getItem('selectedUnitName') || getCurrentUnitName();
             const response = await fetch('/api/chat', {
                 method: 'POST',
                 headers: {
@@ -84,7 +86,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 },
                 body: JSON.stringify({
                     message: message,
-                    mode: currentMode
+                    mode: currentMode,
+                    courseId: courseId,
+                    unitName: unitName
                 })
             });
             
@@ -999,7 +1003,7 @@ function showNoQuestionsMessage() {
     noQuestionsMessage.appendChild(avatarDiv);
     noQuestionsMessage.appendChild(contentDiv);
     
-    // Add to chat
+        // Add to chat
     const chatMessages = document.getElementById('chat-messages');
     chatMessages.appendChild(noQuestionsMessage);
     
@@ -1040,6 +1044,8 @@ function showUnitSelectionDropdown(publishedUnits) {
             const selectedUnit = this.value;
             if (selectedUnit) {
                 console.log(`Unit selected: ${selectedUnit}`);
+                // Persist selection for chat retrieval
+                localStorage.setItem('selectedUnitName', selectedUnit);
                 await loadQuestionsForSelectedUnit(selectedUnit);
             }
         });
