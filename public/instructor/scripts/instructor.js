@@ -657,7 +657,8 @@ async function handleUpload() {
         
         // Add the content to the appropriate week with document ID
         const documentId = uploadResult?.data?.documentId;
-        addContentToWeek(currentWeek, fileName, `Uploaded successfully - ${uploadResult?.data?.filename || fileName}`, documentId);
+        const uploadStatus = uploadResult?.data?.qdrantProcessed ? 'processed' : 'uploaded';
+        addContentToWeek(currentWeek, fileName, `Uploaded successfully - ${uploadResult?.data?.filename || fileName}`, documentId, uploadStatus, currentContentType);
         
         // Close modal and show success
         closeUploadModal();
@@ -679,8 +680,10 @@ async function handleUpload() {
  * @param {string} fileName - The file name to display
  * @param {string} description - The file description
  * @param {string} documentId - The document ID from the database
+ * @param {string} status - The status to display ('uploaded' or 'processed')
+ * @param {string} contentType - The content type ('lecture-notes', 'practice-quiz', etc.)
  */
-function addContentToWeek(week, fileName, description, documentId) {
+function addContentToWeek(week, fileName, description, documentId, status = 'uploaded', contentType = null) {
     // Find the week accordion item
     const weekAccordion = findElementsContainingText('.accordion-item .folder-name', week)[0].closest('.accordion-item');
     
@@ -697,53 +700,83 @@ function addContentToWeek(week, fileName, description, documentId) {
     const existingItems = courseMaterialsContent.querySelectorAll('.file-item');
     existingItems.forEach(item => {
         const title = item.querySelector('.file-info h3').textContent;
-        if ((currentContentType === 'lecture-notes' && title.includes('*Lecture Notes')) ||
-            (currentContentType === 'practice-quiz' && title.includes('*Practice Questions/Tutorial'))) {
-            targetFileItem = item;
+        const isPlaceholder = item.classList.contains('placeholder-item');
+        
+        // Check if this is a placeholder that matches our content type
+        if (isPlaceholder) {
+            if ((contentType === 'lecture-notes' && title.includes('*Lecture Notes')) ||
+                (contentType === 'practice-quiz' && title.includes('*Practice Questions/Tutorial'))) {
+                targetFileItem = item;
+                console.log(`🔄 [ADD_CONTENT] Found matching placeholder for ${contentType}: "${title}"`);
+            }
         }
     });
     
     if (targetFileItem) {
-        // Update existing item
+        // Update existing placeholder item
+        console.log(`🔄 [ADD_CONTENT] Replacing placeholder with uploaded content: ${fileName}`);
+        
+        // Remove placeholder class and add document type
+        targetFileItem.classList.remove('placeholder-item');
+        if (contentType) {
+            targetFileItem.dataset.documentType = contentType === 'lecture-notes' ? 'lecture_notes' : 
+                                                contentType === 'practice-quiz' ? 'practice_q_tutorials' : contentType;
+        }
+        
+        // Update content
         targetFileItem.querySelector('.file-info h3').textContent = fileName;
         targetFileItem.querySelector('.file-info p').textContent = description;
-        targetFileItem.querySelector('.status-text').textContent = 'Processed';
-        targetFileItem.querySelector('.status-text').className = 'status-text processed';
+        targetFileItem.querySelector('.status-text').textContent = status === 'processed' ? 'Processed' : 'Uploaded';
+        targetFileItem.querySelector('.status-text').className = `status-text ${status}`;
         
         // Set document ID for proper deletion
         if (documentId) {
             targetFileItem.dataset.documentId = documentId;
         }
         
-        // Update action button to view instead of upload
-        const uploadButton = targetFileItem.querySelector('.action-button.upload');
-        if (uploadButton) {
-            uploadButton.textContent = 'View';
-            uploadButton.className = 'action-button view';
-            uploadButton.onclick = () => viewDocument(documentId);
-        }
+        // Update action buttons - replace all buttons
+        const actionsDiv = targetFileItem.querySelector('.file-actions');
+        actionsDiv.innerHTML = ''; // Clear existing buttons
         
-        // Add delete button if it doesn't exist
-        let deleteButton = targetFileItem.querySelector('.action-button.delete');
-        if (!deleteButton) {
-            deleteButton = document.createElement('button');
-            deleteButton.className = 'action-button delete';
-            deleteButton.onclick = () => deleteDocument(documentId);
-            deleteButton.textContent = 'Delete';
-            
-            const fileActions = targetFileItem.querySelector('.file-actions');
-            if (fileActions) {
-                fileActions.appendChild(deleteButton);
+        // Add view button
+        const viewButton = document.createElement('button');
+        viewButton.className = 'action-button view';
+        viewButton.textContent = 'View';
+        viewButton.onclick = () => {
+            if (documentId) {
+                viewDocument(documentId);
+            } else {
+                viewFileItem(viewButton);
             }
-        }
+        };
+        actionsDiv.appendChild(viewButton);
+        
+        // Add delete button
+        const deleteButton = document.createElement('button');
+        deleteButton.className = 'action-button delete';
+        deleteButton.textContent = 'Delete';
+        deleteButton.onclick = () => {
+            if (documentId) {
+                deleteDocument(documentId);
+            } else {
+                deleteFileItem(deleteButton);
+            }
+        };
+        actionsDiv.appendChild(deleteButton);
+        
+        console.log(`✅ [ADD_CONTENT] Successfully replaced placeholder with uploaded content: ${fileName}`);
     } else {
         // Create new file item
         const fileItem = document.createElement('div');
         fileItem.className = 'file-item';
         
-        // Set document ID if available
+        // Set document ID and type if available
         if (documentId) {
             fileItem.dataset.documentId = documentId;
+        }
+        if (contentType) {
+            fileItem.dataset.documentType = contentType === 'lecture-notes' ? 'lecture_notes' : 
+                                          contentType === 'practice-quiz' ? 'practice_q_tutorials' : contentType;
         }
         
         fileItem.innerHTML = `
@@ -751,7 +784,7 @@ function addContentToWeek(week, fileName, description, documentId) {
             <div class="file-info">
                 <h3>${fileName}</h3>
                 <p>${description}</p>
-                <span class="status-text processed">Processed</span>
+                <span class="status-text ${status}">${status === 'processed' ? 'Processed' : 'Uploaded'}</span>
             </div>
             <div class="file-actions">
                 <button class="action-button view" onclick="${documentId ? `viewDocument('${documentId}')` : 'viewFileItem(this)'}">View</button>
@@ -1309,12 +1342,17 @@ function createDocumentItem(doc) {
     documentItem.dataset.documentId = doc.documentId;
     
     // Add the document type to the dataset for robust placeholder checking
+    // Map document types to consistent format for placeholder detection
+    let documentType = '';
     if (doc.type) {
-        documentItem.dataset.documentType = doc.type;
+        documentType = doc.type;
     } else if (doc.documentType) {
-        // Fallback to legacy documentType field
-        documentItem.dataset.documentType = doc.documentType;
+        // Map hyphenated types to underscore format for consistency
+        documentType = doc.documentType === 'lecture-notes' ? 'lecture_notes' :
+                      doc.documentType === 'practice-quiz' ? 'practice_q_tutorials' :
+                      doc.documentType;
     }
+    documentItem.dataset.documentType = documentType;
     
     const fileIcon = doc.contentType === 'text' ? '📝' : '📄';
     
@@ -2698,11 +2736,13 @@ async function confirmCourseMaterials(week) {
             const status = statusText.textContent;
             
             console.log(`🔍 [CONFIRM_MATERIALS] Item ${index + 1}: "${titleText}" - Status: "${status}" - Type: "${documentType}"`);
-            console.log(`🔍 [CONFIRM_MATERIALS] Debug - documentType === 'lecture-notes': ${documentType === 'lecture-notes'}, documentType === 'practice-quiz': ${documentType === 'practice-quiz'}`);
+            console.log(`🔍 [CONFIRM_MATERIALS] Debug - documentType === 'lecture_notes': ${documentType === 'lecture_notes'}, documentType === 'practice_q_tutorials': ${documentType === 'practice_q_tutorials'}`);
             
             // Check if this is a lecture notes document that's processed/uploaded
             // Use document type for more reliable checking, fallback to title text
-            const isLectureNotesType = documentType === 'lecture-notes' || titleText.includes('Lecture Notes');
+            const isLectureNotesType = documentType === 'lecture_notes' || 
+                                     documentType === 'lecture-notes' ||
+                                     titleText.includes('Lecture Notes');
             const isLectureNotesStatus = status === 'Processed' || status === 'Uploaded' || status === 'uploaded' || status === 'parsed' || status === 'Processing';
             console.log(`🔍 [CONFIRM_MATERIALS] Lecture Notes check - Type match: ${isLectureNotesType}, Status match: ${isLectureNotesStatus}`);
             
@@ -2713,7 +2753,10 @@ async function confirmCourseMaterials(week) {
             
             // Check if this is a practice questions document that's processed/uploaded
             // Use document type for more reliable checking, fallback to title text
-            const isPracticeQuestionsType = documentType === 'practice-quiz' || titleText.includes('Practice Questions') || titleText.includes('Practice Questions/Tutorial');
+            const isPracticeQuestionsType = documentType === 'practice_q_tutorials' || 
+                                          documentType === 'practice-quiz' ||
+                                          titleText.includes('Practice Questions') || 
+                                          titleText.includes('Practice Questions/Tutorial');
             const isPracticeQuestionsStatus = status === 'Processed' || status === 'Uploaded' || status === 'uploaded' || status === 'parsed' || status === 'Processing';
             console.log(`🔍 [CONFIRM_MATERIALS] Practice Questions check - Type match: ${isPracticeQuestionsType}, Status match: ${isPracticeQuestionsStatus}`);
             
@@ -4683,11 +4726,13 @@ function addRequiredPlaceholders(container, unitName) {
             
             // Check for lecture notes - look for both document type and title patterns
             const isLectureNotes = documentType === 'lecture_notes' || 
+                                  documentType === 'lecture-notes' ||
                                   titleText.includes('lecture-notes') ||
                                   (titleText.includes('Lecture Notes') && !isPlaceholder && status !== 'Not Uploaded');
             
             // Check for practice questions - look for both document type and title patterns  
             const isPracticeQuestions = documentType === 'practice_q_tutorials' || 
+                                      documentType === 'practice-quiz' ||
                                       titleText.includes('practice-quiz') ||
                                       titleText.includes('practice_quiz') ||
                                       ((titleText.includes('Practice Questions') || titleText.includes('Practice Questions/Tutorial')) && !isPlaceholder && status !== 'Not Uploaded');
