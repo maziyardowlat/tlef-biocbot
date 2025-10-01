@@ -7,12 +7,19 @@ let currentSelectedChat = null;
 let allChatHistory = [];
 
 /**
- * Get all chat history entries
+ * Get all chat history entries for the current student
  * @returns {Array} Array of chat history entries
  */
 function getChatHistory() {
     try {
-        const historyKey = 'biocbot_chat_history';
+        // Get current student ID for security
+        const studentId = getCurrentStudentId();
+        if (!studentId) {
+            console.error('No student ID found - cannot load chat history');
+            return [];
+        }
+        
+        const historyKey = `biocbot_chat_history_${studentId}`;
         return JSON.parse(localStorage.getItem(historyKey) || '[]');
     } catch (error) {
         console.error('Error getting chat history:', error);
@@ -36,18 +43,59 @@ function getChatById(chatId) {
 }
 
 /**
- * Delete a chat from history
+ * Delete a chat from history (server-side)
  * @param {string} chatId - The chat ID to delete
- * @returns {boolean} True if successful
+ * @returns {Promise<boolean>} True if successful
  */
-function deleteChatFromHistory(chatId) {
+async function deleteChatFromHistory(chatId) {
     try {
+        const studentId = getCurrentStudentId();
+        if (!studentId) {
+            console.error('No student ID found - cannot delete chat');
+            return false;
+        }
+
+        const courseId = 'BIOC202-1758488753872'; // This should be dynamic in the future
+        
+        // Delete from server
+        const response = await fetch(`/api/students/${courseId}/${studentId}/sessions/${chatId}`, {
+            method: 'DELETE',
+            credentials: 'include'
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to delete chat session: ${response.status}`);
+        }
+
+        const result = await response.json();
+        if (!result.success) {
+            throw new Error(result.message || 'Failed to delete chat session');
+        }
+
+        console.log('Successfully deleted chat session from server');
+        
+        // Also remove from localStorage as backup
         const history = getChatHistory();
         const filteredHistory = history.filter(chat => chat.id !== chatId);
-        localStorage.setItem('biocbot_chat_history', JSON.stringify(filteredHistory));
+        const historyKey = `biocbot_chat_history_${studentId}`;
+        localStorage.setItem(historyKey, JSON.stringify(filteredHistory));
+        
         return true;
     } catch (error) {
         console.error('Error deleting chat from history:', error);
+        // Fallback to localStorage only
+        try {
+            const history = getChatHistory();
+            const filteredHistory = history.filter(chat => chat.id !== chatId);
+            const studentId = getCurrentStudentId();
+            if (studentId) {
+                const historyKey = `biocbot_chat_history_${studentId}`;
+                localStorage.setItem(historyKey, JSON.stringify(filteredHistory));
+                return true;
+            }
+        } catch (fallbackError) {
+            console.error('Error in fallback delete:', fallbackError);
+        }
         return false;
     }
 }
@@ -57,24 +105,113 @@ function deleteChatFromHistory(chatId) {
  * @returns {Object|null} Current user object or null
  */
 function getCurrentUser() {
+    // First try to get from window.currentUser (set by auth:ready event)
+    if (window.currentUser) {
+        return window.currentUser;
+    }
+    
     // This function should be available from auth.js
-    if (typeof window.getCurrentUser === 'function') {
+    if (typeof window.getCurrentUser === 'function' && window.getCurrentUser !== getCurrentUser) {
         return window.getCurrentUser();
     }
+    
+    // Fallback: try to get from localStorage
+    try {
+        const storedUser = localStorage.getItem('currentUser');
+        if (storedUser) {
+            return JSON.parse(storedUser);
+        }
+    } catch (error) {
+        console.error('Error parsing stored user:', error);
+    }
+    
     return null;
+}
+
+/**
+ * Get current student ID
+ * @returns {string|null} Current student ID or null
+ */
+function getCurrentStudentId() {
+    try {
+        const user = getCurrentUser();
+        
+        if (user && user.userId) {
+            return user.userId;
+        }
+        
+        // Fallback: try to get from localStorage
+        const storedUser = localStorage.getItem('currentUser');
+        
+        if (storedUser) {
+            const userData = JSON.parse(storedUser);
+            return userData.userId || null;
+        }
+        
+        return null;
+    } catch (error) {
+        console.error('Error getting current student ID:', error);
+        return null;
+    }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
     console.log('Chat history page loaded');
     
-    // Initialize the history page
-    initializeHistoryPage();
+    // Wait for auth to be ready before initializing
+    if (typeof window.getCurrentUser === 'function') {
+        const user = window.getCurrentUser();
+        console.log('Auth function available, current user:', user);
+        if (user && user.userId) {
+            console.log('User is authenticated, initializing immediately');
+            initializeHistoryPage();
+            loadChatHistory();
+            setupEventListeners();
+        } else {
+            console.log('Auth function available but user not authenticated, waiting for auth:ready event');
+            document.addEventListener('auth:ready', (event) => {
+                console.log('Auth ready event received, initializing');
+                console.log('Auth ready event detail:', event.detail);
+                // Store the user data from the event
+                if (event.detail) {
+                    window.currentUser = event.detail;
+                    console.log('Stored user from event:', window.currentUser);
+                }
+                initializeHistoryPage();
+                loadChatHistory();
+                setupEventListeners();
+            });
+        }
+    } else {
+        console.log('Auth not ready, waiting for auth:ready event');
+        document.addEventListener('auth:ready', (event) => {
+            console.log('Auth ready event received, initializing');
+            console.log('Auth ready event detail:', event.detail);
+            // Store the user data from the event
+            if (event.detail) {
+                window.currentUser = event.detail;
+                console.log('Stored user from event:', window.currentUser);
+            }
+            initializeHistoryPage();
+            loadChatHistory();
+            setupEventListeners();
+        });
+    }
     
-    // Load chat history
-    loadChatHistory();
-    
-    // Set up event listeners
-    setupEventListeners();
+    // Fallback: try after a delay if still not initialized
+    setTimeout(() => {
+        console.log('Fallback initialization after delay');
+        if (typeof window.getCurrentUser === 'function') {
+            const user = window.getCurrentUser();
+            console.log('Fallback - current user:', user);
+            if (user && user.userId) {
+                console.log('Fallback - user authenticated, initializing');
+                initializeHistoryPage();
+                loadChatHistory();
+                setupEventListeners();
+            }
+        }
+    }, 3000);
 });
 
 /**
@@ -90,7 +227,10 @@ function initializeHistoryPage() {
  */
 async function loadCurrentUserInfo() {
     try {
+        console.log('Loading current user info...');
         const currentUser = getCurrentUser();
+        console.log('Current user:', currentUser);
+        
         if (currentUser) {
             // Update user display name
             const userNameElement = document.getElementById('user-display-name');
@@ -111,18 +251,51 @@ async function loadCurrentUserInfo() {
 }
 
 /**
- * Load chat history from localStorage
+ * Load chat history from server
  */
-function loadChatHistory() {
+async function loadChatHistory() {
     try {
-        allChatHistory = getChatHistory();
-        console.log('Loaded chat history:', allChatHistory.length, 'chats');
-        console.log('Chat history data:', allChatHistory);
+        const studentId = getCurrentStudentId();
+        if (!studentId) {
+            console.log('No student ID found, cannot load chat history');
+            showNoHistoryMessage();
+            return;
+        }
+
+        console.log('Loading chat history from server for student:', studentId);
         
-        // Check if there's any data in localStorage
-        const rawData = localStorage.getItem('biocbot_chat_history');
-        console.log('Raw localStorage data:', rawData);
+        // Get the current course (assuming BIOC202 for now)
+        const courseId = 'BIOC202-1758488753872'; // This should be dynamic in the future
         
+        // Fetch chat sessions from server
+        const response = await fetch(`/api/students/${courseId}/${studentId}/sessions`, {
+            method: 'GET',
+            credentials: 'include'
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to load chat sessions: ${response.status}`);
+        }
+
+        const result = await response.json();
+        if (!result.success) {
+            throw new Error(result.message || 'Failed to load chat sessions');
+        }
+
+        const sessions = result.data || [];
+        console.log('Loaded', sessions.length, 'chat sessions from server');
+        
+        // Convert server sessions to the format expected by the UI
+        allChatHistory = sessions.map(session => ({
+            id: session.sessionId,
+            title: session.title || `Chat Session ${new Date(session.savedAt).toLocaleDateString()}`,
+            unitName: session.unitName || 'Unknown Unit',
+            messageCount: session.messageCount || 0,
+            duration: session.duration || 'Unknown',
+            savedAt: session.savedAt,
+            chatData: session.chatData || {}
+        }));
+
         if (allChatHistory.length === 0) {
             console.log('No chat history found, showing no history message');
             showNoHistoryMessage();
@@ -131,7 +304,30 @@ function loadChatHistory() {
             displayChatHistory(allChatHistory);
         }
     } catch (error) {
-        console.error('Error loading chat history:', error);
+        console.error('Error loading chat history from server:', error);
+        // Fallback to localStorage if server fails
+        console.log('Falling back to localStorage...');
+        loadChatHistoryFromLocalStorage();
+    }
+}
+
+/**
+ * Fallback: Load chat history from localStorage
+ */
+function loadChatHistoryFromLocalStorage() {
+    try {
+        allChatHistory = getChatHistory();
+        console.log('Loaded chat history from localStorage:', allChatHistory.length, 'chats');
+        
+        if (allChatHistory.length === 0) {
+            console.log('No chat history found in localStorage, showing no history message');
+            showNoHistoryMessage();
+        } else {
+            console.log('Displaying chat history from localStorage with', allChatHistory.length, 'items');
+            displayChatHistory(allChatHistory);
+        }
+    } catch (error) {
+        console.error('Error loading chat history from localStorage:', error);
         showNoHistoryMessage();
     }
 }
@@ -440,7 +636,7 @@ function handleContinueChat() {
 /**
  * Handle delete chat button click
  */
-function handleDeleteChat() {
+async function handleDeleteChat() {
     if (!currentSelectedChat) {
         console.error('No chat selected');
         return;
@@ -452,14 +648,14 @@ function handleDeleteChat() {
     
     try {
         // Delete from history
-        const success = deleteChatFromHistory(currentSelectedChat.id);
+        const success = await deleteChatFromHistory(currentSelectedChat.id);
         
         if (success) {
             // Remove from local array
             allChatHistory = allChatHistory.filter(chat => chat.id !== currentSelectedChat.id);
             
             // Refresh display
-            loadChatHistory();
+            await loadChatHistory();
             
             console.log('Chat deleted successfully');
         } else {
@@ -533,7 +729,11 @@ document.addEventListener('click', (event) => {
  */
 function checkLocalStorage() {
     console.log('=== LOCALSTORAGE DEBUG ===');
-    console.log('biocbot_chat_history:', localStorage.getItem('biocbot_chat_history'));
+    const studentId = getCurrentStudentId();
+    const historyKey = `biocbot_chat_history_${studentId}`;
+    console.log('Student ID:', studentId);
+    console.log('History key:', historyKey);
+    console.log('Current student history:', localStorage.getItem(historyKey));
     console.log('All localStorage keys:', Object.keys(localStorage));
     
     const history = getChatHistory();
@@ -581,19 +781,20 @@ function testContinueChat() {
  * Remove duplicate chats from history
  * Call this from browser console: removeDuplicates()
  */
-function removeDuplicates() {
+async function removeDuplicates() {
     console.log('Removing duplicates from chat history...');
     
     try {
-        const history = getChatHistory();
+        // For server-side data, we'll work with the current allChatHistory array
+        const history = allChatHistory || [];
         console.log('Original history length:', history.length);
         
-        // Remove duplicates based on title and date
+        // Remove duplicates based on title and savedAt date
         const uniqueHistory = [];
         const seen = new Set();
         
         history.forEach(chat => {
-            const key = `${chat.title}_${chat.date}`;
+            const key = `${chat.title}_${chat.savedAt}`;
             if (!seen.has(key)) {
                 seen.add(key);
                 uniqueHistory.push(chat);
@@ -605,12 +806,13 @@ function removeDuplicates() {
         console.log('Unique history length:', uniqueHistory.length);
         console.log('Removed', history.length - uniqueHistory.length, 'duplicates');
         
-        // Save the cleaned history
-        localStorage.setItem('biocbot_chat_history', JSON.stringify(uniqueHistory));
+        // Update the local array
+        allChatHistory = uniqueHistory;
         
         // Refresh the display
-        loadChatHistory();
+        await loadChatHistory();
         
+        console.log('Duplicates removed and history updated');
         return uniqueHistory;
         
     } catch (error) {

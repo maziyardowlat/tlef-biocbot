@@ -361,4 +361,85 @@ router.get('/models', async (req, res) => {
     }
 });
 
+/**
+ * POST /api/chat/save
+ * Save a chat session to the database for instructor access
+ */
+router.post('/save', async (req, res) => {
+    try {
+        const { 
+            sessionId, 
+            courseId, 
+            studentId, 
+            studentName, 
+            unitName, 
+            title, 
+            messageCount, 
+            duration, 
+            savedAt, 
+            chatData 
+        } = req.body;
+        
+        // Validate required fields
+        if (!sessionId || !courseId || !studentId || !studentName) {
+            return res.status(400).json({
+                success: false,
+                message: 'Missing required fields: sessionId, courseId, studentId, studentName'
+            });
+        }
+        
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
+        
+        // Save chat session to database
+        const chatSessionsCollection = db.collection('chat_sessions');
+        
+        const sessionData = {
+            sessionId,
+            courseId,
+            studentId,
+            studentName,
+            unitName: unitName || 'Unknown Unit',
+            title: title || `Chat Session ${new Date().toLocaleDateString()}`,
+            messageCount: messageCount || 0,
+            duration: duration || 'Unknown',
+            savedAt: savedAt || new Date().toISOString(),
+            chatData: chatData || {},
+            createdAt: new Date()
+        };
+        
+        // Insert or update the session
+        await chatSessionsCollection.replaceOne(
+            { sessionId: sessionId },
+            sessionData,
+            { upsert: true }
+        );
+        
+        console.log(`Chat session saved: ${sessionId} for student ${studentName} in course ${courseId}`);
+        
+        res.json({
+            success: true,
+            message: 'Chat session saved successfully',
+            data: {
+                sessionId: sessionId,
+                courseId: courseId,
+                studentId: studentId
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error saving chat session:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while saving chat session'
+        });
+    }
+});
+
 module.exports = router; 

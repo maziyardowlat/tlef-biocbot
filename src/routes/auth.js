@@ -185,8 +185,13 @@ router.post('/logout', (req, res) => {
  */
 router.get('/me', async (req, res) => {
     try {
+        console.log('Auth /me endpoint called');
+        console.log('Session:', req.session);
+        console.log('Session userId:', req.session?.userId);
+        
         // Check if user is authenticated
         if (!req.session || !req.session.userId) {
+            console.log('User not authenticated - no session or userId');
             return res.status(401).json({
                 success: false,
                 error: 'Not authenticated',
