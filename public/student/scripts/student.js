@@ -9,15 +9,33 @@ document.addEventListener('DOMContentLoaded', () => {
     // Load current course information and update UI
     loadCurrentCourseInfo();
     
-    // Check for published units and load real assessment questions
-    // If no units are published, allow direct chat
-    checkPublishedUnitsAndLoadQuestions();
+    // Check if we're loading from history first
+    const isLoadingFromHistory = sessionStorage.getItem('loadChatData');
+    
+    if (!isLoadingFromHistory) {
+        // Check for published units and load real assessment questions
+        // If no units are published, allow direct chat
+        checkPublishedUnitsAndLoadQuestions();
+    } else {
+        console.log('Loading from history, skipping assessment questions');
+    }
     
     // Initialize mode toggle functionality
     initializeModeToggle();
     
     // Set up periodic timestamp updates
     setInterval(updateTimestamps, 20000); // Update every 20 seconds
+    
+    // Initialize save chat functionality
+    initializeSaveChat();
+    
+    // Initialize chat history storage
+    initializeChatHistoryStorage();
+    
+    // Check for chat data to load from history (after DOM is ready)
+    setTimeout(() => {
+        checkForChatDataToLoad();
+    }, 100);
     
     /**
      * Format timestamp for display
@@ -283,6 +301,111 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // Global functions for flagging functionality
+
+/**
+ * Global function to add a message to the chat
+ * @param {string} content - The message content
+ * @param {string} sender - 'user' or 'bot'
+ * @param {boolean} withSource - Whether to show source citation
+ */
+function addMessage(content, sender, withSource = false) {
+    const chatMessages = document.getElementById('chat-messages');
+    if (!chatMessages) {
+        console.error('Chat messages container not found');
+        return;
+    }
+
+    const messageDiv = document.createElement('div');
+    messageDiv.classList.add('message', sender + '-message');
+    
+    const avatarDiv = document.createElement('div');
+    avatarDiv.classList.add('message-avatar');
+    avatarDiv.textContent = sender === 'user' ? 'S' : 'B';
+    
+    const contentDiv = document.createElement('div');
+    contentDiv.classList.add('message-content');
+    
+    const paragraph = document.createElement('p');
+    paragraph.textContent = content;
+    
+    contentDiv.appendChild(paragraph);
+    
+    // Create message footer for bottom elements
+    const footerDiv = document.createElement('div');
+    footerDiv.classList.add('message-footer');
+    
+    // Add source citation if needed
+    if (withSource && sender === 'bot') {
+        const sourceDiv = document.createElement('div');
+        sourceDiv.classList.add('message-source');
+        sourceDiv.innerHTML = 'Source: TBD';
+        footerDiv.appendChild(sourceDiv);
+    }
+    
+    // Create right side container for timestamp and flag button
+    const rightContainer = document.createElement('div');
+    rightContainer.classList.add('message-footer-right');
+    
+    const timestamp = document.createElement('span');
+    timestamp.classList.add('timestamp');
+    
+    // Create real timestamp
+    const messageTime = new Date();
+    timestamp.textContent = formatTimestamp(messageTime);
+    
+    // Store timestamp in message div for future updates
+    messageDiv.dataset.timestamp = messageTime.getTime();
+    
+    // Add title attribute for exact time on hover
+    timestamp.title = messageTime.toLocaleString('en-US', {
+        weekday: 'long',
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true
+    });
+    
+    rightContainer.appendChild(timestamp);
+    
+    // Add flag button for bot messages
+    if (sender === 'bot') {
+        const flagContainer = document.createElement('div');
+        flagContainer.classList.add('message-flag-container');
+        
+        const flagButton = document.createElement('button');
+        flagButton.classList.add('flag-button');
+        flagButton.innerHTML = '⚑';
+        flagButton.title = 'Flag this message';
+        flagButton.onclick = () => toggleFlagMenu(flagButton);
+        
+        // Create flag menu
+        const flagMenu = document.createElement('div');
+        flagMenu.classList.add('flag-menu');
+        flagMenu.innerHTML = `
+            <div class="flag-option" onclick="handleFlagMessage(this, 'inappropriate')">Inappropriate</div>
+            <div class="flag-option" onclick="handleFlagMessage(this, 'incorrect')">Incorrect</div>
+            <div class="flag-option" onclick="handleFlagMessage(this, 'unclear')">Unclear</div>
+        `;
+        
+        flagContainer.appendChild(flagButton);
+        flagContainer.appendChild(flagMenu);
+        rightContainer.appendChild(flagContainer);
+    }
+    
+    footerDiv.appendChild(rightContainer);
+    contentDiv.appendChild(footerDiv);
+    
+    messageDiv.appendChild(avatarDiv);
+    messageDiv.appendChild(contentDiv);
+    
+    chatMessages.appendChild(messageDiv);
+    
+    // Scroll to bottom
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
 
 /**
  * Format timestamp for display (global version)
@@ -745,13 +868,49 @@ function updateCourseDisplay(course, studentName) {
 }
 
 /**
- * Get current student ID (placeholder)
+ * Get current student ID from authentication system
  * @returns {string} Student ID
  */
 function getCurrentStudentId() {
-    // This would typically come from JWT token or session
-    // For now, return a placeholder
-    return 'student-123';
+    try {
+        // Get the current user from the auth system
+        const currentUser = getCurrentUser();
+        console.log('getCurrentStudentId - currentUser:', currentUser);
+        
+        if (currentUser && currentUser.userId) {
+            console.log('getCurrentStudentId - using userId from currentUser:', currentUser.userId);
+            return currentUser.userId;
+        }
+        
+        // Fallback: try to get from localStorage or sessionStorage
+        const storedUserId = localStorage.getItem('userId') || sessionStorage.getItem('userId');
+        if (storedUserId) {
+            console.log('getCurrentStudentId - using stored userId:', storedUserId);
+            return storedUserId;
+        }
+        
+        // Last resort: generate a unique ID for this session
+        let sessionId = sessionStorage.getItem('sessionId');
+        if (!sessionId) {
+            sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            sessionStorage.setItem('sessionId', sessionId);
+            console.log('getCurrentStudentId - generated new sessionId:', sessionId);
+        } else {
+            console.log('getCurrentStudentId - using existing sessionId:', sessionId);
+        }
+        return sessionId;
+        
+    } catch (error) {
+        console.error('Error getting student ID:', error);
+        // Fallback to a unique session-based ID
+        let sessionId = sessionStorage.getItem('sessionId');
+        if (!sessionId) {
+            sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            sessionStorage.setItem('sessionId', sessionId);
+            console.log('getCurrentStudentId - error fallback, generated sessionId:', sessionId);
+        }
+        return sessionId;
+    }
 }
 
 /**
@@ -2041,4 +2200,911 @@ function updateModeToggleUI(mode) {
         protegeLabel.classList.add('active');
         tutorLabel.classList.remove('active');
     }
+}
+
+/**
+ * Initialize save chat functionality
+ */
+function initializeSaveChat() {
+    const saveButton = document.getElementById('save-chat-btn');
+    if (saveButton) {
+        saveButton.addEventListener('click', handleSaveChat);
+    }
+}
+
+/**
+ * Handle save chat button click
+ */
+async function handleSaveChat() {
+    try {
+        // Disable button during save process
+        const saveButton = document.getElementById('save-chat-btn');
+        if (saveButton) {
+            saveButton.disabled = true;
+            saveButton.innerHTML = '<span class="save-icon">⏳</span> Saving...';
+        }
+        
+        // Collect all chat data
+        const chatData = await collectAllChatData();
+        
+        // Create and download JSON file
+        downloadChatData(chatData);
+        
+        // Save to chat history
+        console.log('Saving chat data to history:', chatData);
+        saveChatToHistory(chatData);
+        
+        // Note: We don't dispatch the event here since we're already saving directly
+        // The event listener would cause a duplicate save
+        
+        // Show success message
+        showSaveSuccessMessage();
+        
+    } catch (error) {
+        console.error('Error saving chat data:', error);
+        showSaveErrorMessage(error.message);
+    } finally {
+        // Re-enable button
+        const saveButton = document.getElementById('save-chat-btn');
+        if (saveButton) {
+            saveButton.disabled = false;
+            saveButton.innerHTML = '<span class="save-icon">💾</span> Save Chat';
+        }
+    }
+}
+
+/**
+ * Collect all chat data including messages, practice tests, and responses
+ * @returns {Promise<Object>} Complete chat data object
+ */
+async function collectAllChatData() {
+    const chatMessages = document.getElementById('chat-messages');
+    const messages = [];
+    
+    // Get current course and student information
+    const courseId = await getCurrentCourseId();
+    const studentName = await getCurrentStudentName();
+    const studentId = getCurrentStudentId();
+    const unitName = localStorage.getItem('selectedUnitName') || getCurrentUnitName();
+    const currentMode = localStorage.getItem('studentMode') || 'tutor';
+    
+    // Process all message elements
+    const messageElements = chatMessages.querySelectorAll('.message');
+    messageElements.forEach((messageElement, index) => {
+        const messageData = extractMessageData(messageElement, index);
+        if (messageData) {
+            messages.push(messageData);
+        }
+    });
+    
+    // Collect practice test data
+    const practiceTestData = collectPracticeTestData();
+    
+    // Collect student answers
+    const studentAnswersData = collectStudentAnswersData();
+    
+    // Create comprehensive chat data object
+    const chatData = {
+        metadata: {
+            exportDate: new Date().toISOString(),
+            courseId: courseId,
+            courseName: document.querySelector('.course-name')?.textContent || 'Unknown Course',
+            studentId: studentId,
+            studentName: studentName,
+            unitName: unitName,
+            currentMode: currentMode,
+            totalMessages: messages.length,
+            version: '1.0'
+        },
+        messages: messages,
+        practiceTests: practiceTestData,
+        studentAnswers: studentAnswersData,
+        sessionInfo: {
+            startTime: getSessionStartTime(),
+            endTime: new Date().toISOString(),
+            duration: calculateSessionDuration()
+        }
+    };
+    
+    return chatData;
+}
+
+/**
+ * Extract data from a single message element
+ * @param {HTMLElement} messageElement - The message DOM element
+ * @param {number} index - Message index
+ * @returns {Object|null} Extracted message data or null if invalid
+ */
+function extractMessageData(messageElement, index) {
+    try {
+        const isBotMessage = messageElement.classList.contains('bot-message');
+        const isUserMessage = messageElement.classList.contains('user-message');
+        const isCalibrationQuestion = messageElement.classList.contains('calibration-question');
+        const isModeResult = messageElement.classList.contains('mode-result');
+        const isAssessmentStart = messageElement.classList.contains('assessment-start');
+        const isTypingIndicator = messageElement.classList.contains('typing-indicator');
+        
+        // Skip typing indicators
+        if (isTypingIndicator) {
+            return null;
+        }
+        
+        const avatarElement = messageElement.querySelector('.message-avatar');
+        const contentElement = messageElement.querySelector('.message-content');
+        const timestampElement = messageElement.querySelector('.timestamp');
+        
+        if (!contentElement) {
+            return null;
+        }
+        
+        // Extract basic message data
+        const messageData = {
+            index: index,
+            type: isBotMessage ? 'bot' : 'user',
+            timestamp: messageElement.dataset.timestamp ? new Date(parseInt(messageElement.dataset.timestamp)).toISOString() : new Date().toISOString(),
+            displayTimestamp: timestampElement?.textContent || 'Unknown',
+            content: extractMessageContent(contentElement),
+            messageType: getMessageType(messageElement),
+            isCalibrationQuestion: isCalibrationQuestion,
+            isModeResult: isModeResult,
+            isAssessmentStart: isAssessmentStart
+        };
+        
+        // Extract additional data for specific message types
+        if (isCalibrationQuestion) {
+            messageData.questionData = extractQuestionData(messageElement);
+        }
+        
+        if (isModeResult) {
+            messageData.modeData = extractModeData(messageElement);
+        }
+        
+        // Extract flag information if present
+        const flagContainer = messageElement.querySelector('.message-flag-container');
+        if (flagContainer) {
+            messageData.hasFlagButton = true;
+        }
+        
+        return messageData;
+        
+    } catch (error) {
+        console.error('Error extracting message data:', error);
+        return null;
+    }
+}
+
+/**
+ * Extract content from message content element
+ * @param {HTMLElement} contentElement - The message content element
+ * @returns {string} Extracted content text
+ */
+function extractMessageContent(contentElement) {
+    const paragraph = contentElement.querySelector('p');
+    if (paragraph) {
+        return paragraph.textContent || paragraph.innerText || '';
+    }
+    
+    // Fallback to all text content
+    return contentElement.textContent || contentElement.innerText || '';
+}
+
+/**
+ * Get the type of message based on classes
+ * @param {HTMLElement} messageElement - The message element
+ * @returns {string} Message type
+ */
+function getMessageType(messageElement) {
+    if (messageElement.classList.contains('calibration-question')) {
+        return 'practice-test-question';
+    }
+    if (messageElement.classList.contains('mode-result')) {
+        return 'mode-result';
+    }
+    if (messageElement.classList.contains('assessment-start')) {
+        return 'assessment-start';
+    }
+    if (messageElement.classList.contains('unit-selection-welcome')) {
+        return 'unit-selection';
+    }
+    return 'regular-chat';
+}
+
+/**
+ * Extract question data from calibration question elements
+ * @param {HTMLElement} messageElement - The message element
+ * @returns {Object|null} Question data or null
+ */
+function extractQuestionData(messageElement) {
+    try {
+        const contentElement = messageElement.querySelector('.message-content');
+        if (!contentElement) return null;
+        
+        const questionText = contentElement.querySelector('p')?.textContent || '';
+        const optionsContainer = contentElement.querySelector('.calibration-options');
+        const options = [];
+        
+        if (optionsContainer) {
+            const optionButtons = optionsContainer.querySelectorAll('.calibration-option');
+            optionButtons.forEach((button, index) => {
+                options.push({
+                    index: index,
+                    text: button.textContent || '',
+                    isSelected: button.classList.contains('selected') || button.style.backgroundColor.includes('var(--primary-color)')
+                });
+            });
+        }
+        
+        return {
+            questionText: questionText,
+            options: options,
+            questionIndex: currentQuestionIndex
+        };
+        
+    } catch (error) {
+        console.error('Error extracting question data:', error);
+        return null;
+    }
+}
+
+/**
+ * Extract mode data from mode result elements
+ * @param {HTMLElement} messageElement - The message element
+ * @returns {Object|null} Mode data or null
+ */
+function extractModeData(messageElement) {
+    try {
+        const contentElement = messageElement.querySelector('.message-content');
+        if (!contentElement) return null;
+        
+        const modeExplanation = contentElement.querySelector('.mode-explanation');
+        const modeText = modeExplanation?.textContent || contentElement.querySelector('p')?.textContent || '';
+        
+        return {
+            modeText: modeText,
+            determinedMode: localStorage.getItem('studentMode') || 'tutor'
+        };
+        
+    } catch (error) {
+        console.error('Error extracting mode data:', error);
+        return null;
+    }
+}
+
+/**
+ * Collect practice test data
+ * @returns {Object} Practice test data
+ */
+function collectPracticeTestData() {
+    return {
+        questions: currentCalibrationQuestions.map((question, index) => ({
+            questionId: question.id,
+            questionIndex: index,
+            questionType: question.type,
+            question: question.question,
+            options: question.options,
+            correctAnswer: question.correctAnswer,
+            explanation: question.explanation,
+            unitName: question.unitName,
+            passThreshold: question.passThreshold
+        })),
+        totalQuestions: currentCalibrationQuestions.length,
+        passThreshold: currentPassThreshold,
+        currentQuestionIndex: currentQuestionIndex
+    };
+}
+
+/**
+ * Collect student answers data
+ * @returns {Object} Student answers data
+ */
+function collectStudentAnswersData() {
+    return {
+        answers: studentAnswers.map((answer, index) => ({
+            questionIndex: index,
+            answer: answer,
+            question: currentCalibrationQuestions[index] ? {
+                id: currentCalibrationQuestions[index].id,
+                question: currentCalibrationQuestions[index].question,
+                type: currentCalibrationQuestions[index].type
+            } : null
+        })),
+        totalAnswers: studentAnswers.length,
+        answersProvided: studentAnswers.filter(answer => answer !== undefined && answer !== null).length
+    };
+}
+
+/**
+ * Get session start time (approximate)
+ * @returns {string} Session start time ISO string
+ */
+function getSessionStartTime() {
+    // Try to get the timestamp of the first message
+    const firstMessage = document.querySelector('.message');
+    if (firstMessage && firstMessage.dataset.timestamp) {
+        return new Date(parseInt(firstMessage.dataset.timestamp)).toISOString();
+    }
+    
+    // Fallback to current time minus estimated duration
+    return new Date(Date.now() - 3600000).toISOString(); // 1 hour ago as fallback
+}
+
+/**
+ * Calculate session duration
+ * @returns {string} Duration in human readable format
+ */
+function calculateSessionDuration() {
+    const startTime = getSessionStartTime();
+    const start = new Date(startTime);
+    const end = new Date();
+    const diffMs = end - start;
+    
+    const hours = Math.floor(diffMs / (1000 * 60 * 60));
+    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((diffMs % (1000 * 60)) / 1000);
+    
+    if (hours > 0) {
+        return `${hours}h ${minutes}m ${seconds}s`;
+    } else if (minutes > 0) {
+        return `${minutes}m ${seconds}s`;
+    } else {
+        return `${seconds}s`;
+    }
+}
+
+/**
+ * Download chat data as JSON file
+ * @param {Object} chatData - The chat data to download
+ */
+function downloadChatData(chatData) {
+    try {
+        // Create filename with timestamp
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
+        const courseName = chatData.metadata.courseName.replace(/[^a-zA-Z0-9]/g, '_');
+        const filename = `BiocBot_Chat_${courseName}_${timestamp}.json`;
+        
+        // Convert to JSON string
+        const jsonString = JSON.stringify(chatData, null, 2);
+        
+        // Create blob and download
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        
+        // Create download link
+        const downloadLink = document.createElement('a');
+        downloadLink.href = url;
+        downloadLink.download = filename;
+        downloadLink.style.display = 'none';
+        
+        // Trigger download
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+        
+        // Clean up
+        URL.revokeObjectURL(url);
+        
+    } catch (error) {
+        console.error('Error downloading chat data:', error);
+        throw new Error('Failed to download chat data');
+    }
+}
+
+/**
+ * Show save success message
+ */
+function showSaveSuccessMessage() {
+    // Create success message
+    const successMessage = document.createElement('div');
+    successMessage.classList.add('message', 'bot-message', 'save-success');
+    
+    const avatarDiv = document.createElement('div');
+    avatarDiv.classList.add('message-avatar');
+    avatarDiv.textContent = 'B';
+    
+    const contentDiv = document.createElement('div');
+    contentDiv.classList.add('message-content');
+    
+    const messageText = document.createElement('p');
+    messageText.innerHTML = '<strong>✅ Chat Saved Successfully!</strong><br>Your chat data has been downloaded as a JSON file.';
+    
+    contentDiv.appendChild(messageText);
+    
+    // Add timestamp
+    const timestamp = document.createElement('span');
+    timestamp.classList.add('timestamp');
+    timestamp.textContent = 'Just now';
+    contentDiv.appendChild(timestamp);
+    
+    successMessage.appendChild(avatarDiv);
+    successMessage.appendChild(contentDiv);
+    
+    // Add to chat
+    const chatMessages = document.getElementById('chat-messages');
+    chatMessages.appendChild(successMessage);
+    
+    // Scroll to bottom
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        if (successMessage.parentNode) {
+            successMessage.remove();
+        }
+    }, 5000);
+}
+
+/**
+ * Show save error message
+ * @param {string} errorMessage - Error message to display
+ */
+function showSaveErrorMessage(errorMessage) {
+    // Create error message
+    const errorMsg = document.createElement('div');
+    errorMsg.classList.add('message', 'bot-message', 'save-error');
+    
+    const avatarDiv = document.createElement('div');
+    avatarDiv.classList.add('message-avatar');
+    avatarDiv.textContent = 'B';
+    
+    const contentDiv = document.createElement('div');
+    contentDiv.classList.add('message-content');
+    
+    const messageText = document.createElement('p');
+    messageText.innerHTML = `<strong>❌ Save Failed</strong><br>Error: ${errorMessage}`;
+    
+    contentDiv.appendChild(messageText);
+    
+    // Add timestamp
+    const timestamp = document.createElement('span');
+    timestamp.classList.add('timestamp');
+    timestamp.textContent = 'Just now';
+    contentDiv.appendChild(timestamp);
+    
+    errorMsg.appendChild(avatarDiv);
+    errorMsg.appendChild(contentDiv);
+    
+    // Add to chat
+    const chatMessages = document.getElementById('chat-messages');
+    chatMessages.appendChild(errorMsg);
+    
+    // Scroll to bottom
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+    
+    // Auto-remove after 8 seconds
+    setTimeout(() => {
+        if (errorMsg.parentNode) {
+            errorMsg.remove();
+        }
+    }, 8000);
+}
+
+/**
+ * Initialize chat history storage system
+ */
+function initializeChatHistoryStorage() {
+    // Chat history is now saved directly in handleSaveChat function
+    // No need for event listener to avoid duplicates
+    console.log('Chat history storage system initialized');
+}
+
+/**
+ * Save chat data to history storage
+ * @param {Object} chatData - The chat data to save
+ */
+function saveChatToHistory(chatData) {
+    try {
+        console.log('=== SAVING CHAT TO HISTORY ===');
+        const historyKey = 'biocbot_chat_history';
+        let history = JSON.parse(localStorage.getItem(historyKey) || '[]');
+        console.log('Current history length:', history.length);
+        
+        // Create a unique ID for this chat session
+        const chatId = `chat_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        console.log('Generated chat ID:', chatId);
+        
+        // Create history entry
+        const historyEntry = {
+            id: chatId,
+            title: generateChatTitle(chatData),
+            preview: generateChatPreview(chatData),
+            date: chatData.metadata.exportDate,
+            courseName: chatData.metadata.courseName,
+            unitName: chatData.metadata.unitName,
+            studentName: chatData.metadata.studentName,
+            totalMessages: chatData.metadata.totalMessages,
+            duration: chatData.sessionInfo.duration,
+            chatData: chatData
+        };
+        
+        console.log('Created history entry:', historyEntry);
+        
+        // Add to beginning of history (most recent first)
+        history.unshift(historyEntry);
+        console.log('History after adding entry, length:', history.length);
+        
+        // Keep only last 50 chat sessions to prevent storage bloat
+        if (history.length > 50) {
+            history = history.slice(0, 50);
+            console.log('Trimmed history to 50 entries');
+        }
+        
+        // Save back to localStorage
+        localStorage.setItem(historyKey, JSON.stringify(history));
+        console.log('Saved to localStorage, key:', historyKey);
+        
+        // Verify it was saved
+        const savedData = localStorage.getItem(historyKey);
+        console.log('Verification - saved data length:', savedData ? savedData.length : 'null');
+        
+        console.log('Chat saved to history successfully:', historyEntry.title);
+        
+    } catch (error) {
+        console.error('Error saving chat to history:', error);
+    }
+}
+
+/**
+ * Generate a title for the chat based on its content
+ * @param {Object} chatData - The chat data
+ * @returns {string} Generated title
+ */
+function generateChatTitle(chatData) {
+    const courseName = chatData.metadata.courseName;
+    const unitName = chatData.metadata.unitName;
+    const messageCount = chatData.metadata.totalMessages;
+    
+    // Try to find the first user question
+    const firstUserMessage = chatData.messages.find(msg => msg.type === 'user');
+    if (firstUserMessage) {
+        const question = firstUserMessage.content.substring(0, 50);
+        return `${courseName} - ${question}${question.length >= 50 ? '...' : ''}`;
+    }
+    
+    // Fallback titles based on content
+    if (chatData.practiceTests.questions.length > 0) {
+        return `${courseName} - ${unitName} Assessment (${messageCount} messages)`;
+    }
+    
+    return `${courseName} - Chat Session (${messageCount} messages)`;
+}
+
+/**
+ * Generate a preview for the chat
+ * @param {Object} chatData - The chat data
+ * @returns {string} Generated preview
+ */
+function generateChatPreview(chatData) {
+    // Find the first user message
+    const firstUserMessage = chatData.messages.find(msg => msg.type === 'user');
+    if (firstUserMessage) {
+        return firstUserMessage.content.substring(0, 100) + (firstUserMessage.content.length > 100 ? '...' : '');
+    }
+    
+    // Find the first bot message
+    const firstBotMessage = chatData.messages.find(msg => msg.type === 'bot');
+    if (firstBotMessage) {
+        return firstBotMessage.content.substring(0, 100) + (firstBotMessage.content.length > 100 ? '...' : '');
+    }
+    
+    return 'Chat session with BiocBot';
+}
+
+/**
+ * Get all chat history entries
+ * @returns {Array} Array of chat history entries
+ */
+function getChatHistory() {
+    try {
+        const historyKey = 'biocbot_chat_history';
+        return JSON.parse(localStorage.getItem(historyKey) || '[]');
+    } catch (error) {
+        console.error('Error getting chat history:', error);
+        return [];
+    }
+}
+
+/**
+ * Get a specific chat by ID
+ * @param {string} chatId - The chat ID
+ * @returns {Object|null} Chat data or null if not found
+ */
+function getChatById(chatId) {
+    try {
+        const history = getChatHistory();
+        return history.find(chat => chat.id === chatId) || null;
+    } catch (error) {
+        console.error('Error getting chat by ID:', error);
+        return null;
+    }
+}
+
+/**
+ * Delete a chat from history
+ * @param {string} chatId - The chat ID to delete
+ * @returns {boolean} True if successful
+ */
+function deleteChatFromHistory(chatId) {
+    try {
+        const history = getChatHistory();
+        const filteredHistory = history.filter(chat => chat.id !== chatId);
+        localStorage.setItem('biocbot_chat_history', JSON.stringify(filteredHistory));
+        return true;
+    } catch (error) {
+        console.error('Error deleting chat from history:', error);
+        return false;
+    }
+}
+
+/**
+ * Load chat data into the current chat interface
+ * @param {Object} chatData - The chat data to load
+ */
+function loadChatData(chatData) {
+    try {
+        console.log('=== LOADING CHAT DATA ===');
+        console.log('Chat data to load:', chatData);
+        
+        // Clear existing messages
+        const chatMessages = document.getElementById('chat-messages');
+        if (!chatMessages) {
+            console.error('Chat messages container not found');
+            return;
+        }
+        
+        // Clear ALL existing messages
+        chatMessages.innerHTML = '';
+        
+        // Add a loading message first
+        const loadingMessage = document.createElement('div');
+        loadingMessage.classList.add('message', 'bot-message');
+        loadingMessage.innerHTML = `
+            <div class="message-avatar">B</div>
+            <div class="message-content">
+                <p>Loading your previous chat...</p>
+                <span class="timestamp">Just now</span>
+            </div>
+        `;
+        chatMessages.appendChild(loadingMessage);
+        
+        // Scroll to bottom
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+        
+        // Use setTimeout to ensure the loading message is visible
+        setTimeout(() => {
+            // Clear the loading message
+            chatMessages.innerHTML = '';
+            
+            // Load each message from the chat data
+            chatData.messages.forEach((messageData, index) => {
+                console.log(`Loading message ${index}:`, messageData);
+                
+                if (messageData.type === 'user') {
+                    addMessage(messageData.content, 'user');
+                } else if (messageData.type === 'bot') {
+                    // Check if this is a special message type that needs special handling
+                    if (messageData.messageType === 'assessment-start') {
+                        // This is the assessment start message - add it as a regular bot message
+                        addMessage(messageData.content, 'bot', messageData.hasFlagButton);
+                    } else if (messageData.messageType === 'practice-test-question') {
+                        // This is a practice test question - add it as a regular bot message
+                        addMessage(messageData.content, 'bot', messageData.hasFlagButton);
+                    } else if (messageData.messageType === 'mode-result') {
+                        // This is a mode result message - add it as a regular bot message
+                        addMessage(messageData.content, 'bot', messageData.hasFlagButton);
+                    } else {
+                        // Regular bot message
+                        addMessage(messageData.content, 'bot', messageData.hasFlagButton);
+                    }
+                }
+            });
+            
+            // Restore practice test data if present
+            if (chatData.practiceTests && chatData.practiceTests.questions.length > 0) {
+                console.log('Restoring practice test data:', chatData.practiceTests);
+                currentCalibrationQuestions = chatData.practiceTests.questions;
+                currentPassThreshold = chatData.practiceTests.passThreshold;
+                currentQuestionIndex = chatData.practiceTests.currentQuestionIndex;
+                studentAnswers = chatData.studentAnswers.answers.map(answer => answer.answer);
+            }
+            
+            // Restore mode if present
+            if (chatData.metadata.currentMode) {
+                console.log('Restoring mode:', chatData.metadata.currentMode);
+                localStorage.setItem('studentMode', chatData.metadata.currentMode);
+                updateModeToggleUI(chatData.metadata.currentMode);
+            }
+            
+            // Restore unit selection if present
+            if (chatData.metadata.unitName) {
+                console.log('Restoring unit:', chatData.metadata.unitName);
+                localStorage.setItem('selectedUnitName', chatData.metadata.unitName);
+                
+                // Update unit selection dropdown if it exists
+                const unitSelect = document.getElementById('unit-select');
+                if (unitSelect) {
+                    unitSelect.value = chatData.metadata.unitName;
+                }
+            }
+            
+            // Ensure chat input and mode toggle are visible
+            const chatInputContainer = document.querySelector('.chat-input-container');
+            if (chatInputContainer) {
+                chatInputContainer.style.display = 'block';
+            }
+            const modeToggleContainer = document.querySelector('.mode-toggle-container');
+            if (modeToggleContainer) {
+                modeToggleContainer.style.display = 'block';
+            }
+            
+            // Show success message
+            addMessage('✅ Chat history loaded successfully! You can continue where you left off.', 'bot');
+            
+            console.log('Chat data loaded successfully');
+            
+        }, 500); // Small delay to show loading message
+        
+    } catch (error) {
+        console.error('Error loading chat data:', error);
+        addMessage('❌ Error loading chat history. Please try again.', 'bot');
+    }
+}
+
+/**
+ * Format date for display in history
+ * @param {string} dateString - ISO date string
+ * @returns {string} Formatted date
+ */
+function formatHistoryDate(dateString) {
+    try {
+        const date = new Date(dateString);
+        const now = new Date();
+        const diffMs = now - date;
+        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        
+        if (diffDays === 0) {
+            return 'Today, ' + date.toLocaleTimeString('en-US', { 
+                hour: 'numeric', 
+                minute: '2-digit',
+                hour12: true 
+            });
+        } else if (diffDays === 1) {
+            return 'Yesterday, ' + date.toLocaleTimeString('en-US', { 
+                hour: 'numeric', 
+                minute: '2-digit',
+                hour12: true 
+            });
+        } else if (diffDays < 7) {
+            return date.toLocaleDateString('en-US', { 
+                weekday: 'short',
+                hour: 'numeric', 
+                minute: '2-digit',
+                hour12: true 
+            });
+        } else {
+            return date.toLocaleDateString('en-US', { 
+                month: 'short', 
+                day: 'numeric',
+                year: 'numeric'
+            });
+        }
+    } catch (error) {
+        console.error('Error formatting date:', error);
+        return 'Unknown date';
+    }
+}
+
+/**
+ * Check for chat data to load from history
+ */
+function checkForChatDataToLoad() {
+    try {
+        console.log('=== CHECKING FOR CHAT DATA TO LOAD ===');
+        const storedChatData = sessionStorage.getItem('loadChatData');
+        console.log('Stored chat data:', storedChatData);
+        
+        if (storedChatData) {
+            const chatData = JSON.parse(storedChatData);
+            console.log('Parsed chat data:', chatData);
+            console.log('Chat data messages count:', chatData.messages ? chatData.messages.length : 'No messages');
+            
+            // Clear the stored data
+            sessionStorage.removeItem('loadChatData');
+            console.log('Cleared loadChatData from sessionStorage');
+            
+            // Load the chat data
+            console.log('Calling loadChatData...');
+            loadChatData(chatData);
+        } else {
+            console.log('No chat data found in sessionStorage');
+        }
+    } catch (error) {
+        console.error('Error checking for chat data to load:', error);
+    }
+}
+
+/**
+ * Test function to add sample chat data to history
+ * This can be called from the browser console for testing
+ */
+function addSampleChatData() {
+    const sampleChatData = {
+        metadata: {
+            exportDate: new Date().toISOString(),
+            courseId: 'BIOC202-test',
+            courseName: 'BIOC 202',
+            studentId: 'test-student-123',
+            studentName: 'Test Student',
+            unitName: 'Unit 1',
+            currentMode: 'tutor',
+            totalMessages: 4,
+            version: '1.0'
+        },
+        messages: [
+            {
+                index: 0,
+                type: 'bot',
+                timestamp: new Date(Date.now() - 3600000).toISOString(),
+                displayTimestamp: '1 hour ago',
+                content: 'Hello! I\'m BiocBot, your AI study assistant for BIOC 202. How can I help you today?',
+                messageType: 'regular-chat',
+                isCalibrationQuestion: false,
+                isModeResult: false,
+                isAssessmentStart: false,
+                hasFlagButton: true
+            },
+            {
+                index: 1,
+                type: 'user',
+                timestamp: new Date(Date.now() - 3500000).toISOString(),
+                displayTimestamp: '1 hour ago',
+                content: 'Can you explain protein folding and what determines the final 3D structure?',
+                messageType: 'regular-chat',
+                isCalibrationQuestion: false,
+                isModeResult: false,
+                isAssessmentStart: false
+            },
+            {
+                index: 2,
+                type: 'bot',
+                timestamp: new Date(Date.now() - 3400000).toISOString(),
+                displayTimestamp: '1 hour ago',
+                content: 'Protein folding is determined by several factors:\n\n1. **Primary structure:** The sequence of amino acids forms the backbone.\n2. **Hydrogen bonding:** Creates secondary structures like alpha helices and beta sheets.\n3. **Hydrophobic interactions:** Non-polar amino acids cluster in the center, away from water.\n4. **Ionic interactions:** Charged amino acids form salt bridges.\n5. **Disulfide bridges:** Covalent bonds between cysteine residues stabilize the structure.\n\nThe final 3D structure represents the most energetically favorable conformation.',
+                messageType: 'regular-chat',
+                isCalibrationQuestion: false,
+                isModeResult: false,
+                isAssessmentStart: false,
+                hasFlagButton: true
+            },
+            {
+                index: 3,
+                type: 'user',
+                timestamp: new Date(Date.now() - 3300000).toISOString(),
+                displayTimestamp: '1 hour ago',
+                content: 'What happens if there\'s a mutation in the amino acid sequence?',
+                messageType: 'regular-chat',
+                isCalibrationQuestion: false,
+                isModeResult: false,
+                isAssessmentStart: false
+            }
+        ],
+        practiceTests: {
+            questions: [],
+            totalQuestions: 0,
+            passThreshold: 2,
+            currentQuestionIndex: 0
+        },
+        studentAnswers: {
+            answers: [],
+            totalAnswers: 0,
+            answersProvided: 0
+        },
+        sessionInfo: {
+            startTime: new Date(Date.now() - 3600000).toISOString(),
+            endTime: new Date().toISOString(),
+            duration: '1h 0m 0s'
+        }
+    };
+    
+    saveChatToHistory(sampleChatData);
+    console.log('Sample chat data added to history!');
 } 

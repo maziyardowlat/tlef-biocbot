@@ -38,68 +38,41 @@
             <!-- Chat History List -->
             <div class="history-container">
                 <div class="chat-history-list">
-                    <div class="chat-history-item">
-                        <div class="title">Protein Structure and Function</div>
-                        <div class="preview">How do proteins fold into their 3D structure and what determines...</div>
-                        <div class="date">Today, 2:30 PM</div>
+                    <div class="history-header">
+                        <h3>Chat History</h3>
+                        <div class="search-container">
+                            <input type="text" id="history-search" placeholder="Search chats...">
+                        </div>
                     </div>
-                    
-                    <div class="chat-history-item">
-                        <div class="title">Enzymes and Catalysis</div>
-                        <div class="preview">Can you explain how enzymes lower activation energy?</div>
-                        <div class="date">Yesterday, 4:15 PM</div>
+                    <div id="chat-history-list" class="history-items">
+                        <!-- Chat history items will be loaded dynamically -->
                     </div>
-                    
-                    <div class="chat-history-item">
-                        <div class="title">DNA Replication</div>
-                        <div class="preview">What are the steps involved in DNA replication and which enzymes...</div>
-                        <div class="date">Oct 15, 2023</div>
-                    </div>
-                    
-                    <div class="chat-history-item">
-                        <div class="title">Cell Membrane Structure</div>
-                        <div class="preview">Explain the fluid mosaic model of the cell membrane.</div>
-                        <div class="date">Oct 12, 2023</div>
-                    </div>
-                    
-                    <div class="chat-history-item">
-                        <div class="title">Photosynthesis Process</div>
-                        <div class="preview">What are the light-dependent and light-independent reactions?</div>
-                        <div class="date">Oct 10, 2023</div>
+                    <div id="no-history-message" class="no-history" style="display: none;">
+                        <div class="no-history-content">
+                            <div class="no-history-icon">💬</div>
+                            <h4>No Chat History</h4>
+                            <p>You haven't saved any chats yet. Start a conversation and save it to see it here!</p>
+                            <a href="/student" class="primary-button">Start New Chat</a>
+                        </div>
                     </div>
                 </div>
                 
                 <!-- Chat Preview Panel -->
                 <div class="chat-preview-panel">
                     <div class="preview-header">
-                        <h2>Protein Structure and Function</h2>
-                        <div class="preview-actions">
-                            <button class="secondary-button">Continue Chat</button>
-                            <button class="secondary-button">Delete</button>
+                        <h2 id="preview-title">Select a Chat</h2>
+                        <div class="preview-actions" id="preview-actions" style="display: none;">
+                            <button id="continue-chat-btn" class="primary-button">Continue Chat</button>
+                            <button id="delete-chat-btn" class="secondary-button">Delete</button>
                         </div>
                     </div>
                     
-                    <div class="preview-messages">
-                        <div class="message user-message">
-                            <div class="message-avatar">S</div>
-                            <div class="message-content">
-                                <p>How do proteins fold into their 3D structure and what determines their final shape?</p>
-                                <span class="timestamp">2:30 PM</span>
-                            </div>
-                        </div>
-                        
-                        <div class="message bot-message">
-                            <div class="message-avatar">B</div>
-                            <div class="message-content">
-                                <p>Protein folding is determined by several factors:</p>
-                                <p>1. <strong>Primary structure:</strong> The sequence of amino acids forms the backbone.</p>
-                                <p>2. <strong>Hydrogen bonding:</strong> Creates secondary structures like alpha helices and beta sheets.</p>
-                                <p>3. <strong>Hydrophobic interactions:</strong> Non-polar amino acids cluster in the center, away from water.</p>
-                                <p>4. <strong>Ionic interactions:</strong> Charged amino acids form salt bridges.</p>
-                                <p>5. <strong>Disulfide bridges:</strong> Covalent bonds between cysteine residues stabilize the structure.</p>
-                                <p>The final 3D structure represents the most energetically favorable conformation.</p>
-                                <div class="message-source">Source: <a href="#">BIOC 202 Textbook, Chapter 4: Protein Structure</a></div>
-                                <span class="timestamp">2:31 PM</span>
+                    <div class="preview-messages" id="preview-messages">
+                        <div class="no-selection">
+                            <div class="no-selection-content">
+                                <div class="no-selection-icon">📋</div>
+                                <h4>No Chat Selected</h4>
+                                <p>Select a chat from the list to view its contents and continue the conversation.</p>
                             </div>
                         </div>
                     </div>
