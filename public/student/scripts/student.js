@@ -2694,7 +2694,9 @@ function initializeChatHistoryStorage() {
 function saveChatToHistory(chatData) {
     try {
         console.log('=== SAVING CHAT TO HISTORY ===');
-        const historyKey = 'biocbot_chat_history';
+        // Use student-specific localStorage key for security
+        const studentId = chatData.metadata.studentId;
+        const historyKey = `biocbot_chat_history_${studentId}`;
         let history = JSON.parse(localStorage.getItem(historyKey) || '[]');
         console.log('Current history length:', history.length);
         
@@ -2738,8 +2740,64 @@ function saveChatToHistory(chatData) {
         
         console.log('Chat saved to history successfully:', historyEntry.title);
         
+        // Also save to server for instructor access
+        saveChatToServer(chatData, chatId);
+        
     } catch (error) {
         console.error('Error saving chat to history:', error);
+    }
+}
+
+/**
+ * Save chat data to server for instructor access
+ * @param {Object} chatData - The chat data to save
+ * @param {string} chatId - The chat session ID
+ */
+async function saveChatToServer(chatData, chatId) {
+    try {
+        console.log('=== SAVING CHAT TO SERVER ===');
+        
+        // Prepare server data
+        const serverData = {
+            sessionId: chatId,
+            courseId: chatData.metadata.courseId,
+            studentId: chatData.metadata.studentId,
+            studentName: chatData.metadata.studentName,
+            unitName: chatData.metadata.unitName,
+            title: generateChatTitle(chatData),
+            messageCount: chatData.metadata.totalMessages,
+            duration: chatData.sessionInfo.duration,
+            savedAt: chatData.metadata.exportDate,
+            chatData: chatData
+        };
+        
+        console.log('Sending chat data to server:', {
+            sessionId: serverData.sessionId,
+            courseId: serverData.courseId,
+            studentId: serverData.studentId,
+            messageCount: serverData.messageCount
+        });
+        
+        // Send to server
+        const response = await fetch('/api/chat/save', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(serverData)
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
+        }
+        
+        const result = await response.json();
+        console.log('Chat saved to server successfully:', result);
+        
+    } catch (error) {
+        console.error('Error saving chat to server:', error);
+        // Don't show error to user as this is background saving
+        // The chat is already saved locally
     }
 }
 
@@ -2790,12 +2848,19 @@ function generateChatPreview(chatData) {
 }
 
 /**
- * Get all chat history entries
+ * Get all chat history entries for the current student
  * @returns {Array} Array of chat history entries
  */
 function getChatHistory() {
     try {
-        const historyKey = 'biocbot_chat_history';
+        // Get current student ID for security
+        const studentId = getCurrentStudentId();
+        if (!studentId) {
+            console.error('No student ID found - cannot load chat history');
+            return [];
+        }
+        
+        const historyKey = `biocbot_chat_history_${studentId}`;
         return JSON.parse(localStorage.getItem(historyKey) || '[]');
     } catch (error) {
         console.error('Error getting chat history:', error);

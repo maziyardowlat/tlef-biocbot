@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BiocBot - Student Downloads</title>
+    <link rel="stylesheet" href="../styles/style.css">
+    <link rel="stylesheet" href="../styles/downloads.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="logo-container">
+                <h2>BiocBot</h2>
+            </div>
+            <nav class="main-nav">
+                <ul>
+                    <li><a href="/instructor/home">Home</a></li>
+                    <li><a href="/instructor/documents">Course Upload</a></li>
+                    <li id="onboarding-nav-item" style="display: none;"><a href="/instructor/onboarding">Onboarding</a></li>
+                    <li><a href="/instructor/flagged">Flagged Content</a></li>
+                    <li class="active"><a href="/instructor/downloads">Student Downloads</a></li>
+                    <li><a href="/instructor/settings">Settings</a></li>
+                </ul>
+            </nav>
+            <div class="user-info">
+                <div class="user-avatar">I</div>
+                <div class="user-name" id="user-display-name">Instructor Name</div>
+                <div class="user-role">Instructor</div>
+                <div class="user-actions">
+                    <a href="/instructor/settings" class="user-action">Settings</a>
+                    <a href="#" id="logout-btn" class="user-action">Logout</a>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <header class="downloads-header">
+                <h1 id="course-title">BIOC202 - Student Downloads</h1>
+            </header>
+
+            <div class="course-subtitle">
+                <p>Student Chat Downloads</p>
+            </div>
+
+            <!-- Loading State -->
+            <div id="loading-state" class="loading-container">
+                <div class="loading-spinner"></div>
+                <p>Loading student data...</p>
+            </div>
+
+            <!-- Error State -->
+            <div id="error-state" class="error-container" style="display: none;">
+                <div class="error-icon">⚠️</div>
+                <h3>Error Loading Data</h3>
+                <p id="error-message">Unable to load student data. Please try again.</p>
+                <button class="btn-primary" onclick="loadStudentData()">Retry</button>
+            </div>
+
+            <!-- Empty State -->
+            <div id="empty-state" class="empty-container" style="display: none;">
+                <div class="empty-icon">📚</div>
+                <h3>No Students Found</h3>
+                <p>No students have saved chat sessions for this course yet.</p>
+            </div>
+
+            <!-- Students List -->
+            <div id="students-container" class="students-container" style="display: none;">
+                <div class="students-header">
+                    <h2>Students with Saved Chats</h2>
+                    <div class="students-stats">
+                        <span id="total-students">0</span> students with saved chats
+                    </div>
+                </div>
+
+                <div class="students-list" id="students-list">
+                    <!-- Student cards will be dynamically generated here -->
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Student Chat Details Modal -->
+    <div id="student-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="student-modal-title">Student Chat History</h2>
+                <button class="modal-close" onclick="closeStudentModal()">×</button>
+            </div>
+            
+            <div class="modal-body">
+                <div class="student-info">
+                    <div class="student-avatar" id="student-avatar">S</div>
+                    <div class="student-details">
+                        <h3 id="student-name">Student Name</h3>
+                        <p id="student-username">@username</p>
+                        <p id="student-course">Course Name</p>
+                    </div>
+                </div>
+
+                <div class="chat-sessions">
+                    <h3>Saved Chat Sessions</h3>
+                    <div class="sessions-list" id="sessions-list">
+                        <!-- Chat sessions will be dynamically generated here -->
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <div class="modal-actions">
+                    <button class="btn-secondary" onclick="closeStudentModal()">Close</button>
+                    <button class="btn-primary" onclick="downloadAllSessions()" id="download-all-btn" style="display: none;">
+                        Download All Sessions
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Download Progress Modal -->
+    <div id="download-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Downloading Chat Data</h2>
+            </div>
+            
+            <div class="modal-body">
+                <div class="download-progress">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progress-fill"></div>
+                    </div>
+                    <p id="download-status">Preparing download...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="../common/scripts/auth.js"></script>
+    <script src="./scripts/downloads.js"></script>
+</body>
+</html>

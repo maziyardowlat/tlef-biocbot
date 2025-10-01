@@ -18,6 +18,7 @@ const documentsRoutes = require('./routes/documents');
 const questionsRoutes = require('./routes/questions');
 const onboardingRoutes = require('./routes/onboarding');
 const qdrantRoutes = require('./routes/qdrant');
+const studentsRoutes = require('./routes/students');
 const LLMService = require('./services/llm');
 const AuthService = require('./services/authService');
 const createAuthMiddleware = require('./middleware/auth');
@@ -260,6 +261,10 @@ function setupProtectedRoutes() {
     app.get('/instructor/flagged', authMiddleware.requireInstructor, (req, res) => {
         res.sendFile(path.join(__dirname, '../public/instructor/flagged.html'));
     });
+
+    app.get('/instructor/downloads', authMiddleware.requireInstructor, (req, res) => {
+        res.sendFile(path.join(__dirname, '../public/instructor/downloads.html'));
+    });
 }
 
 // Legacy routes (redirect to new structure)
@@ -367,6 +372,7 @@ function setupAPIRoutes() {
     app.use('/api/onboarding', authMiddleware.requireAuth, onboardingRoutes);
     app.use('/api/qdrant', authMiddleware.requireAuth, qdrantRoutes);
     app.use('/api/chat', authMiddleware.requireAuth, chatRoutes);
+    app.use('/api/students', authMiddleware.requireAuth, studentsRoutes);
 }
 
 // Initialize the application
