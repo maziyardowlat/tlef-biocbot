@@ -154,11 +154,26 @@ class QdrantService {
                 console.log(`🔍 Test embedding result:`, {
                     isArray: Array.isArray(testEmbedding),
                     length: testEmbedding ? testEmbedding.length : 'undefined',
-                    type: typeof testEmbedding
+                    type: typeof testEmbedding,
+                    firstFew: testEmbedding ? testEmbedding.slice(0, 5) : 'undefined'
                 });
                 
                 if (testEmbedding && Array.isArray(testEmbedding) && testEmbedding.length > 0) {
-                    console.log(`✅ Embeddings service test successful (${testEmbedding.length} dimensions)`);
+                    // Check if the embedding is nested (UBC GenAI Toolkit sometimes returns [[...]] instead of [...])
+                    let actualEmbedding = testEmbedding;
+                    if (testEmbedding.length === 1 && Array.isArray(testEmbedding[0])) {
+                        console.log(`🔧 Detected nested array format, flattening...`);
+                        actualEmbedding = testEmbedding[0];
+                    }
+                    
+                    if (actualEmbedding.length === 1 && actualEmbedding[0] === 1) {
+                        console.warn(`⚠️ Embeddings service returned fallback value [1] - this indicates an error in embedding generation`);
+                        console.warn(`⚠️ The actual embedding generation may be failing silently`);
+                    } else if (actualEmbedding.length === this.vectorSize) {
+                        console.log(`✅ Embeddings service test successful (${actualEmbedding.length} dimensions)`);
+                    } else {
+                        console.warn(`⚠️ Embeddings service returned ${actualEmbedding.length} dimensions, expected ${this.vectorSize}`);
+                    }
                 } else {
                     console.warn(`⚠️ Embeddings service test returned unexpected result, but continuing with model-based vector size`);
                 }
