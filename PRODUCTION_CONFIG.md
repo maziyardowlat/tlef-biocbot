@@ -27,6 +27,11 @@ LLM_API_KEY=nokey
 LLM_ENDPOINT=http://localhost:11434
 LLM_EMBEDDING_MODEL=nomic-embed-text
 
+# OpenAI Configuration (alternative)
+# OPENAI_API_KEY=your-openai-api-key-here
+# OPENAI_MODEL=gpt-4o-mini
+# LLM_EMBEDDING_MODEL=text-embedding-3-small
+
 # Chunking Configuration
 CHUNK_SIZE=1000
 CHUNK_OVERLAP=200
