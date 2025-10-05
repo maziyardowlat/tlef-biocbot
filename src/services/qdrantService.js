@@ -126,16 +126,62 @@ class QdrantService {
             this.chunker = new ChunkingModule(chunkingConfig);
             console.log(`✅ Successfully initialized chunking service (strategy=${this.chunker.getDefaultStrategyName()})`);
 
-            // Test embeddings service and determine vector size dynamically
-            console.log('Testing embeddings service...');
-            const testEmbedding = await this.embeddings.embed('test');
-            if (!testEmbedding || !Array.isArray(testEmbedding)) {
-                throw new Error('Embeddings service returned invalid result');
+            // Set vector size based on the embedding model (more reliable than test embedding)
+            console.log('Setting vector size based on embedding model...');
+            const embeddingModel = process.env.LLM_EMBEDDING_MODEL;
+            
+            if (embeddingModel === 'text-embedding-3-small') {
+                this.vectorSize = 1536;
+                console.log(`🔍 Using text-embedding-3-small vector size: ${this.vectorSize}`);
+            } else if (embeddingModel === 'text-embedding-ada-002') {
+                this.vectorSize = 1536;
+                console.log(`🔍 Using text-embedding-ada-002 vector size: ${this.vectorSize}`);
+            } else if (embeddingModel === 'nomic-embed-text') {
+                this.vectorSize = 768;
+                console.log(`🔍 Using nomic-embed-text vector size: ${this.vectorSize}`);
+            } else {
+                // Fallback to environment variable or default
+                this.vectorSize = process.env.QDRANT_VECTOR_SIZE || 768;
+                console.log(`🔍 Using fallback vector size: ${this.vectorSize}`);
             }
             
-            // Set vector size dynamically based on the embedding model
-            // this.vectorSize = testEmbedding.length;
             console.log(`✅ Successfully initialized embeddings service (vector size: ${this.vectorSize} dimensions)`);
+            
+            // Test embeddings service to verify it's working (but don't rely on it for vector size)
+            console.log('Testing embeddings service...');
+            try {
+                const testEmbedding = await this.embeddings.embed('test');
+                console.log(`🔍 Test embedding result:`, {
+                    isArray: Array.isArray(testEmbedding),
+                    length: testEmbedding ? testEmbedding.length : 'undefined',
+                    type: typeof testEmbedding,
+                    firstFew: testEmbedding ? testEmbedding.slice(0, 5) : 'undefined'
+                });
+                
+                if (testEmbedding && Array.isArray(testEmbedding) && testEmbedding.length > 0) {
+                    // Check if the embedding is nested (UBC GenAI Toolkit sometimes returns [[...]] instead of [...])
+                    let actualEmbedding = testEmbedding;
+                    if (testEmbedding.length === 1 && Array.isArray(testEmbedding[0])) {
+                        console.log(`🔧 Detected nested array format, flattening...`);
+                        actualEmbedding = testEmbedding[0];
+                    }
+                    
+                    if (actualEmbedding.length === 1 && actualEmbedding[0] === 1) {
+                        console.warn(`⚠️ Embeddings service returned fallback value [1] - this indicates an error in embedding generation`);
+                        console.warn(`⚠️ The actual embedding generation may be failing silently`);
+                    } else if (actualEmbedding.length === this.vectorSize) {
+                        console.log(`✅ Embeddings service test successful (${actualEmbedding.length} dimensions)`);
+                    } else {
+                        console.warn(`⚠️ Embeddings service returned ${actualEmbedding.length} dimensions, expected ${this.vectorSize}`);
+                    }
+                } else {
+                    console.warn(`⚠️ Embeddings service test returned unexpected result, but continuing with model-based vector size`);
+                }
+                
+            } catch (embeddingTestError) {
+                console.warn(`⚠️ Embeddings service test failed:`, embeddingTestError.message);
+                console.log(`🔧 Continuing with model-based vector size: ${this.vectorSize}`);
+            }
 
             // Ensure collection exists
             await this.ensureCollectionExists();
@@ -152,7 +198,7 @@ class QdrantService {
     }
 
     /**
-     * Ensure the documents collection exists in Qdrant
+     * Ensure the documents collection exists in Qdrant with correct vector dimensions
      */
     async ensureCollectionExists() {
         try {
@@ -173,7 +219,34 @@ class QdrantService {
 
                 console.log(`✅ Collection ${this.collectionName} created successfully`);
             } else {
-                console.log(`✅ Collection ${this.collectionName} already exists`);
+                // Check if existing collection has correct vector dimensions
+                const collectionInfo = await this.client.getCollection(this.collectionName);
+                const existingVectorSize = collectionInfo.config.params.vectors.size;
+                
+                console.log(`🔍 Collection validation: existing=${existingVectorSize}, required=${this.vectorSize}`);
+                
+                if (existingVectorSize !== this.vectorSize) {
+                    console.log(`⚠️ Vector dimension mismatch detected!`);
+                    console.log(`   Existing collection: ${existingVectorSize} dimensions`);
+                    console.log(`   Required: ${this.vectorSize} dimensions`);
+                    console.log(`   Recreating collection with correct dimensions...`);
+                    
+                    // Delete the existing collection
+                    await this.client.deleteCollection(this.collectionName);
+                    console.log(`🗑️ Deleted existing collection`);
+                    
+                    // Create new collection with correct dimensions
+                    await this.client.createCollection(this.collectionName, {
+                        vectors: {
+                            size: this.vectorSize,
+                            distance: 'Cosine'
+                        }
+                    });
+                    
+                    console.log(`✅ Collection ${this.collectionName} recreated with correct dimensions`);
+                } else {
+                    console.log(`✅ Collection ${this.collectionName} already exists with correct dimensions`);
+                }
             }
         } catch (error) {
             console.error('❌ Error ensuring collection exists:', error);
