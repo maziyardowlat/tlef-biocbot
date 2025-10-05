@@ -1444,6 +1444,20 @@ async function loadQuestionsForSelectedUnit(unitName) {
 function showNoQuestionsForUnitMessage(unitName) {
     console.log(`Showing no questions message for unit: ${unitName}`);
     
+    // Set default mode to tutor
+    localStorage.setItem('studentMode', 'tutor');
+    updateModeToggleUI('tutor');
+    
+    // Show chat input and mode toggle
+    const chatInputContainer = document.querySelector('.chat-input-container');
+    if (chatInputContainer) {
+        chatInputContainer.style.display = 'block';
+    }
+    const modeToggleContainer = document.querySelector('.mode-toggle-container');
+    if (modeToggleContainer) {
+        modeToggleContainer.style.display = 'block';
+    }
+    
     // Add message to chat
     const noQuestionsMessage = document.createElement('div');
     noQuestionsMessage.classList.add('message', 'bot-message');
