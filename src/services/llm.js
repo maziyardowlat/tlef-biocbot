@@ -69,12 +69,11 @@ class LLMService {
             
             console.log(`📤 Sending message to LLM: "${message.substring(0, 50)}..."`);
             
-            // Set default options for BiocBot context
+            // Set default options for BiocBot context - provider-aware
             const defaultOptions = {
                 systemPrompt: this.getSystemPrompt(),
                 temperature: 0.1,
-                //TEMP CTX TODO
-                num_ctx: 2048,
+                ...this._getProviderSpecificOptions(),
                 ...options
             };
             console.log('🔍 [LLM_OPTIONS] Default options:', defaultOptions);
@@ -87,6 +86,34 @@ class LLMService {
         } catch (error) {
             console.error('❌ Error sending message to LLM:', error.message);
             throw error;
+        }
+    }
+    
+    /**
+     * Get provider-specific options based on the current LLM provider
+     * @returns {Object} Provider-specific options
+     * @private
+     */
+    _getProviderSpecificOptions() {
+        const provider = this.llmConfig?.provider;
+        
+        switch (provider) {
+            case 'ollama':
+                return {
+                    num_ctx: 2048  // Ollama-specific context window parameter
+                };
+            case 'openai':
+                return {
+                    // OpenAI doesn't use num_ctx, uses max_tokens instead
+                    max_tokens: 2000
+                };
+            case 'ubc-llm-sandbox':
+                return {
+                    num_ctx: 2048  // UBC sandbox likely uses Ollama-compatible parameters
+                };
+            default:
+                console.warn(`⚠️ Unknown provider: ${provider}, using default options`);
+                return {};
         }
     }
     
@@ -134,12 +161,10 @@ class LLMService {
             // Add user message to conversation
             conversation.addMessage('user', message);
             
-            // Set default options for BiocBot
+            // Set default options for BiocBot - provider-aware
             const defaultOptions = {
                 temperature: 0.1,
-                //TEMP CTX TODO
-
-                num_ctx: 2048,
+                ...this._getProviderSpecificOptions(),
                 ...options
             };
             
@@ -267,14 +292,13 @@ class LLMService {
                 this.getJsonSchemaForQuestionType(questionType)
             );
             
-            // Set specific options for question generation
+            // Set specific options for question generation - provider-aware
             // Use higher temperature (0.7) for more creative question generation
             const generationOptions = {
                 temperature: 0.7,
-                //TEMP CTX TODO
-                num_ctx: 2048,  // Reduced context window for better performance
                 timeout: 120000,  // 2 minute timeout for complex questions
-                systemPrompt: systemPrompt
+                systemPrompt: systemPrompt,
+                ...this._getProviderSpecificOptions()
             };
             
             // Log prompt length and content for debugging
@@ -352,14 +376,13 @@ class LLMService {
                 this.getJsonSchemaForQuestionType(questionType)
             );
             
-            // Set specific options for question regeneration
+            // Set specific options for question regeneration - provider-aware
             // Use lower temperature (0.5) for more focused improvements based on feedback
             const generationOptions = {
                 temperature: 0.5,  // Lower temperature for more focused regeneration
-                //TEMP CTX TODO
-                num_ctx: 2048,
                 timeout: 120000,
-                systemPrompt: systemPrompt
+                systemPrompt: systemPrompt,
+                ...this._getProviderSpecificOptions()
             };
             
             // Log prompt length and content for debugging
