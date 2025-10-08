@@ -30,6 +30,10 @@ router.use(express.json());
  */
 router.post('/', async (req, res) => {
     try {
+        console.log('💬 [CHAT_API] New chat request received');
+        console.log('💬 [CHAT_API] Message:', req.body.message?.substring(0, 50) + '...');
+        console.log('💬 [CHAT_API] Has conversationContext:', !!req.body.conversationContext);
+        
         // Check if LLM service is initialized
         if (!llmService) {
             return res.status(503).json({
@@ -38,7 +42,8 @@ router.post('/', async (req, res) => {
             });
         }
 
-        const { message, conversationId, mode, unitName, courseId } = req.body;
+        const { message, conversationId, mode, unitName, courseId, conversationContext } = req.body;
+        
         
         // Validate required fields
         if (!message || typeof message !== 'string') {
@@ -138,11 +143,38 @@ router.post('/', async (req, res) => {
             .map(r => `From ${r.lectureName} (${r.fileName}):\n${r.chunkText}`)
             .join('\n\n---\n\n');
         
+        // Build the message to send to LLM
+        let messageToSend = `Use only the provided course context to answer. Cite which unit a fact came from.
+\n\nCourse context:\n${contextText}\n\nStudent question: ${message}`;
+
+        // If we have conversation context (continuing a chat), use structured conversation approach
+        if (conversationContext && conversationContext.conversationMessages) {
+            console.log('🔄 [CHAT_CONTINUE] Using structured conversation context');
+            
+            // Build the conversation history as a single message
+            let conversationHistory = '';
+            conversationContext.conversationMessages.forEach(msg => {
+                const speaker = msg.role === 'user' ? 'Student' : 'BiocBot';
+                conversationHistory += `${speaker}: ${msg.content}\n\n`;
+            });
+            
+            // Add the student's new message
+            conversationHistory += `Student: ${message}`;
+            
+            // Create the full message with conversation context
+            messageToSend = `Use only the provided course context to answer. Cite which unit a fact came from.
+
+Course context:
+${contextText}
+
+Previous conversation:
+${conversationHistory}`;
+        }
+
         // For now, we'll use single message approach
         // In the future, we can implement conversation persistence
         let response = await llmService.sendMessage(
-            `Use only the provided course context to answer. Cite which unit a fact came from.
-\n\nCourse context:\n${contextText}\n\nStudent question: ${message}`,
+            messageToSend,
             {
             // Adjust response based on student mode
             temperature: mode === 'protege' ? 0.5 : 0.5,

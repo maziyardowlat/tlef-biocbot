@@ -20,8 +20,13 @@ function createAuthMiddleware(db) {
      * @param {Function} next - Express next function
      */
     function requireAuth(req, res, next) {
+        console.log('🔐 [AUTH] Checking authentication for:', req.path);
+        console.log('🔐 [AUTH] Session exists:', !!req.session);
+        console.log('🔐 [AUTH] User ID:', req.session?.userId);
+        
         // Check if user is in session
         if (!req.session || !req.session.userId) {
+            console.log('🔐 [AUTH] Authentication failed - no session or user ID');
             // If it's an API request, return JSON error
             if (req.path.startsWith('/api/')) {
                 return res.status(401).json({
@@ -34,6 +39,8 @@ function createAuthMiddleware(db) {
             // For page requests, redirect to login
             return res.redirect('/login');
         }
+        
+        console.log('🔐 [AUTH] Authentication successful');
 
         // Set user information for routes that need it
         req.user = {
