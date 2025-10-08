@@ -102,18 +102,33 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             
             const unitName = localStorage.getItem('selectedUnitName') || getCurrentUnitName();
+            
+            // Check if we're continuing a chat and need to include conversation context
+            const conversationContext = getConversationContext();
+            
+            const requestBody = {
+                message: message,
+                mode: currentMode,
+                courseId: courseId,
+                unitName: unitName,
+                conversationContext: conversationContext
+            };
+            
+            
+            console.log('🚀 [SEND] About to send request to /api/chat');
+            console.log('🚀 [SEND] Request URL:', '/api/chat');
+            console.log('🚀 [SEND] Request method:', 'POST');
+            console.log('🚀 [SEND] Request body:', requestBody);
+            
             const response = await fetch('/api/chat', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({
-                    message: message,
-                    mode: currentMode,
-                    courseId: courseId,
-                    unitName: unitName
-                })
+                body: JSON.stringify(requestBody)
             });
+            
+            console.log('🚀 [SEND] Response received:', response.status, response.statusText);
             
             if (!response.ok) {
                 const errorData = await response.json();
@@ -126,11 +141,120 @@ document.addEventListener('DOMContentLoaded', () => {
                 throw new Error(data.message || 'Failed to get response from LLM');
             }
             
+            // Clear the continuing chat flag after successful message send
+            if (conversationContext) {
+                sessionStorage.removeItem('isContinuingChat');
+                sessionStorage.removeItem('loadedChatData');
+            }
+            
             return data;
             
         } catch (error) {
             console.error('Error sending message to LLM:', error);
             throw error;
+        }
+    }
+    
+    /**
+     * Get conversation context for continuing a chat
+     * @returns {Object|null} Conversation context or null if not continuing a chat
+     */
+    function getConversationContext() {
+        // Check if we're continuing a chat (this flag is set when loading chat data)
+        const isContinuingChat = sessionStorage.getItem('isContinuingChat') === 'true';
+        if (!isContinuingChat) {
+            return null;
+        }
+        
+        // Get the loaded chat data
+        const loadedChatData = sessionStorage.getItem('loadedChatData');
+        if (!loadedChatData) {
+            return null;
+        }
+        
+        try {
+            const chatData = JSON.parse(loadedChatData);
+            const currentMode = localStorage.getItem('studentMode') || 'tutor';
+            const unitName = localStorage.getItem('selectedUnitName') || 'this unit';
+            
+            // Build structured conversation context
+            const conversationMessages = [];
+            
+            // 1) System prompt (handled by the API)
+            
+            // 2) Hardcoded assistant response with learning objectives and test questions
+            let assistantResponse = `I'm BiocBot in ${currentMode === 'protege' ? 'Protégé' : 'Tutor'} Mode. We're discussing ${unitName} this week.`;
+            
+            if (chatData.practiceTests && chatData.practiceTests.questions.length > 0) {
+                assistantResponse += ` How did you get on with the test questions?`;
+            } else {
+                assistantResponse += ` How can I help you today?`;
+            }
+            
+            conversationMessages.push({
+                role: 'assistant',
+                content: assistantResponse
+            });
+            
+            // 3) Hardcoded student response with test answers (if practice test exists)
+            if (chatData.practiceTests && chatData.practiceTests.questions.length > 0 && 
+                chatData.studentAnswers && chatData.studentAnswers.answers.length > 0) {
+                
+                let studentResponse = `Here's my responses to those:\n\n`;
+                chatData.studentAnswers.answers.forEach((answer, index) => {
+                    const question = chatData.practiceTests.questions[index];
+                    if (question) {
+                        studentResponse += `${index + 1}. ${question.question}\n`;
+                        studentResponse += `   My Answer: ${answer.answer}\n`;
+                        studentResponse += `   Correct: ${question.correctAnswer}\n`;
+                        studentResponse += `   Result: ${answer.isCorrect ? 'Correct' : 'Incorrect'}\n\n`;
+                    }
+                });
+                
+                conversationMessages.push({
+                    role: 'user',
+                    content: studentResponse
+                });
+                
+                // 4) Hardcoded assistant response acknowledging the test
+                // Calculate overall performance
+                const correctAnswers = chatData.studentAnswers.answers.filter(a => a.isCorrect).length;
+                const totalAnswers = chatData.studentAnswers.answers.length;
+                const performance = correctAnswers / totalAnswers;
+                const passThreshold = chatData.practiceTests.passThreshold / 100;
+                
+                conversationMessages.push({
+                    role: 'assistant',
+                    content: `Thank you for that. Based on your responses, I can see you ${performance >= passThreshold ? 'demonstrated good understanding' : 'need some additional support'}. So how can I help you today?`
+                });
+            }
+            
+            // 5) Add the actual conversation history from the previous chat
+            if (chatData.messages && chatData.messages.length > 0) {
+                // Filter out system messages and only include actual conversation
+                const regularChatMessages = chatData.messages.filter(msg => 
+                    msg.messageType === 'regular-chat' && 
+                    (msg.type === 'user' || msg.type === 'bot')
+                );
+                
+                // Add the conversation history
+                regularChatMessages.forEach(msg => {
+                    conversationMessages.push({
+                        role: msg.type === 'user' ? 'user' : 'assistant',
+                        content: msg.content
+                    });
+                });
+            }
+            
+            return {
+                conversationMessages: conversationMessages,
+                mode: currentMode,
+                hasPracticeTest: !!(chatData.practiceTests && chatData.practiceTests.questions.length > 0)
+            };
+            
+        } catch (error) {
+            console.error('Error building conversation context:', error);
+            return null;
         }
     }
     
@@ -3235,6 +3359,10 @@ function loadChatData(chatData) {
             
             // Show success message
             addMessage('✅ Chat history loaded successfully! You can continue where you left off.', 'bot');
+            
+            // Set flags for continuing chat
+            sessionStorage.setItem('isContinuingChat', 'true');
+            sessionStorage.setItem('loadedChatData', JSON.stringify(chatData));
             
             console.log('Chat data loaded successfully');
             
