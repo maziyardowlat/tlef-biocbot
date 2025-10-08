@@ -55,7 +55,8 @@ async function deleteChatFromHistory(chatId) {
             return false;
         }
 
-        const courseId = 'BIOC202-1758488753872'; // This should be dynamic in the future
+        const courseId = localStorage.getItem('selectedCourseId') || 'BIOC202-1758488753872';
+        console.log('Using course ID for deletion:', courseId);
         
         // Delete from server
         const response = await fetch(`/api/students/${courseId}/${studentId}/sessions/${chatId}`, {
@@ -264,8 +265,15 @@ async function loadChatHistory() {
 
         console.log('Loading chat history from server for student:', studentId);
         
-        // Get the current course (assuming BIOC202 for now)
-        const courseId = 'BIOC202-1758488753872'; // This should be dynamic in the future
+        // Get the current course from localStorage (same as main chat)
+        const courseId = localStorage.getItem('selectedCourseId');
+        if (!courseId) {
+            console.warn('No course selected in localStorage. Loading from localStorage as fallback.');
+            // Try to load from localStorage as fallback
+            loadChatHistoryFromLocalStorage();
+            return;
+        }
+        console.log('Using course ID from localStorage:', courseId);
         
         // Fetch chat sessions from server
         const response = await fetch(`/api/students/${courseId}/${studentId}/sessions`, {

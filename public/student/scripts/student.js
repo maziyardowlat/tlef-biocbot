@@ -2418,8 +2418,34 @@ async function handleSaveChat() {
             saveButton.innerHTML = '<span class="save-icon">⏳</span> Saving...';
         }
         
+        // Check if there are any messages to save
+        const chatMessages = document.getElementById('chat-messages');
+        const messageElements = chatMessages.querySelectorAll('.message:not(.typing-indicator)');
+        
+        if (messageElements.length === 0) {
+            console.warn('No messages found to save');
+            showSaveErrorMessage('No messages to save. Please start a conversation first.');
+            return;
+        }
+        
+        console.log(`Found ${messageElements.length} messages to save`);
+        
         // Collect all chat data
         const chatData = await collectAllChatData();
+        
+        // Validate that we have meaningful content to save
+        if (chatData.messages.length === 0) {
+            console.warn('No valid messages found in chat data');
+            showSaveErrorMessage('No valid messages found to save.');
+            return;
+        }
+        
+        console.log('Chat data collected:', {
+            messageCount: chatData.messages.length,
+            courseId: chatData.metadata.courseId,
+            studentId: chatData.metadata.studentId,
+            unitName: chatData.metadata.unitName
+        });
         
         // Create and download JSON file
         downloadChatData(chatData);
@@ -2891,6 +2917,15 @@ function initializeChatHistoryStorage() {
 function saveChatToHistory(chatData) {
     try {
         console.log('=== SAVING CHAT TO HISTORY ===');
+        console.log('Chat data being saved:', {
+            messageCount: chatData.messages.length,
+            courseId: chatData.metadata.courseId,
+            studentId: chatData.metadata.studentId,
+            unitName: chatData.metadata.unitName,
+            firstMessage: chatData.messages[0]?.content?.substring(0, 50) + '...',
+            lastMessage: chatData.messages[chatData.messages.length - 1]?.content?.substring(0, 50) + '...'
+        });
+        
         // Use student-specific localStorage key for security
         const studentId = chatData.metadata.studentId;
         const historyKey = `biocbot_chat_history_${studentId}`;
