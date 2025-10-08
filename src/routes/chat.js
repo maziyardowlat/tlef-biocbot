@@ -411,6 +411,7 @@ router.post('/save', async (req, res) => {
             duration: duration || 'Unknown',
             savedAt: savedAt || new Date().toISOString(),
             chatData: chatData || {},
+            isDeleted: false, // Soft deletion flag
             createdAt: new Date()
         };
         

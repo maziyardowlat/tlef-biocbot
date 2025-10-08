@@ -57,10 +57,14 @@ router.get('/:courseId', async (req, res) => {
             });
         }
         
-        // Get saved chat sessions for this course
+        // Get saved chat sessions for this course (excluding soft deleted)
         const chatSessionsCollection = db.collection('chat_sessions');
         const chatSessions = await chatSessionsCollection.find({ 
-            courseId: courseId 
+            courseId: courseId,
+            $or: [
+                { isDeleted: { $exists: false } }, // Legacy sessions without isDeleted field
+                { isDeleted: false } // Non-deleted sessions
+            ]
         }).sort({ savedAt: -1 }).toArray();
         
         // Group chat sessions by student
@@ -175,11 +179,15 @@ router.get('/:courseId/:studentId/sessions', async (req, res) => {
             });
         }
         
-        // Get all chat sessions for this student in this course
+        // Get all chat sessions for this student in this course (excluding soft deleted)
         const chatSessionsCollection = db.collection('chat_sessions');
         const sessions = await chatSessionsCollection.find({ 
             courseId: courseId,
-            studentId: studentId
+            studentId: studentId,
+            $or: [
+                { isDeleted: { $exists: false } }, // Legacy sessions without isDeleted field
+                { isDeleted: false } // Non-deleted sessions
+            ]
         }).sort({ savedAt: -1 }).toArray();
         
         console.log(`Retrieved ${sessions.length} sessions for student ${studentId} in course ${courseId}`);
@@ -251,12 +259,16 @@ router.get('/:courseId/:studentId/sessions/:sessionId', async (req, res) => {
             });
         }
         
-        // Get the specific chat session
+        // Get the specific chat session (excluding soft deleted)
         const chatSessionsCollection = db.collection('chat_sessions');
         const session = await chatSessionsCollection.findOne({ 
             courseId: courseId,
             studentId: studentId,
-            sessionId: sessionId
+            sessionId: sessionId,
+            $or: [
+                { isDeleted: { $exists: false } }, // Legacy sessions without isDeleted field
+                { isDeleted: false } // Non-deleted sessions
+            ]
         });
         
         if (!session) {
@@ -307,11 +319,15 @@ router.delete('/:courseId/:studentId/sessions/:sessionId', async (req, res) => {
 
         const chatSessionsCollection = db.collection('chat_sessions');
         
-        // Find the session to ensure it belongs to the student
+        // Find the session to ensure it belongs to the student and is not already deleted
         const session = await chatSessionsCollection.findOne({
             sessionId: sessionId,
             courseId: courseId,
-            studentId: studentId
+            studentId: studentId,
+            $or: [
+                { isDeleted: { $exists: false } }, // Legacy sessions without isDeleted field
+                { isDeleted: false } // Non-deleted sessions
+            ]
         });
 
         if (!session) {
@@ -321,21 +337,26 @@ router.delete('/:courseId/:studentId/sessions/:sessionId', async (req, res) => {
             });
         }
 
-        // Delete the session
-        const result = await chatSessionsCollection.deleteOne({
+        // Soft delete the session by setting isDeleted to true
+        const result = await chatSessionsCollection.updateOne({
             sessionId: sessionId,
             courseId: courseId,
             studentId: studentId
+        }, {
+            $set: {
+                isDeleted: true,
+                deletedAt: new Date()
+            }
         });
 
-        if (result.deletedCount === 0) {
+        if (result.matchedCount === 0) {
             return res.status(404).json({
                 success: false,
                 error: 'Chat session not found'
             });
         }
 
-        console.log(`Deleted chat session ${sessionId} for student ${studentId} in course ${courseId}`);
+        console.log(`Soft deleted chat session ${sessionId} for student ${studentId} in course ${courseId}`);
 
         res.json({
             success: true,
