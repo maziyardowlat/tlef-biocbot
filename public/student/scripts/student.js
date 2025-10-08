@@ -95,7 +95,12 @@ document.addEventListener('DOMContentLoaded', () => {
             // Get current student mode for context
             const currentMode = localStorage.getItem('studentMode') || 'tutor';
             
-            const courseId = await getCurrentCourseId();
+            // Get course ID from localStorage (should be set after course selection)
+            const courseId = localStorage.getItem('selectedCourseId');
+            if (!courseId) {
+                throw new Error('No course selected. Please select a course first.');
+            }
+            
             const unitName = localStorage.getItem('selectedUnitName') || getCurrentUnitName();
             const response = await fetch('/api/chat', {
                 method: 'POST',
@@ -488,7 +493,10 @@ function flagMessage(button, flagType) {
 async function submitFlag(messageText, flagType) {
     try {
         // Get current course and student information
-        const courseId = await getCurrentCourseId();
+        const courseId = localStorage.getItem('selectedCourseId');
+        if (!courseId) {
+            throw new Error('No course selected. Please select a course first.');
+        }
         const studentId = getCurrentStudentId();
         const studentName = getCurrentStudentName();
         const unitName = getCurrentUnitName();
@@ -618,8 +626,10 @@ async function loadAvailableCourses() {
         
         // Check if there's already a selected course in localStorage
         const storedCourseId = localStorage.getItem('selectedCourseId');
+        const storedCourseName = localStorage.getItem('selectedCourseName');
         if (storedCourseId) {
             console.log('Found stored course ID, verifying it exists:', storedCourseId);
+            console.log('Found stored course name:', storedCourseName);
             // Try to load the stored course, but if it fails, clear localStorage and fetch fresh
             try {
                 await loadCourseData(storedCourseId);
@@ -627,6 +637,7 @@ async function loadAvailableCourses() {
             } catch (error) {
                 console.warn('Stored course ID is invalid, clearing localStorage and fetching fresh courses');
                 localStorage.removeItem('selectedCourseId');
+                localStorage.removeItem('selectedCourseName');
                 // Continue to fetch fresh courses below
             }
         }
@@ -644,6 +655,7 @@ async function loadAvailableCourses() {
         
         const courses = result.data;
         console.log('Available courses loaded:', courses);
+        console.log('Course names in dropdown:', courses.map(c => c.courseName));
         
         if (courses.length === 0) {
             console.log('No courses available');
@@ -745,9 +757,31 @@ async function loadCourseData(courseId) {
         
         const course = courseData.data;
         console.log('Course data loaded:', course);
+        console.log('Course name from API (courseName):', course.courseName);
+        console.log('Course name from API (name):', course.name);
+        
+        // Use name property if courseName is not available (API compatibility)
+        const courseName = course.courseName || course.name;
+        console.log('Using course name:', courseName);
+        
+        // Store course name in localStorage for persistence
+        if (courseName) {
+            localStorage.setItem('selectedCourseName', courseName);
+            console.log('Stored course name in localStorage:', courseName);
+        }
         
         // Update UI elements with actual course information
+        console.log('Calling updateCourseDisplay with course:', course);
         updateCourseDisplay(course);
+        
+        // Force a small delay and try again to ensure DOM is updated
+        setTimeout(() => {
+            console.log('Retrying course display update after delay...');
+            updateCourseDisplay(course);
+        }, 100);
+        
+        // Add change course functionality
+        addChangeCourseButton();
         
     } catch (error) {
         console.error('Error loading course data:', error);
@@ -838,16 +872,60 @@ function showCourseLoadError() {
  * @param {string} studentName - Student's display name (optional)
  */
 function updateCourseDisplay(course, studentName) {
-    // Update course name in header
-    const courseNameElement = document.querySelector('.course-name');
-    if (courseNameElement && course.courseName) {
-        courseNameElement.textContent = course.courseName;
+    console.log('updateCourseDisplay called with course:', course);
+    
+    // Use name property if courseName is not available (API compatibility)
+    const courseName = course.courseName || course.name;
+    console.log('Using course name for display:', courseName);
+    
+    // Update course name in header - try multiple selectors
+    let courseNameElement = document.querySelector('.course-name');
+    console.log('courseNameElement found with .course-name:', courseNameElement);
+    
+    // If not found, try alternative selectors
+    if (!courseNameElement) {
+        courseNameElement = document.querySelector('span.course-name');
+        console.log('courseNameElement found with span.course-name:', courseNameElement);
+    }
+    
+    if (!courseNameElement) {
+        courseNameElement = document.querySelector('.current-course .course-name');
+        console.log('courseNameElement found with .current-course .course-name:', courseNameElement);
+    }
+    
+    console.log('Final courseNameElement:', courseNameElement);
+    console.log('courseName to use:', courseName);
+    
+    if (courseNameElement && courseName) {
+        const oldText = courseNameElement.textContent;
+        courseNameElement.textContent = courseName;
+        console.log(`Updated course name from "${oldText}" to "${courseName}"`);
+        
+        // Verify the update worked
+        const newText = courseNameElement.textContent;
+        console.log('Verification - course name element now contains:', newText);
+    } else {
+        console.warn('Could not update course name - element or courseName missing');
+        console.warn('Element found:', !!courseNameElement);
+        console.warn('Course name provided:', courseName);
+        
+        // Try the more aggressive approach
+        if (courseName) {
+            console.log('Trying force update approach...');
+            const forceUpdated = forceUpdateCourseName(courseName);
+            if (forceUpdated) {
+                console.log('Force update successful!');
+            } else {
+                console.error('Force update failed!');
+            }
+        }
     }
     
     // Update user role display
     const userRoleElement = document.querySelector('.user-role');
-    if (userRoleElement && course.courseName) {
-        userRoleElement.textContent = `Student - ${course.courseName}`;
+    if (userRoleElement && courseName) {
+        userRoleElement.textContent = `Student - ${courseName}`;
+        console.log('Updated user role to:', `Student - ${courseName}`);
     }
     
     // Update student name display if provided
@@ -860,11 +938,102 @@ function updateCourseDisplay(course, studentName) {
     
     // Update welcome message
     const welcomeMessage = document.querySelector('.message.bot-message p');
-    if (welcomeMessage && course.courseName) {
-        welcomeMessage.textContent = `Hello! I'm BiocBot, your AI study assistant for ${course.courseName}. How can I help you today?`;
+    if (welcomeMessage && courseName) {
+        welcomeMessage.textContent = `Hello! I'm BiocBot, your AI study assistant for ${courseName}. How can I help you today?`;
     }
     
-    console.log('Course display updated with:', course.courseName, 'Student:', studentName || 'not provided');
+    console.log('Course display updated with:', courseName, 'Student:', studentName || 'not provided');
+}
+
+/**
+ * Force update course name in the header - more aggressive approach
+ * @param {string} courseName - The course name to display
+ */
+function forceUpdateCourseName(courseName) {
+    console.log('Force updating course name to:', courseName);
+    
+    // Try multiple approaches to find and update the course name
+    const selectors = [
+        '.course-name',
+        'span.course-name', 
+        '.current-course .course-name',
+        '.chat-header .course-name',
+        'header .course-name'
+    ];
+    
+    let updated = false;
+    for (const selector of selectors) {
+        const elements = document.querySelectorAll(selector);
+        console.log(`Found ${elements.length} elements with selector: ${selector}`);
+        
+        elements.forEach((element, index) => {
+            console.log(`Element ${index}:`, element);
+            console.log(`Current text: "${element.textContent}"`);
+            element.textContent = courseName;
+            console.log(`Updated text to: "${element.textContent}"`);
+            updated = true;
+        });
+    }
+    
+    if (!updated) {
+        console.error('Could not find any course name elements to update!');
+        // List all elements that might be relevant
+        const allSpans = document.querySelectorAll('span');
+        console.log('All span elements:', allSpans);
+        allSpans.forEach((span, index) => {
+            if (span.textContent.includes('BIOC') || span.textContent.includes('Course')) {
+                console.log(`Relevant span ${index}:`, span, 'text:', span.textContent);
+            }
+        });
+    }
+    
+    return updated;
+}
+
+/**
+ * Add a change course button to allow users to switch courses
+ */
+function addChangeCourseButton() {
+    // Check if button already exists
+    if (document.getElementById('change-course-btn')) {
+        return;
+    }
+    
+    // Create change course button
+    const changeCourseBtn = document.createElement('button');
+    changeCourseBtn.id = 'change-course-btn';
+    changeCourseBtn.textContent = 'Change Course';
+    changeCourseBtn.style.cssText = `
+        background: #6c757d;
+        color: white;
+        border: none;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        cursor: pointer;
+        margin-left: 10px;
+    `;
+    
+    // Add click handler
+    changeCourseBtn.addEventListener('click', async () => {
+        if (confirm('Are you sure you want to change your course? This will clear your current selection.')) {
+            // Clear localStorage
+            localStorage.removeItem('selectedCourseId');
+            localStorage.removeItem('selectedCourseName');
+            
+            // Remove the button
+            changeCourseBtn.remove();
+            
+            // Reload available courses to show selection
+            await loadAvailableCourses();
+        }
+    });
+    
+    // Add button to the course display area
+    const courseDisplay = document.querySelector('.current-course');
+    if (courseDisplay) {
+        courseDisplay.appendChild(changeCourseBtn);
+    }
 }
 
 /**
@@ -957,7 +1126,7 @@ async function getCurrentCourseId() {
             return storedCourseId;
         }
         
-        // If no course context, fetch available courses and use the first one
+        // If no course context, fetch available courses
         const response = await fetch('/api/courses/available/all');
         
         if (!response.ok) {
@@ -972,12 +1141,16 @@ async function getCurrentCourseId() {
         
         const courses = result.data;
         
-        // Return the first available course ID
-        if (courses.length > 0) {
-            console.log('Using first available course:', courses[0].courseId);
+        // Only auto-select if there's exactly one course
+        if (courses.length === 1) {
+            console.log('Only one course available, using it:', courses[0].courseId);
             // Store it in localStorage for future use
             localStorage.setItem('selectedCourseId', courses[0].courseId);
             return courses[0].courseId;
+        } else if (courses.length > 1) {
+            // Multiple courses available - don't auto-select, let user choose
+            console.log('Multiple courses available, user should select one');
+            throw new Error('Multiple courses available - user selection required');
         }
         
         // Fallback to a default course ID if no courses are available
@@ -1046,8 +1219,12 @@ async function checkPublishedUnitsAndLoadQuestions() {
     try {
         console.log('=== CHECKING FOR PUBLISHED UNITS ===');
         
-        // Get current course ID
-        const courseId = await getCurrentCourseId();
+        // Get current course ID from localStorage
+        const courseId = localStorage.getItem('selectedCourseId');
+        if (!courseId) {
+            console.log('No course selected yet, skipping unit check');
+            return;
+        }
         console.log('Checking course:', courseId);
         
         // Fetch course data to check which units are published
@@ -1282,8 +1459,11 @@ async function loadQuestionsForSelectedUnit(unitName) {
             modeToggleContainer.style.display = 'none';
         }
         
-        // Get current course ID
-        const courseId = await getCurrentCourseId();
+        // Get current course ID from localStorage
+        const courseId = localStorage.getItem('selectedCourseId');
+        if (!courseId) {
+            throw new Error('No course selected. Please select a course first.');
+        }
         
         // Find the selected unit from the published units
         const courseResponse = await fetch(`/api/courses/${courseId}`);
@@ -2276,7 +2456,10 @@ async function collectAllChatData() {
     const messages = [];
     
     // Get current course and student information
-    const courseId = await getCurrentCourseId();
+    const courseId = localStorage.getItem('selectedCourseId');
+    if (!courseId) {
+        throw new Error('No course selected. Please select a course first.');
+    }
     const studentName = await getCurrentStudentName();
     const studentId = getCurrentStudentId();
     const unitName = localStorage.getItem('selectedUnitName') || getCurrentUnitName();

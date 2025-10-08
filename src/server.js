@@ -361,6 +361,47 @@ function setupAPIRoutes() {
     // Authentication routes (no auth required)
     app.use('/api/auth', authRoutes);
 
+    // Public course endpoints (no auth required)
+    app.get('/api/courses/available/all', async (req, res) => {
+        try {
+            // Get database instance from app.locals
+            const db = req.app.locals.db;
+            if (!db) {
+                return res.status(503).json({
+                    success: false,
+                    message: 'Database connection not available'
+                });
+            }
+            
+            // Query database for all active courses
+            const collection = db.collection('courses');
+            const courses = await collection.find({ status: { $ne: 'deleted' } }).toArray();
+            
+            // Transform the data to match expected format for both sides
+            const transformedCourses = courses.map(course => ({
+                courseId: course.courseId,
+                courseName: course.courseName || course.courseId,
+                instructorId: course.instructorId,
+                status: course.status || 'active',
+                createdAt: course.createdAt?.toISOString() || new Date().toISOString()
+            }));
+            
+            console.log(`Retrieved ${transformedCourses.length} available courses`);
+            
+            res.json({
+                success: true,
+                data: transformedCourses
+            });
+            
+        } catch (error) {
+            console.error('Error fetching available courses:', error);
+            res.status(500).json({
+                success: false,
+                message: 'Internal server error while fetching available courses'
+            });
+        }
+    });
+
     // API endpoints (protected)
     app.use('/api/courses', authMiddleware.requireAuth, coursesRoutes);
     app.use('/api/flags', authMiddleware.requireAuth, flagsRoutes);
