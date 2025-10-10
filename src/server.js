@@ -19,6 +19,7 @@ const questionsRoutes = require('./routes/questions');
 const onboardingRoutes = require('./routes/onboarding');
 const qdrantRoutes = require('./routes/qdrant');
 const studentsRoutes = require('./routes/students');
+const userAgreementRoutes = require('./routes/user-agreement');
 const LLMService = require('./services/llm');
 const AuthService = require('./services/authService');
 const createAuthMiddleware = require('./middleware/auth');
@@ -412,6 +413,7 @@ function setupAPIRoutes() {
     app.use('/api/qdrant', authMiddleware.requireAuth, qdrantRoutes);
     app.use('/api/chat', authMiddleware.requireAuth, chatRoutes);
     app.use('/api/students', authMiddleware.requireAuth, studentsRoutes);
+    app.use('/api/user-agreement', authMiddleware.requireAuth, userAgreementRoutes);
 }
 
 // Initialize the application

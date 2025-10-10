@@ -37,6 +37,9 @@ document.addEventListener('DOMContentLoaded', () => {
         checkForChatDataToLoad();
     }, 100);
     
+    // Initialize user agreement modal
+    initializeUserAgreement();
+    
     /**
      * Format timestamp for display
      * @param {Date} timestamp - The timestamp to format
@@ -3032,6 +3035,22 @@ function initializeChatHistoryStorage() {
     // Chat history is now saved directly in handleSaveChat function
     // No need for event listener to avoid duplicates
     console.log('Chat history storage system initialized');
+}
+
+/**
+ * Initialize user agreement modal
+ * This will show the agreement modal for first-time users
+ */
+function initializeUserAgreement() {
+    // The agreement modal is automatically initialized by the agreement-modal.js script
+    // This function is here for consistency with other initialize functions
+    console.log('User agreement system initialized');
+    
+    // Listen for agreement acceptance event
+    document.addEventListener('userAgreementAccepted', (event) => {
+        console.log('User agreement accepted:', event.detail);
+        // You can add any additional logic here after agreement is accepted
+    });
 }
 
 /**
