@@ -70,7 +70,8 @@ class AgreementModal {
                     <div class="agreement-checkbox-container">
                         <input type="checkbox" id="agreement-checkbox" class="agreement-checkbox">
                         <label for="agreement-checkbox" class="agreement-checkbox-label">
-                            <strong>I understand and agree</strong> to the terms outlined above. I will use BiocBot responsibly and in accordance with my institution's academic integrity policies.
+                            <strong>I understand and agree</strong> to the terms outlined above. I will use BiocBot responsibly and in accordance with UBC's academic integrity policies, found here:
+                            <a href="https://academicintegrity.ubc.ca/student-start/" target="_blank">https://academicintegrity.ubc.ca/student-start/</a>
                         </label>
                     </div>
                 </div>
