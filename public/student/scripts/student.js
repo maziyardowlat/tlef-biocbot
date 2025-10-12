@@ -453,9 +453,9 @@ function addMessage(content, sender, withSource = false, skipAutoSave = false) {
         const flagMenu = document.createElement('div');
         flagMenu.classList.add('flag-menu');
         flagMenu.innerHTML = `
-            <div class="flag-option" onclick="handleFlagMessage(this, 'inappropriate')">Inappropriate</div>
-            <div class="flag-option" onclick="handleFlagMessage(this, 'incorrect')">Incorrect</div>
-            <div class="flag-option" onclick="handleFlagMessage(this, 'unclear')">Unclear</div>
+            <div class="flag-option" onclick="flagMessage(this, 'inappropriate')">Inappropriate</div>
+            <div class="flag-option" onclick="flagMessage(this, 'incorrect')">Incorrect</div>
+            <div class="flag-option" onclick="flagMessage(this, 'unclear')">Unclear</div>
         `;
         
         flagContainer.appendChild(flagButton);
@@ -683,28 +683,25 @@ function getCurrentSessionId(chatData) {
 }
 
 /**
- * Check if we should create a new session (if assessment questions are being shown)
+ * Check if we should create a new session (if assessment is currently being taken)
  * @param {Object} chatData - The chat data
  * @returns {boolean} True if should create new session
  */
 function shouldCreateNewSession(chatData) {
-    // Check if assessment questions are currently being shown
-    const chatMessages = document.getElementById('chat-messages');
-    if (!chatMessages) {
+    // Check if assessment is currently being taken (chat input disabled)
+    const chatInputContainer = document.querySelector('.chat-input-container');
+    if (!chatInputContainer) {
         return false;
     }
     
-    // Look for assessment-related elements
-    const hasAssessmentStart = chatMessages.querySelector('.assessment-start');
-    const hasCalibrationQuestion = chatMessages.querySelector('.calibration-question');
-    const hasModeResult = chatMessages.querySelector('.mode-result');
-    
-    // If we have assessment elements, this is a new session
-    if (hasAssessmentStart || hasCalibrationQuestion || hasModeResult) {
-        console.log('🔄 [SESSION] Assessment detected - creating new session');
+    // If chat input is disabled, assessment is being taken - create new session
+    if (chatInputContainer.style.display === 'none') {
+        console.log('🔄 [SESSION] Assessment in progress (chat disabled) - creating new session');
         return true;
     }
     
+    // If chat input is enabled, assessment is completed - use existing session
+    console.log('🔄 [SESSION] Assessment completed (chat enabled) - using existing session');
     return false;
 }
 
@@ -720,19 +717,56 @@ function updateAssessmentDataInAutoSave(chatData) {
         
         // Update practice test data
         if (questions.length > 0) {
-            chatData.practiceTests.questions = questions.map((q, index) => ({
-                questionId: q.id || index,
-                question: q.question,
-                questionType: q.questionType,
-                options: q.options || {},
-                correctAnswer: q.correctAnswer,
-                explanation: q.explanation || '',
-                unitName: q.unitName || chatData.metadata.unitName,
-                studentAnswer: studentAnswers[index] || null,
-                isCorrect: studentAnswers[index] !== undefined ? 
-                    (studentAnswers[index] === q.correctAnswer || 
-                     studentAnswers[index] === q.correctAnswer.toString()) : null
-            }));
+            chatData.practiceTests.questions = questions.map((q, index) => {
+                const studentAnswerIndex = studentAnswers[index];
+                let studentAnswerText = null;
+                let isCorrect = null;
+                
+                if (studentAnswerIndex !== undefined && studentAnswerIndex !== null) {
+                    // Convert student answer index to actual answer text
+                    if (q.type === 'true-false') {
+                        studentAnswerText = studentAnswerIndex === 0 ? 'True' : 'False';
+                    } else if (q.type === 'multiple-choice' && q.options) {
+                        const optionKeys = Object.keys(q.options);
+                        if (optionKeys[studentAnswerIndex]) {
+                            studentAnswerText = q.options[optionKeys[studentAnswerIndex]];
+                        } else {
+                            studentAnswerText = `Option ${studentAnswerIndex}`;
+                        }
+                    } else {
+                        studentAnswerText = studentAnswerIndex;
+                    }
+                    
+                    // Check if answer is correct
+                    if (q.type === 'true-false') {
+                        const expectedAnswer = q.correctAnswer === true || q.correctAnswer === 'true';
+                        isCorrect = (studentAnswerIndex === 0) === expectedAnswer;
+                    } else if (q.type === 'multiple-choice') {
+                        let expectedIndex = q.correctAnswer;
+                        if (typeof expectedIndex === 'string') {
+                            const optionKeys = Object.keys(q.options);
+                            expectedIndex = optionKeys.indexOf(expectedIndex);
+                            if (expectedIndex === -1) expectedIndex = 0;
+                        }
+                        isCorrect = (studentAnswerIndex === expectedIndex);
+                    } else {
+                        isCorrect = (studentAnswerIndex === q.correctAnswer || 
+                                   studentAnswerIndex === q.correctAnswer.toString());
+                    }
+                }
+                
+                return {
+                    questionId: q.id || index,
+                    question: q.question,
+                    questionType: q.type || q.questionType,
+                    options: q.options || {},
+                    correctAnswer: q.correctAnswer,
+                    explanation: q.explanation || '',
+                    unitName: q.unitName || chatData.metadata.unitName,
+                    studentAnswer: studentAnswerText,
+                    isCorrect: isCorrect
+                };
+            });
         }
         
         // Update student answers
@@ -742,9 +776,15 @@ function updateAssessmentDataInAutoSave(chatData) {
             timestamp: new Date().toISOString()
         }));
         
+        // Update pass threshold to use the actual calculated threshold
+        if (window.currentPassThreshold !== undefined) {
+            chatData.practiceTests.passThreshold = window.currentPassThreshold;
+        }
+        
         console.log('🔄 [AUTO-SAVE] Updated assessment data:', {
             questionsCount: chatData.practiceTests.questions.length,
-            answersCount: chatData.studentAnswers.answers.length
+            answersCount: chatData.studentAnswers.answers.length,
+            passThreshold: chatData.practiceTests.passThreshold
         });
         
     } catch (error) {
@@ -771,7 +811,7 @@ async function syncAutoSaveWithServer(chatData) {
             const unitName = chatData.metadata.unitName;
             const sessionKey = `biocbot_session_${studentId}_${courseId}_${unitName}`;
             localStorage.removeItem(sessionKey);
-            console.log('🔄 [SESSION] Creating new session (more than 1 hour passed)');
+            console.log('🔄 [SESSION] Creating new session (assessment in progress)');
         }
         
         sessionId = getCurrentSessionId(chatData);
@@ -1675,7 +1715,9 @@ function getCurrentUnitName() {
  */
 function generateQuestionId(messageText) {
     const timestamp = Date.now();
-    const hash = btoa(messageText.substring(0, 20)).replace(/[^a-zA-Z0-9]/g, '');
+    // Use encodeURIComponent to safely encode any characters, then create a hash
+    const encodedText = encodeURIComponent(messageText.substring(0, 20));
+    const hash = encodedText.replace(/[^a-zA-Z0-9]/g, '').substring(0, 10);
     return `bot_response_${timestamp}_${hash}`;
 }
 
@@ -2192,6 +2234,7 @@ function startAssessmentWithQuestions(questions, passThreshold = 2) {
     window.currentCalibrationQuestions = questions; // Update global reference
     // Adjust pass threshold to not exceed the number of questions available
     currentPassThreshold = Math.min(passThreshold, questions.length);
+    window.currentPassThreshold = currentPassThreshold; // Update global reference
     currentQuestionIndex = 0;
     studentAnswers = [];
     window.studentAnswers = studentAnswers; // Update global reference
@@ -3743,6 +3786,7 @@ function loadChatData(chatData) {
                 console.log('Restoring practice test data:', chatData.practiceTests);
                 currentCalibrationQuestions = chatData.practiceTests.questions;
                 currentPassThreshold = chatData.practiceTests.passThreshold;
+                window.currentPassThreshold = currentPassThreshold; // Update global reference
                 currentQuestionIndex = chatData.practiceTests.currentQuestionIndex;
                 studentAnswers = chatData.studentAnswers.answers.map(answer => answer.answer);
             }

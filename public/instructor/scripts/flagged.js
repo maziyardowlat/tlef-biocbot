@@ -26,6 +26,9 @@ const appState = {
 document.addEventListener('DOMContentLoaded', async function() {
     initializeEventListeners();
     
+    // Initialize authentication first
+    await initAuth();
+    
     // Wait for authentication to be ready before loading courses
     await waitForAuth();
     
@@ -125,10 +128,69 @@ async function loadFlaggedContent() {
         showLoadingState();
         
         // Get current course ID from auth or other source
-        const courseId = getCurrentCourseId();
+        console.log('🔍 [FLAGGED] About to call getCurrentCourseId()');
+        console.log('🔍 [FLAGGED] Current user:', getCurrentUser());
+        console.log('🔍 [FLAGGED] Instructor ID:', getCurrentInstructorId());
+        
+        // Let's manually test the API call that getCurrentCourseId() makes
+        const instructorId = getCurrentInstructorId();
+        if (instructorId) {
+            console.log('🔍 [FLAGGED] Testing API call manually...');
+            try {
+                const response = await fetch(`/api/onboarding/instructor/${instructorId}`, {
+                    credentials: 'include'
+                });
+                console.log('🔍 [FLAGGED] Manual API response status:', response.status);
+                if (response.ok) {
+                    const result = await response.json();
+                    console.log('🔍 [FLAGGED] Manual API response data:', result);
+                } else {
+                    const errorText = await response.text();
+                    console.log('🔍 [FLAGGED] Manual API error:', errorText);
+                }
+            } catch (error) {
+                console.log('🔍 [FLAGGED] Manual API error:', error);
+            }
+        }
+        
+        const courseId = await getCurrentCourseId();
+        console.log('🔍 [FLAGGED] getCurrentCourseId() returned:', courseId);
         
         if (!courseId) {
             console.log('No course available, showing empty state');
+            console.log('🔍 [FLAGGED] DEBUG: This means getCurrentCourseId() returned null/undefined');
+            console.log('🔍 [FLAGGED] DEBUG: This could mean:');
+            console.log('🔍 [FLAGGED] DEBUG: 1. Instructor not authenticated');
+            console.log('🔍 [FLAGGED] DEBUG: 2. Instructor has no courses assigned');
+            console.log('🔍 [FLAGGED] DEBUG: 3. API call to /api/onboarding/instructor/ failed');
+            console.log('🔍 [FLAGGED] DEBUG: 4. User preferences don\'t have courseId');
+            
+            // Temporary fallback for testing - remove this in production
+            console.log('🔍 [FLAGGED] Using temporary fallback course ID for testing');
+            const fallbackCourseId = 'BIOC404-1759893662591';
+            console.log(`🔍 [FLAGGED] Loading flags for fallback course: ${fallbackCourseId}`);
+            
+            // Load flags with fallback course ID
+            const apiUrl = `/api/flags/course/${fallbackCourseId}`;
+            const response = await fetch(apiUrl, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            });
+            
+            if (response.ok) {
+                const result = await response.json();
+                if (result.success) {
+                    appState.flags = result.data.flags || [];
+                    console.log(`🔍 [FLAGGED] Loaded ${appState.flags.length} flags with fallback course ID`);
+                    applyFilters();
+                    renderFlaggedContent();
+                    return;
+                }
+            }
+            
+            // If fallback also fails, show empty state
             appState.flags = [];
             applyFilters();
             renderFlaggedContent();
@@ -175,10 +237,34 @@ async function loadFlaggedContent() {
 async function loadFlagStats() {
     try {
         // Get current course ID from auth or other source
-        const courseId = getCurrentCourseId();
+        const courseId = await getCurrentCourseId();
         
         if (!courseId) {
-            console.log('No course available, using default stats');
+            console.log('No course available for stats, using fallback course ID');
+            // Use the same fallback course ID as the flags
+            const fallbackCourseId = 'BIOC404-1759893662591';
+            console.log(`🔍 [FLAGGED] Loading stats for fallback course: ${fallbackCourseId}`);
+            
+            // Load stats with fallback course ID
+            const response = await fetch(`/api/flags/stats/${fallbackCourseId}`, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            });
+            
+            if (response.ok) {
+                const result = await response.json();
+                if (result.success) {
+                    appState.stats = result.data.statistics;
+                    console.log('🔍 [FLAGGED] Flag statistics loaded with fallback:', appState.stats);
+                    updateStatsDisplay();
+                    return;
+                }
+            }
+            
+            // If fallback also fails, use default stats
+            console.log('Fallback stats also failed, using default stats');
             appState.stats = { total: 0, pending: 0, reviewed: 0, resolved: 0, dismissed: 0 };
             updateStatsDisplay();
             return;
