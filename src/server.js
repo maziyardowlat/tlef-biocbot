@@ -25,7 +25,7 @@ const AuthService = require('./services/authService');
 const createAuthMiddleware = require('./middleware/auth');
 
 const app = express();
-const port = process.env.TLEF_BIOCBOT_PORT || 8085;
+const port = process.env.TLEF_BIOCBOT_PORT || 8080;
 
 // Configure CORS to allow requests from localhost:3002 (browser-sync proxy)
 app.use(cors({
