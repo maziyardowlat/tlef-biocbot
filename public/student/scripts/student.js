@@ -564,7 +564,7 @@ function autoSaveMessage(content, sender, withSource = false) {
         console.log('🔄 [AUTO-SAVE] Auto-save key:', autoSaveKey);
         
         // Get current chat data
-        const currentChatData = JSON.parse(localStorage.getItem(autoSaveKey) || '{}');
+        let currentChatData = JSON.parse(localStorage.getItem(autoSaveKey) || '{}');
         console.log('🔄 [AUTO-SAVE] Current chat data exists:', !!currentChatData.messages);
         console.log('🔄 [AUTO-SAVE] Current message count:', currentChatData.messages ? currentChatData.messages.length : 0);
         
@@ -581,29 +581,31 @@ function autoSaveMessage(content, sender, withSource = false) {
             const unitName = localStorage.getItem('selectedUnitName') || 'this unit';
             const currentMode = localStorage.getItem('studentMode') || 'tutor';
             
-            currentChatData.metadata = {
-                exportDate: new Date().toISOString(),
-                courseId: courseId,
-                courseName: courseName,
-                studentId: studentId,
-                studentName: studentName,
-                unitName: unitName,
-                currentMode: currentMode,
-                totalMessages: 0,
-                version: '1.0'
-            };
-            currentChatData.messages = [];
-            currentChatData.practiceTests = {
-                questions: [],
-                passThreshold: 70
-            };
-            currentChatData.studentAnswers = {
-                answers: []
-            };
-            currentChatData.sessionInfo = {
-                startTime: new Date().toISOString(),
-                endTime: null,
-                duration: '0 minutes'
+            currentChatData = {
+                metadata: {
+                    exportDate: new Date().toISOString(),
+                    courseId: courseId,
+                    courseName: courseName,
+                    studentId: studentId,
+                    studentName: studentName,
+                    unitName: unitName,
+                    currentMode: currentMode,
+                    totalMessages: 0,
+                    version: '1.0'
+                },
+                messages: [],
+                practiceTests: {
+                    questions: [],
+                    passThreshold: 70
+                },
+                studentAnswers: {
+                    answers: []
+                },
+                sessionInfo: {
+                    startTime: new Date().toISOString(),
+                    endTime: null,
+                    duration: '0 minutes'
+                }
             };
             
             console.log('🔄 [AUTO-SAVE] Initialized empty chat data structure');
@@ -625,7 +627,7 @@ function autoSaveMessage(content, sender, withSource = false) {
         currentChatData.metadata.totalMessages = currentChatData.messages.length;
         currentChatData.metadata.exportDate = new Date().toISOString();
         currentChatData.sessionInfo.endTime = new Date().toISOString();
-        currentChatData.sessionInfo.duration = calculateSessionDuration();
+        currentChatData.sessionInfo.duration = calculateSessionDuration(currentChatData);
         
         // Update assessment data if available
         updateAssessmentDataInAutoSave(currentChatData);
@@ -3092,7 +3094,7 @@ async function collectAllChatData() {
         sessionInfo: {
             startTime: getSessionStartTime(),
             endTime: new Date().toISOString(),
-            duration: calculateSessionDuration()
+            duration: calculateSessionDuration(chatData)
         }
     };
     
@@ -3308,24 +3310,74 @@ function collectStudentAnswersData() {
  * @returns {string} Session start time ISO string
  */
 function getSessionStartTime() {
-    // Try to get the timestamp of the first message
+    // Try to get the timestamp from the current chat data
+    if (currentChatData && currentChatData.messages && currentChatData.messages.length > 0) {
+        // Find the first user message (student message)
+        const firstUserMessage = currentChatData.messages.find(msg => msg.type === 'user');
+        if (firstUserMessage && firstUserMessage.timestamp) {
+            return firstUserMessage.timestamp;
+        }
+        
+        // If no user message found, use the first message
+        const firstMessage = currentChatData.messages[0];
+        if (firstMessage && firstMessage.timestamp) {
+            return firstMessage.timestamp;
+        }
+    }
+    
+    // Try to get from DOM as fallback
     const firstMessage = document.querySelector('.message');
     if (firstMessage && firstMessage.dataset.timestamp) {
         return new Date(parseInt(firstMessage.dataset.timestamp)).toISOString();
     }
     
-    // Fallback to current time minus estimated duration
+    // Last resort fallback to current time minus estimated duration
     return new Date(Date.now() - 3600000).toISOString(); // 1 hour ago as fallback
 }
 
 /**
- * Calculate session duration
+ * Calculate session duration from first user message to last bot response
+ * @param {Object} chatData - The chat data object to calculate duration from
  * @returns {string} Duration in human readable format
  */
-function calculateSessionDuration() {
-    const startTime = getSessionStartTime();
-    const start = new Date(startTime);
-    const end = new Date();
+function calculateSessionDuration(chatData) {
+    if (!chatData || !chatData.messages || chatData.messages.length === 0) {
+        return '0s';
+    }
+    
+    // Find the first user message (student message)
+    const firstUserMessage = chatData.messages.find(msg => msg.type === 'user');
+    if (!firstUserMessage || !firstUserMessage.timestamp) {
+        return '0s';
+    }
+    
+    // Find the last bot message
+    const lastBotMessage = chatData.messages.slice().reverse().find(msg => msg.type === 'bot');
+    if (!lastBotMessage || !lastBotMessage.timestamp) {
+        // If no bot message found, use the last message
+        const lastMessage = chatData.messages[chatData.messages.length - 1];
+        if (!lastMessage || !lastMessage.timestamp) {
+            return '0s';
+        }
+        const start = new Date(firstUserMessage.timestamp);
+        const end = new Date(lastMessage.timestamp);
+        const diffMs = end - start;
+        
+        const hours = Math.floor(diffMs / (1000 * 60 * 60));
+        const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((diffMs % (1000 * 60)) / 1000);
+        
+        if (hours > 0) {
+            return `${hours}h ${minutes}m ${seconds}s`;
+        } else if (minutes > 0) {
+            return `${minutes}m ${seconds}s`;
+        } else {
+            return `${seconds}s`;
+        }
+    }
+    
+    const start = new Date(firstUserMessage.timestamp);
+    const end = new Date(lastBotMessage.timestamp);
     const diffMs = end - start;
     
     const hours = Math.floor(diffMs / (1000 * 60 * 60));
