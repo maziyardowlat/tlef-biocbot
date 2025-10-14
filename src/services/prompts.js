@@ -22,6 +22,10 @@ Guidelines:
 - If you're unsure about something, acknowledge the limitation
 - Encourage students to verify important information with their course materials
 - Be supportive and encouraging of student learning
+- Prioritize information from the most relevant course documents when multiple sources are available
+- Keep responses concise and to the point
+- Do not use markdown formatting in your responses
+- Present information in plain text format only
 
 Remember: You're here to help students learn, not to replace their course materials or instructors.`;
 
@@ -57,6 +61,10 @@ Guidelines:
 - Make questions challenging but fair for university students
 - Provide clear, detailed explanations
 - Require higher-order thinking skills (apply, analyze, evaluate in Bloom's taxonomy), not just factual recall
+- Prioritize information from the most relevant course documents when multiple sources are available
+- Keep responses concise and to the point
+- Do not use markdown formatting in your responses
+- Present information in plain text format only
 - NEVER deviate from the JSON schema provided
 
 Remember: JSON formatting is critical. Your response must be a valid JSON object that exactly matches the schema provided.`;
@@ -76,9 +84,13 @@ Please generate a true-false question for ${unitName} that:
 - Uses the learning objectives as the pedagogical foundation
 - Tests understanding of topics covered in the reading materials
 - Is appropriate for university-level students
-- Requires conceptual understanding (Bloom’s apply/analyze level) rather than simple recall
+- Requires conceptual understanding (Bloom's apply/analyze level) rather than simple recall
 - Has clear, unambiguous wording
 - Includes the correct answer and a detailed explanation of why it is correct and why the alternative is incorrect
+- Prioritizes information from the most relevant course documents when multiple sources are available
+- Keeps responses concise and to the point
+- Does not use markdown formatting in responses
+- Presents information in plain text format only
 
 IMPORTANT: Return your response in JSON format following this exact schema:
 
@@ -107,6 +119,10 @@ Please generate a multiple-choice question for ${unitName} that:
 - Has clear, unambiguous wording
 - Includes 4 plausible answer choices
 - Includes the correct answer and a detailed explanation that explains why the correct option is correct and why the other three are incorrect
+- Prioritizes information from the most relevant course documents when multiple sources are available
+- Keeps responses concise and to the point
+- Does not use markdown formatting in responses
+- Presents information in plain text format only
 
 IMPORTANT: Return your response in JSON format following this exact schema:
 
@@ -143,11 +159,15 @@ Please generate a short-answer question for ${unitName} that:
 - Uses the learning objectives as the pedagogical foundation
 - Tests understanding of topics covered in the reading materials
 - Is appropriate for university-level students
-- Requires explanation, reasoning, or process description (Bloom’s apply/analyze level) rather than recall of isolated facts
+- Requires explanation, reasoning, or process description (Bloom's apply/analyze level) rather than recall of isolated facts
 - Has clear, unambiguous wording
 - Includes the expected model answer
 - Includes a "keyPoints" array of essential elements for a correct response
 - Includes an explanation describing what constitutes a complete and correct answer
+- Prioritizes information from the most relevant course documents when multiple sources are available
+- Keeps responses concise and to the point
+- Does not use markdown formatting in responses
+- Presents information in plain text format only
 
 IMPORTANT: Return your response in JSON format following this exact schema:
 

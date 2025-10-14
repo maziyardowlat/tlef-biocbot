@@ -20,22 +20,118 @@ const appState = {
     }
 };
 
+// Global variables to prevent multiple API calls and redirects
+let courseIdCache = null;
+let courseIdPromise = null;
+let redirectInProgress = false;
+
+/**
+ * Get the current course ID for the instructor
+ * @returns {Promise<string>} Course ID
+ */
+async function getCurrentCourseId() {
+    // Return cached result if available
+    if (courseIdCache !== null) {
+        return courseIdCache;
+    }
+    
+    // If a request is already in progress, wait for it
+    if (courseIdPromise) {
+        return courseIdPromise;
+    }
+    
+    // Start the request and cache the promise
+    courseIdPromise = fetchCourseId();
+    const result = await courseIdPromise;
+    
+    // Cache the result
+    courseIdCache = result;
+    
+    return result;
+}
+
+async function fetchCourseId() {
+    // Check if we have a courseId from URL parameters (onboarding redirect)
+    const urlParams = new URLSearchParams(window.location.search);
+    const courseIdFromUrl = urlParams.get('courseId');
+    
+    if (courseIdFromUrl) {
+        return courseIdFromUrl;
+    }
+    
+    // If no course ID in URL, try to get it from the instructor's courses
+    try {
+        const instructorId = getCurrentInstructorId();
+        if (!instructorId) {
+            console.error('No instructor ID available');
+            return null;
+        }
+        
+        console.log(`🔍 [GET_COURSE_ID] Fetching courses for instructor: ${instructorId}`);
+        const response = await fetch(`/api/onboarding/instructor/${instructorId}`, {
+            credentials: 'include'
+        });
+        
+        console.log(`🔍 [GET_COURSE_ID] Response status: ${response.status} ${response.statusText}`);
+        
+        if (response.ok) {
+            const result = await response.json();
+            console.log(`🔍 [GET_COURSE_ID] API response:`, result);
+            
+            if (result.data && result.data.courses && result.data.courses.length > 0) {
+                // Return the first course found
+                const firstCourse = result.data.courses[0];
+                console.log(`🔍 [GET_COURSE_ID] Found course:`, firstCourse.courseId);
+                return firstCourse.courseId;
+            } else {
+                console.log(`🔍 [GET_COURSE_ID] No courses found in response`);
+            }
+        } else {
+            const errorText = await response.text();
+            console.error(`🔍 [GET_COURSE_ID] API error: ${response.status} - ${errorText}`);
+        }
+    } catch (error) {
+        console.error('Error fetching instructor courses:', error);
+    }
+    
+    
+    // Additional fallback: Check if we can get course ID from the current user's preferences
+    const currentUser = getCurrentUser();
+    if (currentUser && currentUser.preferences && currentUser.preferences.courseId) {
+        console.log(`🔍 [GET_COURSE_ID] Using course from user preferences: ${currentUser.preferences.courseId}`);
+        return currentUser.preferences.courseId;
+    }
+    
+    // If no course found, show an error and redirect to onboarding (only once)
+    if (!redirectInProgress) {
+        redirectInProgress = true;
+        console.error('No course ID found. Redirecting to onboarding...');
+        showNotification('No course found. Please complete onboarding first.', 'error');
+        setTimeout(() => {
+            window.location.href = '/instructor/onboarding';
+        }, 2000);
+    }
+    
+    // Return a placeholder (this should not be reached due to redirect)
+    return null;
+}
+
 /**
  * Initialize the flagged content page
  */
 document.addEventListener('DOMContentLoaded', async function() {
     initializeEventListeners();
     
+    // Initialize authentication first
+    await initAuth();
+    
     // Wait for authentication to be ready before loading courses
     await waitForAuth();
     
-    loadAvailableCourses();
-    // Wait for courses to load before loading content
-    setTimeout(() => {
-        initializeFilters();
-        loadFlaggedContent();
-        loadFlagStats();
-    }, 100);
+    // Load content directly
+    initializeFilters();
+    loadFlaggedContent();
+    loadFlagStats();
 });
 
 /**
@@ -75,8 +171,6 @@ function initializeEventListeners() {
     const flagTypeFilter = document.getElementById('flag-type-filter');
     const statusFilter = document.getElementById('status-filter');
     const refreshButton = document.getElementById('refresh-flags');
-    const courseSelect = document.getElementById('course-select');
-    
     if (flagTypeFilter) {
         flagTypeFilter.addEventListener('change', handleFilterChange);
     }
@@ -88,88 +182,8 @@ function initializeEventListeners() {
     if (refreshButton) {
         refreshButton.addEventListener('click', handleRefresh);
     }
-    
-    if (courseSelect) {
-        courseSelect.addEventListener('change', handleCourseChange);
-    }
 }
 
-/**
- * Load available courses for the instructor
- */
-async function loadAvailableCourses() {
-    try {
-        const courseSelect = document.getElementById('course-select');
-        if (!courseSelect) return;
-        
-        // Fetch courses from the API instead of hardcoding
-        const response = await fetch('/api/courses/available/all');
-        
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        const result = await response.json();
-        
-        if (!result.success) {
-            throw new Error(result.message || 'Failed to fetch courses');
-        }
-        
-        const courses = result.data;
-        
-        console.log('All available courses from API:', courses);
-        
-        // Filter out duplicate courses by courseId
-        const uniqueCourses = courses.filter((course, index, self) => 
-            index === self.findIndex(c => c.courseId === course.courseId)
-        );
-        
-        console.log('Unique courses after deduplication:', uniqueCourses);
-        
-        // Clear loading option
-        courseSelect.innerHTML = '';
-        
-        // Add course options
-        uniqueCourses.forEach(course => {
-            const option = document.createElement('option');
-            option.value = course.courseId;
-            option.textContent = course.courseName;
-            courseSelect.appendChild(option);
-        });
-        
-        // Set default selection to the most recent course (or first if only one)
-        if (uniqueCourses.length > 0) {
-            // Sort by creation date to get the most recent course first
-            const sortedCourses = uniqueCourses.sort((a, b) => {
-                const dateA = new Date(a.createdAt || 0);
-                const dateB = new Date(b.createdAt || 0);
-                return dateB - dateA; // Most recent first
-            });
-            
-            courseSelect.value = sortedCourses[0].courseId;
-            console.log('Default course selected:', sortedCourses[0].courseName, sortedCourses[0].courseId);
-        }
-        
-        console.log('Available courses loaded and deduplicated:', uniqueCourses);
-        
-    } catch (error) {
-        console.error('Error loading available courses:', error);
-        // Fallback to default course if API fails
-        const courseSelect = document.getElementById('course-select');
-        if (courseSelect) {
-            courseSelect.innerHTML = '<option value="default">Loading courses...</option>';
-        }
-    }
-}
-
-/**
- * Handle course selection change
- */
-function handleCourseChange() {
-    console.log('Course selection changed, reloading data...');
-    loadFlaggedContent();
-    loadFlagStats();
-}
 
 /**
  * Handle filter changes and update the displayed content
@@ -209,15 +223,52 @@ async function loadFlaggedContent() {
     try {
         showLoadingState();
         
-        // Get current course ID from selector
-        const courseSelect = document.getElementById('course-select');
-        const courseId = courseSelect ? courseSelect.value : '';
+        // Get current course ID from auth or other source
+        console.log('🔍 [FLAGGED] About to call getCurrentCourseId()');
+        console.log('🔍 [FLAGGED] Current user:', getCurrentUser());
+        console.log('🔍 [FLAGGED] Instructor ID:', getCurrentInstructorId());
+        
+        // Let's manually test the API call that getCurrentCourseId() makes
+        const instructorId = getCurrentInstructorId();
+        if (instructorId) {
+            console.log('🔍 [FLAGGED] Testing API call manually...');
+            try {
+                const response = await fetch(`/api/onboarding/instructor/${instructorId}`, {
+                    credentials: 'include'
+                });
+                console.log('🔍 [FLAGGED] Manual API response status:', response.status);
+                if (response.ok) {
+                    const result = await response.json();
+                    console.log('🔍 [FLAGGED] Manual API response data:', result);
+                } else {
+                    const errorText = await response.text();
+                    console.log('🔍 [FLAGGED] Manual API error:', errorText);
+                }
+            } catch (error) {
+                console.log('🔍 [FLAGGED] Manual API error:', error);
+            }
+        }
+        
+        const courseId = await getCurrentCourseId();
+        console.log('🔍 [FLAGGED] getCurrentCourseId() returned:', courseId);
         
         if (!courseId) {
-            console.log('No course selected, showing empty state');
+            console.log('No course available, showing empty state');
+            console.log('🔍 [FLAGGED] DEBUG: This means getCurrentCourseId() returned null/undefined');
+            console.log('🔍 [FLAGGED] DEBUG: This could mean:');
+            console.log('🔍 [FLAGGED] DEBUG: 1. Instructor not authenticated');
+            console.log('🔍 [FLAGGED] DEBUG: 2. Instructor has no courses assigned');
+            console.log('🔍 [FLAGGED] DEBUG: 3. API call to /api/onboarding/instructor/ failed');
+            console.log('🔍 [FLAGGED] DEBUG: 4. User preferences don\'t have courseId');
+            
+            // Show empty state and redirect to onboarding
             appState.flags = [];
             applyFilters();
             renderFlaggedContent();
+            showNotification('No course found. Please complete onboarding first.', 'error');
+            setTimeout(() => {
+                window.location.href = '/instructor/onboarding';
+            }, 2000);
             return;
         }
         
@@ -260,12 +311,11 @@ async function loadFlaggedContent() {
  */
 async function loadFlagStats() {
     try {
-        // Get current course ID from selector
-        const courseSelect = document.getElementById('course-select');
-        const courseId = courseSelect ? courseSelect.value : '';
+        // Get current course ID from auth or other source
+        const courseId = await getCurrentCourseId();
         
         if (!courseId) {
-            console.log('No course selected, using default stats');
+            console.log('No course available for stats, using default stats');
             appState.stats = { total: 0, pending: 0, reviewed: 0, resolved: 0, dismissed: 0 };
             updateStatsDisplay();
             return;
@@ -966,4 +1016,61 @@ async function waitForAuth() {
     }
     
     console.warn('⚠️ [AUTH] Authentication not ready after 5 seconds, proceeding anyway');
+}
+
+/**
+ * Show notification message
+ * @param {string} message - Message to display
+ * @param {string} type - Type of notification (success, error, info)
+ */
+function showNotification(message, type = 'info') {
+    // Create notification element
+    const notification = document.createElement('div');
+    notification.className = `notification notification-${type}`;
+    notification.textContent = message;
+    
+    // Style the notification
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 12px 20px;
+        border-radius: 4px;
+        color: white;
+        font-weight: 500;
+        z-index: 10000;
+        max-width: 400px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        animation: slideIn 0.3s ease-out;
+    `;
+    
+    // Set background color based on type
+    switch (type) {
+        case 'success':
+            notification.style.backgroundColor = '#10b981';
+            break;
+        case 'error':
+            notification.style.backgroundColor = '#ef4444';
+            break;
+        case 'warning':
+            notification.style.backgroundColor = '#f59e0b';
+            break;
+        default:
+            notification.style.backgroundColor = '#3b82f6';
+    }
+    
+    // Add to page
+    document.body.appendChild(notification);
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.style.animation = 'slideOut 0.3s ease-in';
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.remove();
+                }
+            }, 300);
+        }
+    }, 5000);
 }

@@ -58,8 +58,8 @@ async function deleteChatFromHistory(chatId) {
         const courseId = localStorage.getItem('selectedCourseId') || 'BIOC202-1758488753872';
         console.log('Using course ID for deletion:', courseId);
         
-        // Delete from server
-        const response = await fetch(`/api/students/${courseId}/${studentId}/sessions/${chatId}`, {
+        // Delete from server using the student-accessible endpoint
+        const response = await fetch(`/api/students/${courseId}/${studentId}/sessions/${chatId}/own`, {
             method: 'DELETE',
             credentials: 'include'
         });
@@ -264,6 +264,8 @@ async function loadChatHistory() {
         }
 
         console.log('Loading chat history from server for student:', studentId);
+        console.log('🔍 [HISTORY_DEBUG] Current user object:', getCurrentUser());
+        console.log('🔍 [HISTORY_DEBUG] Student ID from getCurrentStudentId():', studentId);
         
         // Get the current course from localStorage (same as main chat)
         const courseId = localStorage.getItem('selectedCourseId');
@@ -275,8 +277,8 @@ async function loadChatHistory() {
         }
         console.log('Using course ID from localStorage:', courseId);
         
-        // Fetch chat sessions from server
-        const response = await fetch(`/api/students/${courseId}/${studentId}/sessions`, {
+        // Fetch chat sessions from server using the student-accessible endpoint
+        const response = await fetch(`/api/students/${courseId}/${studentId}/sessions/own`, {
             method: 'GET',
             credentials: 'include'
         });
@@ -285,24 +287,36 @@ async function loadChatHistory() {
             throw new Error(`Failed to load chat sessions: ${response.status}`);
         }
 
+        console.log('🔍 [HISTORY_DEBUG] Response status:', response.status);
+        console.log('🔍 [HISTORY_DEBUG] Response headers:', response.headers);
+        
         const result = await response.json();
+        console.log('🔍 [HISTORY_DEBUG] Response result:', result);
+        
         if (!result.success) {
             throw new Error(result.message || 'Failed to load chat sessions');
         }
 
-        const sessions = result.data || [];
+        const sessions = result.data?.sessions || [];
+        console.log('🔍 [HISTORY_DEBUG] Sessions data:', sessions);
         console.log('Loaded', sessions.length, 'chat sessions from server');
         
         // Convert server sessions to the format expected by the UI
-        allChatHistory = sessions.map(session => ({
-            id: session.sessionId,
-            title: session.title || `Chat Session ${new Date(session.savedAt).toLocaleDateString()}`,
-            unitName: session.unitName || 'Unknown Unit',
-            messageCount: session.messageCount || 0,
-            duration: session.duration || 'Unknown',
-            savedAt: session.savedAt,
-            chatData: session.chatData || {}
-        }));
+        allChatHistory = (sessions || []).map(session => {
+            // Recalculate duration from actual message timestamps
+            const calculatedDuration = calculateDurationFromChatData(session.chatData);
+            
+            return {
+                id: session.sessionId,
+                title: session.title || `Chat Session ${new Date(session.savedAt).toLocaleDateString()}`,
+                preview: generateChatPreview(session.chatData),
+                unitName: session.unitName || 'Unknown Unit',
+                messageCount: session.messageCount || 0,
+                duration: calculatedDuration,
+                savedAt: session.savedAt,
+                chatData: session.chatData || {}
+            };
+        });
 
         if (allChatHistory.length === 0) {
             console.log('No chat history found, showing no history message');
@@ -398,13 +412,13 @@ function createHistoryItem(chat, index) {
     
     const date = document.createElement('div');
     date.classList.add('date');
-    date.textContent = formatHistoryDate(chat.date);
+    date.textContent = formatHistoryDate(chat.savedAt);
     
     // Add metadata
     const metadata = document.createElement('div');
     metadata.classList.add('metadata');
     metadata.innerHTML = `
-        <span class="message-count">${chat.totalMessages} messages</span>
+        <span class="message-count">${chat.messageCount} messages</span>
         <span class="duration">${chat.duration}</span>
     `;
     
@@ -683,7 +697,16 @@ async function handleDeleteChat() {
  */
 function formatHistoryDate(dateString) {
     try {
+        console.log('🔍 [DATE_DEBUG] Formatting date:', dateString);
         const date = new Date(dateString);
+        console.log('🔍 [DATE_DEBUG] Parsed date:', date);
+        
+        // Check if date is valid
+        if (isNaN(date.getTime())) {
+            console.error('🔍 [DATE_DEBUG] Invalid date:', dateString);
+            return 'Unknown date';
+        }
+        
         const now = new Date();
         const diffMs = now - date;
         const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
@@ -730,6 +753,89 @@ document.addEventListener('click', (event) => {
         }
     }
 });
+
+/**
+ * Generate a preview of the chat session
+ * @param {Object} chatData - The chat data object
+ * @returns {string} Preview text
+ */
+function generateChatPreview(chatData) {
+    if (!chatData || !chatData.messages || chatData.messages.length === 0) {
+        return 'Chat session with BiocBot';
+    }
+    
+    // Find the first user message
+    const firstUserMessage = chatData.messages.find(msg => msg.type === 'user');
+    if (firstUserMessage) {
+        return firstUserMessage.content.substring(0, 100) + (firstUserMessage.content.length > 100 ? '...' : '');
+    }
+    
+    // Find the first bot message
+    const firstBotMessage = chatData.messages.find(msg => msg.type === 'bot');
+    if (firstBotMessage) {
+        return firstBotMessage.content.substring(0, 100) + (firstBotMessage.content.length > 100 ? '...' : '');
+    }
+    
+    return 'Chat session with BiocBot';
+}
+
+/**
+ * Calculate duration from chat data (first user message to last bot response)
+ * @param {Object} chatData - The chat data object
+ * @returns {string} Duration in human readable format
+ */
+function calculateDurationFromChatData(chatData) {
+    if (!chatData || !chatData.messages || chatData.messages.length === 0) {
+        return '0s';
+    }
+    
+    // Find the first user message (student message)
+    const firstUserMessage = chatData.messages.find(msg => msg.type === 'user');
+    if (!firstUserMessage || !firstUserMessage.timestamp) {
+        return '0s';
+    }
+    
+    // Find the last bot message
+    const lastBotMessage = chatData.messages.slice().reverse().find(msg => msg.type === 'bot');
+    if (!lastBotMessage || !lastBotMessage.timestamp) {
+        // If no bot message found, use the last message
+        const lastMessage = chatData.messages[chatData.messages.length - 1];
+        if (!lastMessage || !lastMessage.timestamp) {
+            return '0s';
+        }
+        const start = new Date(firstUserMessage.timestamp);
+        const end = new Date(lastMessage.timestamp);
+        const diffMs = end - start;
+        
+        const hours = Math.floor(diffMs / (1000 * 60 * 60));
+        const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+        const seconds = Math.floor((diffMs % (1000 * 60)) / 1000);
+        
+        if (hours > 0) {
+            return `${hours}h ${minutes}m ${seconds}s`;
+        } else if (minutes > 0) {
+            return `${minutes}m ${seconds}s`;
+        } else {
+            return `${seconds}s`;
+        }
+    }
+    
+    const start = new Date(firstUserMessage.timestamp);
+    const end = new Date(lastBotMessage.timestamp);
+    const diffMs = end - start;
+    
+    const hours = Math.floor(diffMs / (1000 * 60 * 60));
+    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((diffMs % (1000 * 60)) / 1000);
+    
+    if (hours > 0) {
+        return `${hours}h ${minutes}m ${seconds}s`;
+    } else if (minutes > 0) {
+        return `${minutes}m ${seconds}s`;
+    } else {
+        return `${seconds}s`;
+    }
+}
 
 /**
  * Debug function to check localStorage data
