@@ -1748,14 +1748,12 @@ function resetModal() {
     // Reset file input and info
     const fileInput = document.getElementById('file-input');
     const fileInfo = document.getElementById('file-info');
-    const urlInput = document.getElementById('url-input');
     const textInput = document.getElementById('text-input');
     const materialName = document.getElementById('material-name');
     const uploadFileBtn = document.querySelector('.upload-file-btn span:last-child');
     
     if (fileInput) fileInput.value = '';
     if (fileInfo) fileInfo.style.display = 'none';
-    if (urlInput) urlInput.value = '';
     if (textInput) textInput.value = '';
     if (materialName) materialName.value = '';
     
@@ -1784,7 +1782,6 @@ function triggerFileInput() {
  * Handle the main upload action
  */
 async function handleUpload() {
-    const urlInput = document.getElementById('url-input').value.trim();
     const textInput = document.getElementById('text-input').value.trim();
     const materialNameInput = document.getElementById('material-name').value.trim();
     const uploadBtn = document.getElementById('upload-btn');
@@ -1793,14 +1790,13 @@ async function handleUpload() {
     console.log('handleUpload called with:', {
         currentContentType,
         uploadedFile: !!uploadedFile,
-        urlInput: urlInput.length,
         textInput: textInput.length,
         materialNameInput: materialNameInput.length
     });
     
     // Check if at least one input method is provided
-    if (!uploadedFile && !urlInput && !textInput) {
-        showNotification('Please provide content via file upload, URL, or direct text input', 'error');
+    if (!uploadedFile && !textInput) {
+        showNotification('Please provide content via file upload or direct text input', 'error');
         return;
     }
     
@@ -1859,10 +1855,6 @@ async function handleUpload() {
         // Save the uploaded content using the same API that course upload expects
         if (uploadedFile) {
             await saveUnit1Document(courseId, 'Unit 1', documentType, uploadedFile, instructorId);
-        } else if (urlInput) {
-            const title = materialNameInput || getDefaultTitle(documentType, 'URL Content');
-            console.log('Saving URL content with title:', title);
-            await saveUnit1URL(courseId, 'Unit 1', documentType, urlInput, title, instructorId);
         } else if (textInput) {
             const title = materialNameInput || getDefaultTitle(documentType, 'Text Content');
             console.log('Saving text content with title:', title);
@@ -1988,13 +1980,10 @@ async function saveUnit1Document(courseId, lectureName, documentType, file, inst
         
         const result = await response.json();
         console.log('✅ [MONGODB] Document saved successfully:', result);
-        console.log('📁 [DOCUMENT] Document ID from response:', result.data?.id);
+        console.log('📁 [DOCUMENT] Document ID from response:', result.data?.documentId);
         
-        // After successfully saving the document, also link it to the course structure
-        console.log(`🔗 [MONGODB] Linking document to course structure...`);
-        await linkDocumentToCourse(courseId, lectureName, documentType, result.data, instructorId);
-        
-        console.log(`✅ [DOCUMENT] Document upload and linking completed successfully`);
+        // Document linking is already handled by the upload API, no need for separate call
+        console.log(`✅ [DOCUMENT] Document upload completed successfully (already linked to course structure)`);
         
     } catch (error) {
         console.error('❌ [DOCUMENT] Error saving Unit 1 document:', error);
@@ -2100,7 +2089,7 @@ async function saveUnit1Text(courseId, lectureName, documentType, text, name, in
         
         const result = await response.json();
         console.log('✅ [MONGODB] Text content saved successfully:', result);
-        console.log('📝 [TEXT] Document ID from response:', result.data?.id);
+        console.log('📝 [TEXT] Document ID from response:', result.data?.documentId);
         
     } catch (error) {
         console.error('❌ [TEXT] Error saving Unit 1 text content:', error);
@@ -2236,45 +2225,6 @@ async function removeUnit1LearningObjective(courseId, lectureName, objectiveText
     }
 }
 
-/**
- * Link a document to the course structure using the same API that course upload expects
- * @param {string} courseId - The course ID
- * @param {string} lectureName - The lecture/unit name (e.g., 'Unit 1')
- * @param {string} documentType - The type of document
- * @param {Object} documentData - The data returned by the upload/text API
- * @param {string} instructorId - The instructor ID
- */
-async function linkDocumentToCourse(courseId, lectureName, documentType, documentData, instructorId) {
-    try {
-        console.log(`Linking document for course ${courseId}:`, { lectureName, documentType, documentId: documentData.id });
-        
-        const response = await fetch(`/api/courses/${courseId}/lectures/${lectureName}/documents`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${getAuthToken()}` // Assuming getAuthToken is available
-            },
-            body: JSON.stringify({
-                documentId: documentData.id,
-                documentType: documentType,
-                instructorId: instructorId
-            })
-        });
-        
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error('Error linking document to course:', response.status, errorText);
-            throw new Error(`Failed to link document: ${response.status} ${errorText}`);
-        }
-        
-        const result = await response.json();
-        console.log('Document linked successfully:', result);
-        
-    } catch (error) {
-        console.error('Error linking document to course:', error);
-        // Don't throw here - we want the course to be created successfully even if this fails
-    }
-}
 
 /**
  * Check if a document type already exists for a unit

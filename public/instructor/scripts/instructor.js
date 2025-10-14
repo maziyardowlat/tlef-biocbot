@@ -933,11 +933,37 @@ async function updatePublishStatus(lectureName, isPublished) {
 
 // getCurrentInstructorId() is now provided by ../common/scripts/auth.js
 
+// Global variables to prevent multiple API calls and redirects
+let courseIdCache = null;
+let courseIdPromise = null;
+let redirectInProgress = false;
+
 /**
  * Get the current course ID for the instructor
  * @returns {Promise<string>} Course ID
  */
 async function getCurrentCourseId() {
+    // Return cached result if available
+    if (courseIdCache !== null) {
+        return courseIdCache;
+    }
+    
+    // If a request is already in progress, wait for it
+    if (courseIdPromise) {
+        return courseIdPromise;
+    }
+    
+    // Start the request and cache the promise
+    courseIdPromise = fetchCourseId();
+    const result = await courseIdPromise;
+    
+    // Cache the result
+    courseIdCache = result;
+    
+    return result;
+}
+
+async function fetchCourseId() {
     // Check if we have a courseId from URL parameters (onboarding redirect)
     const urlParams = new URLSearchParams(window.location.search);
     const courseIdFromUrl = urlParams.get('courseId');
@@ -989,12 +1015,15 @@ async function getCurrentCourseId() {
         return currentUser.preferences.courseId;
     }
     
-    // If no course found, show an error and redirect to onboarding
-    console.error('No course ID found. Redirecting to onboarding...');
-    showNotification('No course found. Please complete onboarding first.', 'error');
-    setTimeout(() => {
-        window.location.href = '/instructor/onboarding';
-    }, 2000);
+    // If no course found, show an error and redirect to onboarding (only once)
+    if (!redirectInProgress) {
+        redirectInProgress = true;
+        console.error('No course ID found. Redirecting to onboarding...');
+        showNotification('No course found. Please complete onboarding first.', 'error');
+        setTimeout(() => {
+            window.location.href = '/instructor/onboarding';
+        }, 2000);
+    }
     
     // Return a placeholder (this should not be reached due to redirect)
     return null;

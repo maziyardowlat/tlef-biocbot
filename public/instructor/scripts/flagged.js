@@ -20,6 +20,102 @@ const appState = {
     }
 };
 
+// Global variables to prevent multiple API calls and redirects
+let courseIdCache = null;
+let courseIdPromise = null;
+let redirectInProgress = false;
+
+/**
+ * Get the current course ID for the instructor
+ * @returns {Promise<string>} Course ID
+ */
+async function getCurrentCourseId() {
+    // Return cached result if available
+    if (courseIdCache !== null) {
+        return courseIdCache;
+    }
+    
+    // If a request is already in progress, wait for it
+    if (courseIdPromise) {
+        return courseIdPromise;
+    }
+    
+    // Start the request and cache the promise
+    courseIdPromise = fetchCourseId();
+    const result = await courseIdPromise;
+    
+    // Cache the result
+    courseIdCache = result;
+    
+    return result;
+}
+
+async function fetchCourseId() {
+    // Check if we have a courseId from URL parameters (onboarding redirect)
+    const urlParams = new URLSearchParams(window.location.search);
+    const courseIdFromUrl = urlParams.get('courseId');
+    
+    if (courseIdFromUrl) {
+        return courseIdFromUrl;
+    }
+    
+    // If no course ID in URL, try to get it from the instructor's courses
+    try {
+        const instructorId = getCurrentInstructorId();
+        if (!instructorId) {
+            console.error('No instructor ID available');
+            return null;
+        }
+        
+        console.log(`🔍 [GET_COURSE_ID] Fetching courses for instructor: ${instructorId}`);
+        const response = await fetch(`/api/onboarding/instructor/${instructorId}`, {
+            credentials: 'include'
+        });
+        
+        console.log(`🔍 [GET_COURSE_ID] Response status: ${response.status} ${response.statusText}`);
+        
+        if (response.ok) {
+            const result = await response.json();
+            console.log(`🔍 [GET_COURSE_ID] API response:`, result);
+            
+            if (result.data && result.data.courses && result.data.courses.length > 0) {
+                // Return the first course found
+                const firstCourse = result.data.courses[0];
+                console.log(`🔍 [GET_COURSE_ID] Found course:`, firstCourse.courseId);
+                return firstCourse.courseId;
+            } else {
+                console.log(`🔍 [GET_COURSE_ID] No courses found in response`);
+            }
+        } else {
+            const errorText = await response.text();
+            console.error(`🔍 [GET_COURSE_ID] API error: ${response.status} - ${errorText}`);
+        }
+    } catch (error) {
+        console.error('Error fetching instructor courses:', error);
+    }
+    
+    
+    // Additional fallback: Check if we can get course ID from the current user's preferences
+    const currentUser = getCurrentUser();
+    if (currentUser && currentUser.preferences && currentUser.preferences.courseId) {
+        console.log(`🔍 [GET_COURSE_ID] Using course from user preferences: ${currentUser.preferences.courseId}`);
+        return currentUser.preferences.courseId;
+    }
+    
+    // If no course found, show an error and redirect to onboarding (only once)
+    if (!redirectInProgress) {
+        redirectInProgress = true;
+        console.error('No course ID found. Redirecting to onboarding...');
+        showNotification('No course found. Please complete onboarding first.', 'error');
+        setTimeout(() => {
+            window.location.href = '/instructor/onboarding';
+        }, 2000);
+    }
+    
+    // Return a placeholder (this should not be reached due to redirect)
+    return null;
+}
+
 /**
  * Initialize the flagged content page
  */
@@ -165,35 +261,14 @@ async function loadFlaggedContent() {
             console.log('🔍 [FLAGGED] DEBUG: 3. API call to /api/onboarding/instructor/ failed');
             console.log('🔍 [FLAGGED] DEBUG: 4. User preferences don\'t have courseId');
             
-            // Temporary fallback for testing - remove this in production
-            console.log('🔍 [FLAGGED] Using temporary fallback course ID for testing');
-            const fallbackCourseId = 'BIOC404-1759893662591';
-            console.log(`🔍 [FLAGGED] Loading flags for fallback course: ${fallbackCourseId}`);
-            
-            // Load flags with fallback course ID
-            const apiUrl = `/api/flags/course/${fallbackCourseId}`;
-            const response = await fetch(apiUrl, {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                }
-            });
-            
-            if (response.ok) {
-                const result = await response.json();
-                if (result.success) {
-                    appState.flags = result.data.flags || [];
-                    console.log(`🔍 [FLAGGED] Loaded ${appState.flags.length} flags with fallback course ID`);
-                    applyFilters();
-                    renderFlaggedContent();
-                    return;
-                }
-            }
-            
-            // If fallback also fails, show empty state
+            // Show empty state and redirect to onboarding
             appState.flags = [];
             applyFilters();
             renderFlaggedContent();
+            showNotification('No course found. Please complete onboarding first.', 'error');
+            setTimeout(() => {
+                window.location.href = '/instructor/onboarding';
+            }, 2000);
             return;
         }
         
@@ -240,31 +315,7 @@ async function loadFlagStats() {
         const courseId = await getCurrentCourseId();
         
         if (!courseId) {
-            console.log('No course available for stats, using fallback course ID');
-            // Use the same fallback course ID as the flags
-            const fallbackCourseId = 'BIOC404-1759893662591';
-            console.log(`🔍 [FLAGGED] Loading stats for fallback course: ${fallbackCourseId}`);
-            
-            // Load stats with fallback course ID
-            const response = await fetch(`/api/flags/stats/${fallbackCourseId}`, {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json',
-                }
-            });
-            
-            if (response.ok) {
-                const result = await response.json();
-                if (result.success) {
-                    appState.stats = result.data.statistics;
-                    console.log('🔍 [FLAGGED] Flag statistics loaded with fallback:', appState.stats);
-                    updateStatsDisplay();
-                    return;
-                }
-            }
-            
-            // If fallback also fails, use default stats
-            console.log('Fallback stats also failed, using default stats');
+            console.log('No course available for stats, using default stats');
             appState.stats = { total: 0, pending: 0, reviewed: 0, resolved: 0, dismissed: 0 };
             updateStatsDisplay();
             return;
@@ -965,4 +1016,61 @@ async function waitForAuth() {
     }
     
     console.warn('⚠️ [AUTH] Authentication not ready after 5 seconds, proceeding anyway');
+}
+
+/**
+ * Show notification message
+ * @param {string} message - Message to display
+ * @param {string} type - Type of notification (success, error, info)
+ */
+function showNotification(message, type = 'info') {
+    // Create notification element
+    const notification = document.createElement('div');
+    notification.className = `notification notification-${type}`;
+    notification.textContent = message;
+    
+    // Style the notification
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 12px 20px;
+        border-radius: 4px;
+        color: white;
+        font-weight: 500;
+        z-index: 10000;
+        max-width: 400px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        animation: slideIn 0.3s ease-out;
+    `;
+    
+    // Set background color based on type
+    switch (type) {
+        case 'success':
+            notification.style.backgroundColor = '#10b981';
+            break;
+        case 'error':
+            notification.style.backgroundColor = '#ef4444';
+            break;
+        case 'warning':
+            notification.style.backgroundColor = '#f59e0b';
+            break;
+        default:
+            notification.style.backgroundColor = '#3b82f6';
+    }
+    
+    // Add to page
+    document.body.appendChild(notification);
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.style.animation = 'slideOut 0.3s ease-in';
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.remove();
+                }
+            }, 300);
+        }
+    }, 5000);
 }
