@@ -10,6 +10,32 @@ document.addEventListener('DOMContentLoaded', async () => {
     const initializeAutoSaveWhenReady = async () => {
         console.log('🔐 [AUTH] Authentication ready, initializing auto-save...');
         await initializeAutoSave();
+        
+        // Check for auto-continue after authentication is ready
+        // Add a small delay to ensure auto-save data is fully loaded
+        setTimeout(() => {
+            // Only check for auto-continue if we're NOT loading from history
+            const isLoadingFromHistory = sessionStorage.getItem('loadChatData');
+            const isAlreadyLoadingFromHistory = window.loadingFromHistory;
+            
+            if (!isLoadingFromHistory && !isAlreadyLoadingFromHistory) {
+                console.log('🔄 [AUTO-CONTINUE] Checking for auto-continue after auth ready...');
+                const wasAutoContinued = checkForAutoContinue();
+                
+        if (wasAutoContinued) {
+            console.log('🔄 [AUTO-CONTINUE] Chat was auto-continued, skipping assessment questions');
+            // Set a flag to prevent assessment questions from loading
+            window.autoContinued = true;
+            
+            // Load the current session data into the interface
+            loadCurrentSessionIntoInterface();
+        }
+            } else {
+                console.log('🔄 [AUTO-CONTINUE] Loading from history, skipping auto-continue check');
+                console.log('🔄 [AUTO-CONTINUE] - sessionStorage loadChatData:', !!isLoadingFromHistory);
+                console.log('🔄 [AUTO-CONTINUE] - window.loadingFromHistory:', !!isAlreadyLoadingFromHistory);
+            }
+        }, 100);
     };
     
     // Check if auth is already ready
@@ -63,6 +89,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Initialize user agreement modal
     initializeUserAgreement();
+    
+    // Initialize new session button
+    initializeNewSessionButton();
     
     /**
      * Format timestamp for display
@@ -506,7 +535,19 @@ async function initializeAutoSave() {
         
         console.log('Auto-save student info:', { studentId, studentName, courseId, courseName, unitName, currentMode });
         
-        // Create initial empty chat data structure
+        // Check if there's already existing chat data
+        const autoSaveKey = `biocbot_current_chat_${studentId}`;
+        const existingChatData = localStorage.getItem(autoSaveKey);
+        
+        if (existingChatData) {
+            const parsedData = JSON.parse(existingChatData);
+            if (parsedData.messages && parsedData.messages.length > 0) {
+                console.log('🔄 [AUTO-SAVE] Existing chat data found with', parsedData.messages.length, 'messages, not overwriting');
+                return; // Don't overwrite existing chat data
+            }
+        }
+        
+        // Create initial empty chat data structure only if no existing data
         const initialChatData = {
             metadata: {
                 exportDate: new Date().toISOString(),
@@ -535,7 +576,6 @@ async function initializeAutoSave() {
         };
         
         // Store in localStorage for auto-save updates
-        const autoSaveKey = `biocbot_current_chat_${studentId}`;
         localStorage.setItem(autoSaveKey, JSON.stringify(initialChatData));
         
         console.log('Auto-save initialized with empty chat data structure');
@@ -605,7 +645,8 @@ function autoSaveMessage(content, sender, withSource = false) {
                     startTime: new Date().toISOString(),
                     endTime: null,
                     duration: '0 minutes'
-                }
+                },
+                lastActivityTimestamp: new Date().toISOString()
             };
             
             console.log('🔄 [AUTO-SAVE] Initialized empty chat data structure');
@@ -628,6 +669,9 @@ function autoSaveMessage(content, sender, withSource = false) {
         currentChatData.metadata.exportDate = new Date().toISOString();
         currentChatData.sessionInfo.endTime = new Date().toISOString();
         currentChatData.sessionInfo.duration = calculateSessionDuration(currentChatData);
+        
+        // Update last activity timestamp for auto-continue feature
+        currentChatData.lastActivityTimestamp = new Date().toISOString();
         
         // Update assessment data if available
         updateAssessmentDataInAutoSave(currentChatData);
@@ -667,6 +711,12 @@ function getCurrentSessionId(chatData) {
     const studentId = chatData.metadata.studentId;
     const courseId = chatData.metadata.courseId;
     const unitName = chatData.metadata.unitName;
+    
+    // First, check if the chat data already has a session ID (from loaded history)
+    if (chatData.sessionInfo && chatData.sessionInfo.sessionId) {
+        console.log('🔄 [SESSION] Using session ID from chat data:', chatData.sessionInfo.sessionId);
+        return chatData.sessionInfo.sessionId;
+    }
     
     // Check if we have a stored session ID for this chat
     const sessionKey = `biocbot_session_${studentId}_${courseId}_${unitName}`;
@@ -905,6 +955,181 @@ function getCurrentChatData() {
 }
 
 /**
+ * Update the last activity timestamp in the current chat data
+ * This tracks when the last message was sent or received
+ */
+function updateLastActivityTimestamp() {
+    try {
+        const chatData = getCurrentChatData();
+        if (chatData) {
+            chatData.lastActivityTimestamp = new Date().toISOString();
+            
+            // Save the updated data back to localStorage
+            const studentId = getCurrentStudentId();
+            const autoSaveKey = `biocbot_current_chat_${studentId}`;
+            localStorage.setItem(autoSaveKey, JSON.stringify(chatData));
+            
+            console.log('🔄 [AUTO-CONTINUE] Updated last activity timestamp:', chatData.lastActivityTimestamp);
+        }
+    } catch (error) {
+        console.error('Error updating last activity timestamp:', error);
+    }
+}
+
+/**
+ * Load the current session data into the chat interface
+ * This is used for auto-continue to restore the session without creating a new one
+ */
+function loadCurrentSessionIntoInterface() {
+    try {
+        console.log('🔄 [AUTO-CONTINUE] Loading current session into interface...');
+        
+        const chatData = getCurrentChatData();
+        if (!chatData || !chatData.messages || chatData.messages.length === 0) {
+            console.log('🔄 [AUTO-CONTINUE] No current session data to load');
+            return;
+        }
+        
+        console.log('🔄 [AUTO-CONTINUE] Loading', chatData.messages.length, 'messages into interface');
+        
+        // Load the chat data using the existing function
+        loadChatData(chatData);
+        
+        console.log('🔄 [AUTO-CONTINUE] ✅ Current session loaded into interface');
+        
+    } catch (error) {
+        console.error('Error loading current session into interface:', error);
+    }
+}
+
+/**
+ * Show a notification that the chat was auto-continued
+ */
+function showAutoContinueNotification() {
+    try {
+        // Create a simple notification element
+        const notification = document.createElement('div');
+        notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #4CAF50;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 10000;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-size: 14px;
+            max-width: 300px;
+            animation: slideIn 0.3s ease-out;
+        `;
+        
+        notification.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 16px;">🔄</span>
+                <span>Chat continued from where you left off</span>
+            </div>
+        `;
+        
+        // Add CSS animation
+        const style = document.createElement('style');
+        style.textContent = `
+            @keyframes slideIn {
+                from { transform: translateX(100%); opacity: 0; }
+                to { transform: translateX(0); opacity: 1; }
+            }
+        `;
+        document.head.appendChild(style);
+        
+        // Add to page
+        document.body.appendChild(notification);
+        
+        // Remove after 3 seconds
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.style.animation = 'slideIn 0.3s ease-out reverse';
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        notification.parentNode.removeChild(notification);
+                    }
+                }, 300);
+            }
+        }, 3000);
+        
+    } catch (error) {
+        console.error('Error showing auto-continue notification:', error);
+    }
+}
+
+/**
+ * Check if we should auto-continue the chat based on 30-minute window
+ * This function checks if the last activity was within 30 minutes and auto-loads the chat
+ * @returns {boolean} True if chat was auto-continued, false otherwise
+ */
+function checkForAutoContinue() {
+    try {
+        console.log('🔄 [AUTO-CONTINUE] Checking for auto-continue...');
+        
+        const chatData = getCurrentChatData();
+        console.log('🔄 [AUTO-CONTINUE] Chat data found:', !!chatData);
+        if (chatData) {
+            console.log('🔄 [AUTO-CONTINUE] Messages count:', chatData.messages ? chatData.messages.length : 'No messages array');
+            console.log('🔄 [AUTO-CONTINUE] Last activity timestamp:', chatData.lastActivityTimestamp);
+        }
+        
+        if (!chatData || !chatData.messages || chatData.messages.length === 0) {
+            console.log('🔄 [AUTO-CONTINUE] No chat data or empty chat, skipping auto-continue');
+            return false;
+        }
+        
+        // Check if we have a last activity timestamp
+        if (!chatData.lastActivityTimestamp) {
+            console.log('🔄 [AUTO-CONTINUE] No last activity timestamp found, skipping auto-continue');
+            return false;
+        }
+        
+        // Calculate time difference
+        const lastActivity = new Date(chatData.lastActivityTimestamp);
+        const now = new Date();
+        const diffMs = now - lastActivity;
+        const diffMinutes = Math.floor(diffMs / (1000 * 60));
+        
+        console.log('🔄 [AUTO-CONTINUE] Last activity:', lastActivity.toISOString());
+        console.log('🔄 [AUTO-CONTINUE] Current time:', now.toISOString());
+        console.log('🔄 [AUTO-CONTINUE] Time difference:', diffMinutes, 'minutes');
+        
+        // Check if within 30 minutes
+        if (diffMinutes <= 30) {
+            console.log('🔄 [AUTO-CONTINUE] ✅ Within 30 minutes, auto-continuing chat...');
+            
+            // For auto-continue, we don't load the chat data into the interface
+            // Instead, we just restore the session state by updating the current chat data
+            // This maintains the session continuity without creating a new session
+            
+            // Update the current chat data with the restored data
+            const studentId = getCurrentStudentId();
+            const autoSaveKey = `biocbot_current_chat_${studentId}`;
+            localStorage.setItem(autoSaveKey, JSON.stringify(chatData));
+            
+            console.log('🔄 [AUTO-CONTINUE] ✅ Successfully restored session state');
+            
+            // Show a brief notification to the user
+            showAutoContinueNotification();
+            
+            return true;
+        } else {
+            console.log('🔄 [AUTO-CONTINUE] ❌ Outside 30-minute window, not auto-continuing');
+            return false;
+        }
+        
+    } catch (error) {
+        console.error('Error checking for auto-continue:', error);
+        return false;
+    }
+}
+
+/**
  * Clear current chat data from auto-save storage
  * Used when starting a new chat session
  */
@@ -941,10 +1166,315 @@ function debugAutoSaveData() {
         console.log('Student ID:', chatData.metadata.studentId);
         console.log('Unit Name:', chatData.metadata.unitName);
         console.log('Session Duration:', chatData.sessionInfo.duration);
+        console.log('Last Activity:', chatData.lastActivityTimestamp);
         console.log('Messages:', chatData.messages);
         console.log('============================');
     } else {
         console.log('No auto-save data found');
+    }
+}
+
+/**
+ * Debug function to test auto-continue feature
+ * Can be called from browser console for testing
+ */
+function testAutoContinue() {
+    console.log('=== TESTING AUTO-CONTINUE ===');
+    const chatData = getCurrentChatData();
+    
+    if (!chatData || !chatData.messages || chatData.messages.length === 0) {
+        console.log('❌ No chat data found. Send some messages first.');
+        console.log('💡 To test: Send a message, then refresh the page within 30 minutes');
+        return;
+    }
+    
+    console.log('Current chat data found:');
+    console.log('- Messages:', chatData.messages.length);
+    console.log('- Last Activity:', chatData.lastActivityTimestamp);
+    
+    if (chatData.lastActivityTimestamp) {
+        const lastActivity = new Date(chatData.lastActivityTimestamp);
+        const now = new Date();
+        const diffMs = now - lastActivity;
+        const diffMinutes = Math.floor(diffMs / (1000 * 60));
+        
+        console.log('- Time since last activity:', diffMinutes, 'minutes');
+        console.log('- Would auto-continue:', diffMinutes <= 30 ? 'YES' : 'NO');
+    } else {
+        console.log('❌ No last activity timestamp found');
+    }
+    
+    console.log('===============================');
+}
+
+/**
+ * Debug function to simulate auto-continue for testing
+ * Can be called from browser console for testing
+ */
+function simulateAutoContinue() {
+    console.log('=== SIMULATING AUTO-CONTINUE ===');
+    const chatData = getCurrentChatData();
+    
+    if (!chatData || !chatData.messages || chatData.messages.length === 0) {
+        console.log('❌ No chat data found. Send some messages first.');
+        return;
+    }
+    
+    console.log('Simulating auto-continue with current chat data...');
+    
+    // Store the chat data in sessionStorage (same as continue chat)
+    sessionStorage.setItem('loadChatData', JSON.stringify(chatData));
+    console.log('✅ Stored chat data in sessionStorage');
+    
+    // Load the chat data using the existing function
+    loadChatData(chatData);
+    console.log('✅ Loaded chat data into interface');
+    
+    console.log('===============================');
+}
+
+/**
+ * Debug function to force auto-continue check
+ * Can be called from browser console for testing
+ */
+function forceAutoContinueCheck() {
+    console.log('=== FORCING AUTO-CONTINUE CHECK ===');
+    const wasAutoContinued = checkForAutoContinue();
+    
+    if (wasAutoContinued) {
+        console.log('✅ Auto-continue was successful');
+        window.autoContinued = true;
+    } else {
+        console.log('❌ Auto-continue did not trigger');
+    }
+    
+    console.log('===============================');
+}
+
+/**
+ * Debug function to check what's in localStorage
+ * Can be called from browser console for testing
+ */
+function checkLocalStorageData() {
+    console.log('=== CHECKING LOCALSTORAGE DATA ===');
+    const studentId = getCurrentStudentId();
+    const autoSaveKey = `biocbot_current_chat_${studentId}`;
+    
+    console.log('Student ID:', studentId);
+    console.log('Auto-save key:', autoSaveKey);
+    
+    const rawData = localStorage.getItem(autoSaveKey);
+    console.log('Raw localStorage data:', rawData);
+    
+    if (rawData) {
+        try {
+            const parsedData = JSON.parse(rawData);
+            console.log('Parsed data:', parsedData);
+            console.log('Messages count:', parsedData.messages ? parsedData.messages.length : 'No messages array');
+            console.log('Last activity timestamp:', parsedData.lastActivityTimestamp);
+        } catch (error) {
+            console.error('Error parsing localStorage data:', error);
+        }
+    } else {
+        console.log('No data found in localStorage');
+    }
+    
+    console.log('===============================');
+}
+
+/**
+ * Debug function to check history loading status
+ * Can be called from browser console for testing
+ */
+function checkHistoryLoadingStatus() {
+    console.log('=== CHECKING HISTORY LOADING STATUS ===');
+    console.log('sessionStorage loadChatData:', !!sessionStorage.getItem('loadChatData'));
+    console.log('window.loadingFromHistory:', !!window.loadingFromHistory);
+    console.log('window.autoContinued:', !!window.autoContinued);
+    
+    const loadChatData = sessionStorage.getItem('loadChatData');
+    if (loadChatData) {
+        try {
+            const parsed = JSON.parse(loadChatData);
+            console.log('History chat data messages:', parsed.messages ? parsed.messages.length : 'No messages');
+        } catch (error) {
+            console.error('Error parsing history data:', error);
+        }
+    }
+    
+    console.log('===============================');
+}
+
+/**
+ * Debug function to check session ID status
+ * Can be called from browser console for testing
+ */
+function checkSessionIdStatus() {
+    console.log('=== CHECKING SESSION ID STATUS ===');
+    
+    const studentId = getCurrentStudentId();
+    const courseId = localStorage.getItem('selectedCourseId');
+    const unitName = localStorage.getItem('selectedUnitName') || 'this unit';
+    
+    console.log('Student ID:', studentId);
+    console.log('Course ID:', courseId);
+    console.log('Unit Name:', unitName);
+    
+    if (studentId && courseId) {
+        const sessionKey = `biocbot_session_${studentId}_${courseId}_${unitName}`;
+        const currentSessionId = localStorage.getItem(sessionKey);
+        console.log('Session Key:', sessionKey);
+        console.log('Current Session ID:', currentSessionId);
+        
+        // Check current chat data
+        const chatData = getCurrentChatData();
+        if (chatData && chatData.sessionInfo) {
+            console.log('Chat Data Session ID:', chatData.sessionInfo.sessionId);
+            console.log('Session IDs Match:', currentSessionId === chatData.sessionInfo.sessionId);
+        }
+    }
+    
+    console.log('===============================');
+}
+
+/**
+ * Initialize the new session button functionality
+ */
+function initializeNewSessionButton() {
+    try {
+        const newSessionBtn = document.getElementById('new-session-btn');
+        if (!newSessionBtn) {
+            console.log('New session button not found');
+            return;
+        }
+        
+        newSessionBtn.addEventListener('click', handleNewSession);
+        console.log('✅ New session button initialized');
+        
+    } catch (error) {
+        console.error('Error initializing new session button:', error);
+    }
+}
+
+/**
+ * Handle new session button click
+ */
+function handleNewSession() {
+    try {
+        console.log('🔄 [NEW-SESSION] Starting new session...');
+        
+        // Clear any existing session data
+        clearCurrentChatData();
+        
+        // Generate a new session ID for the new session
+        const studentId = getCurrentStudentId();
+        const courseId = localStorage.getItem('selectedCourseId');
+        const unitName = localStorage.getItem('selectedUnitName') || 'this unit';
+        
+        if (studentId && courseId) {
+            const sessionKey = `biocbot_session_${studentId}_${courseId}_${unitName}`;
+            const newSessionId = `autosave_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            localStorage.setItem(sessionKey, newSessionId);
+            console.log('🔄 [NEW-SESSION] Generated new session ID:', newSessionId);
+        }
+        
+        // Clear the chat interface
+        const chatMessages = document.getElementById('chat-messages');
+        if (chatMessages) {
+            chatMessages.innerHTML = `
+                <div class="message bot-message">
+                    <div class="message-avatar">B</div>
+                    <div class="message-content">
+                        <p>Hello! I'm BiocBot, your AI study assistant for BIOC 202. How can I help you today?</p>
+                        <div class="message-footer">
+                            <div class="message-footer-right">
+                                <span class="timestamp">Just now</span>
+                                <div class="message-flag-container">
+                                    <button class="flag-button" onclick="toggleFlagMenu(this)">
+                                        <span class="three-dots">⋯</span>
+                                    </button>
+                                    <div class="flag-menu">
+                                        <button class="flag-option" onclick="flagMessage(this, 'incorrect')">Incorrect</button>
+                                        <button class="flag-option" onclick="flagMessage(this, 'inappropriate')">Inappropriate</button>
+                                        <button class="flag-option" onclick="flagMessage(this, 'unclear')">Unclear</button>
+                                        <button class="flag-option" onclick="flagMessage(this, 'confusing')">Confusing</button>
+                                        <button class="flag-option" onclick="flagMessage(this, 'typo')">Typo/Error</button>
+                                        <button class="flag-option" onclick="flagMessage(this, 'offensive')">Offensive</button>
+                                        <button class="flag-option" onclick="flagMessage(this, 'irrelevant')">Irrelevant</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        // Reset flags
+        window.autoContinued = false;
+        window.loadingFromHistory = false;
+        
+        // Show notification
+        showNewSessionNotification();
+        
+        // Trigger the full initialization process including assessment questions
+        console.log('🔄 [NEW-SESSION] Triggering full initialization...');
+        checkPublishedUnitsAndLoadQuestions();
+        
+        console.log('🔄 [NEW-SESSION] ✅ New session started successfully');
+        
+    } catch (error) {
+        console.error('Error starting new session:', error);
+    }
+}
+
+/**
+ * Show a notification that a new session was started
+ */
+function showNewSessionNotification() {
+    try {
+        // Create a simple notification element
+        const notification = document.createElement('div');
+        notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #17a2b8;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 10000;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-size: 14px;
+            max-width: 300px;
+            animation: slideIn 0.3s ease-out;
+        `;
+        
+        notification.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <span style="font-size: 16px;">✨</span>
+                <span>New chat session started</span>
+            </div>
+        `;
+        
+        // Add to page
+        document.body.appendChild(notification);
+        
+        // Remove after 3 seconds
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.style.animation = 'slideIn 0.3s ease-out reverse';
+                setTimeout(() => {
+                    if (notification.parentNode) {
+                        notification.parentNode.removeChild(notification);
+                    }
+                }, 300);
+            }
+        }, 3000);
+        
+    } catch (error) {
+        console.error('Error showing new session notification:', error);
     }
 }
 
@@ -1760,6 +2290,12 @@ window.studentAnswers = studentAnswers;
 async function checkPublishedUnitsAndLoadQuestions() {
     try {
         console.log('=== CHECKING FOR PUBLISHED UNITS ===');
+        
+        // Check if chat was auto-continued
+        if (window.autoContinued) {
+            console.log('🔄 [AUTO-CONTINUE] Chat was auto-continued, skipping assessment questions');
+            return;
+        }
         
         // Get current course ID from localStorage
         const courseId = localStorage.getItem('selectedCourseId');
@@ -3809,26 +4345,26 @@ function loadChatData(chatData) {
             // Clear the loading message
             chatMessages.innerHTML = '';
             
-            // Load each message from the chat data
+            // Load each message from the chat data WITHOUT triggering auto-save
             chatData.messages.forEach((messageData, index) => {
                 console.log(`Loading message ${index}:`, messageData);
                 
                 if (messageData.type === 'user') {
-                    addMessage(messageData.content, 'user');
+                    addMessage(messageData.content, 'user', false, true); // Skip auto-save
                 } else if (messageData.type === 'bot') {
                     // Check if this is a special message type that needs special handling
                     if (messageData.messageType === 'assessment-start') {
                         // This is the assessment start message - add it as a regular bot message
-                        addMessage(messageData.content, 'bot', messageData.hasFlagButton);
+                        addMessage(messageData.content, 'bot', messageData.hasFlagButton, true); // Skip auto-save
                     } else if (messageData.messageType === 'practice-test-question') {
                         // This is a practice test question - add it as a regular bot message
-                        addMessage(messageData.content, 'bot', messageData.hasFlagButton);
+                        addMessage(messageData.content, 'bot', messageData.hasFlagButton, true); // Skip auto-save
                     } else if (messageData.messageType === 'mode-result') {
                         // This is a mode result message - add it as a regular bot message
-                        addMessage(messageData.content, 'bot', messageData.hasFlagButton);
+                        addMessage(messageData.content, 'bot', messageData.hasFlagButton, true); // Skip auto-save
                     } else {
                         // Regular bot message
-                        addMessage(messageData.content, 'bot', messageData.hasFlagButton);
+                        addMessage(messageData.content, 'bot', messageData.hasFlagButton, true); // Skip auto-save
                     }
                 }
             });
@@ -3878,6 +4414,42 @@ function loadChatData(chatData) {
             // Set flags for continuing chat
             sessionStorage.setItem('isContinuingChat', 'true');
             sessionStorage.setItem('loadedChatData', JSON.stringify(chatData));
+            
+            // Update the current session ID to match the loaded chat data
+            if (chatData.sessionInfo && chatData.sessionInfo.sessionId) {
+                const studentId = chatData.metadata.studentId;
+                const courseId = chatData.metadata.courseId;
+                const unitName = chatData.metadata.unitName;
+                const sessionKey = `biocbot_session_${studentId}_${courseId}_${unitName}`;
+                
+                // Store the session ID from the loaded chat data
+                localStorage.setItem(sessionKey, chatData.sessionInfo.sessionId);
+                console.log('🔄 [SESSION] Updated session ID to match loaded chat:', chatData.sessionInfo.sessionId);
+            } else {
+                // If no session ID in chat data, generate one and store it
+                const studentId = chatData.metadata.studentId;
+                const courseId = chatData.metadata.courseId;
+                const unitName = chatData.metadata.unitName;
+                const sessionKey = `biocbot_session_${studentId}_${courseId}_${unitName}`;
+                
+                // Generate a new session ID for this chat
+                const newSessionId = `autosave_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                localStorage.setItem(sessionKey, newSessionId);
+                
+                // Update the chat data with the new session ID
+                if (!chatData.sessionInfo) {
+                    chatData.sessionInfo = {};
+                }
+                chatData.sessionInfo.sessionId = newSessionId;
+                
+                console.log('🔄 [SESSION] Generated new session ID for loaded chat:', newSessionId);
+            }
+            
+            // Replace the current auto-save data with the loaded chat data
+            const studentId = chatData.metadata.studentId;
+            const autoSaveKey = `biocbot_current_chat_${studentId}`;
+            localStorage.setItem(autoSaveKey, JSON.stringify(chatData));
+            console.log('🔄 [HISTORY] Replaced current auto-save data with loaded chat data');
             
             console.log('Chat data loaded successfully');
             
@@ -3946,6 +4518,10 @@ function checkForChatDataToLoad() {
             const chatData = JSON.parse(storedChatData);
             console.log('Parsed chat data:', chatData);
             console.log('Chat data messages count:', chatData.messages ? chatData.messages.length : 'No messages');
+            
+            // Set flag to indicate we're loading from history
+            window.loadingFromHistory = true;
+            console.log('🔄 [HISTORY] Set loadingFromHistory flag to true');
             
             // Clear the stored data
             sessionStorage.removeItem('loadChatData');
