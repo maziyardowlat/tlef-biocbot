@@ -196,15 +196,17 @@ router.post('/upload', upload.single('file'), async (req, res) => {
                 }
                 
                 // Try to process through Qdrant for vector search
-                console.log(`Processing document through Qdrant: ${file.originalname}`);
-                qdrantResult = await qdrantService.processAndStoreDocument({
-                    courseId,
-                    lectureName,
-                    documentId: result.documentId,
-                    content: textContent,
-                    fileName: file.originalname,
-                    mimeType: file.mimetype
-                });
+            console.log(`Processing document through Qdrant: ${file.originalname}`);
+            qdrantResult = await qdrantService.processAndStoreDocument({
+                courseId,
+                lectureName,
+                documentId: result.documentId,
+                content: textContent,
+                fileName: file.originalname,
+                mimeType: file.mimetype,
+                documentType: documentType,
+                type: result.type
+            });
                 
                 if (qdrantResult.success) {
                     console.log(`✅ Document processed and stored in Qdrant: ${qdrantResult.chunksStored} chunks`);
@@ -321,7 +323,9 @@ router.post('/text', async (req, res) => {
                 documentId: result.documentId,
                 content: content,
                 fileName: title,
-                mimeType: 'text/plain'
+                mimeType: 'text/plain',
+                documentType: documentType,
+                type: result.type
             });
             
             if (qdrantResult.success) {
