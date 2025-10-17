@@ -203,14 +203,38 @@ function setupProtectedRoutes() {
         res.sendFile(path.join(__dirname, '../public/student/settings.html'));
     });
 
-    // Instructor routes (protected)
-    app.get('/instructor', authMiddleware.requireInstructor, (req, res) => {
+    // TA routes (protected)
+    app.get('/ta', authMiddleware.requireTA, (req, res) => {
+        res.sendFile(path.join(__dirname, '../public/ta/home.html'));
+    });
+
+    app.get('/ta/onboarding', authMiddleware.requireTA, (req, res) => {
+        res.sendFile(path.join(__dirname, '../public/ta/onboarding.html'));
+    });
+
+    // TA course management - redirect to instructor course page
+    app.get('/ta/courses', authMiddleware.requireTA, (req, res) => {
+        res.redirect('/instructor/documents');
+    });
+
+    // TA student support - redirect to instructor flags page
+    app.get('/ta/students', authMiddleware.requireTA, (req, res) => {
+        res.redirect('/instructor/flagged');
+    });
+
+    // TA settings - redirect to instructor settings
+    app.get('/ta/settings', authMiddleware.requireTA, (req, res) => {
+        res.redirect('/instructor/settings');
+    });
+
+    // Instructor routes (protected - instructors and TAs can access)
+    app.get('/instructor', authMiddleware.requireInstructorOrTA, (req, res) => {
         // Serve the documents page directly
         res.sendFile(path.join(__dirname, '../public/instructor/index.html'));
     });
 
     // Also handle /instructor/ (with trailing slash)
-    app.get('/instructor/', authMiddleware.requireInstructor, (req, res) => {
+    app.get('/instructor/', authMiddleware.requireInstructorOrTA, (req, res) => {
         // Serve the documents page directly
         res.sendFile(path.join(__dirname, '../public/instructor/index.html'));
     });
@@ -245,24 +269,28 @@ function setupProtectedRoutes() {
         }
     });
 
-    app.get('/instructor/settings', authMiddleware.requireInstructor, (req, res) => {
+    app.get('/instructor/settings', authMiddleware.requireInstructorOrTA, (req, res) => {
         res.sendFile(path.join(__dirname, '../public/instructor/settings.html'));
     });
 
-    app.get('/instructor/home', authMiddleware.requireInstructor, (req, res) => {
+    app.get('/instructor/home', authMiddleware.requireInstructorOrTA, (req, res) => {
         res.sendFile(path.join(__dirname, '../public/instructor/home.html'));
     });
 
-    app.get('/instructor/documents', authMiddleware.requireInstructor, (req, res) => {
+    app.get('/instructor/documents', authMiddleware.requireInstructorOrTA, (req, res) => {
         res.sendFile(path.join(__dirname, '../public/instructor/index.html'));
     });
 
-    app.get('/instructor/flagged', authMiddleware.requireInstructor, (req, res) => {
+    app.get('/instructor/flagged', authMiddleware.requireInstructorOrTA, (req, res) => {
         res.sendFile(path.join(__dirname, '../public/instructor/flagged.html'));
     });
 
-    app.get('/instructor/downloads', authMiddleware.requireInstructor, (req, res) => {
+    app.get('/instructor/downloads', authMiddleware.requireInstructorOrTA, (req, res) => {
         res.sendFile(path.join(__dirname, '../public/instructor/downloads.html'));
+    });
+
+    app.get('/instructor/ta-hub', authMiddleware.requireInstructor, (req, res) => {
+        res.sendFile(path.join(__dirname, '../public/instructor/ta-hub.html'));
     });
 }
 
@@ -357,8 +385,8 @@ app.get('/api/health', async (req, res) => {
  * Set up API routes after authentication middleware is initialized
  */
 function setupAPIRoutes() {
-    // Authentication routes (no auth required)
-    app.use('/api/auth', authRoutes);
+    // Authentication routes (no auth required for most, but some need user population)
+    app.use('/api/auth', authMiddleware.populateUser, authRoutes);
 
     // Public course endpoints (no auth required)
     app.get('/api/courses/available/all', async (req, res) => {

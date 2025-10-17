@@ -61,10 +61,20 @@ router.post('/login', async (req, res) => {
 
             console.log(`User logged in: ${result.user.userId} (${result.user.role})`);
             
+            // Determine redirect based on role
+            let redirectPath = '/login';
+            if (result.user.role === 'instructor') {
+                redirectPath = '/instructor';
+            } else if (result.user.role === 'student') {
+                redirectPath = '/student';
+            } else if (result.user.role === 'ta') {
+                redirectPath = '/ta';
+            }
+            
             res.json({
                 success: true,
                 user: authService.createSessionUser(result.user),
-                redirect: result.user.role === 'instructor' ? '/instructor' : '/student'
+                redirect: redirectPath
             });
         });
 
@@ -94,10 +104,10 @@ router.post('/register', async (req, res) => {
         }
 
         // Validate role
-        if (!['instructor', 'student'].includes(role)) {
+        if (!['instructor', 'student', 'ta'].includes(role)) {
             return res.status(400).json({
                 success: false,
-                error: 'Role must be either "instructor" or "student"'
+                error: 'Role must be "instructor", "student", or "ta"'
             });
         }
 
@@ -345,6 +355,206 @@ router.post('/set-course', async (req, res) => {
         res.status(500).json({
             success: false,
             error: 'Failed to set course context'
+        });
+    }
+});
+
+/**
+ * GET /api/users/tas
+ * Get all Teaching Assistants (instructor only)
+ */
+router.get('/tas', async (req, res) => {
+    try {
+        console.log('🔍 [AUTH_TAS] Request received');
+        console.log('🔍 [AUTH_TAS] Session:', req.session);
+        console.log('🔍 [AUTH_TAS] User:', req.user);
+        
+        // Get authenticated user information
+        const user = req.user;
+        if (!user) {
+            console.log('🔍 [AUTH_TAS] No user found, returning 401');
+            return res.status(401).json({
+                success: false,
+                message: 'Authentication required'
+            });
+        }
+        
+        // Only instructors can view TAs
+        if (user.role !== 'instructor') {
+            return res.status(403).json({
+                success: false,
+                message: 'Only instructors can view TAs'
+            });
+        }
+        
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
+        
+        // Get all users with TA role
+        const usersCollection = db.collection('users');
+        const tas = await usersCollection.find({ role: 'ta' })
+            .project({
+                userId: 1,
+                username: 1,
+                email: 1,
+                displayName: 1,
+                isActive: 1,
+                createdAt: 1,
+                lastLogin: 1
+            })
+            .sort({ createdAt: -1 })
+            .toArray();
+        
+        console.log(`Retrieved ${tas.length} TAs`);
+        
+        res.json({
+            success: true,
+            data: tas
+        });
+        
+    } catch (error) {
+        console.error('Error fetching TAs:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while fetching TAs'
+        });
+    }
+});
+
+/**
+ * GET /api/auth/users/:userId
+ * Get user details by ID (instructor only)
+ */
+router.get('/users/:userId', async (req, res) => {
+    try {
+        const { userId } = req.params;
+        
+        // Get authenticated user information
+        const user = req.user;
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                message: 'Authentication required'
+            });
+        }
+        
+        // Only instructors can view user details
+        if (user.role !== 'instructor') {
+            return res.status(403).json({
+                success: false,
+                message: 'Only instructors can view user details'
+            });
+        }
+        
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
+        
+        // Get user by ID
+        const usersCollection = db.collection('users');
+        const userData = await usersCollection.findOne({ userId })
+            .project({
+                userId: 1,
+                username: 1,
+                email: 1,
+                displayName: 1,
+                role: 1,
+                isActive: 1,
+                createdAt: 1,
+                lastLogin: 1
+            });
+        
+        if (!userData) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+        
+        console.log(`Retrieved user details for: ${userId}`);
+        
+        res.json({
+            success: true,
+            data: userData
+        });
+        
+    } catch (error) {
+        console.error('Error fetching user details:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while fetching user details'
+        });
+    }
+});
+
+/**
+ * DELETE /api/users/tas/:taId
+ * Remove a TA from all courses (instructor only)
+ */
+router.delete('/tas/:taId', async (req, res) => {
+    try {
+        const { taId } = req.params;
+        
+        // Get authenticated user information
+        const user = req.user;
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                message: 'Authentication required'
+            });
+        }
+        
+        // Only instructors can remove TAs
+        if (user.role !== 'instructor') {
+            return res.status(403).json({
+                success: false,
+                message: 'Only instructors can remove TAs'
+            });
+        }
+        
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
+        
+        // Remove TA from all courses
+        const coursesCollection = db.collection('courses');
+        const result = await coursesCollection.updateMany(
+            { tas: taId },
+            { $pull: { tas: taId } }
+        );
+        
+        console.log(`Removed TA ${taId} from ${result.modifiedCount} courses`);
+        
+        res.json({
+            success: true,
+            message: 'TA removed from all courses successfully',
+            data: {
+                taId,
+                modifiedCount: result.modifiedCount
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error removing TA:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while removing TA'
         });
     }
 });

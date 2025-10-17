@@ -184,9 +184,14 @@ router.get('/instructor/:instructorId', async (req, res) => {
             });
         }
         
-        // Fetch courses for instructor
+        // Fetch courses for instructor (check both primary instructorId and instructors array)
         const collection = db.collection('courses');
-        const courses = await collection.find({ instructorId }).toArray();
+        const courses = await collection.find({
+            $or: [
+                { instructorId: instructorId },
+                { instructors: { $in: [instructorId] } }
+            ]
+        }).toArray();
         
         res.json({
             success: true,
@@ -454,6 +459,96 @@ router.get('/stats', async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Internal server error while fetching course stats'
+        });
+    }
+});
+
+/**
+ * POST /api/onboarding/complete
+ * Mark instructor's onboarding as complete
+ */
+router.post('/complete', async (req, res) => {
+    try {
+        const { courseId, instructorId } = req.body;
+        
+        // Get authenticated user information
+        const user = req.user;
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                message: 'Authentication required'
+            });
+        }
+        
+        // Only instructors can mark onboarding as complete
+        if (user.role !== 'instructor') {
+            return res.status(403).json({
+                success: false,
+                message: 'Only instructors can mark onboarding as complete'
+            });
+        }
+        
+        // Validate required fields
+        if (!courseId || !instructorId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Course ID and instructor ID are required'
+            });
+        }
+        
+        // Verify the instructor ID matches the authenticated user
+        if (user.userId !== instructorId) {
+            return res.status(403).json({
+                success: false,
+                message: 'Instructor ID does not match authenticated user'
+            });
+        }
+        
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
+        
+        // Update the course to mark onboarding as complete
+        const coursesCollection = db.collection('courses');
+        const result = await coursesCollection.updateOne(
+            { courseId: courseId },
+            { 
+                $set: { 
+                    isOnboardingComplete: true,
+                    lastModified: new Date()
+                }
+            }
+        );
+        
+        if (result.matchedCount === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'Course not found'
+            });
+        }
+        
+        console.log(`✅ [ONBOARDING] Marked onboarding as complete for course ${courseId} by instructor ${instructorId}`);
+        
+        res.json({
+            success: true,
+            message: 'Onboarding marked as complete',
+            data: {
+                courseId,
+                instructorId,
+                modifiedCount: result.modifiedCount
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error marking onboarding as complete:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while marking onboarding as complete'
         });
     }
 });

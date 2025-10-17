@@ -338,9 +338,15 @@ router.get('/:courseId', async (req, res) => {
             });
         }
         
-        // Query database for course details
+        // Query database for course details (check both primary instructorId and instructors array)
         const collection = db.collection('courses');
-        const course = await collection.findOne({ courseId, instructorId });
+        const course = await collection.findOne({
+            courseId: courseId,
+            $or: [
+                { instructorId: instructorId },
+                { instructors: { $in: [instructorId] } }
+            ]
+        });
         
         if (!course) {
             return res.status(404).json({
@@ -851,6 +857,8 @@ router.get('/available/all', async (req, res) => {
             courseId: course.courseId,
             courseName: course.courseName || course.courseId,
             instructorId: course.instructorId,
+            instructors: course.instructors || [course.instructorId],
+            tas: course.tas || [],
             status: course.status || 'active',
             createdAt: course.createdAt?.toISOString() || new Date().toISOString()
         }));
@@ -867,6 +875,292 @@ router.get('/available/all', async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Internal server error while fetching available courses'
+        });
+    }
+});
+
+/**
+ * POST /api/courses/:courseId/instructors
+ * Add an instructor to a course
+ */
+router.post('/:courseId/instructors', async (req, res) => {
+    try {
+        const { courseId } = req.params;
+        const { instructorId } = req.body;
+        
+        // Get authenticated user information
+        const user = req.user;
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                message: 'Authentication required'
+            });
+        }
+        
+        // Only instructors can add other instructors
+        if (user.role !== 'instructor') {
+            return res.status(403).json({
+                success: false,
+                message: 'Only instructors can add other instructors to courses'
+            });
+        }
+        
+        if (!instructorId) {
+            return res.status(400).json({
+                success: false,
+                message: 'instructorId is required'
+            });
+        }
+        
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
+        
+        // Add instructor to course using Course model
+        const result = await CourseModel.addInstructorToCourse(db, courseId, instructorId);
+        
+        if (!result.success) {
+            return res.status(400).json({
+                success: false,
+                message: result.error || 'Failed to add instructor to course'
+            });
+        }
+        
+        console.log(`Added instructor ${instructorId} to course ${courseId}`);
+        
+        res.json({
+            success: true,
+            message: 'Instructor added to course successfully',
+            data: {
+                courseId,
+                instructorId,
+                modifiedCount: result.modifiedCount
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error adding instructor to course:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while adding instructor to course'
+        });
+    }
+});
+
+/**
+ * POST /api/courses/:courseId/tas
+ * Add a TA to a course
+ */
+router.post('/:courseId/tas', async (req, res) => {
+    try {
+        const { courseId } = req.params;
+        const { taId } = req.body;
+        
+        // Get authenticated user information
+        const user = req.user;
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                message: 'Authentication required'
+            });
+        }
+        
+        // Only instructors can add TAs
+        if (user.role !== 'instructor') {
+            return res.status(403).json({
+                success: false,
+                message: 'Only instructors can add TAs to courses'
+            });
+        }
+        
+        if (!taId) {
+            return res.status(400).json({
+                success: false,
+                message: 'taId is required'
+            });
+        }
+        
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
+        
+        // Add TA to course using Course model
+        const result = await CourseModel.addTAToCourse(db, courseId, taId);
+        
+        if (!result.success) {
+            return res.status(400).json({
+                success: false,
+                message: result.error || 'Failed to add TA to course'
+            });
+        }
+        
+        console.log(`Added TA ${taId} to course ${courseId}`);
+        
+        res.json({
+            success: true,
+            message: 'TA added to course successfully',
+            data: {
+                courseId,
+                taId,
+                modifiedCount: result.modifiedCount
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error adding TA to course:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while adding TA to course'
+        });
+    }
+});
+
+/**
+ * POST /api/courses/:courseId/join
+ * Allow TAs to join courses themselves
+ */
+router.post('/:courseId/join', async (req, res) => {
+    try {
+        const { courseId } = req.params;
+        
+        // Get authenticated user information
+        const user = req.user;
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                message: 'Authentication required'
+            });
+        }
+        
+        // Only TAs can join courses themselves
+        if (user.role !== 'ta') {
+            return res.status(403).json({
+                success: false,
+                message: 'Only TAs can join courses'
+            });
+        }
+        
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
+        
+        // Check if course exists
+        const course = await CourseModel.getCourseById(db, courseId);
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                message: 'Course not found'
+            });
+        }
+        
+        // Add TA to course using Course model
+        const result = await CourseModel.addTAToCourse(db, courseId, user.userId);
+        
+        if (!result.success) {
+            return res.status(400).json({
+                success: false,
+                message: result.error || 'Failed to join course'
+            });
+        }
+        
+        console.log(`TA ${user.userId} joined course ${courseId}`);
+        
+        res.json({
+            success: true,
+            message: 'Successfully joined course',
+            data: {
+                courseId,
+                taId: user.userId,
+                courseName: course.courseName,
+                modifiedCount: result.modifiedCount
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error joining course:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while joining course'
+        });
+    }
+});
+
+/**
+ * GET /api/courses/ta/:taId
+ * Get all courses for a specific TA
+ */
+router.get('/ta/:taId', async (req, res) => {
+    try {
+        const { taId } = req.params;
+        
+        // Get authenticated user information
+        const user = req.user;
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                message: 'Authentication required'
+            });
+        }
+        
+        // Only TAs can access their own courses
+        if (user.role !== 'ta' || user.userId !== taId) {
+            return res.status(403).json({
+                success: false,
+                message: 'Access denied. You can only view your own courses.'
+            });
+        }
+        
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
+        
+        // Get courses for TA using Course model
+        const courses = await CourseModel.getCoursesForUser(db, taId, 'ta');
+        
+        // Transform the data to match expected format
+        const transformedCourses = courses.map(course => ({
+            courseId: course.courseId,
+            courseName: course.courseName,
+            instructorId: course.instructorId,
+            instructors: course.instructors || [course.instructorId],
+            tas: course.tas || [],
+            createdAt: course.createdAt?.toISOString() || new Date().toISOString(),
+            updatedAt: course.updatedAt?.toISOString() || new Date().toISOString(),
+            totalUnits: course.courseStructure?.totalUnits || 0
+        }));
+        
+        console.log(`Retrieved ${transformedCourses.length} courses for TA ${taId}`);
+        
+        res.json({
+            success: true,
+            data: transformedCourses
+        });
+        
+    } catch (error) {
+        console.error('Error fetching TA courses:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while fetching TA courses'
         });
     }
 });

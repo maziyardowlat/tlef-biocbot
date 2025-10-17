@@ -1374,3 +1374,50 @@
     border-color: rgba(255, 255, 255, 0.5);
     transform: translateY(-2px);
 }
+
+/* Join Course Section */
+.join-course-info {
+    background: #f8f9fa;
+    border: 2px solid #e9ecef;
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin: 1rem 0;
+}
+
+.join-course-info h3 {
+    color: #495057;
+    margin-bottom: 0.5rem;
+    font-size: 1.2rem;
+}
+
+.join-course-info p {
+    color: #6c757d;
+    margin-bottom: 1rem;
+    line-height: 1.5;
+}
+
+.course-details {
+    background: white;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    padding: 1rem;
+    margin-top: 1rem;
+}
+
+.course-info h4 {
+    color: #495057;
+    margin-bottom: 0.5rem;
+    font-size: 1.1rem;
+}
+
+.course-info p {
+    color: #6c757d;
+    margin-bottom: 0.25rem;
+    font-size: 0.9rem;
+}
+
+.course-info p:last-child {
+    margin-bottom: 0;
+    font-style: italic;
+    color: #28a745;
+}

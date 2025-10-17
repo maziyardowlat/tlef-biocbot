@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TA Hub - BiocBot Instructor</title>
+    <link rel="stylesheet" href="../styles/style.css">
+    <link rel="stylesheet" href="../styles/documents.css">
+    <link rel="stylesheet" href="./styles/ta-hub.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="logo-container">
+                <h2>BiocBot</h2>
+            </div>
+            <nav class="main-nav">
+                <ul>
+                    <li><a href="/instructor/home">Home</a></li>
+                    <li><a href="/instructor/documents">Course Upload</a></li>
+                    <li><a href="/instructor/flagged">Flagged Content</a></li>
+                    <li><a href="/instructor/downloads">Student Downloads</a></li>
+                    <li class="active"><a href="/instructor/ta-hub">TA Hub</a></li>
+                    <li><a href="/instructor/settings">Settings</a></li>
+                </ul>
+            </nav>
+            <div class="user-info">
+                <div class="user-avatar">I</div>
+                <div class="user-name" id="user-display-name">Instructor Name</div>
+                <div class="user-role">Instructor</div>
+                <div class="user-actions">
+                    <a href="/instructor/settings" class="user-action">Settings</a>
+                    <a href="#" id="logout-btn" class="user-action">Logout</a>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <div class="content-header">
+                <h1>TA Hub</h1>
+                <p>View Teaching Assistants assigned to your courses</p>
+            </div>
+
+            <!-- Current TAs Section -->
+            <div class="dashboard-section">
+                <h2>Current Teaching Assistants</h2>
+                <div id="tas-container" class="tas-grid">
+                    <!-- TAs will be loaded here -->
+                </div>
+            </div>
+
+            <!-- Course TAs Section -->
+            <div class="dashboard-section">
+                <h2>Course Assignments</h2>
+                <div id="course-tas-container" class="course-tas-list">
+                    <!-- Course TA assignments will be loaded here -->
+                </div>
+            </div>
+        </main>
+    </div>
+    
+    <!-- Remove TA Modal -->
+    <div id="remove-ta-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Remove Teaching Assistant</h2>
+                <button class="modal-close" onclick="closeRemoveTAModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to remove this Teaching Assistant from the course?</p>
+                <p><strong>This action cannot be undone.</strong></p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" onclick="closeRemoveTAModal()">Cancel</button>
+                <button class="btn-danger" id="confirm-remove-ta">Remove TA</button>
+            </div>
+        </div>
+    </div>
+    
+    <script src="../common/scripts/auth.js"></script>
+    <script src="./scripts/ta-hub.js"></script>
+</body>
+</html>

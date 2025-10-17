@@ -134,6 +134,14 @@ function isStudent() {
 }
 
 /**
+ * Check if current user is TA
+ * @returns {boolean} True if user is TA
+ */
+function isTA() {
+    return hasRole('ta');
+}
+
+/**
  * Get user's current course context
  * @returns {string|null} Current course ID or null
  */

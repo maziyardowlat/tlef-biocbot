@@ -15,7 +15,7 @@ const bcrypt = require('bcryptjs');
  *   username: String,            // Username for basic auth
  *   email: String,               // User email address
  *   passwordHash: String,        // Hashed password (for basic auth)
- *   role: String,                // "instructor" or "student"
+ *   role: String,                // "instructor", "student", or "ta"
  *   displayName: String,         // Display name for UI
  *   authProvider: String,        // "basic" or "saml" (for future)
  *   samlId: String,              // SAML identifier (for future)
@@ -66,7 +66,7 @@ async function createUser(db, userData) {
         username: userData.username,
         email: userData.email && userData.email.trim() !== '' ? userData.email : null,
         passwordHash,
-        role: userData.role, // "instructor" or "student"
+        role: userData.role, // "instructor", "student", or "ta"
         displayName: userData.displayName && userData.displayName.trim() !== '' ? userData.displayName : userData.username,
         authProvider: userData.authProvider || 'basic',
         samlId: userData.samlId || null,

@@ -154,7 +154,7 @@
                             </div>
                         </div>
 
-                        <div class="form-section">
+                        <div id="course-structure-section" class="form-section">
                             <h3>Course Structure</h3>
                             <div class="form-row">
                                 <div class="form-group">
@@ -172,9 +172,20 @@
                             </div>
                         </div>
 
+                        <div id="join-course-section" class="form-section" style="display: none;">
+                            <div class="join-course-info">
+                                <h3>Join Existing Course</h3>
+                                <p>You've selected an existing course. Click "Join Course" to become an instructor for this course.</p>
+                                <div class="course-details" id="selected-course-details">
+                                    <!-- Course details will be populated here -->
+                                </div>
+                            </div>
+                        </div>
+
                         <div class="step-actions">
                             <button type="button" class="btn-secondary" onclick="previousStep()">Back</button>
-                            <button type="submit" class="btn-primary">Continue to Unit Setup</button>
+                            <button type="submit" class="btn-primary" id="continue-btn">Continue to Unit Setup</button>
+                            <button type="button" class="btn-primary" id="join-course-btn" style="display: none;" onclick="joinExistingCourse()">Join Course</button>
                         </div>
                     </form>
                 </div>
