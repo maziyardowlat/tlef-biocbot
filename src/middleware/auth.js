@@ -103,6 +103,8 @@ function createAuthMiddleware(db) {
                         return res.redirect('/instructor');
                     } else if (user.role === 'student') {
                         return res.redirect('/student');
+                    } else if (user.role === 'ta') {
+                        return res.redirect('/ta');
                     } else {
                         return res.redirect('/login');
                     }
@@ -146,6 +148,89 @@ function createAuthMiddleware(db) {
     }
 
     /**
+     * Middleware to require TA role
+     * @param {Object} req - Express request object
+     * @param {Object} res - Express response object
+     * @param {Function} next - Express next function
+     */
+    function requireTA(req, res, next) {
+        return requireRole('ta')(req, res, next);
+    }
+
+    /**
+     * Middleware to require instructor or TA role (for shared instructor/TA pages)
+     * @param {Object} req - Express request object
+     * @param {Object} res - Express response object
+     * @param {Function} next - Express next function
+     */
+    async function requireInstructorOrTA(req, res, next) {
+        try {
+            // First check if user is authenticated
+            if (!req.session || !req.session.userId) {
+                if (req.path.startsWith('/api/')) {
+                    return res.status(401).json({
+                        success: false,
+                        error: 'Authentication required',
+                        redirect: '/login'
+                    });
+                }
+                return res.redirect('/login');
+            }
+
+            // Get user details
+            const user = await authService.getUserById(req.session.userId);
+            if (!user) {
+                // User not found, clear session
+                req.session.destroy();
+                if (req.path.startsWith('/api/')) {
+                    return res.status(401).json({
+                        success: false,
+                        error: 'User not found',
+                        redirect: '/login'
+                    });
+                }
+                return res.redirect('/login');
+            }
+
+            // Check role - allow both instructor and TA
+            if (user.role !== 'instructor' && user.role !== 'ta') {
+                if (req.path.startsWith('/api/')) {
+                    return res.status(403).json({
+                        success: false,
+                        error: 'Access denied. Instructor or TA role required.',
+                        userRole: user.role
+                    });
+                }
+                
+                // Redirect based on user's actual role
+                if (user.role === 'instructor') {
+                    return res.redirect('/instructor');
+                } else if (user.role === 'student') {
+                    return res.redirect('/student');
+                } else if (user.role === 'ta') {
+                    return res.redirect('/ta');
+                } else {
+                    return res.redirect('/login');
+                }
+            }
+
+            // Add user to request object for easy access
+            req.user = user;
+            next();
+
+        } catch (error) {
+            console.error('Error in requireInstructorOrTA middleware:', error);
+            if (req.path.startsWith('/api/')) {
+                return res.status(500).json({
+                    success: false,
+                    error: 'Authentication error'
+                });
+            }
+            return res.redirect('/login');
+        }
+    }
+
+    /**
      * Middleware to populate user data in request
      * @param {Object} req - Express request object
      * @param {Object} res - Express response object
@@ -184,6 +269,8 @@ function createAuthMiddleware(db) {
                 return res.redirect('/instructor');
             } else if (userRole === 'student') {
                 return res.redirect('/student');
+            } else if (userRole === 'ta') {
+                return res.redirect('/ta');
             }
         }
         next();
@@ -225,6 +312,8 @@ function createAuthMiddleware(db) {
         requireRole,
         requireInstructor,
         requireStudent,
+        requireTA,
+        requireInstructorOrTA,
         populateUser,
         redirectIfAuthenticated,
         requireCourseContext,

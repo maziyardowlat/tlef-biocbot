@@ -31,10 +31,10 @@ class AuthService {
             }
 
             // Validate role
-            if (!['instructor', 'student'].includes(userData.role)) {
+            if (!['instructor', 'student', 'ta'].includes(userData.role)) {
                 return {
                     success: false,
-                    error: 'Role must be either "instructor" or "student"'
+                    error: 'Role must be "instructor", "student", or "ta"'
                 };
             }
 

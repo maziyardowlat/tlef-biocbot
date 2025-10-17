@@ -11,7 +11,9 @@ const { MongoClient } = require('mongodb');
  *   _id: ObjectId,
  *   courseId: String,           // Unique course identifier
  *   courseName: String,         // Display name of the course
- *   instructorId: String,       // ID of the instructor
+ *   instructorId: String,       // ID of the primary instructor (for backward compatibility)
+ *   instructors: [String],      // Array of instructor IDs (primary instructor + additional instructors)
+ *   tas: [String],              // Array of TA IDs
  *   lectures: [                 // Array of lectures/units
  *     {
  *       name: String,           // e.g., "Unit 1", "Week 1"
@@ -562,6 +564,8 @@ async function createCourseFromOnboarding(db, onboardingData) {
             courseId,
             courseName,
             instructorId,
+            instructors: [instructorId], // Initialize with primary instructor
+            tas: [], // Initialize empty TA array
             courseDescription: courseDescription || '',
             assessmentCriteria: assessmentCriteria || '',
             courseMaterials: courseMaterials || [],
@@ -935,6 +939,201 @@ async function removeDocumentFromAnyUnit(db, courseId, documentId, instructorId)
     return { success: true, removedCount: result.modifiedCount, documentId };
 }
 
+/**
+ * Add an instructor to a course
+ * @param {Object} db - MongoDB database instance
+ * @param {string} courseId - Course identifier
+ * @param {string} instructorId - ID of the instructor to add
+ * @returns {Promise<Object>} Update result
+ */
+async function addInstructorToCourse(db, courseId, instructorId) {
+    const collection = getCoursesCollection(db);
+    
+    const now = new Date();
+    
+    // First, ensure the course exists
+    const course = await collection.findOne({ courseId });
+    if (!course) {
+        return { success: false, error: 'Course not found' };
+    }
+    
+    // Initialize arrays if they don't exist
+    const updateData = {
+        $addToSet: { instructors: instructorId },
+        $set: { updatedAt: now }
+    };
+    
+    // If this is the first instructor, also set instructorId for backward compatibility
+    if (!course.instructorId) {
+        updateData.$set.instructorId = instructorId;
+    }
+    
+    const result = await collection.updateOne(
+        { courseId },
+        updateData
+    );
+    
+    console.log(`Added instructor ${instructorId} to course ${courseId}`);
+    return { success: true, modifiedCount: result.modifiedCount };
+}
+
+/**
+ * Add a TA to a course
+ * @param {Object} db - MongoDB database instance
+ * @param {string} courseId - Course identifier
+ * @param {string} taId - ID of the TA to add
+ * @returns {Promise<Object>} Update result
+ */
+async function addTAToCourse(db, courseId, taId) {
+    const collection = getCoursesCollection(db);
+    
+    const now = new Date();
+    
+    // First, ensure the course exists
+    const course = await collection.findOne({ courseId });
+    if (!course) {
+        return { success: false, error: 'Course not found' };
+    }
+    
+    const result = await collection.updateOne(
+        { courseId },
+        {
+            $addToSet: { tas: taId },
+            $set: { updatedAt: now }
+        }
+    );
+    
+    console.log(`Added TA ${taId} to course ${courseId}`);
+    return { success: true, modifiedCount: result.modifiedCount };
+}
+
+/**
+ * Remove an instructor from a course
+ * @param {Object} db - MongoDB database instance
+ * @param {string} courseId - Course identifier
+ * @param {string} instructorId - ID of the instructor to remove
+ * @returns {Promise<Object>} Update result
+ */
+async function removeInstructorFromCourse(db, courseId, instructorId) {
+    const collection = getCoursesCollection(db);
+    
+    const now = new Date();
+    
+    const result = await collection.updateOne(
+        { courseId },
+        {
+            $pull: { instructors: instructorId },
+            $set: { updatedAt: now }
+        }
+    );
+    
+    console.log(`Removed instructor ${instructorId} from course ${courseId}`);
+    return { success: true, modifiedCount: result.modifiedCount };
+}
+
+/**
+ * Remove a TA from a course
+ * @param {Object} db - MongoDB database instance
+ * @param {string} courseId - Course identifier
+ * @param {string} taId - ID of the TA to remove
+ * @returns {Promise<Object>} Update result
+ */
+async function removeTAFromCourse(db, courseId, taId) {
+    const collection = getCoursesCollection(db);
+    
+    const now = new Date();
+    
+    const result = await collection.updateOne(
+        { courseId },
+        {
+            $pull: { tas: taId },
+            $set: { updatedAt: now }
+        }
+    );
+    
+    console.log(`Removed TA ${taId} from course ${courseId}`);
+    return { success: true, modifiedCount: result.modifiedCount };
+}
+
+/**
+ * Get all courses for a user (instructor or TA)
+ * @param {Object} db - MongoDB database instance
+ * @param {string} userId - User identifier
+ * @param {string} role - User role ('instructor' or 'ta')
+ * @returns {Promise<Array>} Array of courses
+ */
+async function getCoursesForUser(db, userId, role) {
+    const collection = getCoursesCollection(db);
+    
+    let query = {};
+    if (role === 'instructor') {
+        query = {
+            $or: [
+                { instructorId: userId },
+                { instructors: userId }
+            ]
+        };
+    } else if (role === 'ta') {
+        query = { tas: userId };
+    }
+    
+    const courses = await collection.find(query)
+        .project({
+            courseId: 1,
+            courseName: 1,
+            instructorId: 1,
+            instructors: 1,
+            tas: 1,
+            createdAt: 1,
+            updatedAt: 1
+        })
+        .sort({ updatedAt: -1 })
+        .toArray();
+    
+    return courses;
+}
+
+/**
+ * Check if a user has access to a course
+ * @param {Object} db - MongoDB database instance
+ * @param {string} courseId - Course identifier
+ * @param {string} userId - User identifier
+ * @param {string} role - User role
+ * @returns {Promise<boolean>} True if user has access
+ */
+async function userHasCourseAccess(db, courseId, userId, role) {
+    const collection = getCoursesCollection(db);
+    
+    let query = { courseId };
+    if (role === 'instructor') {
+        query.$or = [
+            { instructorId: userId },
+            { instructors: userId }
+        ];
+    } else if (role === 'ta') {
+        query.tas = userId;
+    } else if (role === 'student') {
+        // Students can access published courses (this might need to be more specific)
+        query.isPublished = true;
+    }
+    
+    const course = await collection.findOne(query);
+    return !!course;
+}
+
+/**
+ * Get a course by its ID
+ * @param {Object} db - MongoDB database instance
+ * @param {string} courseId - Course ID to find
+ * @returns {Promise<Object|null>} Course object or null if not found
+ */
+async function getCourseById(db, courseId) {
+    const collection = getCoursesCollection(db);
+    
+    const course = await collection.findOne({ courseId });
+    return course;
+}
+
 module.exports = {
     getCoursesCollection,
     upsertCourse,
@@ -955,5 +1154,12 @@ module.exports = {
     addDocumentToUnit,
     getDocumentsForUnit,
     removeDocumentFromUnit,
-    removeDocumentFromAnyUnit
+    removeDocumentFromAnyUnit,
+    addInstructorToCourse,
+    addTAToCourse,
+    removeInstructorFromCourse,
+    removeTAFromCourse,
+    getCoursesForUser,
+    userHasCourseAccess,
+    getCourseById
 };

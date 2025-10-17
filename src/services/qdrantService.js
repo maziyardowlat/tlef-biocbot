@@ -263,6 +263,8 @@ class QdrantService {
      * @param {string} documentData.content - Document text content
      * @param {string} documentData.fileName - Original filename
      * @param {string} documentData.mimeType - File MIME type
+     * @param {string} documentData.documentType - Document type for source attribution
+     * @param {string} documentData.type - Specific document type
      * @returns {Promise<Object>} Result of document processing
      */
     async processAndStoreDocument(documentData) {
@@ -446,6 +448,8 @@ class QdrantService {
                         documentId: documentData.documentId,
                         fileName: documentData.fileName,
                         mimeType: documentData.mimeType,
+                        documentType: documentData.documentType || 'unknown',
+                        type: documentData.type || 'unknown',
                         chunkIndex: i,
                         totalChunks: chunks.length,
                         chunkText: chunks[i],
@@ -575,6 +579,8 @@ class QdrantService {
                 lectureName: result.payload.lectureName,
                 documentId: result.payload.documentId,
                 fileName: result.payload.fileName,
+                documentType: result.payload.documentType,
+                type: result.payload.type,
                 chunkText: result.payload.chunkText,
                 chunkIndex: result.payload.chunkIndex,
                 timestamp: result.payload.timestamp

@@ -341,7 +341,17 @@ document.addEventListener('DOMContentLoaded', async () => {
                 
                 // Add real bot response
                 console.log('💬 [CHAT] Adding bot response to chat:', response.message.substring(0, 50) + '...');
-                addMessage(response.message, 'bot', true);
+                
+                // Log debug information for source attribution
+                if (response.debug) {
+                    console.log('🔍 [SOURCE_DEBUG] Search results count:', response.debug.searchResultsCount);
+                    console.log('🔍 [SOURCE_DEBUG] Average score:', response.debug.avgScore);
+                    console.log('🔍 [SOURCE_DEBUG] Max score:', response.debug.maxScore);
+                    console.log('🔍 [SOURCE_DEBUG] Document types:', response.debug.documentTypes);
+                    console.log('🔍 [SOURCE_DEBUG] Source attribution:', response.sourceAttribution);
+                }
+                
+                addMessage(response.message, 'bot', true, false, response.sourceAttribution);
                 
             } catch (error) {
                 // Remove typing indicator
@@ -350,7 +360,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 // Show error message
                 console.error('Chat error:', error);
                 console.log('💬 [CHAT] Adding error message to chat');
-                addMessage('Sorry, I encountered an error processing your message. Please try again.', 'bot', false, true);
+                addMessage('Sorry, I encountered an error processing your message. Please try again.', 'bot', false, true, null);
             }
         });
     }
@@ -402,8 +412,9 @@ document.addEventListener('DOMContentLoaded', async () => {
  * @param {string} sender - 'user' or 'bot'
  * @param {boolean} withSource - Whether to show source citation
  * @param {boolean} skipAutoSave - Whether to skip auto-save for this message
+ * @param {Object} sourceAttribution - Source attribution information
  */
-function addMessage(content, sender, withSource = false, skipAutoSave = false) {
+function addMessage(content, sender, withSource = false, skipAutoSave = false, sourceAttribution = null) {
     console.log('🔧 [ADD_MESSAGE] Function called with:', { content: content.substring(0, 50) + '...', sender, withSource });
     
     const chatMessages = document.getElementById('chat-messages');
@@ -435,7 +446,14 @@ function addMessage(content, sender, withSource = false, skipAutoSave = false) {
     if (withSource && sender === 'bot') {
         const sourceDiv = document.createElement('div');
         sourceDiv.classList.add('message-source');
-        sourceDiv.innerHTML = 'Source: TBD';
+        
+        // Use actual source attribution if available, otherwise show TBD
+        if (sourceAttribution && sourceAttribution.description) {
+            sourceDiv.innerHTML = `Source: ${sourceAttribution.description}`;
+        } else {
+            sourceDiv.innerHTML = 'Source: TBD';
+        }
+        
         footerDiv.appendChild(sourceDiv);
     }
     
@@ -4355,16 +4373,16 @@ function loadChatData(chatData) {
                     // Check if this is a special message type that needs special handling
                     if (messageData.messageType === 'assessment-start') {
                         // This is the assessment start message - add it as a regular bot message
-                        addMessage(messageData.content, 'bot', messageData.hasFlagButton, true); // Skip auto-save
+                        addMessage(messageData.content, 'bot', messageData.hasFlagButton, true, messageData.sourceAttribution); // Skip auto-save
                     } else if (messageData.messageType === 'practice-test-question') {
                         // This is a practice test question - add it as a regular bot message
-                        addMessage(messageData.content, 'bot', messageData.hasFlagButton, true); // Skip auto-save
+                        addMessage(messageData.content, 'bot', messageData.hasFlagButton, true, messageData.sourceAttribution); // Skip auto-save
                     } else if (messageData.messageType === 'mode-result') {
                         // This is a mode result message - add it as a regular bot message
-                        addMessage(messageData.content, 'bot', messageData.hasFlagButton, true); // Skip auto-save
+                        addMessage(messageData.content, 'bot', messageData.hasFlagButton, true, messageData.sourceAttribution); // Skip auto-save
                     } else {
                         // Regular bot message
-                        addMessage(messageData.content, 'bot', messageData.hasFlagButton, true); // Skip auto-save
+                        addMessage(messageData.content, 'bot', messageData.hasFlagButton, true, messageData.sourceAttribution); // Skip auto-save
                     }
                 }
             });
@@ -4409,7 +4427,7 @@ function loadChatData(chatData) {
             }
             
             // Show success message (skip auto-save for system messages)
-            addMessage('✅ Chat history loaded successfully! You can continue where you left off.', 'bot', false, true);
+            addMessage('✅ Chat history loaded successfully! You can continue where you left off.', 'bot', false, true, null);
             
             // Set flags for continuing chat
             sessionStorage.setItem('isContinuingChat', 'true');
@@ -4457,7 +4475,7 @@ function loadChatData(chatData) {
         
     } catch (error) {
         console.error('Error loading chat data:', error);
-        addMessage('❌ Error loading chat history. Please try again.', 'bot', false, true);
+        addMessage('❌ Error loading chat history. Please try again.', 'bot', false, true, null);
     }
 }
 

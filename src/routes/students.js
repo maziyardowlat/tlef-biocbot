@@ -106,8 +106,11 @@ router.get('/:courseId', async (req, res) => {
         // Verify the instructor has access to this course
         const coursesCollection = db.collection('courses');
         const course = await coursesCollection.findOne({ 
-            courseId: courseId, 
-            instructorId: user.userId 
+            courseId: courseId,
+            $or: [
+                { instructorId: user.userId },
+                { instructors: { $in: [user.userId] } }
+            ]
         });
         
         if (!course) {
@@ -366,8 +369,11 @@ router.get('/:courseId/:studentId/sessions', async (req, res) => {
         // Verify the instructor has access to this course
         const coursesCollection = db.collection('courses');
         const course = await coursesCollection.findOne({ 
-            courseId: courseId, 
-            instructorId: user.userId 
+            courseId: courseId,
+            $or: [
+                { instructorId: user.userId },
+                { instructors: { $in: [user.userId] } }
+            ]
         });
         
         if (!course) {
@@ -452,8 +458,11 @@ router.get('/:courseId/:studentId/sessions/:sessionId', async (req, res) => {
         // Verify the instructor has access to this course
         const coursesCollection = db.collection('courses');
         const course = await coursesCollection.findOne({ 
-            courseId: courseId, 
-            instructorId: user.userId 
+            courseId: courseId,
+            $or: [
+                { instructorId: user.userId },
+                { instructors: { $in: [user.userId] } }
+            ]
         });
         
         if (!course) {

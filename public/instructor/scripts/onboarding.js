@@ -254,13 +254,44 @@ function initializeFileUpload() {
 function handleCourseSelection(event) {
     const courseSelect = event.target;
     const customCourseSection = document.getElementById('custom-course-section');
+    const courseStructureSection = document.getElementById('course-structure-section');
+    const joinCourseSection = document.getElementById('join-course-section');
+    const continueBtn = document.getElementById('continue-btn');
+    const joinCourseBtn = document.getElementById('join-course-btn');
     
     if (courseSelect.value === 'custom') {
+        // Show custom course input and course structure
         customCourseSection.style.display = 'block';
-    } else {
+        courseStructureSection.style.display = 'block';
+        joinCourseSection.style.display = 'none';
+        continueBtn.style.display = 'inline-block';
+        joinCourseBtn.style.display = 'none';
+        
+        // Clear course data
+        onboardingState.courseData.course = null;
+        onboardingState.existingCourseId = null;
+    } else if (courseSelect.value === '') {
+        // No course selected
         customCourseSection.style.display = 'none';
-        // Store course data
+        courseStructureSection.style.display = 'block';
+        joinCourseSection.style.display = 'none';
+        continueBtn.style.display = 'inline-block';
+        joinCourseBtn.style.display = 'none';
+        
+        // Clear course data
+        onboardingState.courseData.course = null;
+        onboardingState.existingCourseId = null;
+    } else {
+        // Existing course selected
+        customCourseSection.style.display = 'none';
+        courseStructureSection.style.display = 'none';
+        joinCourseSection.style.display = 'block';
+        continueBtn.style.display = 'none';
+        joinCourseBtn.style.display = 'inline-block';
+        
+        // Store course data and populate course details
         onboardingState.courseData.course = courseSelect.value;
+        populateSelectedCourseDetails(courseSelect.value);
     }
 }
 
@@ -269,6 +300,91 @@ function handleCourseSelection(event) {
  */
 function handleCustomCourseInput(event) {
     onboardingState.courseData.course = event.target.value;
+}
+
+/**
+ * Populate selected course details for joining
+ */
+function populateSelectedCourseDetails(courseId) {
+    const courseDetailsContainer = document.getElementById('selected-course-details');
+    
+    // Find the course data from the available courses
+    const courseSelect = document.getElementById('course-select');
+    const selectedOption = courseSelect.querySelector(`option[value="${courseId}"]`);
+    
+    if (selectedOption) {
+        const courseName = selectedOption.textContent;
+        courseDetailsContainer.innerHTML = `
+            <div class="course-info">
+                <h4>${courseName}</h4>
+                <p><strong>Course ID:</strong> ${courseId}</p>
+                <p>You will be added as an instructor to this existing course.</p>
+            </div>
+        `;
+        
+        // Store the course ID for joining
+        onboardingState.existingCourseId = courseId;
+    }
+}
+
+/**
+ * Join an existing course
+ */
+async function joinExistingCourse() {
+    if (!onboardingState.existingCourseId) {
+        showNotification('No course selected to join.', 'error');
+        return;
+    }
+    
+    try {
+        console.log(`🚀 [ONBOARDING] Joining existing course: ${onboardingState.existingCourseId}`);
+        
+        // Show loading state
+        const joinBtn = document.getElementById('join-course-btn');
+        const originalText = joinBtn.textContent;
+        joinBtn.textContent = 'Joining Course...';
+        joinBtn.disabled = true;
+        
+        // Call the join course API
+        const response = await fetch(`/api/courses/${onboardingState.existingCourseId}/instructors`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            credentials: 'include',
+            body: JSON.stringify({
+                instructorId: getCurrentInstructorId()
+            })
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.message || 'Failed to join course');
+        }
+        
+        const result = await response.json();
+        console.log('✅ [ONBOARDING] Successfully joined course:', result);
+        
+        // Mark instructor's onboarding as complete since they joined an existing course
+        await markInstructorOnboardingComplete(onboardingState.existingCourseId);
+        
+        // Show success message
+        showNotification('Successfully joined the course!', 'success');
+        
+        // Redirect to the course page after a short delay
+        setTimeout(() => {
+            window.location.href = `/instructor/documents?courseId=${onboardingState.existingCourseId}`;
+        }, 2000);
+        
+    } catch (error) {
+        console.error('❌ [ONBOARDING] Error joining course:', error);
+        showNotification(`Error joining course: ${error.message}`, 'error');
+        
+        // Reset button state
+        const joinBtn = document.getElementById('join-course-btn');
+        joinBtn.textContent = 'Join Course';
+        joinBtn.disabled = false;
+    }
 }
 
 /**
@@ -312,13 +428,11 @@ async function handleCourseSetup(event) {
     submitButton.textContent = 'Creating course...';
     
     try {
-        // Check if course already exists for this instructor
+        // Check if course already exists (either for this instructor or globally)
         const existingCourse = await checkExistingCourse();
         if (existingCourse) {
-            showNotification('You already have a course set up. Redirecting to course page...', 'info');
-            setTimeout(() => {
-                window.location.href = `/instructor/documents?courseId=${existingCourse.courseId}`;
-            }, 2000);
+            // If course exists, join it instead of creating a new one
+            await joinExistingCourse(existingCourse);
             return;
         }
         
@@ -341,28 +455,94 @@ async function handleCourseSetup(event) {
 }
 
 /**
- * Check if instructor already has a course
+ * Check if course already exists (either for this instructor or globally by name)
  */
 async function checkExistingCourse() {
     try {
-        const instructorId = getCurrentInstructorId();
-        if (!instructorId) {
-            console.error('No instructor ID found. User not authenticated.');
-            return;
+        const courseName = onboardingState.courseData.course;
+        if (!courseName) {
+            return null;
         }
-        const response = await authenticatedFetch(`/api/onboarding/instructor/${instructorId}`);
         
-        if (response.ok) {
-            const result = await response.json();
-            if (result.data && result.data.courses && result.data.courses.length > 0) {
-                // Return the first course found
-                return result.data.courses[0];
+        // First check if instructor already has a course
+        const instructorId = getCurrentInstructorId();
+        if (instructorId) {
+            const response = await authenticatedFetch(`/api/onboarding/instructor/${instructorId}`);
+            
+            if (response.ok) {
+                const result = await response.json();
+                if (result.data && result.data.courses && result.data.courses.length > 0) {
+                    // Return the first course found for this instructor
+                    return result.data.courses[0];
+                }
+            }
+        }
+        
+        // Check if a course with this name already exists globally
+        const allCoursesResponse = await authenticatedFetch('/api/courses/available/all');
+        if (allCoursesResponse.ok) {
+            const allCoursesResult = await allCoursesResponse.json();
+            if (allCoursesResult.success && allCoursesResult.data) {
+                const existingCourse = allCoursesResult.data.find(course => 
+                    course.courseName.toLowerCase() === courseName.toLowerCase()
+                );
+                if (existingCourse) {
+                    return existingCourse;
+                }
             }
         }
         
         return null;
     } catch (error) {
         console.error('Error checking existing course:', error);
+        return null;
+    }
+}
+
+// Removed duplicate joinExistingCourse function - using the one without parameters
+
+/**
+ * Mark instructor's onboarding as complete
+ */
+async function markInstructorOnboardingComplete(courseId) {
+    try {
+        console.log(`🔧 [ONBOARDING] Marking instructor onboarding as complete for course: ${courseId}`);
+        
+        const response = await authenticatedFetch('/api/onboarding/complete', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                courseId: courseId,
+                instructorId: getCurrentInstructorId()
+            })
+        });
+        
+        if (response.ok) {
+            console.log('✅ [ONBOARDING] Successfully marked onboarding as complete');
+        } else {
+            console.warn('⚠️ [ONBOARDING] Failed to mark onboarding as complete, but continuing...');
+        }
+    } catch (error) {
+        console.error('❌ [ONBOARDING] Error marking onboarding as complete:', error);
+        // Don't throw error here as it's not critical for the join process
+    }
+}
+
+/**
+ * Get detailed course information
+ */
+async function getCourseDetails(courseId) {
+    try {
+        const response = await authenticatedFetch(`/api/onboarding/${courseId}`);
+        if (response.ok) {
+            const result = await response.json();
+            return result.data;
+        }
+        return null;
+    } catch (error) {
+        console.error('Error getting course details:', error);
         return null;
     }
 }
@@ -646,18 +826,21 @@ function validateCourseSetup() {
         }
     }
     
-    // Validate weeks input
-    const weeks = parseInt(weeksInput.value);
-    if (!weeks || weeks < 1 || weeks > 20) {
-        showFieldError(weeksInput, 'Please enter a valid number of weeks (1-20)');
-        isValid = false;
-    }
-    
-    // Validate lectures per week input
-    const lectures = parseInt(lecturesInput.value);
-    if (!lectures || lectures < 1 || lectures > 5) {
-        showFieldError(lecturesInput, 'Please enter a valid number of lectures per week (1-5)');
-        isValid = false;
+    // Only validate course structure fields if creating a new course (custom or no existing course)
+    if (courseSelect.value === 'custom' || courseSelect.value === '') {
+        // Validate weeks input
+        const weeks = parseInt(weeksInput.value);
+        if (!weeks || weeks < 1 || weeks > 20) {
+            showFieldError(weeksInput, 'Please enter a valid number of weeks (1-20)');
+            isValid = false;
+        }
+        
+        // Validate lectures per week input
+        const lectures = parseInt(lecturesInput.value);
+        if (!lectures || lectures < 1 || lectures > 5) {
+            showFieldError(lecturesInput, 'Please enter a valid number of lectures per week (1-5)');
+            isValid = false;
+        }
     }
     
     return isValid;

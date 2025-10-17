@@ -59,16 +59,31 @@ async function fetchCourseId() {
         return courseIdFromUrl;
     }
     
-    // If no course ID in URL, try to get it from the instructor's courses
+    // If no course ID in URL, try to get it from the user's courses
     try {
-        const instructorId = getCurrentInstructorId();
-        if (!instructorId) {
-            console.error('No instructor ID available');
+        const userId = getCurrentInstructorId(); // This works for both instructors and TAs
+        if (!userId) {
+            console.error('No user ID available');
             return null;
         }
         
-        console.log(`🔍 [GET_COURSE_ID] Fetching courses for instructor: ${instructorId}`);
-        const response = await fetch(`/api/onboarding/instructor/${instructorId}`, {
+        // Check if user is TA or instructor by checking if getCurrentInstructorId works
+        // If getCurrentInstructorId returns the same userId, it's an instructor
+        // If not, we'll assume it's a TA for now
+        let apiEndpoint;
+        let isTA = false;
+        
+        if (typeof getCurrentInstructorId === 'function' && getCurrentInstructorId() === userId) {
+            console.log(`🔍 [GET_COURSE_ID] Fetching courses for instructor: ${userId}`);
+            apiEndpoint = `/api/onboarding/instructor/${userId}`;
+            isTA = false;
+        } else {
+            console.log(`🔍 [GET_COURSE_ID] Fetching courses for TA: ${userId}`);
+            apiEndpoint = `/api/courses/ta/${userId}`;
+            isTA = true;
+        }
+        
+        const response = await fetch(apiEndpoint, {
             credentials: 'include'
         });
         
@@ -78,9 +93,16 @@ async function fetchCourseId() {
             const result = await response.json();
             console.log(`🔍 [GET_COURSE_ID] API response:`, result);
             
-            if (result.data && result.data.courses && result.data.courses.length > 0) {
+            let courses = [];
+            if (isTA) {
+                courses = result.data || [];
+            } else {
+                courses = result.data && result.data.courses ? result.data.courses : [];
+            }
+            
+            if (courses.length > 0) {
                 // Return the first course found
-                const firstCourse = result.data.courses[0];
+                const firstCourse = courses[0];
                 console.log(`🔍 [GET_COURSE_ID] Found course:`, firstCourse.courseId);
                 return firstCourse.courseId;
             } else {
