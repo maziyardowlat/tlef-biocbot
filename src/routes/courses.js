@@ -327,7 +327,7 @@ router.get('/:courseId', async (req, res) => {
             return await getCourseForStudent(req, res, courseId);
         }
         
-        console.log(`Instructor request for course: ${courseId}, instructor: ${instructorId}`);
+        console.log(`${user.role} request for course: ${courseId}, user: ${instructorId}`);
         
         // Get database instance from app.locals
         const db = req.app.locals.db;
@@ -338,13 +338,14 @@ router.get('/:courseId', async (req, res) => {
             });
         }
         
-        // Query database for course details (check both primary instructorId and instructors array)
+        // Query database for course details (check instructorId, instructors array, and tas array)
         const collection = db.collection('courses');
         const course = await collection.findOne({
             courseId: courseId,
             $or: [
                 { instructorId: instructorId },
-                { instructors: { $in: [instructorId] } }
+                { instructors: { $in: [instructorId] } },
+                { tas: { $in: [instructorId] } }
             ]
         });
         

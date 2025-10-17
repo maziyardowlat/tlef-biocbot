@@ -11,6 +11,13 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Wait for authentication to be ready
     await waitForAuth();
     
+    // Check if user is a TA and redirect them to TA courses page
+    if (typeof isTA === 'function' && isTA()) {
+        console.log('🔄 [TA_HUB] User is a TA, redirecting to TA courses page...');
+        window.location.href = '/ta/courses';
+        return;
+    }
+    
     // Initialize TA Hub functionality
     initializeTAHub();
     

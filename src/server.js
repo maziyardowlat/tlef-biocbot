@@ -289,7 +289,7 @@ function setupProtectedRoutes() {
         res.sendFile(path.join(__dirname, '../public/instructor/downloads.html'));
     });
 
-    app.get('/instructor/ta-hub', authMiddleware.requireInstructor, (req, res) => {
+    app.get('/instructor/ta-hub', authMiddleware.requireInstructorOrTA, (req, res) => {
         res.sendFile(path.join(__dirname, '../public/instructor/ta-hub.html'));
     });
 }

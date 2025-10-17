@@ -38,6 +38,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Wait for authentication to be initialized
     await waitForAuth();
     
+    // Update sidebar for TAs
+    updateSidebarForTA();
+    
     // Test if AI button exists
     const aiButton = document.getElementById('ai-generate-btn');
     console.log(`🔍 [DOM_LOADED] AI button found: ${!!aiButton}`);
@@ -939,6 +942,49 @@ let courseIdPromise = null;
 let redirectInProgress = false;
 
 /**
+ * Update sidebar navigation for TAs
+ */
+function updateSidebarForTA() {
+    // Check if user is a TA
+    if (typeof isTA === 'function' && isTA()) {
+        console.log('🔄 [SIDEBAR] Updating sidebar for TA user');
+        
+        // Update navigation menu
+        const navList = document.querySelector('.main-nav ul');
+        if (navList) {
+            navList.innerHTML = `
+                <li><a href="/ta">Dashboard</a></li>
+                <li class="active"><a href="/ta/courses">My Courses</a></li>
+                <li><a href="/ta/students">Student Support</a></li>
+                <li><a href="/ta/settings">Settings</a></li>
+            `;
+        }
+        
+        // Update user info
+        const userAvatar = document.querySelector('.user-avatar');
+        if (userAvatar) {
+            userAvatar.textContent = 'T';
+        }
+        
+        const userRole = document.querySelector('.user-role');
+        if (userRole) {
+            userRole.textContent = 'Teaching Assistant';
+        }
+        
+        // Update user actions
+        const userActions = document.querySelector('.user-actions');
+        if (userActions) {
+            userActions.innerHTML = `
+                <a href="/ta/settings" class="user-action">Settings</a>
+                <a href="#" id="logout-btn" class="user-action">Logout</a>
+            `;
+        }
+        
+        console.log('✅ [SIDEBAR] Sidebar updated for TA');
+    }
+}
+
+/**
  * Get the current course ID for the instructor
  * @returns {Promise<string>} Course ID
  */
@@ -980,20 +1026,18 @@ async function fetchCourseId() {
             return null;
         }
         
-        // Check if user is TA or instructor by checking if getCurrentInstructorId works
-        // If getCurrentInstructorId returns the same userId, it's an instructor
-        // If not, we'll assume it's a TA for now
+        // Check if user is TA or instructor using the proper role check
         let apiEndpoint;
-        let isTA = false;
+        let isTAUser = false;
         
-        if (typeof getCurrentInstructorId === 'function' && getCurrentInstructorId() === userId) {
-            console.log(`🔍 [GET_COURSE_ID] Fetching courses for instructor: ${userId}`);
-            apiEndpoint = `/api/onboarding/instructor/${userId}`;
-            isTA = false;
-        } else {
+        if (typeof isTA === 'function' && isTA()) {
             console.log(`🔍 [GET_COURSE_ID] Fetching courses for TA: ${userId}`);
             apiEndpoint = `/api/courses/ta/${userId}`;
-            isTA = true;
+            isTAUser = true;
+        } else {
+            console.log(`🔍 [GET_COURSE_ID] Fetching courses for instructor: ${userId}`);
+            apiEndpoint = `/api/onboarding/instructor/${userId}`;
+            isTAUser = false;
         }
         
         const response = await fetch(apiEndpoint, {
@@ -1007,7 +1051,7 @@ async function fetchCourseId() {
             console.log(`🔍 [GET_COURSE_ID] API response:`, result);
             
             let courses = [];
-            if (isTA) {
+            if (isTAUser) {
                 courses = result.data || [];
             } else {
                 courses = result.data && result.data.courses ? result.data.courses : [];
