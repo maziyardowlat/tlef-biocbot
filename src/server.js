@@ -277,11 +277,11 @@ function setupProtectedRoutes() {
         res.sendFile(path.join(__dirname, '../public/instructor/home.html'));
     });
 
-    app.get('/instructor/documents', authMiddleware.requireInstructorOrTA, (req, res) => {
+    app.get('/instructor/documents', authMiddleware.requireInstructorOrTA, authMiddleware.requireTAPermission('courses'), (req, res) => {
         res.sendFile(path.join(__dirname, '../public/instructor/index.html'));
     });
 
-    app.get('/instructor/flagged', authMiddleware.requireInstructorOrTA, (req, res) => {
+    app.get('/instructor/flagged', authMiddleware.requireInstructorOrTA, authMiddleware.requireTAPermission('flags'), (req, res) => {
         res.sendFile(path.join(__dirname, '../public/instructor/flagged.html'));
     });
 

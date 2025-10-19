@@ -51,11 +51,12 @@ async function getCurrentCourseId() {
 }
 
 async function fetchCourseId() {
-    // Check if we have a courseId from URL parameters (onboarding redirect)
+    // Check if we have a courseId from URL parameters (onboarding redirect or direct navigation)
     const urlParams = new URLSearchParams(window.location.search);
     const courseIdFromUrl = urlParams.get('courseId');
     
     if (courseIdFromUrl) {
+        console.log('🔍 [GET_COURSE_ID] Using courseId from URL parameter:', courseIdFromUrl);
         return courseIdFromUrl;
     }
     
@@ -67,20 +68,18 @@ async function fetchCourseId() {
             return null;
         }
         
-        // Check if user is TA or instructor by checking if getCurrentInstructorId works
-        // If getCurrentInstructorId returns the same userId, it's an instructor
-        // If not, we'll assume it's a TA for now
+        // Check if user is TA or instructor using the isTA function
         let apiEndpoint;
         let isTA = false;
         
-        if (typeof getCurrentInstructorId === 'function' && getCurrentInstructorId() === userId) {
-            console.log(`🔍 [GET_COURSE_ID] Fetching courses for instructor: ${userId}`);
-            apiEndpoint = `/api/onboarding/instructor/${userId}`;
-            isTA = false;
-        } else {
+        if (typeof isTA === 'function' && isTA()) {
             console.log(`🔍 [GET_COURSE_ID] Fetching courses for TA: ${userId}`);
             apiEndpoint = `/api/courses/ta/${userId}`;
             isTA = true;
+        } else {
+            console.log(`🔍 [GET_COURSE_ID] Fetching courses for instructor: ${userId}`);
+            apiEndpoint = `/api/onboarding/instructor/${userId}`;
+            isTA = false;
         }
         
         const response = await fetch(apiEndpoint, {
@@ -150,11 +149,224 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Wait for authentication to be ready before loading courses
     await waitForAuth();
     
+    // Setup sidebar based on user role
+    setupSidebarForUserRole();
+    
     // Load content directly
     initializeFilters();
     loadFlaggedContent();
     loadFlagStats();
 });
+
+/**
+ * Setup sidebar based on user role
+ */
+function setupSidebarForUserRole() {
+    const currentUser = getCurrentUser();
+    if (!currentUser) {
+        console.error('No user data available for sidebar setup');
+        return;
+    }
+    
+    const isTAUser = typeof isTA === 'function' && isTA();
+    
+    // Show/hide navigation items based on role
+    const instructorNavItems = [
+        'instructor-home-nav',
+        'instructor-documents-nav', 
+        'instructor-onboarding-nav',
+        'instructor-flagged-nav',
+        'instructor-downloads-nav',
+        'instructor-ta-hub-nav',
+        'instructor-settings-nav'
+    ];
+    
+    const taNavItems = [
+        'ta-dashboard-nav',
+        'ta-courses-nav',
+        'ta-support-nav',
+        'ta-settings-nav'
+    ];
+    
+    if (isTAUser) {
+        // Show TA navigation, hide instructor navigation
+        instructorNavItems.forEach(id => {
+            const element = document.getElementById(id);
+            if (element) element.style.display = 'none';
+        });
+        
+        taNavItems.forEach(id => {
+            const element = document.getElementById(id);
+            if (element) element.style.display = 'block';
+        });
+        
+        // Update user info for TA
+        const userAvatar = document.getElementById('user-avatar');
+        const userRole = document.getElementById('user-role');
+        
+        if (userAvatar) userAvatar.textContent = 'T';
+        if (userRole) userRole.textContent = 'Teaching Assistant';
+        
+        // Setup TA navigation handlers
+        setupTANavigationHandlers();
+        
+        console.log('✅ [SIDEBAR] TA sidebar configured');
+    } else {
+        // Show instructor navigation, hide TA navigation
+        taNavItems.forEach(id => {
+            const element = document.getElementById(id);
+            if (element) element.style.display = 'none';
+        });
+        
+        instructorNavItems.forEach(id => {
+            const element = document.getElementById(id);
+            if (element) element.style.display = 'block';
+        });
+        
+        // Update user info for instructor
+        const userAvatar = document.getElementById('user-avatar');
+        const userRole = document.getElementById('user-role');
+        
+        if (userAvatar) userAvatar.textContent = 'I';
+        if (userRole) userRole.textContent = 'Instructor';
+        
+        console.log('✅ [SIDEBAR] Instructor sidebar configured');
+    }
+}
+
+/**
+ * Setup TA navigation handlers
+ */
+function setupTANavigationHandlers() {
+    // TA My Courses link
+    const taMyCoursesLink = document.getElementById('ta-my-courses-link');
+    if (taMyCoursesLink) {
+        taMyCoursesLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            
+            // Check permissions first
+            checkTAPermissionsAndNavigate('courses', '/instructor/documents');
+        });
+    }
+    
+    // TA Student Support link (current page, so just prevent default)
+    const taStudentSupportLink = document.getElementById('ta-student-support-link');
+    if (taStudentSupportLink) {
+        taStudentSupportLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            // Already on student support page, do nothing
+        });
+    }
+}
+
+/**
+ * Check TA permissions and navigate if allowed
+ */
+async function checkTAPermissionsAndNavigate(feature, targetPage) {
+    try {
+        const taId = getCurrentInstructorId();
+        if (!taId) {
+            showNotification('No TA ID found. User not authenticated.', 'error');
+            return;
+        }
+        
+        // Get TA courses first
+        const response = await authenticatedFetch(`/api/courses/ta/${taId}`);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        
+        if (!result.success) {
+            throw new Error(result.message || 'Failed to fetch TA courses');
+        }
+        
+        const courses = result.data || [];
+        
+        if (courses.length === 0) {
+            showNotification('No courses assigned. Contact an instructor to be added to a course.', 'warning');
+            return;
+        }
+        
+        // Check permissions for each course
+        let hasPermission = false;
+        for (const course of courses) {
+            const permResponse = await authenticatedFetch(`/api/courses/${course.courseId}/ta-permissions/${taId}`);
+            
+            if (permResponse.ok) {
+                const permResult = await permResponse.json();
+                if (permResult.success) {
+                    const permissions = permResult.data.permissions;
+                    if ((feature === 'courses' && permissions.canAccessCourses) || 
+                        (feature === 'flags' && permissions.canAccessFlags)) {
+                        hasPermission = true;
+                        break;
+                    }
+                }
+            } else {
+                // Default permissions if not set
+                hasPermission = true;
+                break;
+            }
+        }
+        
+        if (!hasPermission) {
+            const featureName = feature === 'courses' ? 'My Courses' : 'Student Support';
+            showNotification(`You do not have permission to access ${featureName}. Contact your instructor.`, 'error');
+            return;
+        }
+        
+        // Navigate to the first assigned course
+        const firstCourse = courses[0];
+        window.location.href = `${targetPage}?courseId=${firstCourse.courseId}`;
+        
+    } catch (error) {
+        console.error('Error checking TA permissions:', error);
+        showNotification('Error checking permissions. Please try again.', 'error');
+    }
+}
+
+/**
+ * Get TA courses and navigate to specified page
+ */
+async function getTACoursesAndNavigate(targetPage) {
+    try {
+        const taId = getCurrentInstructorId();
+        if (!taId) {
+            showNotification('No TA ID found. User not authenticated.', 'error');
+            return;
+        }
+        
+        const response = await authenticatedFetch(`/api/courses/ta/${taId}`);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        
+        if (!result.success) {
+            throw new Error(result.message || 'Failed to fetch TA courses');
+        }
+        
+        const courses = result.data || [];
+        
+        if (courses.length === 0) {
+            showNotification('No courses assigned. Contact an instructor to be added to a course.', 'warning');
+            return;
+        }
+        
+        // Navigate to the first assigned course
+        const firstCourse = courses[0];
+        window.location.href = `${targetPage}?courseId=${firstCourse.courseId}`;
+        
+    } catch (error) {
+        console.error('Error loading TA courses:', error);
+        showNotification('Error loading courses. Please try again.', 'error');
+    }
+}
 
 /**
  * Initialize filter state to match dropdown values

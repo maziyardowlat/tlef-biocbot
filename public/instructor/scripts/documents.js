@@ -149,7 +149,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 /**
- * Load available courses for the instructor
+ * Load available courses for the instructor or TA
  */
 async function loadAvailableCourses() {
     try {
@@ -158,25 +158,20 @@ async function loadAvailableCourses() {
         
         if (!courseSelect) return;
         
-        // Fetch courses from the API
-        const response = await fetch('/api/courses/available/all');
+        let courses = [];
+        let uniqueCourses = [];
         
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+        // Check if user is a TA
+        if (typeof isTA === 'function' && isTA()) {
+            console.log('Loading courses for TA user');
+            courses = await loadTACourses();
+        } else {
+            console.log('Loading courses for instructor user');
+            courses = await loadInstructorCourses();
         }
-        
-        const result = await response.json();
-        
-        if (!result.success) {
-            throw new Error(result.message || 'Failed to fetch courses');
-        }
-        
-        const courses = result.data;
-        
-        console.log('All available courses from API:', courses);
         
         // Filter out duplicate courses by courseId
-        const uniqueCourses = courses.filter((course, index, self) => 
+        uniqueCourses = courses.filter((course, index, self) => 
             index === self.findIndex(c => c.courseId === course.courseId)
         );
         
@@ -193,23 +188,38 @@ async function loadAvailableCourses() {
             courseSelect.appendChild(option);
         });
         
-        // Set default selection to the most recent course (or first if only one)
+        // Check for courseId parameter in URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const courseIdParam = urlParams.get('courseId');
+        
+        // Set default selection
         if (uniqueCourses.length > 0) {
-            // Sort by creation date to get the most recent course first
-            const sortedCourses = uniqueCourses.sort((a, b) => {
-                const dateA = new Date(a.createdAt || 0);
-                const dateB = new Date(b.createdAt || 0);
-                return dateB - dateA; // Most recent first
-            });
+            let selectedCourse = null;
             
-            courseSelect.value = sortedCourses[0].courseId;
+            if (courseIdParam) {
+                // Use courseId from URL parameter
+                selectedCourse = uniqueCourses.find(course => course.courseId === courseIdParam);
+                console.log('Course ID from URL parameter:', courseIdParam);
+            }
+            
+            if (!selectedCourse) {
+                // Sort by creation date to get the most recent course first
+                const sortedCourses = uniqueCourses.sort((a, b) => {
+                    const dateA = new Date(a.createdAt || 0);
+                    const dateB = new Date(b.createdAt || 0);
+                    return dateB - dateA; // Most recent first
+                });
+                selectedCourse = sortedCourses[0];
+            }
+            
+            courseSelect.value = selectedCourse.courseId;
             
             // Update course title
             if (courseTitle) {
-                courseTitle.textContent = sortedCourses[0].courseName;
+                courseTitle.textContent = selectedCourse.courseName;
             }
             
-            console.log('Default course selected:', sortedCourses[0].courseName, sortedCourses[0].courseId);
+            console.log('Course selected:', selectedCourse.courseName, selectedCourse.courseId);
         }
         
         // Add event listener for course selection changes
@@ -235,6 +245,70 @@ async function loadAvailableCourses() {
         if (courseTitle) {
             courseTitle.textContent = 'No Course Available';
         }
+    }
+}
+
+/**
+ * Load courses for TA users
+ */
+async function loadTACourses() {
+    try {
+        const taId = getCurrentInstructorId(); // Using same function for user ID
+        if (!taId) {
+            console.error('No TA ID found. User not authenticated.');
+            return [];
+        }
+        
+        console.log(`Loading courses for TA: ${taId}`);
+        
+        // Fetch courses for this TA
+        const response = await authenticatedFetch(`/api/courses/ta/${taId}`);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        
+        if (!result.success) {
+            throw new Error(result.message || 'Failed to fetch TA courses');
+        }
+        
+        const courses = result.data || [];
+        console.log('TA courses loaded:', courses);
+        return courses;
+        
+    } catch (error) {
+        console.error('Error loading TA courses:', error);
+        return [];
+    }
+}
+
+/**
+ * Load courses for instructor users
+ */
+async function loadInstructorCourses() {
+    try {
+        // Fetch courses from the API
+        const response = await fetch('/api/courses/available/all');
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        
+        if (!result.success) {
+            throw new Error(result.message || 'Failed to fetch courses');
+        }
+        
+        const courses = result.data;
+        console.log('All available courses from API:', courses);
+        return courses;
+        
+    } catch (error) {
+        console.error('Error loading instructor courses:', error);
+        return [];
     }
 }
 
