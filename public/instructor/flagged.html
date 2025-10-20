@@ -16,19 +16,26 @@
             </div>
             <nav class="main-nav">
                 <ul>
-                    <li><a href="/instructor/home">Home</a></li>
-                    <li><a href="/instructor/documents">Course Upload</a></li>
-                    <li id="onboarding-nav-item" style="display: none;"><a href="/instructor/onboarding">Onboarding</a></li>
-                    <li class="active"><a href="/instructor/flagged">Flagged Content</a></li>
-                    <li><a href="/instructor/downloads">Student Downloads</a></li>
-                    <li><a href="/instructor/ta-hub">TA Hub</a></li>
-                    <li><a href="/instructor/settings">Settings</a></li>
+                    <!-- Instructor Navigation -->
+                    <li id="instructor-home-nav"><a href="/instructor/home">Home</a></li>
+                    <li id="instructor-documents-nav"><a href="/instructor/documents">Course Upload</a></li>
+                    <li id="instructor-onboarding-nav" style="display: none;"><a href="/instructor/onboarding">Onboarding</a></li>
+                    <li id="instructor-flagged-nav" class="active"><a href="/instructor/flagged">Flagged Content</a></li>
+                    <li id="instructor-downloads-nav"><a href="/instructor/downloads">Student Downloads</a></li>
+                    <li id="instructor-ta-hub-nav"><a href="/instructor/ta-hub">TA Hub</a></li>
+                    <li id="instructor-settings-nav"><a href="/instructor/settings">Settings</a></li>
+                    
+                    <!-- TA Navigation -->
+                    <li id="ta-dashboard-nav" style="display: none;"><a href="/ta">Dashboard</a></li>
+                    <li id="ta-courses-nav" style="display: none;"><a href="#" id="ta-my-courses-link">My Courses</a></li>
+                    <li id="ta-support-nav" style="display: none;" class="active"><a href="#" id="ta-student-support-link">Student Support</a></li>
+                    <li id="ta-settings-nav" style="display: none;"><a href="/ta/settings">Settings</a></li>
                 </ul>
             </nav>
             <div class="user-info">
-                <div class="user-avatar">I</div>
-                <div class="user-name" id="user-display-name">Instructor Name</div>
-                <div class="user-role">Instructor</div>
+                <div class="user-avatar" id="user-avatar">I</div>
+                <div class="user-name" id="user-display-name">User Name</div>
+                <div class="user-role" id="user-role">User Role</div>
                 <div class="user-actions">
                     <a href="/instructor/settings" class="user-action">Settings</a>
                     <a href="#" id="logout-btn" class="user-action">Logout</a>

@@ -6,10 +6,18 @@
 let currentTAs = [];
 let instructorCourses = [];
 let taToRemove = null;
+let taPermissions = {}; // Store TA permissions for each course
 
 document.addEventListener('DOMContentLoaded', async function() {
     // Wait for authentication to be ready
     await waitForAuth();
+    
+    // Check if user is a TA and redirect them to TA courses page
+    if (typeof isTA === 'function' && isTA()) {
+        console.log('🔄 [TA_HUB] User is a TA, redirecting to TA courses page...');
+        window.location.href = '/ta/courses';
+        return;
+    }
     
     // Initialize TA Hub functionality
     initializeTAHub();
@@ -193,6 +201,9 @@ async function loadCurrentTAs() {
         currentTAs = Array.from(assignedTAs.values());
         console.log('TAs assigned to instructor courses:', currentTAs);
         
+        // Load TA permissions for each course
+        await loadTAPermissions();
+        
         // Display TAs
         displayTAs();
         
@@ -202,6 +213,29 @@ async function loadCurrentTAs() {
     } catch (error) {
         console.error('Error loading TAs:', error);
         showNotification('Error loading TAs. Please try again.', 'error');
+    }
+}
+
+/**
+ * Load TA permissions for all courses
+ */
+async function loadTAPermissions() {
+    try {
+        // Load permissions for each course
+        for (const course of instructorCourses) {
+            const response = await authenticatedFetch(`/api/courses/${course.courseId}/ta-permissions`);
+            
+            if (response.ok) {
+                const result = await response.json();
+                if (result.success) {
+                    taPermissions[course.courseId] = result.data.taPermissions || {};
+                }
+            }
+        }
+        
+        console.log('TA permissions loaded:', taPermissions);
+    } catch (error) {
+        console.error('Error loading TA permissions:', error);
     }
 }
 
@@ -226,25 +260,52 @@ function displayTAs() {
         return;
     }
     
-    // Create TA cards
-    tasContainer.innerHTML = currentTAs.map(ta => `
-        <div class="ta-card">
-            <div class="ta-header">
-                <h3 class="ta-name">${ta.displayName}</h3>
-                <span class="ta-role">TA</span>
+    // Create TA cards with permission controls
+    tasContainer.innerHTML = currentTAs.map(ta => {
+        const coursePermissions = taPermissions[ta.courseId] || {};
+        const permissions = coursePermissions[ta.userId] || { canAccessCourses: true, canAccessFlags: true };
+        
+        return `
+            <div class="ta-card">
+                <div class="ta-header">
+                    <h3 class="ta-name">${ta.displayName}</h3>
+                    <span class="ta-role">TA</span>
+                </div>
+                <div class="ta-info">
+                    <p><strong>Username:</strong> ${ta.username}</p>
+                    <p><strong>Email:</strong> ${ta.email || 'Not provided'}</p>
+                    <p><strong>Course:</strong> ${ta.courseName || 'Unknown'}</p>
+                    <p><strong>Joined:</strong> ${new Date(ta.createdAt).toLocaleDateString()}</p>
+                </div>
+                
+                <!-- Permission Controls -->
+                <div class="ta-permissions">
+                    <h4>Permissions</h4>
+                    <div class="permission-controls">
+                        <label class="permission-toggle">
+                            <input type="checkbox" 
+                                   id="courses-permission-${ta.userId}" 
+                                   ${permissions.canAccessCourses ? 'checked' : ''}
+                                   onchange="updateTAPermission('${ta.courseId}', '${ta.userId}', 'courses', this.checked)">
+                            <span class="toggle-label">My Courses</span>
+                        </label>
+                        <label class="permission-toggle">
+                            <input type="checkbox" 
+                                   id="flags-permission-${ta.userId}" 
+                                   ${permissions.canAccessFlags ? 'checked' : ''}
+                                   onchange="updateTAPermission('${ta.courseId}', '${ta.userId}', 'flags', this.checked)">
+                            <span class="toggle-label">Flagged Content</span>
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="ta-actions">
+                    <button class="btn-small btn-secondary" onclick="viewTADetails('${ta.userId}')">View Details</button>
+                    <button class="btn-small btn-danger" onclick="openRemoveTAModal('${ta.userId}', '${ta.displayName}')">Remove</button>
+                </div>
             </div>
-            <div class="ta-info">
-                <p><strong>Username:</strong> ${ta.username}</p>
-                <p><strong>Email:</strong> ${ta.email || 'Not provided'}</p>
-                <p><strong>Course:</strong> ${ta.courseName || 'Unknown'}</p>
-                <p><strong>Joined:</strong> ${new Date(ta.createdAt).toLocaleDateString()}</p>
-            </div>
-            <div class="ta-actions">
-                <button class="btn-small btn-secondary" onclick="viewTADetails('${ta.userId}')">View Details</button>
-                <button class="btn-small btn-danger" onclick="openRemoveTAModal('${ta.userId}', '${ta.displayName}')">Remove</button>
-            </div>
-        </div>
-    `).join('');
+        `;
+    }).join('');
 }
 
 /**
@@ -332,6 +393,68 @@ async function handleRemoveTA() {
     } catch (error) {
         console.error('Error removing TA:', error);
         showNotification(`Error removing TA: ${error.message}`, 'error');
+    }
+}
+
+/**
+ * Update TA permission
+ */
+async function updateTAPermission(courseId, taId, permissionType, value) {
+    try {
+        // Determine which permission to update
+        const permissions = {
+            canAccessCourses: permissionType === 'courses' ? value : undefined,
+            canAccessFlags: permissionType === 'flags' ? value : undefined
+        };
+        
+        // Get current permissions to preserve the other one
+        const currentPermissions = taPermissions[courseId] && taPermissions[courseId][taId] 
+            ? taPermissions[courseId][taId] 
+            : { canAccessCourses: true, canAccessFlags: true };
+        
+        // Merge with current permissions
+        const updatedPermissions = {
+            canAccessCourses: permissions.canAccessCourses !== undefined ? permissions.canAccessCourses : currentPermissions.canAccessCourses,
+            canAccessFlags: permissions.canAccessFlags !== undefined ? permissions.canAccessFlags : currentPermissions.canAccessFlags
+        };
+        
+        const response = await authenticatedFetch(`/api/courses/${courseId}/ta-permissions/${taId}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(updatedPermissions)
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Update local permissions cache
+            if (!taPermissions[courseId]) {
+                taPermissions[courseId] = {};
+            }
+            taPermissions[courseId][taId] = updatedPermissions;
+            
+            const permissionName = permissionType === 'courses' ? 'My Courses' : 'Flagged Content';
+            const action = value ? 'enabled' : 'disabled';
+            showNotification(`${permissionName} access ${action} for ${taId}`, 'success');
+        } else {
+            throw new Error(result.message || 'Failed to update TA permission');
+        }
+        
+    } catch (error) {
+        console.error('Error updating TA permission:', error);
+        showNotification(`Error updating permission: ${error.message}`, 'error');
+        
+        // Revert the checkbox state
+        const checkbox = document.getElementById(`${permissionType}-permission-${taId}`);
+        if (checkbox) {
+            checkbox.checked = !value;
+        }
     }
 }
 

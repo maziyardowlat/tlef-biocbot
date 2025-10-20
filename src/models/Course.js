@@ -14,6 +14,12 @@ const { MongoClient } = require('mongodb');
  *   instructorId: String,       // ID of the primary instructor (for backward compatibility)
  *   instructors: [String],      // Array of instructor IDs (primary instructor + additional instructors)
  *   tas: [String],              // Array of TA IDs
+ *   taPermissions: {            // TA permission settings
+ *     [taId]: {                 // Permission object for each TA
+ *       canAccessCourses: Boolean,  // Can access My Courses page
+ *       canAccessFlags: Boolean    // Can access Flag page
+ *     }
+ *   },
  *   lectures: [                 // Array of lectures/units
  *     {
  *       name: String,           // e.g., "Unit 1", "Week 1"
@@ -1134,6 +1140,110 @@ async function getCourseById(db, courseId) {
     return course;
 }
 
+/**
+ * Update TA permissions for a specific course
+ * @param {Object} db - MongoDB database instance
+ * @param {string} courseId - Course identifier
+ * @param {string} taId - TA identifier
+ * @param {Object} permissions - Permission object
+ * @param {boolean} permissions.canAccessCourses - Can access My Courses page
+ * @param {boolean} permissions.canAccessFlags - Can access Flag page
+ * @returns {Promise<Object>} Update result
+ */
+async function updateTAPermissions(db, courseId, taId, permissions) {
+    const collection = getCoursesCollection(db);
+    
+    const now = new Date();
+    
+    // First, ensure the course exists
+    const course = await collection.findOne({ courseId });
+    if (!course) {
+        return { success: false, error: 'Course not found' };
+    }
+    
+    // Check if TA is assigned to this course
+    if (!course.tas || !course.tas.includes(taId)) {
+        return { success: false, error: 'TA is not assigned to this course' };
+    }
+    
+    // Update TA permissions
+    const result = await collection.updateOne(
+        { courseId },
+        {
+            $set: {
+                [`taPermissions.${taId}`]: {
+                    canAccessCourses: permissions.canAccessCourses,
+                    canAccessFlags: permissions.canAccessFlags,
+                    updatedAt: now
+                },
+                updatedAt: now
+            }
+        }
+    );
+    
+    if (result.modifiedCount > 0) {
+        console.log(`Updated TA permissions for ${taId} in course ${courseId}`);
+        return { success: true, modifiedCount: result.modifiedCount };
+    } else {
+        return { success: false, error: 'Failed to update TA permissions' };
+    }
+}
+
+/**
+ * Get TA permissions for a specific course and TA
+ * @param {Object} db - MongoDB database instance
+ * @param {string} courseId - Course identifier
+ * @param {string} taId - TA identifier
+ * @returns {Promise<Object>} TA permissions or default permissions
+ */
+async function getTAPermissions(db, courseId, taId) {
+    const collection = getCoursesCollection(db);
+    
+    const course = await collection.findOne({ courseId });
+    if (!course) {
+        return { success: false, error: 'Course not found' };
+    }
+    
+    // Check if TA is assigned to this course
+    if (!course.tas || !course.tas.includes(taId)) {
+        return { success: false, error: 'TA is not assigned to this course' };
+    }
+    
+    // Get TA permissions or return default permissions
+    const permissions = course.taPermissions && course.taPermissions[taId] 
+        ? course.taPermissions[taId]
+        : { canAccessCourses: true, canAccessFlags: true }; // Default to allowing access
+    
+    return { success: true, permissions };
+}
+
+/**
+ * Check if a TA has permission to access a specific feature
+ * @param {Object} db - MongoDB database instance
+ * @param {string} courseId - Course identifier
+ * @param {string} taId - TA identifier
+ * @param {string} feature - Feature to check ('courses' or 'flags')
+ * @returns {Promise<boolean>} True if TA has permission
+ */
+async function checkTAPermission(db, courseId, taId, feature) {
+    const result = await getTAPermissions(db, courseId, taId);
+    
+    if (!result.success) {
+        return false;
+    }
+    
+    const permissions = result.permissions;
+    
+    switch (feature) {
+        case 'courses':
+            return permissions.canAccessCourses;
+        case 'flags':
+            return permissions.canAccessFlags;
+        default:
+            return false;
+    }
+}
+
 module.exports = {
     getCoursesCollection,
     upsertCourse,
@@ -1161,5 +1271,8 @@ module.exports = {
     removeTAFromCourse,
     getCoursesForUser,
     userHasCourseAccess,
-    getCourseById
+    getCourseById,
+    updateTAPermissions,
+    getTAPermissions,
+    checkTAPermission
 };

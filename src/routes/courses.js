@@ -327,7 +327,7 @@ router.get('/:courseId', async (req, res) => {
             return await getCourseForStudent(req, res, courseId);
         }
         
-        console.log(`Instructor request for course: ${courseId}, instructor: ${instructorId}`);
+        console.log(`${user.role} request for course: ${courseId}, user: ${instructorId}`);
         
         // Get database instance from app.locals
         const db = req.app.locals.db;
@@ -338,13 +338,14 @@ router.get('/:courseId', async (req, res) => {
             });
         }
         
-        // Query database for course details (check both primary instructorId and instructors array)
+        // Query database for course details (check instructorId, instructors array, and tas array)
         const collection = db.collection('courses');
         const course = await collection.findOne({
             courseId: courseId,
             $or: [
                 { instructorId: instructorId },
-                { instructors: { $in: [instructorId] } }
+                { instructors: { $in: [instructorId] } },
+                { tas: { $in: [instructorId] } }
             ]
         });
         
@@ -1161,6 +1162,248 @@ router.get('/ta/:taId', async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Internal server error while fetching TA courses'
+        });
+    }
+});
+
+/**
+ * PUT /api/courses/:courseId/ta-permissions/:taId
+ * Update TA permissions for a specific course
+ */
+router.put('/:courseId/ta-permissions/:taId', async (req, res) => {
+    try {
+        const { courseId, taId } = req.params;
+        const { canAccessCourses, canAccessFlags } = req.body;
+        
+        // Get authenticated user information
+        const user = req.user;
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                message: 'Authentication required'
+            });
+        }
+        
+        // Only instructors can manage TA permissions
+        if (user.role !== 'instructor') {
+            return res.status(403).json({
+                success: false,
+                message: 'Only instructors can manage TA permissions'
+            });
+        }
+        
+        // Validate required fields
+        if (typeof canAccessCourses !== 'boolean' || typeof canAccessFlags !== 'boolean') {
+            return res.status(400).json({
+                success: false,
+                message: 'canAccessCourses and canAccessFlags must be boolean values'
+            });
+        }
+        
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
+        
+        // Check if instructor has access to this course
+        const hasAccess = await CourseModel.userHasCourseAccess(db, courseId, user.userId, 'instructor');
+        if (!hasAccess) {
+            return res.status(403).json({
+                success: false,
+                message: 'Access denied. You can only manage permissions for your own courses.'
+            });
+        }
+        
+        // Update TA permissions
+        const result = await CourseModel.updateTAPermissions(db, courseId, taId, {
+            canAccessCourses,
+            canAccessFlags
+        });
+        
+        if (!result.success) {
+            return res.status(400).json({
+                success: false,
+                message: result.error || 'Failed to update TA permissions'
+            });
+        }
+        
+        console.log(`Updated TA permissions for ${taId} in course ${courseId}`);
+        
+        res.json({
+            success: true,
+            message: 'TA permissions updated successfully',
+            data: {
+                courseId,
+                taId,
+                canAccessCourses,
+                canAccessFlags,
+                modifiedCount: result.modifiedCount
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error updating TA permissions:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while updating TA permissions'
+        });
+    }
+});
+
+/**
+ * GET /api/courses/:courseId/ta-permissions/:taId
+ * Get TA permissions for a specific course
+ */
+router.get('/:courseId/ta-permissions/:taId', async (req, res) => {
+    try {
+        const { courseId, taId } = req.params;
+        
+        // Get authenticated user information
+        const user = req.user;
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                message: 'Authentication required'
+            });
+        }
+        
+        // Allow instructors to view any TA's permissions, or TAs to view their own permissions
+        if (user.role !== 'instructor' && (user.role !== 'ta' || user.userId !== taId)) {
+            return res.status(403).json({
+                success: false,
+                message: 'Access denied. You can only view your own permissions or instructors can view any TA permissions.'
+            });
+        }
+        
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
+        
+        // Check if user has access to this course
+        // For instructors: check instructor access
+        // For TAs: check TA access
+        const userRole = user.role === 'instructor' ? 'instructor' : 'ta';
+        const hasAccess = await CourseModel.userHasCourseAccess(db, courseId, user.userId, userRole);
+        if (!hasAccess) {
+            return res.status(403).json({
+                success: false,
+                message: 'Access denied. You can only view permissions for courses you have access to.'
+            });
+        }
+        
+        // Get TA permissions
+        const result = await CourseModel.getTAPermissions(db, courseId, taId);
+        
+        if (!result.success) {
+            return res.status(400).json({
+                success: false,
+                message: result.error || 'Failed to get TA permissions'
+            });
+        }
+        
+        res.json({
+            success: true,
+            data: {
+                courseId,
+                taId,
+                permissions: result.permissions
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error getting TA permissions:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while getting TA permissions'
+        });
+    }
+});
+
+/**
+ * GET /api/courses/:courseId/ta-permissions
+ * Get all TA permissions for a specific course
+ */
+router.get('/:courseId/ta-permissions', async (req, res) => {
+    try {
+        const { courseId } = req.params;
+        
+        // Get authenticated user information
+        const user = req.user;
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                message: 'Authentication required'
+            });
+        }
+        
+        // Only instructors can view TA permissions
+        if (user.role !== 'instructor') {
+            return res.status(403).json({
+                success: false,
+                message: 'Only instructors can view TA permissions'
+            });
+        }
+        
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
+        
+        // Check if instructor has access to this course
+        const hasAccess = await CourseModel.userHasCourseAccess(db, courseId, user.userId, 'instructor');
+        if (!hasAccess) {
+            return res.status(403).json({
+                success: false,
+                message: 'Access denied. You can only view permissions for your own courses.'
+            });
+        }
+        
+        // Get course details
+        const course = await CourseModel.getCourseById(db, courseId);
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                message: 'Course not found'
+            });
+        }
+        
+        // Get permissions for all TAs in the course
+        const taPermissions = {};
+        if (course.tas && course.tas.length > 0) {
+            for (const taId of course.tas) {
+                const result = await CourseModel.getTAPermissions(db, courseId, taId);
+                if (result.success) {
+                    taPermissions[taId] = result.permissions;
+                }
+            }
+        }
+        
+        res.json({
+            success: true,
+            data: {
+                courseId,
+                taPermissions
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error getting all TA permissions:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while getting TA permissions'
         });
     }
 });

@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TA Settings - BiocBot</title>
+    <link rel="stylesheet" href="../styles/style.css">
+    <link rel="stylesheet" href="./styles/ta-settings.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="logo-container">
+                <h2>BiocBot</h2>
+            </div>
+            <nav class="main-nav">
+                <ul>
+                    <li><a href="/ta">Dashboard</a></li>
+                    <li><a href="#" id="ta-my-courses-link">My Courses</a></li>
+                    <li><a href="#" id="ta-student-support-link">Student Support</a></li>
+                    <li class="active"><a href="/ta/settings">Settings</a></li>
+                </ul>
+            </nav>
+            <div class="user-info">
+                <div class="user-avatar">T</div>
+                <div class="user-name" id="user-display-name">TA Name</div>
+                <div class="user-role">Teaching Assistant</div>
+                <div class="user-actions">
+                    <a href="/ta/settings" class="user-action">Settings</a>
+                    <a href="#" id="logout-btn" class="user-action">Logout</a>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <header class="settings-header">
+                <h1>Settings</h1>
+                <p>Manage your teaching assistant account and preferences</p>
+            </header>
+
+            <div class="settings-container">
+                <!-- Account Information -->
+                <div class="settings-section">
+                    <h2>Account Information</h2>
+                    <div class="settings-card">
+                        <div class="form-group">
+                            <label for="ta-name">Full Name</label>
+                            <input type="text" id="ta-name" placeholder="Enter your full name" disabled>
+                            <small class="form-help">Contact your instructor to update your name</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="ta-email">Email Address</label>
+                            <input type="email" id="ta-email" placeholder="Enter your email" disabled>
+                            <small class="form-help">Contact your instructor to update your email</small>
+                        </div>
+                        <div class="form-group">
+                            <label for="ta-id">TA ID</label>
+                            <input type="text" id="ta-id" placeholder="Your TA ID" disabled>
+                            <small class="form-help">This is your unique teaching assistant identifier</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Course Assignments -->
+                <div class="settings-section">
+                    <h2>Course Assignments</h2>
+                    <div class="settings-card">
+                        <div id="course-assignments">
+                            <p class="loading-text">Loading your course assignments...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Permissions -->
+                <div class="settings-section">
+                    <h2>Permissions</h2>
+                    <div class="settings-card">
+                        <div id="permissions-status">
+                            <p class="loading-text">Loading your permissions...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Preferences -->
+                <div class="settings-section">
+                    <h2>Preferences</h2>
+                    <div class="settings-card">
+                        <div class="form-group">
+                            <label for="notifications">Email Notifications</label>
+                            <div class="checkbox-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="notify-flags" checked>
+                                    <span class="checkmark"></span>
+                                    New flagged content notifications
+                                </label>
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="notify-courses" checked>
+                                    <span class="checkmark"></span>
+                                    Course assignment updates
+                                </label>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="timezone">Timezone</label>
+                            <select id="timezone" disabled>
+                                <option value="UTC-8">Pacific Time (UTC-8)</option>
+                                <option value="UTC-7">Mountain Time (UTC-7)</option>
+                                <option value="UTC-6">Central Time (UTC-6)</option>
+                                <option value="UTC-5">Eastern Time (UTC-5)</option>
+                            </select>
+                            <small class="form-help">Timezone settings coming soon</small>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Support -->
+                <div class="settings-section">
+                    <h2>Support</h2>
+                    <div class="settings-card">
+                        <div class="support-info">
+                            <h3>Need Help?</h3>
+                            <p>If you need assistance with your teaching assistant account or have questions about BiocBot, please contact your course instructor.</p>
+                            <div class="support-actions">
+                                <button class="btn btn-secondary" onclick="contactInstructor()">Contact Instructor</button>
+                                <button class="btn btn-outline" onclick="viewHelp()">View Help Guide</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+    
+    <script src="../common/scripts/auth.js"></script>
+    <script src="./scripts/ta-settings.js"></script>
+</body>
+</html>

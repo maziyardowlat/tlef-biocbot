@@ -222,9 +222,9 @@ function setupProtectedRoutes() {
         res.redirect('/instructor/flagged');
     });
 
-    // TA settings - redirect to instructor settings
+    // TA settings - serve dedicated TA settings page
     app.get('/ta/settings', authMiddleware.requireTA, (req, res) => {
-        res.redirect('/instructor/settings');
+        res.sendFile(path.join(__dirname, '../public/ta/settings.html'));
     });
 
     // Instructor routes (protected - instructors and TAs can access)
@@ -277,11 +277,11 @@ function setupProtectedRoutes() {
         res.sendFile(path.join(__dirname, '../public/instructor/home.html'));
     });
 
-    app.get('/instructor/documents', authMiddleware.requireInstructorOrTA, (req, res) => {
+    app.get('/instructor/documents', authMiddleware.requireInstructorOrTA, authMiddleware.requireTAPermission('courses'), (req, res) => {
         res.sendFile(path.join(__dirname, '../public/instructor/index.html'));
     });
 
-    app.get('/instructor/flagged', authMiddleware.requireInstructorOrTA, (req, res) => {
+    app.get('/instructor/flagged', authMiddleware.requireInstructorOrTA, authMiddleware.requireTAPermission('flags'), (req, res) => {
         res.sendFile(path.join(__dirname, '../public/instructor/flagged.html'));
     });
 
@@ -289,7 +289,7 @@ function setupProtectedRoutes() {
         res.sendFile(path.join(__dirname, '../public/instructor/downloads.html'));
     });
 
-    app.get('/instructor/ta-hub', authMiddleware.requireInstructor, (req, res) => {
+    app.get('/instructor/ta-hub', authMiddleware.requireInstructorOrTA, (req, res) => {
         res.sendFile(path.join(__dirname, '../public/instructor/ta-hub.html'));
     });
 }

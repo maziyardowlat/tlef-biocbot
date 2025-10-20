@@ -133,7 +133,7 @@ function createAuthMiddleware(db) {
      * @param {Object} res - Express response object
      * @param {Function} next - Express next function
      */
-    function requireInstructor(req, res, next) {
+    async function requireInstructor(req, res, next) {
         return requireRole('instructor')(req, res, next);
     }
 
@@ -307,6 +307,53 @@ function createAuthMiddleware(db) {
         }
     }
 
+    /**
+     * Middleware to check TA permissions for specific features
+     * @param {string} feature - Feature to check ('courses' or 'flags')
+     */
+    function requireTAPermission(feature) {
+        return async (req, res, next) => {
+            try {
+                // Only apply to TAs
+                if (req.user.role !== 'ta') {
+                    return next();
+                }
+
+                const taId = req.user.userId;
+                const courseId = req.query.courseId;
+
+                if (!courseId) {
+                    return res.status(400).json({
+                        success: false,
+                        message: 'Course ID is required to check TA permissions'
+                    });
+                }
+
+                // Import CourseModel here to avoid circular dependency
+                const CourseModel = require('../models/Course');
+
+                // Check if TA has permission for this feature
+                const hasPermission = await CourseModel.checkTAPermission(db, courseId, taId, feature);
+                
+                if (!hasPermission) {
+                    const featureName = feature === 'courses' ? 'My Courses' : 'Flagged Content';
+                    return res.status(403).json({
+                        success: false,
+                        message: `Access denied. You do not have permission to access ${featureName}. Contact your instructor.`
+                    });
+                }
+
+                next();
+            } catch (error) {
+                console.error('Error checking TA permission:', error);
+                return res.status(500).json({
+                    success: false,
+                    message: 'Error checking permissions'
+                });
+            }
+        };
+    }
+
     return {
         requireAuth,
         requireRole,
@@ -317,6 +364,7 @@ function createAuthMiddleware(db) {
         populateUser,
         redirectIfAuthenticated,
         requireCourseContext,
+        requireTAPermission,
         authService
     };
 }
