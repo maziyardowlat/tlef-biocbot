@@ -4,6 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TA Settings - BiocBot</title>
+    
+    <!-- Favicon - UBC Logo -->
+    <link rel="icon" type="image/x-icon" href="../assets/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/images/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="../assets/images/favicon-16x16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="../assets/images/apple-touch-icon.png">
+    <link rel="manifest" href="../assets/images/site.webmanifest">
+    
     <link rel="stylesheet" href="../styles/style.css">
     <link rel="stylesheet" href="./styles/ta-settings.css">
 </head>
@@ -79,53 +87,6 @@
                     <div class="settings-card">
                         <div id="permissions-status">
                             <p class="loading-text">Loading your permissions...</p>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Preferences -->
-                <div class="settings-section">
-                    <h2>Preferences</h2>
-                    <div class="settings-card">
-                        <div class="form-group">
-                            <label for="notifications">Email Notifications</label>
-                            <div class="checkbox-group">
-                                <label class="checkbox-label">
-                                    <input type="checkbox" id="notify-flags" checked>
-                                    <span class="checkmark"></span>
-                                    New flagged content notifications
-                                </label>
-                                <label class="checkbox-label">
-                                    <input type="checkbox" id="notify-courses" checked>
-                                    <span class="checkmark"></span>
-                                    Course assignment updates
-                                </label>
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label for="timezone">Timezone</label>
-                            <select id="timezone" disabled>
-                                <option value="UTC-8">Pacific Time (UTC-8)</option>
-                                <option value="UTC-7">Mountain Time (UTC-7)</option>
-                                <option value="UTC-6">Central Time (UTC-6)</option>
-                                <option value="UTC-5">Eastern Time (UTC-5)</option>
-                            </select>
-                            <small class="form-help">Timezone settings coming soon</small>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Support -->
-                <div class="settings-section">
-                    <h2>Support</h2>
-                    <div class="settings-card">
-                        <div class="support-info">
-                            <h3>Need Help?</h3>
-                            <p>If you need assistance with your teaching assistant account or have questions about BiocBot, please contact your course instructor.</p>
-                            <div class="support-actions">
-                                <button class="btn btn-secondary" onclick="contactInstructor()">Contact Instructor</button>
-                                <button class="btn btn-outline" onclick="viewHelp()">View Help Guide</button>
-                            </div>
                         </div>
                     </div>
                 </div>

@@ -300,7 +300,6 @@ function displayTAs() {
                 </div>
                 
                 <div class="ta-actions">
-                    <button class="btn-small btn-secondary" onclick="viewTADetails('${ta.userId}')">View Details</button>
                     <button class="btn-small btn-danger" onclick="openRemoveTAModal('${ta.userId}', '${ta.displayName}')">Remove</button>
                 </div>
             </div>
@@ -331,9 +330,6 @@ function displayCourseTAs() {
             <div class="course-ta-info">
                 <h4>${course.courseName}</h4>
                 <p>Course ID: ${course.courseId}</p>
-            </div>
-            <div class="course-ta-actions">
-                <button class="btn-small btn-secondary" onclick="manageCourseTAs('${course.courseId}')">Manage TAs</button>
             </div>
         </div>
     `).join('');

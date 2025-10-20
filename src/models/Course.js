@@ -1090,6 +1090,7 @@ async function getCoursesForUser(db, userId, role) {
             instructorId: 1,
             instructors: 1,
             tas: 1,
+            courseStructure: 1,
             createdAt: 1,
             updatedAt: 1
         })
