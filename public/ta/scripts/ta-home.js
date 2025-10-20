@@ -16,6 +16,9 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Load TA permissions
     await loadTAPermissions();
     
+    // Re-display courses with permission data
+    displayTACourses();
+    
     // Initialize dashboard
     initializeDashboard();
 });
@@ -302,7 +305,12 @@ function displayTACourses() {
     }
     
     // Create course cards
-    coursesContainer.innerHTML = taCourses.map(course => `
+    coursesContainer.innerHTML = taCourses.map(course => {
+        const coursePermissions = taPermissions[course.courseId] || {};
+        const canAccessCourses = coursePermissions.canAccessCourses !== false; // Default to true
+        const canAccessFlags = coursePermissions.canAccessFlags !== false; // Default to true
+        
+        return `
         <div class="course-card">
             <div class="course-header">
                 <h3>${course.courseName}</h3>
@@ -314,11 +322,18 @@ function displayTACourses() {
                 <p><strong>Units:</strong> ${course.totalUnits || 0}</p>
             </div>
             <div class="course-actions">
-                <a href="/instructor/documents?courseId=${course.courseId}" class="btn-secondary">View Course</a>
-                <a href="/instructor/flagged?courseId=${course.courseId}" class="btn-primary">Student Support</a>
+                ${canAccessCourses 
+                    ? `<a href="/instructor/documents?courseId=${course.courseId}" class="btn-secondary">View Course</a>`
+                    : `<span class="btn-disabled">Hidden by instructor</span>`
+                }
+                ${canAccessFlags 
+                    ? `<a href="/instructor/flagged?courseId=${course.courseId}" class="btn-primary">Student Support</a>`
+                    : `<span class="btn-disabled">Hidden by instructor</span>`
+                }
             </div>
         </div>
-    `).join('');
+        `;
+    }).join('');
 }
 
 /**

@@ -222,9 +222,9 @@ function setupProtectedRoutes() {
         res.redirect('/instructor/flagged');
     });
 
-    // TA settings - redirect to instructor settings
+    // TA settings - serve dedicated TA settings page
     app.get('/ta/settings', authMiddleware.requireTA, (req, res) => {
-        res.redirect('/instructor/settings');
+        res.sendFile(path.join(__dirname, '../public/ta/settings.html'));
     });
 
     // Instructor routes (protected - instructors and TAs can access)
