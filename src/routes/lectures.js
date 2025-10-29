@@ -12,13 +12,13 @@ router.use(express.json());
  * Update the publish status of a lecture/week
  */
 router.post('/publish', async (req, res) => {
-    const { lectureName, isPublished, instructorId, courseId } = req.body;
+    const { lectureName, isPublished, courseId } = req.body;
     
     // Validate required fields
-    if (!lectureName || typeof isPublished !== 'boolean' || !instructorId || !courseId) {
+    if (!lectureName || typeof isPublished !== 'boolean' || !courseId) {
         return res.status(400).json({
             success: false,
-            message: 'Missing required fields: lectureName, isPublished, instructorId, courseId'
+            message: 'Missing required fields: lectureName, isPublished, courseId'
         });
     }
     
@@ -32,16 +32,25 @@ router.post('/publish', async (req, res) => {
             });
         }
         
-        // Update the publish status in MongoDB
+        // Authorize: instructors and TAs with course access can toggle publish
+        const user = req.user;
+        if (!user) {
+            return res.status(401).json({ success: false, message: 'Authentication required' });
+        }
+        const hasAccess = await CourseModel.userHasCourseAccess(db, courseId, user.userId, user.role);
+        if (!hasAccess) {
+            return res.status(403).json({ success: false, message: 'No access to this course' });
+        }
+        // Update the publish status in MongoDB (track who updated without overwriting instructorId)
         const result = await CourseModel.updateLecturePublishStatus(
-            db, 
-            courseId, 
-            lectureName, 
-            isPublished, 
-            instructorId
+            db,
+            courseId,
+            lectureName,
+            isPublished,
+            user.userId
         );
         
-        console.log(`Publish status updated for ${lectureName} by instructor ${instructorId}: ${isPublished}`);
+        console.log(`Publish status updated for ${lectureName} by ${user.userId}: ${isPublished}`);
         
         res.json({
             success: true,
@@ -51,7 +60,7 @@ router.post('/publish', async (req, res) => {
                 isPublished,
                 courseId,
                 updatedAt: new Date().toISOString(),
-                instructorId,
+                lastUpdatedById: user.userId,
                 created: result.created
             }
         });

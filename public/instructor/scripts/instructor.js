@@ -3382,6 +3382,38 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 /**
+ * Focus and expand a specific unit on the documents page based on URL param
+ * Supports /instructor/documents?courseId=...&unit=Unit%203
+ */
+function focusUnitFromURL() {
+    try {
+        const params = new URLSearchParams(window.location.search);
+        const unitNameParam = params.get('unit');
+        if (!unitNameParam) return;
+        
+        // Find the accordion item whose folder-name matches the unit
+        const folderEls = findElementsContainingText('.accordion-item .folder-name', unitNameParam);
+        if (!folderEls || folderEls.length === 0) {
+            return;
+        }
+        
+        const accordionItem = folderEls[0].closest('.accordion-item');
+        if (!accordionItem) return;
+        const header = accordionItem.querySelector('.accordion-header');
+        const content = accordionItem.querySelector('.accordion-content');
+        
+        if (content && content.classList.contains('collapsed') && header) {
+            header.click();
+        }
+        
+        // Scroll into view
+        accordionItem.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch (e) {
+        console.warn('focusUnitFromURL error:', e);
+    }
+}
+
+/**
  * Toggle accordion with dynamic height calculation
  * @param {HTMLElement} content - The accordion content element
  * @param {HTMLElement} toggle - The toggle icon element
@@ -4610,6 +4642,11 @@ function generateUnitsFromOnboarding(onboardingData) {
     setTimeout(() => {
         ensureActionButtonsExist();
     }, 200); // Reduced timeout since buttons are already there
+
+    // Focus a specific unit if requested via URL (e.g., ?unit=Unit%203)
+    setTimeout(() => {
+        focusUnitFromURL();
+    }, 300);
 }
 
 /**
@@ -5589,6 +5626,11 @@ function renderCourseUnits(units) {
         
         accordionContainer.appendChild(accordionItem);
     });
+
+    // After rendering units, focus a unit if specified in URL
+    setTimeout(() => {
+        focusUnitFromURL();
+    }, 100);
 }
 
 document.addEventListener('DOMContentLoaded', async () => {

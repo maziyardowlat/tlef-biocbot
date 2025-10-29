@@ -51,23 +51,64 @@
             </header>
 
             <div class="home-container">
-                <!-- First Placeholder Section -->
-                <section class="home-section">
+                <!-- Flagged Content Section -->
+                <section class="home-section flagged-section">
                     <div class="section-header">
-                        <h2>Placeholder Section</h2>
+                        <h2>Flagged Content</h2>
                     </div>
-                    <div class="placeholder-content">
-                        <p>This is a placeholder for future content.</p>
+                    <div class="flagged-content">
+                        <div class="flagged-info">
+                            <p class="flagged-description">Review and respond to questions flagged by students</p>
+                            <div class="flagged-stats">
+                                <span class="flagged-count-label">Pending Flags:</span>
+                                <span class="flagged-count" id="pending-flags-count">0</span>
+                            </div>
+                        </div>
+                        <a href="/instructor/flagged" class="action-btn primary" id="view-flags-btn">
+                            View Flagged Questions →
+                        </a>
                     </div>
                 </section>
 
-                <!-- Second Placeholder Section -->
-                <section class="home-section">
+                <!-- Missing Items Alert Section -->
+                <section class="home-section missing-items-section" id="missing-items-section" style="display: none;">
                     <div class="section-header">
-                        <h2>Placeholder Section</h2>
+                        <h2>⚠️ Missing Course Content</h2>
                     </div>
-                    <div class="placeholder-content">
-                        <p>This is another placeholder for future content.</p>
+                    <div class="missing-items-content">
+                        <p class="missing-items-description">
+                            The following units are missing required content. Each unit must have at least one learning objective, one lecture note, and one practice question/tutorial.
+                        </p>
+                        <div class="missing-items-list" id="missing-items-list">
+                            <!-- Missing items will be populated by JavaScript -->
+                        </div>
+                    </div>
+                </section>
+
+                <!-- All Complete Message -->
+                <section class="home-section complete-section" id="complete-section" style="display: none;">
+                    <div class="section-header">
+                        <h2>✅ All Units Complete</h2>
+                    </div>
+                    <div class="complete-content">
+                        <p>All units have the required learning objectives, lecture notes, and practice questions.</p>
+                    </div>
+                </section>
+
+                <!-- Disclaimer Card -->
+                <section class="home-section disclaimer-section">
+                    <div class="section-header">
+                        <h2>Important Disclaimers</h2>
+                    </div>
+                    <div class="disclaimer-content">
+                        <div class="disclaimer-item">
+                            <strong>Copyright Permission:</strong>
+                            <p>All course content must have proper permissions from the copyright holder before being uploaded to BiocBot. Instructors are responsible for ensuring they have the necessary rights to use all uploaded materials.</p>
+                        </div>
+                        <div class="disclaimer-item">
+                            <strong>AI Processing:</strong>
+                            <p>Uploaded course content will be processed and sent to AI services (including GPT) for embedding generation and question answering. By uploading content, you acknowledge that your materials will be processed by these AI systems.</p>
+                        </div>
                     </div>
                 </section>
             </div>

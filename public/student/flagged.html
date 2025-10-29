@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BiocBot - My Flags</title>
+    <link rel="icon" type="image/x-icon" href="../assets/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/images/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="../assets/images/favicon-16x16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="../assets/images/apple-touch-icon.png">
+    <link rel="manifest" href="../assets/images/site.webmanifest">
+    <link rel="stylesheet" href="../styles/style.css">
+    <link rel="stylesheet" href="../styles/flagged.css">
+</head>
+<body>
+    <div class="app-container">
+        <aside class="sidebar">
+            <div class="logo-container">
+                <h2>BiocBot</h2>
+            </div>
+            <nav class="main-nav">
+                <ul>
+                    <li><a href="/student"><span class="icon"></span> Chat</a></li>
+                    <li><a href="/student/history"><span class="icon"></span> Chat History</a></li>
+                    <li class="active"><a href="/student/flagged"><span class="icon"></span> Flagged</a></li>
+                    <li><a href="/student/settings"><span class="icon"></span> Settings</a></li>
+                </ul>
+            </nav>
+            <div class="user-info">
+                <div class="user-avatar">S</div>
+                <div class="user-name" id="user-display-name">Student Name</div>
+                <div class="user-role">Student</div>
+                <div class="user-actions">
+                    <a href="/student/settings" class="user-action">Settings</a>
+                    <a href="#" id="logout-btn" class="user-action">Logout</a>
+                </div>
+            </div>
+        </aside>
+        <main class="main-content">
+            <header class="flagged-header">
+                <h1>My Flagged Messages</h1>
+            </header>
+            <div class="flagged-subtitle">
+                <p>View flags you’ve submitted and any instructor responses.</p>
+            </div>
+            <div class="filter-controls">
+                <div class="filter-group">
+                    <label for="status-filter">Status:</label>
+                    <select id="status-filter">
+                        <option value="all">All</option>
+                        <option value="pending">Pending Review</option>
+                        <option value="reviewed">Reviewed</option>
+                        <option value="resolved">Resolved</option>
+                        <option value="dismissed">Dismissed</option>
+                    </select>
+                </div>
+                <button id="refresh-flags" class="refresh-btn">Refresh</button>
+            </div>
+            <div class="flagged-content-container">
+                <div id="loading-state" class="loading-message">
+                    <p>Loading your flags...</p>
+                </div>
+                <div id="empty-state" class="empty-message" style="display: none;">
+                    <p>No flags found.</p>
+                </div>
+                <div id="flagged-list" class="flagged-list"></div>
+            </div>
+        </main>
+    </div>
+    <script src="../common/scripts/auth.js"></script>
+    <script src="./scripts/flagged.js"></script>
+    <script>
+        document.addEventListener('auth:ready', function(e){
+            if (e.detail && e.detail.role !== 'student') {
+                window.location.href = '/login';
+            }
+        });
+    </script>
+    
+</body>
+</html>
+

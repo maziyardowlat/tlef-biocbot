@@ -3,6 +3,34 @@ document.addEventListener('DOMContentLoaded', async () => {
     const chatInput = document.getElementById('chat-input');
     const chatMessages = document.getElementById('chat-messages');
     
+    // Guard: Only allow students on this page; redirect others immediately
+    const handleRoleGuard = (user) => {
+        if (!user) return; // auth.js will handle redirect if unauthenticated
+        if (user.role === 'student') return;
+        if (user.role === 'instructor') {
+            window.location.href = '/instructor';
+            return;
+        }
+        if (user.role === 'ta') {
+            window.location.href = '/ta';
+            return;
+        }
+        window.location.href = '/login';
+    };
+    
+    // Perform role check as early as possible
+    try {
+        const existingUser = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
+        if (existingUser) {
+            handleRoleGuard(existingUser);
+        } else {
+            document.addEventListener('auth:ready', (e) => handleRoleGuard(e.detail));
+        }
+    } catch (e) {
+        // If anything goes wrong, rely on server-side protection
+        console.warn('Student role guard failed softly:', e);
+    }
+    
     // Initialize chat
     console.log('Student chat interface initialized');
     

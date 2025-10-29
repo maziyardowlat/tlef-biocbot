@@ -130,6 +130,26 @@ async function getFlaggedQuestionById(db, flagId) {
 }
 
 /**
+ * Get all flagged questions for a specific student (optionally scoped to a course)
+ * @param {Object} db - MongoDB database instance
+ * @param {string} studentId - Student identifier
+ * @param {string|null} courseId - Optional course identifier to filter
+ * @returns {Promise<Array>} Array of flagged questions for the student
+ */
+async function getFlaggedQuestionsForStudent(db, studentId, courseId = null) {
+    const collection = getFlaggedQuestionsCollection(db);
+    const filter = { studentId };
+    if (courseId) {
+        filter.courseId = courseId;
+    }
+    const flags = await collection
+        .find(filter)
+        .sort({ createdAt: -1 })
+        .toArray();
+    return flags;
+}
+
+/**
  * Update instructor response to a flagged question
  * @param {Object} db - MongoDB database instance
  * @param {string} flagId - Flag identifier
@@ -281,6 +301,7 @@ module.exports = {
     getFlaggedQuestionsForCourse,
     getFlaggedQuestionsByStatus,
     getFlaggedQuestionById,
+    getFlaggedQuestionsForStudent,
     updateInstructorResponse,
     updateFlagStatus,
     getFlagStatistics,

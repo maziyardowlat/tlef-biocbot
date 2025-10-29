@@ -203,6 +203,11 @@ function setupProtectedRoutes() {
         res.sendFile(path.join(__dirname, '../public/student/settings.html'));
     });
 
+    // Student flagged content page
+    app.get('/student/flagged', authMiddleware.requireStudent, (req, res) => {
+        res.sendFile(path.join(__dirname, '../public/student/flagged.html'));
+    });
+
     // TA routes (protected)
     app.get('/ta', authMiddleware.requireTA, (req, res) => {
         res.sendFile(path.join(__dirname, '../public/ta/home.html'));

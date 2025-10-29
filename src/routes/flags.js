@@ -13,6 +13,32 @@ const FlaggedQuestionModel = require('../models/FlaggedQuestion');
 router.use(express.json());
 
 /**
+ * GET /api/flags/my
+ * Get all flagged questions created by the authenticated student (optional course filter)
+ */
+router.get('/my', async (req, res) => {
+    try {
+        const user = req.user;
+        if (!user) {
+            return res.status(401).json({ success: false, message: 'Authentication required' });
+        }
+        if (user.role !== 'student') {
+            return res.status(403).json({ success: false, message: 'Only students can view their own flags' });
+        }
+        const { courseId } = req.query;
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({ success: false, message: 'Database connection not available' });
+        }
+        const flags = await FlaggedQuestionModel.getFlaggedQuestionsForStudent(db, user.userId, courseId || null);
+        return res.json({ success: true, data: { flags, count: flags.length } });
+    } catch (error) {
+        console.error('Error retrieving student flags:', error);
+        return res.status(500).json({ success: false, message: 'Internal server error while retrieving flags' });
+    }
+});
+
+/**
  * POST /api/flags
  * Create a new flagged question (student flags a question)
  */

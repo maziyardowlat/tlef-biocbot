@@ -10,6 +10,7 @@ const LLMService = require('../services/llm');
 const QdrantService = require('../services/qdrantService');
 const prompts = require('../services/prompts');
 const CourseModel = require('../models/Course');
+const profanityCleaner = require('profanity-cleaner');
 
 // Initialize LLM service
 let llmService;
@@ -385,6 +386,39 @@ router.post('/', async (req, res) => {
             return res.status(400).json({
                 success: false,
                 message: 'courseId and unitName are required to start chat'
+            });
+        }
+
+        // Profanity filter: intercept before any RAG/GPT work to save tokens
+        // If the cleaned text differs from the original, return a warning response
+        const cleanedMessage = profanityCleaner && typeof profanityCleaner.clean === 'function'
+            ? profanityCleaner.clean(message)
+            : message;
+
+        if (cleanedMessage !== message) {
+            const warningText = 'please watch the language, this is a tool and this data will be used for internal and data analysis';
+            console.log('⚠️ [CHAT_API] Profanity detected. Returning warning without querying LLM.');
+            return res.json({
+                success: true,
+                message: warningText,
+                model: 'system',
+                usage: { tokens: 0 },
+                timestamp: new Date().toISOString(),
+                mode: mode || 'default',
+                citations: [],
+                sourceAttribution: {
+                    source: 'system',
+                    description: 'Profanity filtered warning',
+                    unitName: null,
+                    documentType: null
+                },
+                debug: {
+                    profanityFiltered: true
+                },
+                retrieval: {
+                    mode: 'n/a',
+                    lectureNames: []
+                }
             });
         }
 

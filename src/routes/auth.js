@@ -64,7 +64,7 @@ router.post('/login', async (req, res) => {
             // Determine redirect based on role
             let redirectPath = '/login';
             if (result.user.role === 'instructor') {
-                redirectPath = '/instructor';
+                redirectPath = '/instructor/home';
             } else if (result.user.role === 'student') {
                 redirectPath = '/student';
             } else if (result.user.role === 'ta') {
