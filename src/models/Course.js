@@ -89,7 +89,7 @@ async function upsertCourse(db, courseData) {
  * @param {string} instructorId - ID of the instructor making the change
  * @returns {Promise<Object>} Update result
  */
-async function updateLecturePublishStatus(db, courseId, lectureName, isPublished, instructorId) {
+async function updateLecturePublishStatus(db, courseId, lectureName, isPublished, updatedById) {
     const collection = getCoursesCollection(db);
     
     const now = new Date();
@@ -116,7 +116,7 @@ async function updateLecturePublishStatus(db, courseId, lectureName, isPublished
                     'lectures.$.isPublished': isPublished,
                     'lectures.$.updatedAt': now,
                     updatedAt: now,
-                    instructorId
+                    lastUpdatedById: updatedById
                 }
             }
         );
@@ -215,7 +215,7 @@ async function updateLearningObjectives(db, courseId, lectureName, objectives, i
                     'lectures.$.learningObjectives': objectives,
                     'lectures.$.updatedAt': now,
                     updatedAt: now,
-                    instructorId
+                    lastUpdatedById: instructorId
                 }
             }
         );
@@ -281,7 +281,7 @@ async function updateAssessmentQuestions(db, courseId, lectureName, questionData
                         'lectures.$.assessmentQuestions.$': questionData,
                         'lectures.$.updatedAt': now,
                         updatedAt: now,
-                        instructorId
+                        lastUpdatedById: instructorId
                     }
                 }
             );
@@ -302,7 +302,7 @@ async function updateAssessmentQuestions(db, courseId, lectureName, questionData
                     $set: {
                         'lectures.$.updatedAt': now,
                         updatedAt: now,
-                        instructorId
+                        lastUpdatedById: instructorId
                     }
                 }
             );
@@ -378,7 +378,7 @@ async function deleteAssessmentQuestion(db, courseId, lectureName, questionId, i
                 $set: {
                     'lectures.$.updatedAt': now,
                     updatedAt: now,
-                    instructorId
+                    lastUpdatedById: instructorId
                 }
             }
         );
@@ -427,7 +427,7 @@ async function updatePassThreshold(db, courseId, lectureName, passThreshold, ins
                     'lectures.$.passThreshold': passThreshold,
                     'lectures.$.updatedAt': now,
                     updatedAt: now,
-                    instructorId
+                    lastUpdatedById: instructorId
                 }
             }
         );
@@ -872,7 +872,7 @@ async function removeDocumentFromUnit(db, courseId, unitName, documentId, instru
                 $set: {
                     lectures: currentCourse.lectures,
                     updatedAt: now,
-                    instructorId
+                    lastUpdatedById: instructorId
                 }
             }
         );
@@ -936,7 +936,7 @@ async function removeDocumentFromAnyUnit(db, courseId, documentId, instructorId)
             $set: {
                 lectures: currentCourse.lectures,
                 updatedAt: now,
-                instructorId
+                lastUpdatedById: instructorId
             }
         }
     );
@@ -1090,6 +1090,7 @@ async function getCoursesForUser(db, userId, role) {
             instructorId: 1,
             instructors: 1,
             tas: 1,
+            courseStructure: 1,
             createdAt: 1,
             updatedAt: 1
         })

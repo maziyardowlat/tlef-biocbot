@@ -158,7 +158,14 @@ async function checkAuthStatus() {
         
         if (result.success && result.user) {
             // User is already authenticated, redirect to appropriate dashboard
-            const redirectUrl = result.user.role === 'instructor' ? '/instructor' : '/student';
+            let redirectUrl = '/login';
+            if (result.user.role === 'instructor') {
+                redirectUrl = '/instructor/home';
+            } else if (result.user.role === 'ta') {
+                redirectUrl = '/ta';
+            } else {
+                redirectUrl = '/student';
+            }
             window.location.href = redirectUrl;
         }
     } catch (error) {

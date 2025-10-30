@@ -368,13 +368,15 @@ router.get('/:courseId', async (req, res) => {
             status: course.status || 'active',
             documentCount: course.lectures?.reduce((total, lecture) => total + (lecture.documents?.length || 0), 0) || 0,
             studentCount: 0, // TODO: Implement student tracking
-            // Include lectures array that instructors expect (with documents)
+            // Include lectures array that instructors expect (with documents, learning objectives, and assessment questions)
             lectures: course.lectures?.map(lecture => ({
                 id: lecture.id || lecture.name,
                 name: lecture.name,
                 isPublished: lecture.isPublished || false,
                 documents: lecture.documents || [],
-                questions: lecture.questions || []
+                questions: lecture.questions || [],
+                learningObjectives: lecture.learningObjectives || [],
+                assessmentQuestions: lecture.assessmentQuestions || []
             })) || [],
             structure: {
                 weeks: course.lectures?.map((lecture, index) => ({

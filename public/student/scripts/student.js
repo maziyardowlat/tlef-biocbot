@@ -3,6 +3,34 @@ document.addEventListener('DOMContentLoaded', async () => {
     const chatInput = document.getElementById('chat-input');
     const chatMessages = document.getElementById('chat-messages');
     
+    // Guard: Only allow students on this page; redirect others immediately
+    const handleRoleGuard = (user) => {
+        if (!user) return; // auth.js will handle redirect if unauthenticated
+        if (user.role === 'student') return;
+        if (user.role === 'instructor') {
+            window.location.href = '/instructor';
+            return;
+        }
+        if (user.role === 'ta') {
+            window.location.href = '/ta';
+            return;
+        }
+        window.location.href = '/login';
+    };
+    
+    // Perform role check as early as possible
+    try {
+        const existingUser = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
+        if (existingUser) {
+            handleRoleGuard(existingUser);
+        } else {
+            document.addEventListener('auth:ready', (e) => handleRoleGuard(e.detail));
+        }
+    } catch (e) {
+        // If anything goes wrong, rely on server-side protection
+        console.warn('Student role guard failed softly:', e);
+    }
+    
     // Initialize chat
     console.log('Student chat interface initialized');
     
@@ -72,6 +100,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Initialize mode toggle functionality
     initializeModeToggle();
+    
+    // Ensure mode toggle is properly set after a short delay (fallback for timing issues)
+    setTimeout(() => {
+        const currentMode = localStorage.getItem('studentMode') || 'tutor';
+        console.log('🔧 [MODE_FALLBACK] Ensuring mode toggle is set to:', currentMode);
+        updateModeToggleUI(currentMode);
+    }, 200);
     
     // Set up periodic timestamp updates
     setInterval(updateTimestamps, 20000); // Update every 20 seconds
@@ -685,6 +720,7 @@ function autoSaveMessage(content, sender, withSource = false) {
         // Update metadata - only count actual chat messages (not assessment messages)
         currentChatData.metadata.totalMessages = currentChatData.messages.length;
         currentChatData.metadata.exportDate = new Date().toISOString();
+        currentChatData.metadata.currentMode = localStorage.getItem('studentMode') || 'tutor'; // Update current mode
         currentChatData.sessionInfo.endTime = new Date().toISOString();
         currentChatData.sessionInfo.duration = calculateSessionDuration(currentChatData);
         
@@ -3479,6 +3515,7 @@ function initializeModeToggle() {
     
     // Set initial mode from localStorage or default to tutor
     const currentMode = localStorage.getItem('studentMode') || 'tutor';
+    console.log('🔧 [MODE_INIT] Initializing mode toggle with mode:', currentMode);
     updateModeToggleUI(currentMode);
     
     // Add event listener for mode toggle
@@ -3489,6 +3526,10 @@ function initializeModeToggle() {
         
         // Update localStorage
         localStorage.setItem('studentMode', newMode);
+        
+        // Record the timestamp of this manual mode change
+        localStorage.setItem('lastModeChange', Date.now().toString());
+        console.log('🔧 [MODE_TOGGLE] Recorded manual mode change timestamp');
         
         // Update UI
         updateModeToggleUI(newMode);
@@ -4397,11 +4438,28 @@ function loadChatData(chatData) {
                 studentAnswers = chatData.studentAnswers.answers.map(answer => answer.answer);
             }
             
-            // Restore mode if present
-            if (chatData.metadata.currentMode) {
-                console.log('Restoring mode:', chatData.metadata.currentMode);
-                localStorage.setItem('studentMode', chatData.metadata.currentMode);
-                updateModeToggleUI(chatData.metadata.currentMode);
+            // Restore mode if present, but only if no recent mode change has occurred
+            const currentStoredMode = localStorage.getItem('studentMode') || 'tutor';
+            const chatDataMode = chatData.metadata.currentMode;
+            
+            // Check if the user has manually changed the mode recently (within last 5 minutes)
+            const lastModeChange = localStorage.getItem('lastModeChange');
+            const now = Date.now();
+            const fiveMinutesAgo = now - (5 * 60 * 1000);
+            
+            if (lastModeChange && parseInt(lastModeChange) > fiveMinutesAgo) {
+                // User recently changed mode, keep their current choice
+                console.log('🔄 [HISTORY] User recently changed mode, keeping current mode:', currentStoredMode);
+                updateModeToggleUI(currentStoredMode);
+            } else if (chatDataMode) {
+                // No recent mode change, restore from chat data
+                console.log('🔄 [HISTORY] Restoring mode from chat data:', chatDataMode);
+                localStorage.setItem('studentMode', chatDataMode);
+                updateModeToggleUI(chatDataMode);
+                console.log('🔄 [HISTORY] Mode restored and UI updated');
+            } else {
+                console.log('🔄 [HISTORY] No mode found in chat data, using current localStorage value');
+                updateModeToggleUI(currentStoredMode);
             }
             
             // Restore unit selection if present

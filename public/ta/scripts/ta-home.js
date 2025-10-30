@@ -321,16 +321,6 @@ function displayTACourses() {
                 <p><strong>Instructor:</strong> ${course.instructorId}</p>
                 <p><strong>Units:</strong> ${course.totalUnits || 0}</p>
             </div>
-            <div class="course-actions">
-                ${canAccessCourses 
-                    ? `<a href="/instructor/documents?courseId=${course.courseId}" class="btn-secondary">View Course</a>`
-                    : `<span class="btn-disabled">Hidden by instructor</span>`
-                }
-                ${canAccessFlags 
-                    ? `<a href="/instructor/flagged?courseId=${course.courseId}" class="btn-primary">Student Support</a>`
-                    : `<span class="btn-disabled">Hidden by instructor</span>`
-                }
-            </div>
         </div>
         `;
     }).join('');
