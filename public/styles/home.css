@@ -445,6 +445,32 @@
     background-color: #f0f9f0;
 }
 
+/* Onboarding Prompt Section */
+.onboarding-prompt-section {
+    border-left: 4px solid var(--primary-color);
+    background: linear-gradient(135deg, #f0f7ff 0%, #e6f2ff 100%);
+}
+
+.onboarding-prompt-content {
+    display: flex;
+    flex-direction: column;
+    gap: 25px;
+    align-items: flex-start;
+}
+
+.onboarding-prompt-description {
+    font-size: 1.1rem;
+    color: var(--text-color);
+    margin: 0;
+    line-height: 1.7;
+}
+
+.onboarding-prompt-section .action-btn.primary {
+    font-size: 1.1rem;
+    padding: 14px 28px;
+    font-weight: 600;
+}
+
 /* Disclaimer Section */
 .disclaimer-content {
     display: flex;
@@ -495,5 +521,18 @@
     
     .disclaimer-item {
         padding: 15px;
+    }
+    
+    .onboarding-prompt-content {
+        gap: 20px;
+    }
+    
+    .onboarding-prompt-description {
+        font-size: 1rem;
+    }
+    
+    .onboarding-prompt-section .action-btn.primary {
+        width: 100%;
+        text-align: center;
     }
 } 

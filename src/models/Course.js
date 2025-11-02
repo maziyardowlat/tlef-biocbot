@@ -582,7 +582,7 @@ async function createCourseFromOnboarding(db, onboardingData) {
                 lecturesPerWeek: courseStructure.lecturesPerWeek,
                 totalUnits: totalUnits
             },
-            isOnboardingComplete: true, // Flag to track onboarding completion
+            isOnboardingComplete: false, // Flag to track onboarding completion - set to true only after Unit 1 setup is complete
             lectures: units, // Use the existing lectures field for units
             createdAt: now,
             updatedAt: now

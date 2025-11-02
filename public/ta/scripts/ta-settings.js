@@ -128,13 +128,8 @@ function updateAccountInfo() {
         taIdInput.value = taId || 'Not available';
     }
     
-    // Update name and email (these would come from user data)
-    const nameInput = document.getElementById('ta-name');
+    // Update email (this would come from user data)
     const emailInput = document.getElementById('ta-email');
-    
-    if (nameInput) {
-        nameInput.value = currentUser?.name || 'Not available';
-    }
     
     if (emailInput) {
         emailInput.value = currentUser?.email || 'Not available';

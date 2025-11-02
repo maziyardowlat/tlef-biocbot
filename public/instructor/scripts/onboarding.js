@@ -56,10 +56,41 @@ async function checkOnboardingStatus() {
             if (response.ok) {
                 const courseData = await response.json();
                 console.log('📡 [MONGODB] Course data retrieved:', courseData);
-                if (courseData.data && courseData.data.isOnboardingComplete) {
+                if (courseData.data && courseData.data.isOnboardingComplete === true) {
                     console.log('✅ [ONBOARDING] Onboarding already complete for this course');
+                    onboardingState.existingCourseId = courseId;
                     showOnboardingComplete();
                     return;
+                } else {
+                    // Course exists but onboarding is not complete - resume onboarding
+                    console.log('⚠️ [ONBOARDING] Course exists but onboarding not complete, resuming...');
+                    onboardingState.createdCourseId = courseId;
+                    onboardingState.existingCourseId = courseId;
+                    
+                    // Check Unit 1 content to determine which step to resume at
+                    const unit1 = courseData.data?.lectures?.find(lecture => lecture.name === 'Unit 1');
+                    const hasObjectives = unit1?.learningObjectives && unit1.learningObjectives.length > 0;
+                    const hasDocuments = unit1?.documents && unit1.documents.length > 0;
+                    
+                    if (!hasObjectives) {
+                        console.log('📝 [ONBOARDING] Resuming at Step 3: Learning Objectives');
+                        showOnboardingFlow();
+                        showStep(3);
+                        showSubstep('objectives');
+                        return;
+                    } else if (!hasDocuments) {
+                        console.log('📁 [ONBOARDING] Resuming at Step 3: Course Materials');
+                        showOnboardingFlow();
+                        showStep(3);
+                        showSubstep('materials');
+                        return;
+                    } else {
+                        console.log('❓ [ONBOARDING] Resuming at Step 3: Assessment Questions');
+                        showOnboardingFlow();
+                        showStep(3);
+                        showSubstep('questions');
+                        return;
+                    }
                 }
             }
         }
@@ -80,7 +111,7 @@ async function checkOnboardingStatus() {
             console.log('📡 [MONGODB] Instructor courses data:', result);
             if (result.data && result.data.courses && result.data.courses.length > 0) {
                 // Check if any course has onboarding complete
-                const completedCourse = result.data.courses.find(course => course.isOnboardingComplete);
+                const completedCourse = result.data.courses.find(course => course.isOnboardingComplete === true);
                 if (completedCourse) {
                     console.log('✅ [ONBOARDING] Found completed course:', completedCourse);
                     // Store the course ID for potential redirect
@@ -88,10 +119,50 @@ async function checkOnboardingStatus() {
                     showOnboardingComplete();
                     return;
                 }
+                
+                // Check if there's an incomplete course (created but onboarding not finished)
+                const incompleteCourse = result.data.courses.find(course => 
+                    course.isOnboardingComplete === false || !course.isOnboardingComplete
+                );
+                
+                if (incompleteCourse) {
+                    console.log('⚠️ [ONBOARDING] Found incomplete course, resuming onboarding:', incompleteCourse.courseId);
+                    // Store the course ID and resume onboarding
+                    onboardingState.createdCourseId = incompleteCourse.courseId;
+                    onboardingState.existingCourseId = incompleteCourse.courseId;
+                    
+                    // Check if Unit 1 has the required content to determine which step to resume at
+                    const unit1 = incompleteCourse.lectures?.find(lecture => lecture.name === 'Unit 1');
+                    const hasObjectives = unit1?.learningObjectives && unit1.learningObjectives.length > 0;
+                    const hasDocuments = unit1?.documents && unit1.documents.length > 0;
+                    
+                    if (!hasObjectives) {
+                        // Resume at Step 3, substep 1 (Learning Objectives)
+                        console.log('📝 [ONBOARDING] Resuming at Step 3: Learning Objectives');
+                        showOnboardingFlow();
+                        showStep(3);
+                        showSubstep('objectives');
+                        return;
+                    } else if (!hasDocuments) {
+                        // Resume at Step 3, substep 2 (Course Materials)
+                        console.log('📁 [ONBOARDING] Resuming at Step 3: Course Materials');
+                        showOnboardingFlow();
+                        showStep(3);
+                        showSubstep('materials');
+                        return;
+                    } else {
+                        // Resume at Step 3, substep 3 (Assessment Questions)
+                        console.log('❓ [ONBOARDING] Resuming at Step 3: Assessment Questions');
+                        showOnboardingFlow();
+                        showStep(3);
+                        showSubstep('questions');
+                        return;
+                    }
+                }
             }
         }
         
-        console.log('🔍 [ONBOARDING] No completed onboarding found, showing normal flow');
+        console.log('🔍 [ONBOARDING] No courses found, showing normal onboarding flow');
         // If we get here, onboarding is not complete, show normal flow
         showOnboardingFlow();
         
@@ -428,12 +499,45 @@ async function handleCourseSetup(event) {
     submitButton.textContent = 'Creating course...';
     
     try {
-        // Check if course already exists (either for this instructor or globally)
-        const existingCourse = await checkExistingCourse();
-        if (existingCourse) {
-            // If course exists, join it instead of creating a new one
-            await joinExistingCourse(existingCourse);
-            return;
+        // Only check for existing courses if not creating a custom course
+        const courseSelect = document.getElementById('course-select');
+        const isCustomCourse = courseSelect && courseSelect.value === 'custom';
+        
+        if (!isCustomCourse) {
+            // Check if course already exists (either for this instructor or globally)
+            const existingCourse = await checkExistingCourse();
+            if (existingCourse) {
+                // If course exists, set the existing course ID and join it
+                onboardingState.existingCourseId = existingCourse.courseId;
+                onboardingState.createdCourseId = existingCourse.courseId;
+                await joinExistingCourse();
+                return;
+            }
+        } else {
+            // For custom courses, check if instructor already has an incomplete course
+            // If so, use that course instead of creating a new one
+            const instructorId = getCurrentInstructorId();
+            if (instructorId) {
+                const response = await authenticatedFetch(`/api/onboarding/instructor/${instructorId}`);
+                if (response.ok) {
+                    const result = await response.json();
+                    if (result.data && result.data.courses && result.data.courses.length > 0) {
+                        // Check for incomplete course (isOnboardingComplete is false)
+                        const incompleteCourse = result.data.courses.find(course => 
+                            !course.isOnboardingComplete || course.isOnboardingComplete === false
+                        );
+                        if (incompleteCourse) {
+                            // Use the existing incomplete course
+                            onboardingState.createdCourseId = incompleteCourse.courseId;
+                            onboardingState.existingCourseId = incompleteCourse.courseId;
+                            console.log('Using existing incomplete course:', incompleteCourse.courseId);
+                            // Continue to next step with existing course
+                            nextStep();
+                            return;
+                        }
+                    }
+                }
+            }
         }
         
         // Create course and save to database
@@ -1722,8 +1826,13 @@ async function completeUnit1Setup() {
         await saveAllUnit1Data();
         console.log('Step 2: saveAllUnit1Data completed.');
         
+        // Mark onboarding as complete only after all Unit 1 data is saved
+        console.log('Step 3: Marking onboarding as complete...');
+        await markInstructorOnboardingComplete(onboardingState.createdCourseId);
+        console.log('Step 3: Onboarding marked as complete.');
+        
         // Show success message and redirect
-        console.log('Step 3: Onboarding save process complete. Redirecting...');
+        console.log('Step 4: Onboarding save process complete. Redirecting...');
         showNotification('Unit 1 setup completed successfully! Redirecting to course upload...', 'success');
         
         // Wait a moment for the notification to be seen, then redirect with course ID

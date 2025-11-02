@@ -149,6 +149,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Load the saved publish status from the database
     loadPublishStatus();
     
+    // Start polling for publish status changes (to detect updates from other users)
+    startPublishStatusPolling();
+    
     // Load the saved learning objectives from the database
     loadLearningObjectives();
     
@@ -893,6 +896,16 @@ function togglePublish(lectureName, isPublished) {
  * @param {boolean} isPublished - Whether the content should be published
  */
 async function updatePublishStatus(lectureName, isPublished) {
+    // Update cache and mark as local change IMMEDIATELY (optimistic update)
+    // This prevents polling from detecting our own change as external
+    currentPublishStatus[lectureName] = isPublished;
+    recentLocalChanges[lectureName] = Date.now();
+    
+    // Clean up old entries from recentLocalChanges after cooldown period
+    setTimeout(() => {
+        delete recentLocalChanges[lectureName];
+    }, LOCAL_CHANGE_COOLDOWN);
+    
     try {
         // Get the current course ID (for now, using a default)
         const courseId = await getCurrentCourseId();
@@ -916,36 +929,60 @@ async function updatePublishStatus(lectureName, isPublished) {
             const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
             console.error('Error response:', errorData);
             
-            // Show specific error message
-            const errorMessage = errorData.message || errorData.error || `Failed to update publish status: ${response.status}`;
-            showNotification(`Error: ${errorMessage}`, 'error');
-            
-            // Revert the toggle if the API call failed
+            // Revert optimistic cache update on error
             const toggleId = `publish-${lectureName.toLowerCase().replace(/\s+/g, '')}`;
             const toggle = document.getElementById(toggleId);
             if (toggle) {
-                toggle.checked = !isPublished;
-                togglePublish(lectureName, !isPublished);
+                // Revert to opposite of what we tried to set
+                const revertedStatus = !isPublished;
+                currentPublishStatus[lectureName] = revertedStatus;
+                delete recentLocalChanges[lectureName];
+                toggle.checked = revertedStatus;
+                togglePublish(lectureName, revertedStatus);
             }
+            
+            // Show specific error message
+            const errorMessage = errorData.message || errorData.error || `Failed to update publish status: ${response.status}`;
+            showNotification(`Error: ${errorMessage}`, 'error');
             return;
         }
         
         const result = await response.json();
+        
+        // Verify the update was successful (cache already updated optimistically above)
+        if (!result.success || !result.data) {
+            // If API says it failed, revert our optimistic update
+            const toggleId = `publish-${lectureName.toLowerCase().replace(/\s+/g, '')}`;
+            const toggle = document.getElementById(toggleId);
+            if (toggle) {
+                const revertedStatus = !isPublished;
+                currentPublishStatus[lectureName] = revertedStatus;
+                delete recentLocalChanges[lectureName];
+                toggle.checked = revertedStatus;
+                togglePublish(lectureName, revertedStatus);
+            }
+            showNotification('Failed to update publish status. Please try again.', 'error');
+            return;
+        }
         
         // Show success notification
         showNotification(result.message || 'Publish status updated successfully', 'success');
         
     } catch (error) {
         console.error('Error updating publish status:', error);
-        showNotification('Error updating publish status. Please try again.', 'error');
         
-        // Revert the toggle if the API call failed
+        // Revert optimistic cache update on error
         const toggleId = `publish-${lectureName.toLowerCase().replace(/\s+/g, '')}`;
         const toggle = document.getElementById(toggleId);
         if (toggle) {
-            toggle.checked = !isPublished;
-            togglePublish(lectureName, !isPublished);
+            const revertedStatus = !isPublished;
+            currentPublishStatus[lectureName] = revertedStatus;
+            delete recentLocalChanges[lectureName];
+            toggle.checked = revertedStatus;
+            togglePublish(lectureName, revertedStatus);
         }
+        
+        showNotification('Error updating publish status. Please try again.', 'error');
     }
 }
 
@@ -1355,10 +1392,20 @@ document.addEventListener('DOMContentLoaded', async function() {
 
 // Removed: documents page retrieval toggle wiring (settings-only per user request)
 
+// Store current publish status for comparison during polling
+let currentPublishStatus = {};
+
+// Track recent local changes to avoid false positives in polling
+// Format: { lectureName: timestamp }
+let recentLocalChanges = {};
+const LOCAL_CHANGE_COOLDOWN = 5000; // 5 seconds - ignore polling changes within this window
+
 /**
  * Load the saved publish status for all lectures from the database
+ * @param {boolean} silent - If true, suppress notifications (used for polling)
+ * @returns {Promise<Object>} The fetched publish status object
  */
-async function loadPublishStatus() {
+async function loadPublishStatus(silent = false) {
     try {
         const courseId = await getCurrentCourseId();
         const instructorId = getCurrentInstructorId();
@@ -1372,6 +1419,9 @@ async function loadPublishStatus() {
         const result = await response.json();
         const publishStatus = result.data.publishStatus;
         
+        // Track changes to detect external updates
+        const changedUnits = [];
+        
         // Update all toggle switches to reflect the saved state
         Object.keys(publishStatus).forEach(lectureName => {
             const isPublished = publishStatus[lectureName];
@@ -1379,24 +1429,134 @@ async function loadPublishStatus() {
             const toggle = document.getElementById(toggleId);
             
             if (toggle) {
-                // Update the toggle state
-                toggle.checked = isPublished;
+                // Check if the status has changed from what we last saw (external update detection)
+                const previousStatus = currentPublishStatus[lectureName];
+                const wasExternallyChanged = previousStatus !== undefined && previousStatus !== isPublished;
                 
-                // Update the visual state
-                const accordionItem = toggle.closest('.accordion-item');
-                if (accordionItem) {
-                    if (isPublished) {
-                        accordionItem.classList.add('published');
-                    } else {
-                        accordionItem.classList.remove('published');
+                // Check if this was a recent local change (within cooldown window)
+                const recentLocalChange = recentLocalChanges[lectureName];
+                const isRecentLocalChange = recentLocalChange && (Date.now() - recentLocalChange) < LOCAL_CHANGE_COOLDOWN;
+                
+                // Only update UI if the toggle state doesn't match the fetched state
+                // This ensures we sync with the database state
+                if (toggle.checked !== isPublished) {
+                    // Update the toggle state
+                    toggle.checked = isPublished;
+                    
+                    // Track external changes for notification
+                    // Only show notification if:
+                    // 1. Status changed from previous fetch (wasExternallyChanged)
+                    // 2. This was NOT a recent local change (isRecentLocalChange = false)
+                    // 3. Not in silent mode (or if we want to show it)
+                    if (wasExternallyChanged && !isRecentLocalChange) {
+                        changedUnits.push({
+                            name: lectureName,
+                            isPublished: isPublished
+                        });
+                    }
+                    
+                    // Update the visual state
+                    const accordionItem = toggle.closest('.accordion-item');
+                    if (accordionItem) {
+                        if (isPublished) {
+                            accordionItem.classList.add('published');
+                        } else {
+                            accordionItem.classList.remove('published');
+                        }
                     }
                 }
             }
         });
         
+        // Store current state for future comparisons (only after we've processed all units)
+        currentPublishStatus = { ...publishStatus };
+        
+        // Notify user of external changes (only show for genuine external changes, not local ones)
+        if (changedUnits.length > 0 && !silent) {
+            const changes = changedUnits.map(unit => 
+                `${unit.name} ${unit.isPublished ? 'published' : 'unpublished'}`
+            ).join(', ');
+            showNotification(`Publish status updated by another user: ${changes}`, 'info');
+        }
+        
+        return publishStatus;
+        
     } catch (error) {
         console.error('Error loading publish status:', error);
-        showNotification('Error loading publish status. Using default values.', 'warning');
+        if (!silent) {
+            showNotification('Error loading publish status. Using default values.', 'warning');
+        }
+        return {};
+    }
+}
+
+/**
+ * Polling interval reference for publish status updates
+ */
+let publishStatusPollingInterval = null;
+
+/**
+ * Start polling for publish status changes
+ * Checks for updates every 10 seconds when the page is visible
+ */
+function startPublishStatusPolling() {
+    // Clear any existing polling interval
+    if (publishStatusPollingInterval) {
+        clearInterval(publishStatusPollingInterval);
+        publishStatusPollingInterval = null;
+    }
+    
+    // Only poll if we're on the documents page (where publish status is displayed)
+    const accordionItems = document.querySelectorAll('.accordion-item');
+    if (accordionItems.length === 0) {
+        // Not on documents page, don't poll
+        return;
+    }
+    
+    // Poll every 10 seconds (adjustable)
+    const POLL_INTERVAL = 10000; // 10 seconds
+    
+    // Note: Initial load already happens via loadPublishStatus() call in DOMContentLoaded
+    // We don't need to call it again here to avoid duplicate requests
+    
+    // Set up polling interval
+    publishStatusPollingInterval = setInterval(() => {
+        // Only poll if the page is visible
+        if (!document.hidden) {
+            loadPublishStatus(true); // Silent polling to avoid spam
+        }
+    }, POLL_INTERVAL);
+    
+    // Handle page visibility changes
+    // Pause polling when tab is hidden, resume when visible
+    const handleVisibilityChange = () => {
+        if (document.hidden) {
+            // Page is hidden, polling will be skipped (handled in setInterval callback)
+            console.log('📊 [POLLING] Page hidden, pausing publish status polling');
+        } else {
+            // Page is visible, immediately check for updates
+            console.log('📊 [POLLING] Page visible, resuming publish status polling');
+            loadPublishStatus(true); // Silent check when resuming
+        }
+    };
+    
+    // Add event listener (only add once)
+    if (!document.hasAttribute('data-publish-polling-listener')) {
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        document.setAttribute('data-publish-polling-listener', 'true');
+    }
+    
+    console.log('📊 [POLLING] Started publish status polling (every 10 seconds)');
+}
+
+/**
+ * Stop polling for publish status changes
+ */
+function stopPublishStatusPolling() {
+    if (publishStatusPollingInterval) {
+        clearInterval(publishStatusPollingInterval);
+        publishStatusPollingInterval = null;
+        console.log('📊 [POLLING] Stopped publish status polling');
     }
 }
 
