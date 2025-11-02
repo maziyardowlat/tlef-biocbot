@@ -111,9 +111,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Set up periodic timestamp updates
     setInterval(updateTimestamps, 20000); // Update every 20 seconds
     
-    // Initialize save chat functionality
-    initializeSaveChat();
-    
     // Initialize chat history storage
     initializeChatHistoryStorage();
     
@@ -560,8 +557,8 @@ function addMessage(content, sender, withSource = false, skipAutoSave = false, s
     // Only auto-save if not explicitly skipped
     if (!skipAutoSave) {
         console.log('🔧 [ADD_MESSAGE] About to trigger auto-save...');
-        console.log('🔄 [AUTO-SAVE] Triggering auto-save for message:', { content: content.substring(0, 50) + '...', sender, withSource });
-        autoSaveMessage(content, sender, withSource);
+        console.log('🔄 [AUTO-SAVE] Triggering auto-save for message:', { content: content.substring(0, 50) + '...', sender, withSource, sourceAttribution });
+        autoSaveMessage(content, sender, withSource, sourceAttribution);
         console.log('🔧 [ADD_MESSAGE] Auto-save call completed');
     } else {
         console.log('🔧 [ADD_MESSAGE] Skipping auto-save for system message');
@@ -644,8 +641,9 @@ async function initializeAutoSave() {
  * @param {string} content - The message content
  * @param {string} sender - 'user' or 'bot'
  * @param {boolean} withSource - Whether the message has source citation
+ * @param {Object} sourceAttribution - Source attribution information
  */
-function autoSaveMessage(content, sender, withSource = false) {
+function autoSaveMessage(content, sender, withSource = false, sourceAttribution = null) {
     try {
         console.log('=== AUTO-SAVING MESSAGE ===');
         console.log('Message:', { content: content.substring(0, 50) + '...', sender, withSource });
@@ -711,7 +709,8 @@ function autoSaveMessage(content, sender, withSource = false) {
             content: content,
             timestamp: new Date().toISOString(),
             hasFlagButton: sender === 'bot' && withSource,
-            messageType: 'regular-chat'
+            messageType: 'regular-chat',
+            sourceAttribution: sourceAttribution || null  // Save source attribution for restoration
         };
         
         // Add message to messages array
@@ -3566,76 +3565,6 @@ function updateModeToggleUI(mode) {
     }
 }
 
-/**
- * Initialize save chat functionality
- */
-function initializeSaveChat() {
-    const saveButton = document.getElementById('save-chat-btn');
-    if (saveButton) {
-        saveButton.addEventListener('click', handleSaveChat);
-    }
-}
-
-/**
- * Handle save chat button click
- */
-async function handleSaveChat() {
-    try {
-        // Disable button during save process
-        const saveButton = document.getElementById('save-chat-btn');
-        if (saveButton) {
-            saveButton.disabled = true;
-            saveButton.innerHTML = '<span class="save-icon">⏳</span> Saving...';
-        }
-        
-        // Get auto-saved chat data
-        const chatData = getCurrentChatData();
-        
-        console.log('💾 [MANUAL-SAVE] Manual save triggered');
-        console.log('💾 [MANUAL-SAVE] Current student ID:', getCurrentStudentId());
-        console.log('💾 [MANUAL-SAVE] Auto-saved chat data found:', !!chatData);
-        console.log('💾 [MANUAL-SAVE] Message count:', chatData ? chatData.messages.length : 0);
-        
-        if (!chatData || chatData.messages.length === 0) {
-            console.warn('No auto-saved chat data found');
-            showSaveErrorMessage('No messages to save. Please start a conversation first.');
-            return;
-        }
-        
-        console.log(`💾 [MANUAL-SAVE] Found ${chatData.messages.length} auto-saved messages to save`);
-        
-        console.log('Chat data collected:', {
-            messageCount: chatData.messages.length,
-            courseId: chatData.metadata.courseId,
-            studentId: chatData.metadata.studentId,
-            unitName: chatData.metadata.unitName
-        });
-        
-        // Create and download JSON file
-        downloadChatData(chatData);
-        
-        // Save to chat history
-        console.log('Saving chat data to history:', chatData);
-        saveChatToHistory(chatData);
-        
-        // Note: We don't dispatch the event here since we're already saving directly
-        // The event listener would cause a duplicate save
-        
-        // Show success message
-        showSaveSuccessMessage();
-        
-    } catch (error) {
-        console.error('Error saving chat data:', error);
-        showSaveErrorMessage(error.message);
-    } finally {
-        // Re-enable button
-        const saveButton = document.getElementById('save-chat-btn');
-        if (saveButton) {
-            saveButton.disabled = false;
-            saveButton.innerHTML = '<span class="save-icon">💾</span> Save Chat';
-        }
-    }
-}
 
 /**
  * Collect all chat data including messages, practice tests, and responses
@@ -3988,139 +3917,13 @@ function calculateSessionDuration(chatData) {
     }
 }
 
-/**
- * Download chat data as JSON file
- * @param {Object} chatData - The chat data to download
- */
-function downloadChatData(chatData) {
-    try {
-        // Create filename with timestamp
-        const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
-        const courseName = chatData.metadata.courseName.replace(/[^a-zA-Z0-9]/g, '_');
-        const filename = `BiocBot_Chat_${courseName}_${timestamp}.json`;
-        
-        // Convert to JSON string
-        const jsonString = JSON.stringify(chatData, null, 2);
-        
-        // Create blob and download
-        const blob = new Blob([jsonString], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        
-        // Create download link
-        const downloadLink = document.createElement('a');
-        downloadLink.href = url;
-        downloadLink.download = filename;
-        downloadLink.style.display = 'none';
-        
-        // Trigger download
-        document.body.appendChild(downloadLink);
-        downloadLink.click();
-        document.body.removeChild(downloadLink);
-        
-        // Clean up
-        URL.revokeObjectURL(url);
-        
-    } catch (error) {
-        console.error('Error downloading chat data:', error);
-        throw new Error('Failed to download chat data');
-    }
-}
-
-/**
- * Show save success message
- */
-function showSaveSuccessMessage() {
-    // Create success message
-    const successMessage = document.createElement('div');
-    successMessage.classList.add('message', 'bot-message', 'save-success');
-    
-    const avatarDiv = document.createElement('div');
-    avatarDiv.classList.add('message-avatar');
-    avatarDiv.textContent = 'B';
-    
-    const contentDiv = document.createElement('div');
-    contentDiv.classList.add('message-content');
-    
-    const messageText = document.createElement('p');
-    messageText.innerHTML = '<strong>✅ Chat Saved Successfully!</strong><br>Your chat data has been downloaded as a JSON file.';
-    
-    contentDiv.appendChild(messageText);
-    
-    // Add timestamp
-    const timestamp = document.createElement('span');
-    timestamp.classList.add('timestamp');
-    timestamp.textContent = 'Just now';
-    contentDiv.appendChild(timestamp);
-    
-    successMessage.appendChild(avatarDiv);
-    successMessage.appendChild(contentDiv);
-    
-    // Add to chat
-    const chatMessages = document.getElementById('chat-messages');
-    chatMessages.appendChild(successMessage);
-    
-    // Scroll to bottom
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-    
-    // Auto-remove after 5 seconds
-    setTimeout(() => {
-        if (successMessage.parentNode) {
-            successMessage.remove();
-        }
-    }, 5000);
-}
-
-/**
- * Show save error message
- * @param {string} errorMessage - Error message to display
- */
-function showSaveErrorMessage(errorMessage) {
-    // Create error message
-    const errorMsg = document.createElement('div');
-    errorMsg.classList.add('message', 'bot-message', 'save-error');
-    
-    const avatarDiv = document.createElement('div');
-    avatarDiv.classList.add('message-avatar');
-    avatarDiv.textContent = 'B';
-    
-    const contentDiv = document.createElement('div');
-    contentDiv.classList.add('message-content');
-    
-    const messageText = document.createElement('p');
-    messageText.innerHTML = `<strong>❌ Save Failed</strong><br>Error: ${errorMessage}`;
-    
-    contentDiv.appendChild(messageText);
-    
-    // Add timestamp
-    const timestamp = document.createElement('span');
-    timestamp.classList.add('timestamp');
-    timestamp.textContent = 'Just now';
-    contentDiv.appendChild(timestamp);
-    
-    errorMsg.appendChild(avatarDiv);
-    errorMsg.appendChild(contentDiv);
-    
-    // Add to chat
-    const chatMessages = document.getElementById('chat-messages');
-    chatMessages.appendChild(errorMsg);
-    
-    // Scroll to bottom
-    chatMessages.scrollTop = chatMessages.scrollHeight;
-    
-    // Auto-remove after 8 seconds
-    setTimeout(() => {
-        if (errorMsg.parentNode) {
-            errorMsg.remove();
-        }
-    }, 8000);
-}
 
 /**
  * Initialize chat history storage system
  */
 function initializeChatHistoryStorage() {
-    // Chat history is now saved directly in handleSaveChat function
-    // No need for event listener to avoid duplicates
+    // Chat history is automatically saved via auto-save functionality after each message
+    // No manual save button is needed
     console.log('Chat history storage system initialized');
 }
 
