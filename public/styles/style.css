@@ -234,6 +234,29 @@ input, select, textarea {
     margin-top: 4px;
 }
 
+/* User Actions in Sidebar */
+.user-actions {
+    margin-top: 10px;
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+}
+
+.sidebar .user-action {
+    display: inline-block;
+    color: #e8f4f8;
+    text-decoration: none;
+    font-size: 12px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.sidebar .user-action:hover {
+    background-color: rgba(255, 255, 255, 0.15);
+    color: #ffffff;
+}
+
 .switch-role {
     margin-top: 15px;
     padding-top: 15px;
