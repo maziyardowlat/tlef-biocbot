@@ -593,6 +593,26 @@ async function initializeAutoSave() {
             const parsedData = JSON.parse(existingChatData);
             if (parsedData.messages && parsedData.messages.length > 0) {
                 console.log('🔄 [AUTO-SAVE] Existing chat data found with', parsedData.messages.length, 'messages, not overwriting');
+                
+                // Ensure the session ID is properly restored if it exists in localStorage
+                const sessionKey = `biocbot_session_${studentId}_${courseId}_${unitName}`;
+                const existingSessionId = localStorage.getItem(sessionKey);
+                
+                // If localStorage has a session ID but chat data doesn't, restore it
+                if (existingSessionId && (!parsedData.sessionInfo || !parsedData.sessionInfo.sessionId)) {
+                    if (!parsedData.sessionInfo) {
+                        parsedData.sessionInfo = {};
+                    }
+                    parsedData.sessionInfo.sessionId = existingSessionId;
+                    localStorage.setItem(autoSaveKey, JSON.stringify(parsedData));
+                    console.log('🔄 [AUTO-SAVE] Restored session ID from localStorage:', existingSessionId);
+                } 
+                // If chat data has a session ID but localStorage doesn't, restore it
+                else if (parsedData.sessionInfo && parsedData.sessionInfo.sessionId && !existingSessionId) {
+                    localStorage.setItem(sessionKey, parsedData.sessionInfo.sessionId);
+                    console.log('🔄 [AUTO-SAVE] Restored session ID to localStorage:', parsedData.sessionInfo.sessionId);
+                }
+                
                 return; // Don't overwrite existing chat data
             }
         }
@@ -700,7 +720,20 @@ function autoSaveMessage(content, sender, withSource = false, sourceAttribution 
                 lastActivityTimestamp: new Date().toISOString()
             };
             
-            console.log('🔄 [AUTO-SAVE] Initialized empty chat data structure');
+            // Ensure session ID is set when creating new chat data
+            // This prevents new sessions from being created on page refresh
+            const sessionKey = `biocbot_session_${studentId}_${courseId}_${unitName}`;
+            let sessionId = localStorage.getItem(sessionKey);
+            if (!sessionId) {
+                sessionId = `autosave_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                localStorage.setItem(sessionKey, sessionId);
+                console.log('🔄 [AUTO-SAVE] Created new session ID:', sessionId);
+            } else {
+                console.log('🔄 [AUTO-SAVE] Using existing session ID:', sessionId);
+            }
+            currentChatData.sessionInfo.sessionId = sessionId;
+            
+            console.log('🔄 [AUTO-SAVE] Initialized empty chat data structure with session ID');
         }
         
         // Create new message object
@@ -782,6 +815,25 @@ function getCurrentSessionId(chatData) {
         console.log('🔄 [SESSION] Created new session ID:', sessionId);
     } else {
         console.log('🔄 [SESSION] Using existing session ID:', sessionId);
+    }
+    
+    // Ensure the session ID is stored in chatData.sessionInfo for consistency
+    // This prevents the session ID from being lost on page refresh
+    if (chatData && (!chatData.sessionInfo || !chatData.sessionInfo.sessionId || chatData.sessionInfo.sessionId !== sessionId)) {
+        if (!chatData.sessionInfo) {
+            chatData.sessionInfo = {};
+        }
+        chatData.sessionInfo.sessionId = sessionId;
+        
+        // Also update localStorage to keep it in sync
+        const studentIdFromData = chatData.metadata.studentId;
+        const autoSaveKey = `biocbot_current_chat_${studentIdFromData}`;
+        try {
+            localStorage.setItem(autoSaveKey, JSON.stringify(chatData));
+            console.log('🔄 [SESSION] Updated session ID in chat data');
+        } catch (error) {
+            console.warn('🔄 [SESSION] Could not update session ID in chat data:', error);
+        }
     }
     
     return sessionId;
@@ -1160,8 +1212,35 @@ function checkForAutoContinue() {
             // Instead, we just restore the session state by updating the current chat data
             // This maintains the session continuity without creating a new session
             
-            // Update the current chat data with the restored data
-            const studentId = getCurrentStudentId();
+            // Restore the session ID from localStorage to ensure continuity
+            const studentId = chatData.metadata.studentId;
+            const courseId = chatData.metadata.courseId;
+            const unitName = chatData.metadata.unitName;
+            const sessionKey = `biocbot_session_${studentId}_${courseId}_${unitName}`;
+            const existingSessionId = localStorage.getItem(sessionKey);
+            
+            // If we have a stored session ID, ensure it's in the chat data
+            if (existingSessionId) {
+                if (!chatData.sessionInfo) {
+                    chatData.sessionInfo = {};
+                }
+                chatData.sessionInfo.sessionId = existingSessionId;
+                console.log('🔄 [AUTO-CONTINUE] Restored session ID:', existingSessionId);
+            } else if (chatData.sessionInfo && chatData.sessionInfo.sessionId) {
+                // If chat data has a session ID but localStorage doesn't, restore it
+                localStorage.setItem(sessionKey, chatData.sessionInfo.sessionId);
+                console.log('🔄 [AUTO-CONTINUE] Restored session ID to localStorage:', chatData.sessionInfo.sessionId);
+            } else {
+                // If neither has a session ID, get/create one and store it in both places
+                const sessionId = getCurrentSessionId(chatData);
+                if (!chatData.sessionInfo) {
+                    chatData.sessionInfo = {};
+                }
+                chatData.sessionInfo.sessionId = sessionId;
+                console.log('🔄 [AUTO-CONTINUE] Created new session ID:', sessionId);
+            }
+            
+            // Update the current chat data with the restored data (including session ID)
             const autoSaveKey = `biocbot_current_chat_${studentId}`;
             localStorage.setItem(autoSaveKey, JSON.stringify(chatData));
             
@@ -2652,7 +2731,7 @@ async function loadQuestionsForSelectedUnit(unitName) {
                     correctAnswer: q.correctAnswer,
                     explanation: q.explanation || '',
                     unitName: selectedUnit.name,
-                    passThreshold: selectedUnit.passThreshold || 2
+                    passThreshold: selectedUnit.passThreshold !== undefined && selectedUnit.passThreshold !== null ? selectedUnit.passThreshold : 0
                 };
             });
             
@@ -2713,7 +2792,7 @@ async function loadQuestionsForSelectedUnit(unitName) {
                                 correctAnswer: cleanCorrectAnswer,
                                 explanation: q.explanation || '',
                                 unitName: selectedUnit.name,
-                                passThreshold: selectedUnit.passThreshold || 2
+                                passThreshold: selectedUnit.passThreshold !== undefined && selectedUnit.passThreshold !== null ? selectedUnit.passThreshold : 0
                             };
                         });
                         
@@ -2740,7 +2819,13 @@ async function loadQuestionsForSelectedUnit(unitName) {
         }
         
         // Start the assessment process with questions from the selected unit
-        startAssessmentWithQuestions(unitQuestions, selectedUnit.passThreshold || 2);
+        // Use the pass threshold from the unit, or default to 0 if not set
+        // Note: Check for null/undefined separately since 0 is a valid threshold value
+        const unitPassThreshold = (selectedUnit.passThreshold !== undefined && selectedUnit.passThreshold !== null) 
+            ? selectedUnit.passThreshold 
+            : 0;
+        console.log(`Using pass threshold for ${unitName}: ${unitPassThreshold} (from unit data: ${selectedUnit.passThreshold})`);
+        startAssessmentWithQuestions(unitQuestions, unitPassThreshold);
         
     } catch (error) {
         console.error(`Error loading questions for unit ${unitName}:`, error);
@@ -2812,7 +2897,7 @@ function showNoQuestionsForUnitMessage(unitName) {
 /**
  * Start assessment with loaded questions
  */
-function startAssessmentWithQuestions(questions, passThreshold = 2) {
+function startAssessmentWithQuestions(questions, passThreshold = 0) {
     console.log('=== STARTING ASSESSMENT ===');
     console.log(`Original pass threshold: ${passThreshold}`);
     console.log(`Number of questions: ${questions.length}`);

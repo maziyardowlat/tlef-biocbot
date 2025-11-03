@@ -376,7 +376,8 @@ router.get('/:courseId', async (req, res) => {
                 documents: lecture.documents || [],
                 questions: lecture.questions || [],
                 learningObjectives: lecture.learningObjectives || [],
-                assessmentQuestions: lecture.assessmentQuestions || []
+                assessmentQuestions: lecture.assessmentQuestions || [],
+                passThreshold: lecture.passThreshold
             })) || [],
             structure: {
                 weeks: course.lectures?.map((lecture, index) => ({
@@ -456,7 +457,8 @@ async function getCourseForStudent(req, res, courseId) {
                 name: lecture.name,
                 isPublished: lecture.isPublished || false,
                 documents: lecture.documents || [],
-                questions: lecture.questions || []
+                questions: lecture.questions || [],
+                passThreshold: lecture.passThreshold
             })) || [],
             // Keep structure for compatibility
             structure: {

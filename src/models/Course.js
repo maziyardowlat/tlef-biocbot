@@ -456,12 +456,16 @@ async function getPassThreshold(db, courseId, lectureName) {
     );
     
     if (!course || !course.lectures) {
-        return 2; // Default threshold
+        return 0; // Default threshold when no threshold is set
     }
     
     // Find the specific lecture and return its pass threshold
     const lecture = course.lectures.find(l => l.name === lectureName);
-    return lecture ? (lecture.passThreshold || 2) : 2;
+    // Return 0 if no threshold is set (null, undefined, or not found)
+    if (!lecture) {
+        return 0;
+    }
+    return lecture.passThreshold !== undefined && lecture.passThreshold !== null ? lecture.passThreshold : 0;
 }
 
 
