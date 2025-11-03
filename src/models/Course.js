@@ -456,12 +456,16 @@ async function getPassThreshold(db, courseId, lectureName) {
     );
     
     if (!course || !course.lectures) {
-        return 2; // Default threshold
+        return 0; // Default threshold when no threshold is set
     }
     
     // Find the specific lecture and return its pass threshold
     const lecture = course.lectures.find(l => l.name === lectureName);
-    return lecture ? (lecture.passThreshold || 2) : 2;
+    // Return 0 if no threshold is set (null, undefined, or not found)
+    if (!lecture) {
+        return 0;
+    }
+    return lecture.passThreshold !== undefined && lecture.passThreshold !== null ? lecture.passThreshold : 0;
 }
 
 
@@ -582,7 +586,7 @@ async function createCourseFromOnboarding(db, onboardingData) {
                 lecturesPerWeek: courseStructure.lecturesPerWeek,
                 totalUnits: totalUnits
             },
-            isOnboardingComplete: true, // Flag to track onboarding completion
+            isOnboardingComplete: false, // Flag to track onboarding completion - set to true only after Unit 1 setup is complete
             lectures: units, // Use the existing lectures field for units
             createdAt: now,
             updatedAt: now

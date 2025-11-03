@@ -294,9 +294,9 @@ class LLMService {
             
             // Set specific options for question generation - provider-aware
             // Use higher temperature (0.7) for more creative question generation
+            // Note: timeout is handled via Promise.race() below, not as an LLM option
             const generationOptions = {
                 temperature: 0.7,
-                timeout: 120000,  // 2 minute timeout for complex questions
                 systemPrompt: systemPrompt,
                 ...this._getProviderSpecificOptions()
             };
@@ -378,9 +378,9 @@ class LLMService {
             
             // Set specific options for question regeneration - provider-aware
             // Use lower temperature (0.5) for more focused improvements based on feedback
+            // Note: timeout is handled via Promise.race() below, not as an LLM option
             const generationOptions = {
                 temperature: 0.5,  // Lower temperature for more focused regeneration
-                timeout: 120000,
                 systemPrompt: systemPrompt,
                 ...this._getProviderSpecificOptions()
             };

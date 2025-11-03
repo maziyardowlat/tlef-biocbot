@@ -182,10 +182,10 @@ router.post('/pass-threshold', async (req, res) => {
     }
     
     // Validate threshold value
-    if (passThreshold < 1 || passThreshold > 100) {
+    if (passThreshold < 0 || passThreshold > 100) {
         return res.status(400).json({
             success: false,
-            message: 'Pass threshold must be between 1 and 100'
+            message: 'Pass threshold must be between 0 and 100'
         });
     }
     
@@ -329,7 +329,7 @@ router.get('/published-with-questions', async (req, res) => {
                 name: lecture.name,
                 isPublished: lecture.isPublished,
                 learningObjectives: lecture.learningObjectives || [],
-                passThreshold: lecture.passThreshold || 2,
+                passThreshold: lecture.passThreshold !== undefined && lecture.passThreshold !== null ? lecture.passThreshold : 0,
                 assessmentQuestions: lecture.assessmentQuestions || [],
                 documents: lecture.documents || [],
                 createdAt: lecture.createdAt,

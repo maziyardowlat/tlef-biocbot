@@ -149,6 +149,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Load the saved publish status from the database
     loadPublishStatus();
     
+    // Start polling for publish status changes (to detect updates from other users)
+    startPublishStatusPolling();
+    
     // Load the saved learning objectives from the database
     loadLearningObjectives();
     
@@ -157,8 +160,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Load the saved assessment questions from the database first
     loadAssessmentQuestions().then(() => {
-        // Load the saved pass thresholds from the database after questions are loaded
-        loadPassThresholds();
+        // Wait a bit for DOM to be ready, then load thresholds
+        setTimeout(() => {
+            loadPassThresholds();
+        }, 500);
     });
     
     // Set up threshold input event listeners
@@ -893,6 +898,16 @@ function togglePublish(lectureName, isPublished) {
  * @param {boolean} isPublished - Whether the content should be published
  */
 async function updatePublishStatus(lectureName, isPublished) {
+    // Update cache and mark as local change IMMEDIATELY (optimistic update)
+    // This prevents polling from detecting our own change as external
+    currentPublishStatus[lectureName] = isPublished;
+    recentLocalChanges[lectureName] = Date.now();
+    
+    // Clean up old entries from recentLocalChanges after cooldown period
+    setTimeout(() => {
+        delete recentLocalChanges[lectureName];
+    }, LOCAL_CHANGE_COOLDOWN);
+    
     try {
         // Get the current course ID (for now, using a default)
         const courseId = await getCurrentCourseId();
@@ -916,36 +931,60 @@ async function updatePublishStatus(lectureName, isPublished) {
             const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
             console.error('Error response:', errorData);
             
-            // Show specific error message
-            const errorMessage = errorData.message || errorData.error || `Failed to update publish status: ${response.status}`;
-            showNotification(`Error: ${errorMessage}`, 'error');
-            
-            // Revert the toggle if the API call failed
+            // Revert optimistic cache update on error
             const toggleId = `publish-${lectureName.toLowerCase().replace(/\s+/g, '')}`;
             const toggle = document.getElementById(toggleId);
             if (toggle) {
-                toggle.checked = !isPublished;
-                togglePublish(lectureName, !isPublished);
+                // Revert to opposite of what we tried to set
+                const revertedStatus = !isPublished;
+                currentPublishStatus[lectureName] = revertedStatus;
+                delete recentLocalChanges[lectureName];
+                toggle.checked = revertedStatus;
+                togglePublish(lectureName, revertedStatus);
             }
+            
+            // Show specific error message
+            const errorMessage = errorData.message || errorData.error || `Failed to update publish status: ${response.status}`;
+            showNotification(`Error: ${errorMessage}`, 'error');
             return;
         }
         
         const result = await response.json();
+        
+        // Verify the update was successful (cache already updated optimistically above)
+        if (!result.success || !result.data) {
+            // If API says it failed, revert our optimistic update
+            const toggleId = `publish-${lectureName.toLowerCase().replace(/\s+/g, '')}`;
+            const toggle = document.getElementById(toggleId);
+            if (toggle) {
+                const revertedStatus = !isPublished;
+                currentPublishStatus[lectureName] = revertedStatus;
+                delete recentLocalChanges[lectureName];
+                toggle.checked = revertedStatus;
+                togglePublish(lectureName, revertedStatus);
+            }
+            showNotification('Failed to update publish status. Please try again.', 'error');
+            return;
+        }
         
         // Show success notification
         showNotification(result.message || 'Publish status updated successfully', 'success');
         
     } catch (error) {
         console.error('Error updating publish status:', error);
-        showNotification('Error updating publish status. Please try again.', 'error');
         
-        // Revert the toggle if the API call failed
+        // Revert optimistic cache update on error
         const toggleId = `publish-${lectureName.toLowerCase().replace(/\s+/g, '')}`;
         const toggle = document.getElementById(toggleId);
         if (toggle) {
-            toggle.checked = !isPublished;
-            togglePublish(lectureName, !isPublished);
+            const revertedStatus = !isPublished;
+            currentPublishStatus[lectureName] = revertedStatus;
+            delete recentLocalChanges[lectureName];
+            toggle.checked = revertedStatus;
+            togglePublish(lectureName, revertedStatus);
         }
+        
+        showNotification('Error updating publish status. Please try again.', 'error');
     }
 }
 
@@ -1355,10 +1394,20 @@ document.addEventListener('DOMContentLoaded', async function() {
 
 // Removed: documents page retrieval toggle wiring (settings-only per user request)
 
+// Store current publish status for comparison during polling
+let currentPublishStatus = {};
+
+// Track recent local changes to avoid false positives in polling
+// Format: { lectureName: timestamp }
+let recentLocalChanges = {};
+const LOCAL_CHANGE_COOLDOWN = 5000; // 5 seconds - ignore polling changes within this window
+
 /**
  * Load the saved publish status for all lectures from the database
+ * @param {boolean} silent - If true, suppress notifications (used for polling)
+ * @returns {Promise<Object>} The fetched publish status object
  */
-async function loadPublishStatus() {
+async function loadPublishStatus(silent = false) {
     try {
         const courseId = await getCurrentCourseId();
         const instructorId = getCurrentInstructorId();
@@ -1372,6 +1421,9 @@ async function loadPublishStatus() {
         const result = await response.json();
         const publishStatus = result.data.publishStatus;
         
+        // Track changes to detect external updates
+        const changedUnits = [];
+        
         // Update all toggle switches to reflect the saved state
         Object.keys(publishStatus).forEach(lectureName => {
             const isPublished = publishStatus[lectureName];
@@ -1379,24 +1431,134 @@ async function loadPublishStatus() {
             const toggle = document.getElementById(toggleId);
             
             if (toggle) {
-                // Update the toggle state
-                toggle.checked = isPublished;
+                // Check if the status has changed from what we last saw (external update detection)
+                const previousStatus = currentPublishStatus[lectureName];
+                const wasExternallyChanged = previousStatus !== undefined && previousStatus !== isPublished;
                 
-                // Update the visual state
-                const accordionItem = toggle.closest('.accordion-item');
-                if (accordionItem) {
-                    if (isPublished) {
-                        accordionItem.classList.add('published');
-                    } else {
-                        accordionItem.classList.remove('published');
+                // Check if this was a recent local change (within cooldown window)
+                const recentLocalChange = recentLocalChanges[lectureName];
+                const isRecentLocalChange = recentLocalChange && (Date.now() - recentLocalChange) < LOCAL_CHANGE_COOLDOWN;
+                
+                // Only update UI if the toggle state doesn't match the fetched state
+                // This ensures we sync with the database state
+                if (toggle.checked !== isPublished) {
+                    // Update the toggle state
+                    toggle.checked = isPublished;
+                    
+                    // Track external changes for notification
+                    // Only show notification if:
+                    // 1. Status changed from previous fetch (wasExternallyChanged)
+                    // 2. This was NOT a recent local change (isRecentLocalChange = false)
+                    // 3. Not in silent mode (or if we want to show it)
+                    if (wasExternallyChanged && !isRecentLocalChange) {
+                        changedUnits.push({
+                            name: lectureName,
+                            isPublished: isPublished
+                        });
+                    }
+                    
+                    // Update the visual state
+                    const accordionItem = toggle.closest('.accordion-item');
+                    if (accordionItem) {
+                        if (isPublished) {
+                            accordionItem.classList.add('published');
+                        } else {
+                            accordionItem.classList.remove('published');
+                        }
                     }
                 }
             }
         });
         
+        // Store current state for future comparisons (only after we've processed all units)
+        currentPublishStatus = { ...publishStatus };
+        
+        // Notify user of external changes (only show for genuine external changes, not local ones)
+        if (changedUnits.length > 0 && !silent) {
+            const changes = changedUnits.map(unit => 
+                `${unit.name} ${unit.isPublished ? 'published' : 'unpublished'}`
+            ).join(', ');
+            showNotification(`Publish status updated by another user: ${changes}`, 'info');
+        }
+        
+        return publishStatus;
+        
     } catch (error) {
         console.error('Error loading publish status:', error);
-        showNotification('Error loading publish status. Using default values.', 'warning');
+        if (!silent) {
+            showNotification('Error loading publish status. Using default values.', 'warning');
+        }
+        return {};
+    }
+}
+
+/**
+ * Polling interval reference for publish status updates
+ */
+let publishStatusPollingInterval = null;
+
+/**
+ * Start polling for publish status changes
+ * Checks for updates every 10 seconds when the page is visible
+ */
+function startPublishStatusPolling() {
+    // Clear any existing polling interval
+    if (publishStatusPollingInterval) {
+        clearInterval(publishStatusPollingInterval);
+        publishStatusPollingInterval = null;
+    }
+    
+    // Only poll if we're on the documents page (where publish status is displayed)
+    const accordionItems = document.querySelectorAll('.accordion-item');
+    if (accordionItems.length === 0) {
+        // Not on documents page, don't poll
+        return;
+    }
+    
+    // Poll every 10 seconds (adjustable)
+    const POLL_INTERVAL = 10000; // 10 seconds
+    
+    // Note: Initial load already happens via loadPublishStatus() call in DOMContentLoaded
+    // We don't need to call it again here to avoid duplicate requests
+    
+    // Set up polling interval
+    publishStatusPollingInterval = setInterval(() => {
+        // Only poll if the page is visible
+        if (!document.hidden) {
+            loadPublishStatus(true); // Silent polling to avoid spam
+        }
+    }, POLL_INTERVAL);
+    
+    // Handle page visibility changes
+    // Pause polling when tab is hidden, resume when visible
+    const handleVisibilityChange = () => {
+        if (document.hidden) {
+            // Page is hidden, polling will be skipped (handled in setInterval callback)
+            console.log('📊 [POLLING] Page hidden, pausing publish status polling');
+        } else {
+            // Page is visible, immediately check for updates
+            console.log('📊 [POLLING] Page visible, resuming publish status polling');
+            loadPublishStatus(true); // Silent check when resuming
+        }
+    };
+    
+    // Add event listener (only add once)
+    if (!document.hasAttribute('data-publish-polling-listener')) {
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        document.setAttribute('data-publish-polling-listener', 'true');
+    }
+    
+    console.log('📊 [POLLING] Started publish status polling (every 10 seconds)');
+}
+
+/**
+ * Stop polling for publish status changes
+ */
+function stopPublishStatusPolling() {
+    if (publishStatusPollingInterval) {
+        clearInterval(publishStatusPollingInterval);
+        publishStatusPollingInterval = null;
+        console.log('📊 [POLLING] Stopped publish status polling');
     }
 }
 
@@ -1627,6 +1789,16 @@ async function loadDocuments() {
                 }
             }
         });
+        
+        // After all documents are loaded and accordion items exist, load thresholds
+        console.log('🔄 [DOCUMENTS] All documents loaded, now loading thresholds after delay...');
+        setTimeout(() => {
+            console.log('🔄 [DOCUMENTS] Loading thresholds now...');
+            const accordionCount = document.querySelectorAll('.accordion-item').length;
+            const thresholdInputCount = document.querySelectorAll('input[id^="pass-threshold-"]').length;
+            console.log(`🔄 [DOCUMENTS] Found ${accordionCount} accordion items, ${thresholdInputCount} threshold inputs before loading`);
+            loadPassThresholds();
+        }, 800);
         
     } catch (error) {
         console.error('Error loading documents:', error);
@@ -2217,7 +2389,14 @@ async function loadAssessmentQuestions() {
                     // Update the display for this lecture
                     updateQuestionsDisplay(lectureName);
                 } else {
+                    // No questions found - explicitly set threshold to 0 for this unit
                     console.log(`❓ [ASSESSMENT_QUESTIONS] No questions found for ${lectureName}`);
+                    const weekId = lectureName.toLowerCase().replace(/\s+/g, '-');
+                    const thresholdInput = document.getElementById(`pass-threshold-${weekId}`);
+                    if (thresholdInput) {
+                        thresholdInput.value = 0;
+                        console.log(`[ASSESSMENT_QUESTIONS] No questions for ${lectureName}, set threshold to 0`);
+                    }
                 }
             } else {
                 console.warn(`⚠️ [MONGODB] Failed to load assessment questions for ${lectureName}: ${response.status} ${response.statusText}`);
@@ -2226,10 +2405,49 @@ async function loadAssessmentQuestions() {
         
         console.log('✅ [ASSESSMENT_QUESTIONS] Assessment questions loading process completed');
         
+        // After all questions are loaded, force-check and update all thresholds
+        // This ensures units with 0 questions have threshold set to 0
+        forceUpdateThresholdsForZeroQuestions();
+        
     } catch (error) {
         console.error('❌ [ASSESSMENT_QUESTIONS] Error loading assessment questions:', error);
         showNotification('Error loading assessment questions. Using default values.', 'warning');
     }
+}
+
+/**
+ * Force update all thresholds to 0 for units with no questions
+ */
+function forceUpdateThresholdsForZeroQuestions() {
+    console.log('🔧 [FORCE_UPDATE] Starting force update of thresholds...');
+    const thresholdInputs = document.querySelectorAll('input[id^="pass-threshold-"]');
+    console.log(`🔧 [FORCE_UPDATE] Found ${thresholdInputs.length} threshold inputs`);
+    
+    thresholdInputs.forEach(thresholdInput => {
+        const weekId = thresholdInput.id.replace('pass-threshold-', '');
+        const lectureName = weekId.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+        const currentValue = thresholdInput.value;
+        
+        console.log(`🔧 [FORCE_UPDATE] Checking ${lectureName} (ID: ${weekId}), current threshold: ${currentValue}`);
+        
+        // Check both DOM and object
+        const questionsContainer = document.getElementById(`assessment-questions-${weekId}`);
+        const domQuestions = questionsContainer ? questionsContainer.querySelectorAll('.question-item').length : 0;
+        const objectQuestions = assessmentQuestions[lectureName] ? assessmentQuestions[lectureName].length : 0;
+        const totalQuestions = Math.max(domQuestions, objectQuestions);
+        
+        console.log(`🔧 [FORCE_UPDATE] ${lectureName}: DOM questions=${domQuestions}, Object questions=${objectQuestions}, Total=${totalQuestions}, assessmentQuestions keys:`, Object.keys(assessmentQuestions));
+        
+        if (totalQuestions === 0) {
+            const oldValue = thresholdInput.value;
+            thresholdInput.value = 0;
+            console.log(`🔧 [FORCE_UPDATE] ✅ FORCED threshold from ${oldValue} to 0 for ${lectureName} (no questions found)`);
+            console.log(`🔧 [FORCE_UPDATE] Verification - threshold input value is now: ${thresholdInput.value}`);
+        } else {
+            console.log(`🔧 [FORCE_UPDATE] ⏭️ Skipping ${lectureName} - has ${totalQuestions} questions, threshold remains: ${thresholdInput.value}`);
+        }
+    });
+    console.log('🔧 [FORCE_UPDATE] Force update completed');
 }
 
 /**
@@ -2349,14 +2567,7 @@ async function reloadPassThresholds() {
                     thresholdInput.value = passThreshold;
                     console.log(`[RELOAD_PASS_THRESHOLDS] Updated threshold input for ${lectureName}: ${passThreshold}`);
                     
-                    // Also update the display to show the loaded value
-                    const weekId = thresholdInput.id.replace('pass-threshold-', '');
-                    const thresholdDisplay = document.getElementById(`threshold-value-${weekId}`);
-                    if (thresholdDisplay) {
-                        const questionsContainer = document.getElementById(`assessment-questions-${weekId}`);
-                        const totalQuestions = questionsContainer ? questionsContainer.querySelectorAll('.question-item').length : 0;
-                        thresholdDisplay.textContent = `${passThreshold}/${totalQuestions}`;
-                    }
+                    // Threshold input updated
                 }
             }
         }
@@ -2385,39 +2596,61 @@ async function loadPassThresholds() {
             
             const response = await fetch(`/api/lectures/pass-threshold?courseId=${courseId}&lectureName=${encodeURIComponent(lectureName)}`);
             
-            if (response.ok) {
-                const result = await response.json();
-                const passThreshold = result.data.passThreshold;
+            // Find the threshold input for this lecture (regardless of whether API call succeeded)
+            // Convert lecture name to ID format (e.g., "Unit 1" -> "unit-1")
+            const thresholdId = `pass-threshold-${lectureName.toLowerCase().replace(/\s+/g, '-')}`;
+            const thresholdInput = item.querySelector(`#${thresholdId}`);
+            
+            if (thresholdInput) {
+                const weekId = thresholdInput.id.replace('pass-threshold-', '');
+                const currentValue = thresholdInput.value;
+                console.log(`📊 [LOAD_PASS_THRESHOLDS] Processing ${lectureName} (ID: ${weekId}), current input value: ${currentValue}`);
                 
-                console.log(`[LOAD_PASS_THRESHOLDS] API response for ${lectureName}:`, result);
+                // Check how many questions exist for this unit (check both the assessmentQuestions object and DOM)
+                const questionsContainer = document.getElementById(`assessment-questions-${weekId}`);
+                const domQuestions = questionsContainer ? questionsContainer.querySelectorAll('.question-item').length : 0;
+                const objectQuestions = assessmentQuestions[lectureName] ? assessmentQuestions[lectureName].length : 0;
+                const totalQuestions = Math.max(domQuestions, objectQuestions);
                 
-                // Find and update the threshold input for this lecture
-                // Convert lecture name to ID format (e.g., "Unit 1" -> "unit-1")
-                const thresholdId = `pass-threshold-${lectureName.toLowerCase().replace(/\s+/g, '-')}`;
-                const thresholdInput = item.querySelector(`#${thresholdId}`);
+                console.log(`📊 [LOAD_PASS_THRESHOLDS] ${lectureName}: DOM questions=${domQuestions}, Object questions=${objectQuestions}, Total=${totalQuestions}`);
+                console.log(`📊 [LOAD_PASS_THRESHOLDS] assessmentQuestions object keys:`, Object.keys(assessmentQuestions));
+                console.log(`📊 [LOAD_PASS_THRESHOLDS] assessmentQuestions[${lectureName}]:`, assessmentQuestions[lectureName]);
                 
-                if (thresholdInput) {
-                    thresholdInput.value = passThreshold;
-                    console.log(`[LOAD_PASS_THRESHOLDS] Updated threshold input for ${lectureName}: ${passThreshold}`);
+                // If there are no questions, ALWAYS set threshold to 0 (ignore any saved value)
+                if (totalQuestions === 0) {
+                    const oldValue = thresholdInput.value;
+                    thresholdInput.value = 0;
+                    console.log(`📊 [LOAD_PASS_THRESHOLDS] ✅ FORCED threshold from ${oldValue} to 0 for ${lectureName} (no questions found)`);
+                    console.log(`📊 [LOAD_PASS_THRESHOLDS] Verification - threshold input value after setting: ${thresholdInput.value}`);
+                } else if (response.ok) {
+                    const result = await response.json();
+                    const passThreshold = result.data.passThreshold;
                     
-                    // Also update the display to show the loaded value
-                    const weekId = thresholdInput.id.replace('pass-threshold-', '');
-                    const thresholdDisplay = document.getElementById(`threshold-value-${weekId}`);
-                    if (thresholdDisplay) {
-                        const questionsContainer = document.getElementById(`assessment-questions-${weekId}`);
-                        const totalQuestions = questionsContainer ? questionsContainer.querySelectorAll('.question-item').length : 0;
-                        thresholdDisplay.textContent = `${passThreshold}/${totalQuestions}`;
-                    }
+                    console.log(`📊 [LOAD_PASS_THRESHOLDS] API response for ${lectureName}:`, result);
+                    console.log(`📊 [LOAD_PASS_THRESHOLDS] API returned passThreshold: ${passThreshold}`);
+                    
+                    // Update threshold input with loaded value (but only if questions exist)
+                    thresholdInput.value = passThreshold;
+                    console.log(`📊 [LOAD_PASS_THRESHOLDS] Updated threshold input for ${lectureName} to: ${passThreshold}`);
                 } else {
-                    console.log(`[LOAD_PASS_THRESHOLDS] Threshold input not found for ${lectureName} (ID: ${thresholdId})`);
+                    // No threshold set yet, default to 0 but don't save it
+                    console.log(`📊 [LOAD_PASS_THRESHOLDS] No API threshold set for ${lectureName}, defaulting to 0`);
+                    thresholdInput.value = 0;
                 }
             } else {
-                console.log(`[LOAD_PASS_THRESHOLDS] Failed to load threshold for ${lectureName}: ${response.status}`);
+                console.log(`❌ [LOAD_PASS_THRESHOLDS] Threshold input not found for ${lectureName} (ID: ${thresholdId})`);
             }
         }
         
+        console.log('📊 [LOAD_PASS_THRESHOLDS] Finished loading all thresholds, running force update...');
+        
+        // Force update thresholds again after loading (to catch any units with 0 questions)
+        forceUpdateThresholdsForZeroQuestions();
+        
+        console.log('📊 [LOAD_PASS_THRESHOLDS] All threshold loading completed');
+        
     } catch (error) {
-        console.error('Error loading pass thresholds:', error);
+        console.error('❌ [LOAD_PASS_THRESHOLDS] Error loading pass thresholds:', error);
         showNotification('Error loading pass thresholds. Using default values.', 'warning');
     }
 }
@@ -3910,21 +4143,25 @@ function updateQuestionsDisplay(week) {
     
     questionsContainer.innerHTML = html;
     
-    // Update pass threshold max value and display
+    // Update pass threshold max value
     const weekId = week.toLowerCase().replace(/\s+/g, '-');
     const thresholdInput = document.getElementById(`pass-threshold-${weekId}`);
-    const thresholdDisplay = document.getElementById(`threshold-value-${weekId}`);
     
     if (thresholdInput) {
         thresholdInput.max = questions.length;
-        if (parseInt(thresholdInput.value) > questions.length) {
-            thresholdInput.value = questions.length;
+        // If there are no questions, always set threshold to 0
+        if (questions.length === 0) {
+            thresholdInput.value = 0;
+        } else {
+            // If threshold exceeds question count, adjust it
+            if (parseInt(thresholdInput.value) > questions.length) {
+                thresholdInput.value = questions.length;
+            }
+            // If threshold hasn't been set (is empty or invalid), default to 0
+            if (thresholdInput.value === '' || thresholdInput.value === null || thresholdInput.value === undefined) {
+                thresholdInput.value = 0;
+            }
         }
-    }
-    
-    // Update the threshold display text to show current total questions
-    if (thresholdDisplay) {
-        thresholdDisplay.textContent = questions.length;
     }
     
     // Event listeners for threshold input are handled by setupThresholdInputListeners()
@@ -3938,18 +4175,12 @@ function updateQuestionsDisplay(week) {
 function handleThresholdInputChange(event) {
     const thresholdInput = event.target;
     const weekId = thresholdInput.id.replace('pass-threshold-', '');
-    const thresholdDisplay = document.getElementById(`threshold-value-${weekId}`);
     
-    if (thresholdDisplay) {
-        // Get the current total questions count
-        const questionsContainer = document.getElementById(`assessment-questions-${weekId}`);
-        const totalQuestions = questionsContainer ? questionsContainer.querySelectorAll('.question-item').length : 0;
-        
-        // Update the display to show current input value vs total questions
-        thresholdDisplay.textContent = `${thresholdInput.value}/${totalQuestions}`;
-        
-        console.log(`Threshold input changed: ${thresholdInput.value}/${totalQuestions}`);
-    }
+    // Get the current total questions count for validation
+    const questionsContainer = document.getElementById(`assessment-questions-${weekId}`);
+    const totalQuestions = questionsContainer ? questionsContainer.querySelectorAll('.question-item').length : 0;
+    
+    console.log(`Threshold input changed: ${thresholdInput.value}/${totalQuestions}`);
 }
 
 /**
@@ -4635,7 +4866,13 @@ function generateUnitsFromOnboarding(onboardingData) {
     
     // Load documents from course structure
     setTimeout(() => {
-        loadDocuments();
+        loadDocuments().then(() => {
+            // After documents are loaded (which creates the accordion items), load thresholds
+            setTimeout(() => {
+                console.log('🔄 [DELAYED_LOAD] Loading thresholds after documents rendered...');
+                loadPassThresholds();
+            }, 300);
+        });
     }, 100);
     
     // Also ensure buttons exist immediately (fallback)
@@ -4749,9 +4986,8 @@ function createUnitElement(unitName, unitData, isExpanded = false) {
                     <!-- Pass Threshold Setting -->
                     <div class="threshold-setting">
                         <label for="pass-threshold-${unitId}">Questions required to pass:</label>
-                        <input type="number" id="pass-threshold-${unitId}" min="1" max="10" value="2" class="threshold-input">
+                        <input type="number" id="pass-threshold-${unitId}" min="0" max="10" value="0" class="threshold-input">
                         <span class="threshold-help">out of total questions</span>
-                        <span class="threshold-display" id="threshold-value-${unitId}">0</span>
                     </div>
                     
                     <!-- Questions List -->
@@ -4811,19 +5047,13 @@ function loadExistingUnitData(onboardingData) {
         }
         
         // Load pass threshold
-        if (unit.passThreshold) {
-            const thresholdInput = document.getElementById(`pass-threshold-${unitId}`);
-            if (thresholdInput) {
+        const thresholdInput = document.getElementById(`pass-threshold-${unitId}`);
+        if (thresholdInput) {
+            if (unit.passThreshold) {
                 thresholdInput.value = unit.passThreshold;
-                
-                // Update the threshold display to show total questions count
-                const thresholdDisplay = document.getElementById(`threshold-value-${unitId}`);
-                if (thresholdDisplay) {
-                    // Get the current total questions count for this unit
-                    const questionsContainer = document.getElementById(`assessment-questions-${unitId}`);
-                    const totalQuestions = questionsContainer ? questionsContainer.querySelectorAll('.question-item').length : 0;
-                    thresholdDisplay.textContent = totalQuestions;
-                }
+            } else {
+                // If no threshold set, default to 0 but don't save it yet
+                thresholdInput.value = 0;
             }
         }
         
@@ -5595,9 +5825,8 @@ function renderCourseUnits(units) {
                         <!-- Pass Threshold Setting -->
                         <div class="threshold-setting">
                             <label for="pass-threshold-${weekId}">Questions required to pass:</label>
-                            <input type="number" id="pass-threshold-${weekId}" min="1" max="10" value="2" class="threshold-input">
+                            <input type="number" id="pass-threshold-${weekId}" min="0" max="10" value="0" class="threshold-input">
                             <span class="threshold-help">out of total questions</span>
-                            <span class="threshold-display" id="threshold-value-${weekId}">0</span>
                         </div>
                         
                         <!-- Questions List -->

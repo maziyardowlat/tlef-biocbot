@@ -949,69 +949,6 @@ input:checked + .toggle-slider:before {
     background-image: none !important;
 }
 
-/* Chat Actions Styles */
-.chat-actions {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-shrink: 0;
-}
-
-.save-chat-button {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    background-color: var(--primary-color);
-    color: white;
-    border: none;
-    border-radius: 8px;
-    padding: 10px 16px;
-    font-size: 14px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.save-chat-button:hover {
-    background-color: var(--accent-color);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-}
-
-.save-chat-button:active {
-    transform: translateY(0);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
-.save-chat-button:disabled {
-    background-color: #ccc;
-    cursor: not-allowed;
-    transform: none;
-    box-shadow: none;
-}
-
-.save-icon {
-    font-size: 16px;
-    line-height: 1;
-}
-
-/* Responsive design for chat actions */
-@media (max-width: 768px) {
-    .chat-actions {
-        gap: 8px;
-    }
-    
-    .save-chat-button {
-        padding: 8px 12px;
-        font-size: 13px;
-    }
-    
-    .save-icon {
-        font-size: 14px;
-    }
-}
-
 /* Chat History Page Styles */
 .history-header {
     padding: 16px;

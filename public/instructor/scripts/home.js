@@ -4,8 +4,34 @@
  */
 
 document.addEventListener('DOMContentLoaded', function() {
-    // Initialize home page functionality
-    initializeHomePage();
+    // Wait for auth to be ready before initializing
+    // This ensures getCurrentInstructorId() is available
+    function tryInitialize() {
+        if (typeof getCurrentInstructorId === 'function' && getCurrentInstructorId()) {
+            initializeHomePage();
+            return true;
+        }
+        return false;
+    }
+    
+    // Try initializing immediately if auth is already ready
+    if (!tryInitialize()) {
+        // Wait for auth:ready event if auth hasn't loaded yet
+        // Use a one-time listener
+        const authReadyHandler = function() {
+            if (tryInitialize()) {
+                document.removeEventListener('auth:ready', authReadyHandler);
+            }
+        };
+        document.addEventListener('auth:ready', authReadyHandler);
+        
+        // Fallback: try initializing after a short delay if event doesn't fire
+        setTimeout(() => {
+            if (tryInitialize()) {
+                document.removeEventListener('auth:ready', authReadyHandler);
+            }
+        }, 500);
+    }
 });
 
 /**
@@ -15,6 +41,18 @@ async function initializeHomePage() {
     console.log('Home page initialized');
     
     try {
+        // Check onboarding status first - if not complete, show prompt and hide other content
+        const isOnboardingComplete = await checkOnboardingStatus();
+        
+        if (!isOnboardingComplete) {
+            // If onboarding is not complete, show prompt and hide other sections
+            showOnboardingPrompt();
+            return; // Exit early - don't load other content
+        }
+        
+        // Onboarding is complete, hide prompt and show normal content
+        hideOnboardingPrompt();
+        
         // Load flagged content count
         await loadFlaggedContent();
         
@@ -24,6 +62,95 @@ async function initializeHomePage() {
         console.error('Error initializing home page:', error);
         showErrorMessage('Failed to load home page data');
     }
+}
+
+/**
+ * Check if instructor has completed onboarding
+ * @returns {Promise<boolean>} True if onboarding is complete, false otherwise
+ */
+async function checkOnboardingStatus() {
+    try {
+        const instructorId = getCurrentInstructorId();
+        if (!instructorId) {
+            console.log('No instructor ID found');
+            return false;
+        }
+        
+        console.log(`Checking onboarding status for instructor: ${instructorId}`);
+        
+        // Check if instructor has any courses with onboarding complete
+        const response = await authenticatedFetch(`/api/onboarding/instructor/${instructorId}`);
+        
+        if (!response.ok) {
+            console.error('Failed to fetch instructor courses');
+            return false;
+        }
+        
+        const result = await response.json();
+        
+        if (!result.success || !result.data || !result.data.courses) {
+            console.log('No courses found for instructor');
+            return false;
+        }
+        
+        // Check if any course has onboarding complete
+        const completedCourse = result.data.courses.find(course => course.isOnboardingComplete === true);
+        
+        if (completedCourse) {
+            console.log('✅ Onboarding complete - found completed course:', completedCourse.courseId);
+            return true;
+        }
+        
+        console.log('⚠️ Onboarding not complete - no completed courses found');
+        return false;
+        
+    } catch (error) {
+        console.error('Error checking onboarding status:', error);
+        return false; // Default to showing onboarding prompt on error
+    }
+}
+
+/**
+ * Show onboarding prompt and hide other content sections
+ */
+function showOnboardingPrompt() {
+    const onboardingPrompt = document.getElementById('onboarding-prompt-section');
+    const flaggedSection = document.querySelector('.flagged-section');
+    const missingItemsSection = document.getElementById('missing-items-section');
+    const completeSection = document.getElementById('complete-section');
+    const disclaimerSection = document.querySelector('.disclaimer-section');
+    
+    // Show onboarding prompt
+    if (onboardingPrompt) {
+        onboardingPrompt.style.display = 'block';
+    }
+    
+    // Hide other content sections
+    if (flaggedSection) {
+        flaggedSection.style.display = 'none';
+    }
+    if (missingItemsSection) {
+        missingItemsSection.style.display = 'none';
+    }
+    if (completeSection) {
+        completeSection.style.display = 'none';
+    }
+    if (disclaimerSection) {
+        disclaimerSection.style.display = 'none';
+    }
+}
+
+/**
+ * Hide onboarding prompt and show normal content sections
+ */
+function hideOnboardingPrompt() {
+    const onboardingPrompt = document.getElementById('onboarding-prompt-section');
+    
+    if (onboardingPrompt) {
+        onboardingPrompt.style.display = 'none';
+    }
+    
+    // Other sections will be shown/hidden by their own functions
 }
 
 /**
