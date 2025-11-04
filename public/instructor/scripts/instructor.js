@@ -1543,9 +1543,11 @@ function startPublishStatusPolling() {
     };
     
     // Add event listener (only add once)
-    if (!document.hasAttribute('data-publish-polling-listener')) {
+    // Note: Document doesn't support hasAttribute/setAttribute; use documentElement
+    const docEl = document.documentElement;
+    if (!docEl.hasAttribute('data-publish-polling-listener')) {
         document.addEventListener('visibilitychange', handleVisibilityChange);
-        document.setAttribute('data-publish-polling-listener', 'true');
+        docEl.setAttribute('data-publish-polling-listener', 'true');
     }
     
     console.log('📊 [POLLING] Started publish status polling (every 10 seconds)');
