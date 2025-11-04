@@ -297,6 +297,10 @@ function setupProtectedRoutes() {
     app.get('/instructor/ta-hub', authMiddleware.requireInstructorOrTA, (req, res) => {
         res.sendFile(path.join(__dirname, '../public/instructor/ta-hub.html'));
     });
+
+    app.get('/instructor/student-hub', authMiddleware.requireInstructor, (req, res) => {
+        res.sendFile(path.join(__dirname, '../public/instructor/student-hub.html'));
+    });
 }
 
 // Legacy routes (redirect to new structure)
@@ -436,7 +440,7 @@ function setupAPIRoutes() {
 
     // API endpoints (protected)
     app.use('/api/courses', authMiddleware.requireAuth, coursesRoutes);
-    app.use('/api/flags', authMiddleware.requireAuth, flagsRoutes);
+    app.use('/api/flags', authMiddleware.requireAuth, authMiddleware.populateUser, authMiddleware.requireStudentEnrolled, flagsRoutes);
     app.use('/api/lectures', authMiddleware.requireAuth, lecturesRoutes);
     app.use('/api/mode-questions', authMiddleware.requireAuth, modeQuestionsRoutes);
     app.use('/api/learning-objectives', authMiddleware.requireAuth, learningObjectivesRoutes);
@@ -444,8 +448,8 @@ function setupAPIRoutes() {
     app.use('/api/questions', authMiddleware.requireAuth, questionsRoutes);
     app.use('/api/onboarding', authMiddleware.requireAuth, onboardingRoutes);
     app.use('/api/qdrant', authMiddleware.requireAuth, qdrantRoutes);
-    app.use('/api/chat', authMiddleware.requireAuth, chatRoutes);
-    app.use('/api/students', authMiddleware.requireAuth, studentsRoutes);
+    app.use('/api/chat', authMiddleware.requireAuth, authMiddleware.populateUser, authMiddleware.requireStudentEnrolled, chatRoutes);
+    app.use('/api/students', authMiddleware.requireAuth, authMiddleware.populateUser, authMiddleware.requireStudentEnrolled, studentsRoutes);
     app.use('/api/user-agreement', authMiddleware.requireAuth, userAgreementRoutes);
 }
 

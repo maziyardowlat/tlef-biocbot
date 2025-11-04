@@ -1,4 +1,17 @@
 document.addEventListener('DOMContentLoaded', async () => {
+    try {
+        const courseId = localStorage.getItem('selectedCourseId');
+        if (courseId) {
+            const resp = await fetch(`/api/courses/${courseId}/student-enrollment`, { credentials: 'include' });
+            if (resp.ok) {
+                const data = await resp.json();
+                if (data && data.success && data.data && data.data.enrolled === false) {
+                    renderRevokedAccessUI();
+                    return; // stop further chat init
+                }
+            }
+        }
+    } catch (e) { console.warn('Enrollment check failed, proceeding:', e); }
     const chatForm = document.getElementById('chat-form');
     const chatInput = document.getElementById('chat-input');
     const chatMessages = document.getElementById('chat-messages');
@@ -351,6 +364,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         chatForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             
+            // Prevent chat if no published units are available
+            if (window.noPublishedUnits) {
+                console.log('Chat disabled - no published units available');
+                return;
+            }
+            
             const message = chatInput.value.trim();
             if (!message) return;
             
@@ -435,6 +454,72 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 });
+
+function renderRevokedAccessUI() {
+    try {
+        // Only hide the chat body, keep the header (where course selector may live)
+        const chatContainer = document.querySelector('.chat-container');
+        if (chatContainer) {
+            chatContainer.style.display = 'none';
+        }
+
+        // Insert warning below header
+        const header = document.querySelector('.chat-header');
+        if (header && header.parentElement) {
+            const notice = document.createElement('div');
+            notice.style.padding = '24px';
+            notice.innerHTML = `
+                <div style="background:#fff3cd;border:1px solid #ffeeba;color:#856404;padding:16px;border-radius:8px;">
+                    <h2 style="margin-top:0;margin-bottom:8px;">Access disabled</h2>
+                    <p>Your access in this course is revoked.</p>
+                    <p>Please select another course from the course selector at the top if available.</p>
+                </div>
+            `;
+            header.parentElement.insertBefore(notice, header.nextSibling);
+            // Also render a standalone course selector since chat body is hidden
+            renderStandaloneCourseSelectorBelowHeader(header.parentElement);
+        }
+        // Disable sidebar actions that start sessions
+        const newSessionBtn = document.getElementById('new-session-btn');
+        if (newSessionBtn) newSessionBtn.disabled = true;
+    } catch (_) {}
+}
+
+async function renderStandaloneCourseSelectorBelowHeader(container) {
+    try {
+        const resp = await fetch('/api/courses/available/all');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const courses = (data && data.data) || [];
+        if (!Array.isArray(courses) || courses.length === 0) return;
+
+        const wrapper = document.createElement('div');
+        wrapper.style.margin = '16px 0 0 0';
+        wrapper.innerHTML = `
+            <div class="course-selection-container" style="margin: 16px 0; padding: 15px; background-color: #f8f9fa; border-radius: 8px; border-left: 4px solid var(--primary-color);">
+                <h3 style="margin: 0 0 10px 0; color: #333;">Select Your Course</h3>
+                <select id="revoked-course-select" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                    <option value="">Choose a course...</option>
+                    ${courses.map(c => `<option value="${c.courseId}">${c.courseName}</option>`).join('')}
+                </select>
+            </div>
+        `;
+        container.appendChild(wrapper);
+        const sel = wrapper.querySelector('#revoked-course-select');
+        if (sel) {
+            sel.addEventListener('change', async function() {
+                const selectedCourseId = this.value;
+                if (selectedCourseId) {
+                    await loadCourseData(selectedCourseId);
+                    // after switching, reload page to reinit chat area
+                    window.location.reload();
+                }
+            });
+        }
+    } catch (e) {
+        console.warn('Failed to render standalone course selector:', e);
+    }
+}
 
 // Global functions for flagging functionality
 
@@ -1491,7 +1576,7 @@ function initializeNewSessionButton() {
 /**
  * Handle new session button click
  */
-function handleNewSession() {
+async function handleNewSession() {
     try {
         console.log('🔄 [NEW-SESSION] Starting new session...');
         
@@ -1510,6 +1595,27 @@ function handleNewSession() {
             console.log('🔄 [NEW-SESSION] Generated new session ID:', newSessionId);
         }
         
+        // Get the current course name from localStorage or fetch it
+        const storedCourseName = localStorage.getItem('selectedCourseName');
+        let courseName = storedCourseName || 'BIOC 202'; // Fallback to default if not found
+        
+        // If course name not in localStorage, try to fetch it
+        if (!storedCourseName && courseId) {
+            try {
+                const response = await fetch(`/api/courses/${courseId}`);
+                if (response.ok) {
+                    const courseData = await response.json();
+                    if (courseData.success && courseData.data) {
+                        courseName = courseData.data.courseName || courseData.data.name || courseName;
+                        // Store it for future use
+                        localStorage.setItem('selectedCourseName', courseName);
+                    }
+                }
+            } catch (error) {
+                console.warn('Could not fetch course name, using stored or default:', error);
+            }
+        }
+        
         // Clear the chat interface
         const chatMessages = document.getElementById('chat-messages');
         if (chatMessages) {
@@ -1517,7 +1623,7 @@ function handleNewSession() {
                 <div class="message bot-message">
                     <div class="message-avatar">B</div>
                     <div class="message-content">
-                        <p>Hello! I'm BiocBot, your AI study assistant for BIOC 202. How can I help you today?</p>
+                        <p>Hello! I'm BiocBot, your AI study assistant for ${courseName}. How can I help you today?</p>
                         <div class="message-footer">
                             <div class="message-footer-right">
                                 <span class="timestamp">Just now</span>
@@ -1545,6 +1651,20 @@ function handleNewSession() {
         // Reset flags
         window.autoContinued = false;
         window.loadingFromHistory = false;
+        
+        // Update course display to ensure header and other elements are synced
+        if (courseName) {
+            // Update the course name in the header
+            const courseNameElement = document.querySelector('.course-name');
+            if (courseNameElement) {
+                courseNameElement.textContent = courseName;
+            }
+            // Update the user role display
+            const userRoleElement = document.querySelector('.user-role');
+            if (userRoleElement) {
+                userRoleElement.textContent = `Student - ${courseName}`;
+            }
+        }
         
         // Show notification
         showNewSessionNotification();
@@ -2504,26 +2624,89 @@ async function checkPublishedUnitsAndLoadQuestions() {
 }
 
 /**
+ * Enable chat input and clear noPublishedUnits flag
+ * Called when units are available or assessment is completed
+ */
+function enableChatInput() {
+    // Clear the noPublishedUnits flag since units are now available
+    window.noPublishedUnits = false;
+    
+    // Show chat input container
+    const chatInputContainer = document.querySelector('.chat-input-container');
+    if (chatInputContainer) {
+        chatInputContainer.style.display = 'block';
+    }
+    
+    // Re-enable the chat input field
+    const chatInput = document.getElementById('chat-input');
+    if (chatInput) {
+        chatInput.disabled = false;
+        chatInput.placeholder = 'Type your message here...';
+        chatInput.classList.remove('disabled-input');
+        chatInput.style.cursor = 'text';
+    }
+    
+    // Re-enable the send button
+    const sendButton = document.getElementById('send-button');
+    if (sendButton) {
+        sendButton.disabled = false;
+        sendButton.classList.remove('disabled-button');
+        sendButton.style.cursor = 'pointer';
+        sendButton.style.opacity = '1';
+    }
+    
+    // Show mode toggle
+    const modeToggleContainer = document.querySelector('.mode-toggle-container');
+    if (modeToggleContainer) {
+        modeToggleContainer.style.display = 'block';
+    }
+}
+
+/**
  * Show message when no questions are available
+ * Disables chat input and prevents chat functionality when no units are published
  */
 function showNoQuestionsMessage() {
-    console.log('Showing no questions message');
+    console.log('Showing no questions message - no published units available');
+    
+    // Set a global flag to prevent chat functionality
+    window.noPublishedUnits = true;
     
     // Set default mode to tutor
     localStorage.setItem('studentMode', 'tutor');
     updateModeToggleUI('tutor');
     
-    // Show chat input and mode toggle
+    // Show chat input container but disable the input
     const chatInputContainer = document.querySelector('.chat-input-container');
     if (chatInputContainer) {
         chatInputContainer.style.display = 'block';
     }
-    const modeToggleContainer = document.querySelector('.mode-toggle-container');
-    if (modeToggleContainer) {
-        modeToggleContainer.style.display = 'block';
+    
+    // Disable the chat input field - make it not typable
+    const chatInput = document.getElementById('chat-input');
+    if (chatInput) {
+        chatInput.disabled = true;
+        chatInput.placeholder = 'No units published - chat unavailable';
+        chatInput.classList.add('disabled-input');
+        chatInput.style.cursor = 'not-allowed';
     }
     
-    // Add message to chat
+    // Disable the send button
+    const sendButton = document.getElementById('send-button');
+    if (sendButton) {
+        sendButton.disabled = true;
+        sendButton.classList.add('disabled-button');
+        sendButton.style.cursor = 'not-allowed';
+        sendButton.style.opacity = '0.6';
+    }
+    
+    // Hide mode toggle since chat is disabled
+    const modeToggleContainer = document.querySelector('.mode-toggle-container');
+    if (modeToggleContainer) {
+        modeToggleContainer.style.display = 'none';
+    }
+    
+    // Add message to chat with the specified text
     const noQuestionsMessage = document.createElement('div');
     noQuestionsMessage.classList.add('message', 'bot-message');
     
@@ -2535,21 +2718,26 @@ function showNoQuestionsMessage() {
     contentDiv.classList.add('message-content');
     
     const messageText = document.createElement('p');
-    messageText.innerHTML = `<strong>Welcome to BiocBot!</strong><br>
-    No assessment questions are currently available for this course. You can chat directly with me about any topics you'd like to discuss or questions you have about the course material.`;
+    messageText.textContent = 'No units published at this time, so please check back with your instructor and get back to me with regards to anything you need';
     
     contentDiv.appendChild(messageText);
     
     // Add timestamp
+    const footerDiv = document.createElement('div');
+    footerDiv.classList.add('message-footer');
+    const footerRight = document.createElement('div');
+    footerRight.classList.add('message-footer-right');
     const timestamp = document.createElement('span');
     timestamp.classList.add('timestamp');
     timestamp.textContent = 'Just now';
-    contentDiv.appendChild(timestamp);
+    footerRight.appendChild(timestamp);
+    footerDiv.appendChild(footerRight);
+    contentDiv.appendChild(footerDiv);
     
     noQuestionsMessage.appendChild(avatarDiv);
     noQuestionsMessage.appendChild(contentDiv);
     
-        // Add to chat
+    // Add to chat
     const chatMessages = document.getElementById('chat-messages');
     chatMessages.appendChild(noQuestionsMessage);
     
@@ -2559,11 +2747,47 @@ function showNoQuestionsMessage() {
 
 /**
  * Show unit selection dropdown for published units
+ * Automatically selects the most recently published unit
  * @param {Array} publishedUnits - Array of published unit objects
  */
 function showUnitSelectionDropdown(publishedUnits) {
     console.log('=== SHOWING UNIT SELECTION DROPDOWN ===');
     console.log('Published units for dropdown:', publishedUnits);
+    
+    // Sort published units to find the most recently published one
+    // Strategy: Try to sort by updatedAt first, then by unit number, then by array position
+    const sortedUnits = [...publishedUnits].sort((a, b) => {
+        // First, try to sort by updatedAt if available
+        if (a.updatedAt && b.updatedAt) {
+            const aDate = new Date(a.updatedAt);
+            const bDate = new Date(b.updatedAt);
+            if (aDate.getTime() !== bDate.getTime()) {
+                return bDate - aDate; // Descending order (most recent first)
+            }
+        }
+        
+        // If updatedAt is not available or equal, extract unit number from name
+        // Handles formats like "Unit 1", "Unit 4", "Week 1", etc.
+        const extractUnitNumber = (name) => {
+            const match = name.match(/(\d+)/);
+            return match ? parseInt(match[1], 10) : 0;
+        };
+        
+        const aNum = extractUnitNumber(a.name);
+        const bNum = extractUnitNumber(b.name);
+        
+        if (aNum !== bNum) {
+            return bNum - aNum; // Descending order (higher number = more recent)
+        }
+        
+        // If unit numbers are the same or can't be extracted, maintain original order
+        return 0;
+    });
+    
+    // Get the most recently published unit (first in sorted array)
+    const mostRecentUnit = sortedUnits.length > 0 ? sortedUnits[0] : null;
+    console.log('Most recently published unit:', mostRecentUnit);
+    console.log('Sorted units order:', sortedUnits.map(u => u.name));
     
     // Show the unit selection container
     const unitSelectionContainer = document.getElementById('unit-selection-container');
@@ -2574,22 +2798,49 @@ function showUnitSelectionDropdown(publishedUnits) {
     // Populate the dropdown with published units
     const unitSelect = document.getElementById('unit-select');
     if (unitSelect) {
-        // Clear existing options except the first placeholder
+        // Clear existing options
         unitSelect.innerHTML = '<option value="">Choose a unit...</option>';
         
-        // Add options for each published unit
+        // Remove any existing change event listeners by replacing the element
+        // This prevents duplicate event listeners if the function is called multiple times
+        const oldSelect = unitSelect;
+        const newSelect = oldSelect.cloneNode(false); // Clone without children
+        oldSelect.parentNode.replaceChild(newSelect, oldSelect);
+        
+        // Get reference to the new select element
+        const updatedUnitSelect = document.getElementById('unit-select');
+        
+        // Add placeholder option
+        const placeholderOption = document.createElement('option');
+        placeholderOption.value = '';
+        placeholderOption.textContent = 'Choose a unit...';
+        updatedUnitSelect.appendChild(placeholderOption);
+        
+        // Add options for each published unit (in original order for display)
         publishedUnits.forEach(unit => {
             const option = document.createElement('option');
             option.value = unit.name;
             option.textContent = unit.name;
-            unitSelect.appendChild(option);
+            updatedUnitSelect.appendChild(option);
         });
         
-        // Add event listener for unit selection
-        unitSelect.addEventListener('change', async function() {
+        // Auto-select the most recently published unit
+        if (mostRecentUnit) {
+            updatedUnitSelect.value = mostRecentUnit.name;
+            console.log(`Auto-selected most recent unit: ${mostRecentUnit.name}`);
+            
+            // Persist selection for chat retrieval
+            localStorage.setItem('selectedUnitName', mostRecentUnit.name);
+            
+            // Trigger the load immediately (without waiting for user interaction)
+            loadQuestionsForSelectedUnit(mostRecentUnit.name);
+        }
+        
+        // Add event listener for manual unit selection changes
+        updatedUnitSelect.addEventListener('change', async function() {
             const selectedUnit = this.value;
             if (selectedUnit) {
-                console.log(`Unit selected: ${selectedUnit}`);
+                console.log(`Unit manually selected: ${selectedUnit}`);
                 // Persist selection for chat retrieval
                 localStorage.setItem('selectedUnitName', selectedUnit);
                 await loadQuestionsForSelectedUnit(selectedUnit);
@@ -2844,15 +3095,8 @@ function showNoQuestionsForUnitMessage(unitName) {
     localStorage.setItem('studentMode', 'tutor');
     updateModeToggleUI('tutor');
     
-    // Show chat input and mode toggle
-    const chatInputContainer = document.querySelector('.chat-input-container');
-    if (chatInputContainer) {
-        chatInputContainer.style.display = 'block';
-    }
-    const modeToggleContainer = document.querySelector('.mode-toggle-container');
-    if (modeToggleContainer) {
-        modeToggleContainer.style.display = 'block';
-    }
+    // Enable chat since questions are available for this unit
+    enableChatInput();
     
     // Add message to chat
     const noQuestionsMessage = document.createElement('div');
@@ -3414,17 +3658,8 @@ async function calculateStudentMode() {
         // Show mode result message
         showModeResult(mode, score);
         
-        // Re-enable chat input
-        const chatInputContainer = document.querySelector('.chat-input-container');
-        if (chatInputContainer) {
-            chatInputContainer.style.display = 'block';
-        }
-        
-        // Re-enable mode toggle
-        const modeToggleContainer = document.querySelector('.mode-toggle-container');
-        if (modeToggleContainer) {
-            modeToggleContainer.style.display = 'block';
-        }
+        // Re-enable chat (clears noPublishedUnits flag and enables inputs)
+        enableChatInput();
         
     } catch (error) {
         console.error('Error calculating mode:', error);
@@ -3432,15 +3667,8 @@ async function calculateStudentMode() {
         localStorage.setItem('studentMode', 'tutor');
         updateModeToggleUI('tutor');
         
-        // Re-enable chat input and mode toggle
-        const chatInputContainer = document.querySelector('.chat-input-container');
-        if (chatInputContainer) {
-            chatInputContainer.style.display = 'block';
-        }
-        const modeToggleContainer = document.querySelector('.mode-toggle-container');
-        if (modeToggleContainer) {
-            modeToggleContainer.style.display = 'block';
-        }
+        // Re-enable chat (clears noPublishedUnits flag and enables inputs)
+        enableChatInput();
     }
 }
 
@@ -4362,15 +4590,8 @@ function loadChatData(chatData) {
                 }
             }
             
-            // Ensure chat input and mode toggle are visible
-            const chatInputContainer = document.querySelector('.chat-input-container');
-            if (chatInputContainer) {
-                chatInputContainer.style.display = 'block';
-            }
-            const modeToggleContainer = document.querySelector('.mode-toggle-container');
-            if (modeToggleContainer) {
-                modeToggleContainer.style.display = 'block';
-            }
+            // Ensure chat input and mode toggle are visible (enable chat)
+            enableChatInput();
             
             // Show success message (skip auto-save for system messages)
             addMessage('✅ Chat history loaded successfully! You can continue where you left off.', 'bot', false, true, null);

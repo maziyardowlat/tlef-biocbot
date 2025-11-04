@@ -3,22 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TA Hub - BiocBot Instructor</title>
-    
-    <!-- Favicon - UBC Logo -->
+    <title>Student Hub - BiocBot Instructor</title>
     <link rel="icon" type="image/x-icon" href="../assets/images/favicon.ico">
     <link rel="icon" type="image/png" sizes="32x32" href="../assets/images/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="../assets/images/favicon-16x16.png">
     <link rel="apple-touch-icon" sizes="180x180" href="../assets/images/apple-touch-icon.png">
     <link rel="manifest" href="../assets/images/site.webmanifest">
-    
     <link rel="stylesheet" href="../styles/style.css">
     <link rel="stylesheet" href="../styles/documents.css">
-    <link rel="stylesheet" href="./styles/ta-hub.css">
+    <link rel="stylesheet" href="./styles/student-hub.css">
 </head>
 <body>
     <div class="app-container">
-        <!-- Sidebar Navigation -->
         <aside class="sidebar">
             <div class="logo-container">
                 <h2>BiocBot</h2>
@@ -28,9 +24,9 @@
                     <li><a href="/instructor/home">Home</a></li>
                     <li><a href="/instructor/documents">Course Upload</a></li>
                     <li><a href="/instructor/flagged">Flagged Content</a></li>
-                    <li><a href="/instructor/student-hub">Student Hub</a></li>
+                    <li class="active"><a href="/instructor/student-hub">Student Hub</a></li>
                     <li><a href="/instructor/downloads">Student Downloads</a></li>
-                    <li class="active"><a href="/instructor/ta-hub">TA Hub</a></li>
+                    <li><a href="/instructor/ta-hub">TA Hub</a></li>
                     <li><a href="/instructor/settings">Settings</a></li>
                 </ul>
             </nav>
@@ -45,53 +41,31 @@
             </div>
         </aside>
 
-        <!-- Main Content Area -->
         <main class="main-content">
             <div class="content-header">
-                <h1>TA Hub</h1>
-                <p>View Teaching Assistants assigned to your courses</p>
+                <h1>Student Hub</h1>
+                <p>View and manage student enrollment in your courses</p>
             </div>
 
-            <!-- Current TAs Section -->
             <div class="dashboard-section">
-                <h2>Current Teaching Assistants</h2>
+                <h2>Students</h2>
                 <div class="section-description">
-                    <p>Manage Teaching Assistant permissions for your courses. You can restrict TAs from accessing the "My Courses" page or the "Flagged Content" page.</p>
+                    <p>Toggle the “Enrolled in” checkbox to enable or disable access for a student in this course.</p>
                 </div>
-                <div id="tas-container" class="tas-grid">
-                    <!-- TAs will be loaded here -->
-                </div>
-            </div>
 
-            <!-- Course TAs Section -->
-            <div class="dashboard-section">
-                <h2>Course Assignments</h2>
-                <div id="course-tas-container" class="course-tas-list">
-                    <!-- Course TA assignments will be loaded here -->
+                <div class="controls-row">
+                    <label for="student-course-select"><strong>Course:</strong></label>
+                    <select id="student-course-select"></select>
                 </div>
+
+                <div id="students-container" class="students-grid"></div>
             </div>
         </main>
     </div>
-    
-    <!-- Remove TA Modal -->
-    <div id="remove-ta-modal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>Remove Teaching Assistant</h2>
-                <button class="modal-close" onclick="closeRemoveTAModal()">×</button>
-            </div>
-            <div class="modal-body">
-                <p>Are you sure you want to remove this Teaching Assistant from the course?</p>
-                <p><strong>This action cannot be undone.</strong></p>
-            </div>
-            <div class="modal-footer">
-                <button class="btn-secondary" onclick="closeRemoveTAModal()">Cancel</button>
-                <button class="btn-danger" id="confirm-remove-ta">Remove TA</button>
-            </div>
-        </div>
-    </div>
-    
+
     <script src="../common/scripts/auth.js"></script>
-    <script src="./scripts/ta-hub.js"></script>
+    <script src="./scripts/student-hub.js"></script>
 </body>
 </html>
+
+

@@ -10,6 +10,36 @@ const studentFlagsState = {
 };
 
 document.addEventListener('DOMContentLoaded', async function() {
+    try {
+        const courseId = localStorage.getItem('selectedCourseId');
+        if (courseId) {
+            const resp = await fetch(`/api/courses/${courseId}/student-enrollment`, { credentials: 'include' });
+            if (resp.ok) {
+                const data = await resp.json();
+                if (data && data.success && data.data && data.data.enrolled === false) {
+                    // Keep header/subtitle, hide controls and list
+                    const controls = document.querySelector('.filter-controls');
+                    const container = document.querySelector('.flagged-content-container');
+                    if (controls) controls.style.display = 'none';
+                    if (container) container.style.display = 'none';
+                    const mainContent = document.querySelector('.main-content');
+                    if (mainContent) {
+                        const notice = document.createElement('div');
+                        notice.style.padding = '24px';
+                        notice.innerHTML = `
+                            <div style=\"background:#fff3cd;border:1px solid #ffeeba;color:#856404;padding:16px;border-radius:8px;\">
+                                <h2 style=\"margin-top:0;margin-bottom:8px;\">Access disabled</h2>
+                                <p>Your access in this course is revoked.</p>
+                                <p>Please select another course from the course selector at the top if available.</p>
+                            </div>
+                        `;
+                        mainContent.appendChild(notice);
+                    }
+                    return;
+                }
+            }
+        }
+    } catch (e) { console.warn('Enrollment check failed, proceeding:', e); }
     await initAuth();
     const statusSelect = document.getElementById('status-filter');
     if (statusSelect) {
