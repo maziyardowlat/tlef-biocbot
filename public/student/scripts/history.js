@@ -157,6 +157,22 @@ function getCurrentStudentId() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    // Enrollment gate: hide page if access revoked
+    (async () => {
+        try {
+            const courseId = localStorage.getItem('selectedCourseId');
+            if (courseId) {
+                const resp = await fetch(`/api/courses/${courseId}/student-enrollment`, { credentials: 'include' });
+                if (resp.ok) {
+                    const data = await resp.json();
+                    if (data && data.success && data.data && data.data.enrolled === false) {
+                        renderRevokedAccessUIForHistory();
+                        return; // Stop initialization
+                    }
+                }
+            }
+        } catch (e) { console.warn('Enrollment check failed, proceeding:', e); }
+    })();
     console.log('Chat history page loaded');
     
     // Wait for auth to be ready before initializing
@@ -214,6 +230,27 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }, 3000);
 });
+
+function renderRevokedAccessUIForHistory() {
+    try {
+        // Hide history container but keep any header/course selector
+        const historyContainer = document.querySelector('.history-container');
+        if (historyContainer) historyContainer.style.display = 'none';
+        const mainContent = document.querySelector('.main-content');
+        if (mainContent) {
+            const notice = document.createElement('div');
+            notice.style.padding = '24px';
+            notice.innerHTML = `
+                <div style="background:#fff3cd;border:1px solid #ffeeba;color:#856404;padding:16px;border-radius:8px;">
+                    <h2 style="margin-top:0;margin-bottom:8px;">Access disabled</h2>
+                    <p>Your access in this course is revoked.</p>
+                    <p>Please select another course from the course selector at the top if available.</p>
+                </div>
+            `;
+            mainContent.appendChild(notice);
+        }
+    } catch (_) {}
+}
 
 /**
  * Initialize the history page

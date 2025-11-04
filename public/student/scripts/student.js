@@ -1,4 +1,17 @@
 document.addEventListener('DOMContentLoaded', async () => {
+    try {
+        const courseId = localStorage.getItem('selectedCourseId');
+        if (courseId) {
+            const resp = await fetch(`/api/courses/${courseId}/student-enrollment`, { credentials: 'include' });
+            if (resp.ok) {
+                const data = await resp.json();
+                if (data && data.success && data.data && data.data.enrolled === false) {
+                    renderRevokedAccessUI();
+                    return; // stop further chat init
+                }
+            }
+        }
+    } catch (e) { console.warn('Enrollment check failed, proceeding:', e); }
     const chatForm = document.getElementById('chat-form');
     const chatInput = document.getElementById('chat-input');
     const chatMessages = document.getElementById('chat-messages');
@@ -441,6 +454,72 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 });
+
+function renderRevokedAccessUI() {
+    try {
+        // Only hide the chat body, keep the header (where course selector may live)
+        const chatContainer = document.querySelector('.chat-container');
+        if (chatContainer) {
+            chatContainer.style.display = 'none';
+        }
+
+        // Insert warning below header
+        const header = document.querySelector('.chat-header');
+        if (header && header.parentElement) {
+            const notice = document.createElement('div');
+            notice.style.padding = '24px';
+            notice.innerHTML = `
+                <div style="background:#fff3cd;border:1px solid #ffeeba;color:#856404;padding:16px;border-radius:8px;">
+                    <h2 style="margin-top:0;margin-bottom:8px;">Access disabled</h2>
+                    <p>Your access in this course is revoked.</p>
+                    <p>Please select another course from the course selector at the top if available.</p>
+                </div>
+            `;
+            header.parentElement.insertBefore(notice, header.nextSibling);
+            // Also render a standalone course selector since chat body is hidden
+            renderStandaloneCourseSelectorBelowHeader(header.parentElement);
+        }
+        // Disable sidebar actions that start sessions
+        const newSessionBtn = document.getElementById('new-session-btn');
+        if (newSessionBtn) newSessionBtn.disabled = true;
+    } catch (_) {}
+}
+
+async function renderStandaloneCourseSelectorBelowHeader(container) {
+    try {
+        const resp = await fetch('/api/courses/available/all');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        const courses = (data && data.data) || [];
+        if (!Array.isArray(courses) || courses.length === 0) return;
+
+        const wrapper = document.createElement('div');
+        wrapper.style.margin = '16px 0 0 0';
+        wrapper.innerHTML = `
+            <div class="course-selection-container" style="margin: 16px 0; padding: 15px; background-color: #f8f9fa; border-radius: 8px; border-left: 4px solid var(--primary-color);">
+                <h3 style="margin: 0 0 10px 0; color: #333;">Select Your Course</h3>
+                <select id="revoked-course-select" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
+                    <option value="">Choose a course...</option>
+                    ${courses.map(c => `<option value="${c.courseId}">${c.courseName}</option>`).join('')}
+                </select>
+            </div>
+        `;
+        container.appendChild(wrapper);
+        const sel = wrapper.querySelector('#revoked-course-select');
+        if (sel) {
+            sel.addEventListener('change', async function() {
+                const selectedCourseId = this.value;
+                if (selectedCourseId) {
+                    await loadCourseData(selectedCourseId);
+                    // after switching, reload page to reinit chat area
+                    window.location.reload();
+                }
+            });
+        }
+    } catch (e) {
+        console.warn('Failed to render standalone course selector:', e);
+    }
+}
 
 // Global functions for flagging functionality
 

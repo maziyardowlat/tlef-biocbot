@@ -354,6 +354,56 @@ function createAuthMiddleware(db) {
         };
     }
 
+    /**
+     * Middleware to require that a student is enrolled in the course
+     * If the user is not a student, this is a no-op.
+     * Attempts to infer courseId from body, query, or params.
+     */
+    async function requireStudentEnrolled(req, res, next) {
+        try {
+            // Only enforce for students
+            if (!req.user || req.user.role !== 'student') {
+                return next();
+            }
+
+            // Try to infer courseId
+            const courseId = (req.body && req.body.courseId) || req.query.courseId || req.params.courseId;
+            if (!courseId) {
+                // If we cannot determine course context, allow through
+                // (endpoints without course context shouldn't be blocked here)
+                return next();
+            }
+
+            // Import CourseModel lazily
+            const CourseModel = require('../models/Course');
+
+            // Default behavior: enrolled unless explicitly disabled in course settings
+            const result = await CourseModel.getStudentEnrollment(db, courseId, req.user.userId);
+
+            if (!result.success) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Course not found'
+                });
+            }
+
+            if (result.enrolled === false) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Your access to this course is disabled by the instructor.'
+                });
+            }
+
+            next();
+        } catch (error) {
+            console.error('Error in requireStudentEnrolled middleware:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Enrollment check failed'
+            });
+        }
+    }
+
     return {
         requireAuth,
         requireRole,
@@ -365,6 +415,7 @@ function createAuthMiddleware(db) {
         redirectIfAuthenticated,
         requireCourseContext,
         requireTAPermission,
+        requireStudentEnrolled,
         authService
     };
 }

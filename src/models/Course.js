@@ -20,6 +20,12 @@ const { MongoClient } = require('mongodb');
  *       canAccessFlags: Boolean    // Can access Flag page
  *     }
  *   },
+ *   studentEnrollment: {        // Per-student enrollment overrides (optional)
+ *     [studentId]: {
+ *       enrolled: Boolean,      // If false, student is blocked from course features
+ *       updatedAt: Date
+ *     }
+ *   },
  *   lectures: [                 // Array of lectures/units
  *     {
  *       name: String,           // e.g., "Unit 1", "Week 1"
@@ -1249,6 +1255,69 @@ async function checkTAPermission(db, courseId, taId, feature) {
     }
 }
 
+/**
+ * Update student enrollment override for a course
+ * @param {Object} db - MongoDB database instance
+ * @param {string} courseId - Course identifier
+ * @param {string} studentId - Student identifier
+ * @param {boolean} enrolled - Whether the student is enrolled (true) or blocked (false)
+ * @returns {Promise<Object>} Update result
+ */
+async function updateStudentEnrollment(db, courseId, studentId, enrolled) {
+    const collection = getCoursesCollection(db);
+
+    const now = new Date();
+
+    // Ensure course exists
+    const course = await collection.findOne({ courseId });
+    if (!course) {
+        return { success: false, error: 'Course not found' };
+    }
+
+    const result = await collection.updateOne(
+        { courseId },
+        {
+            $set: {
+                [`studentEnrollment.${studentId}`]: {
+                    enrolled: !!enrolled,
+                    updatedAt: now
+                },
+                updatedAt: now
+            }
+        }
+    );
+
+    if (result.modifiedCount > 0) {
+        return { success: true, modifiedCount: result.modifiedCount };
+    }
+    return { success: false, error: 'Failed to update student enrollment' };
+}
+
+/**
+ * Get student enrollment override for a course (defaults to enrolled=true)
+ * @param {Object} db - MongoDB database instance
+ * @param {string} courseId - Course identifier
+ * @param {string} studentId - Student identifier
+ * @returns {Promise<{ success: boolean, enrolled?: boolean, error?: string }>} Result
+ */
+async function getStudentEnrollment(db, courseId, studentId) {
+    const collection = getCoursesCollection(db);
+
+    const course = await collection.findOne(
+        { courseId },
+        { projection: { studentEnrollment: 1 } }
+    );
+
+    if (!course) {
+        return { success: false, error: 'Course not found' };
+    }
+
+    const enrollment = course.studentEnrollment && course.studentEnrollment[studentId];
+    // Default: enrolled when no override exists
+    const enrolled = enrollment ? !!enrollment.enrolled : true;
+    return { success: true, enrolled };
+}
+
 module.exports = {
     getCoursesCollection,
     upsertCourse,
@@ -1279,5 +1348,7 @@ module.exports = {
     getCourseById,
     updateTAPermissions,
     getTAPermissions,
-    checkTAPermission
+    checkTAPermission,
+    updateStudentEnrollment,
+    getStudentEnrollment
 };

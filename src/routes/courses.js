@@ -6,6 +6,7 @@
 const express = require('express');
 const router = express.Router();
 const CourseModel = require('../models/Course');
+const UserModel = require('../models/User');
 
 // Middleware to parse JSON bodies
 router.use(express.json());
@@ -1409,6 +1410,191 @@ router.get('/:courseId/ta-permissions', async (req, res) => {
             success: false,
             message: 'Internal server error while getting TA permissions'
         });
+    }
+});
+
+/**
+ * GET /api/courses/:courseId/students
+ * List students associated with a course with enrollment status
+ */
+router.get('/:courseId/students', async (req, res) => {
+    try {
+        const { courseId } = req.params;
+
+        // Auth
+        const user = req.user;
+        if (!user) {
+            return res.status(401).json({ success: false, message: 'Authentication required' });
+        }
+        if (user.role !== 'instructor') {
+            return res.status(403).json({ success: false, message: 'Only instructors can view students' });
+        }
+
+        // DB
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({ success: false, message: 'Database connection not available' });
+        }
+
+        // Check instructor access to the course
+        const hasAccess = await CourseModel.userHasCourseAccess(db, courseId, user.userId, 'instructor');
+        if (!hasAccess) {
+            return res.status(403).json({ success: false, message: 'Access denied. You can only view your own courses.' });
+        }
+
+        // Gather students by union of:
+        // 1) Users with role student whose preferences.courseId == courseId
+        // 2) Students who have chat sessions in this course
+        // 3) Students appearing in course.studentEnrollment overrides
+        const usersCol = db.collection('users');
+        const chatCol = db.collection('chat_sessions');
+        const coursesCol = db.collection('courses');
+
+        const [prefStudents, chatStudents, courseDoc] = await Promise.all([
+            usersCol.find({ role: 'student', 'preferences.courseId': courseId, isActive: true })
+                .project({ userId: 1, username: 1, email: 1, displayName: 1, createdAt: 1, lastLogin: 1 })
+                .toArray(),
+            chatCol.distinct('studentId', { courseId }),
+            coursesCol.findOne({ courseId }, { projection: { studentEnrollment: 1, courseName: 1 } })
+        ]);
+
+        const enrollmentMap = (courseDoc && courseDoc.studentEnrollment) || {};
+
+        const chatStudentUsers = chatStudents.length > 0
+            ? await usersCol.find({ userId: { $in: chatStudents }, role: 'student', isActive: true })
+                .project({ userId: 1, username: 1, email: 1, displayName: 1, createdAt: 1, lastLogin: 1 })
+                .toArray()
+            : [];
+
+        // Merge and unique by userId
+        const byId = new Map();
+        [...prefStudents, ...chatStudentUsers].forEach(s => {
+            byId.set(s.userId, s);
+        });
+
+        // Also include any students present only in enrollmentMap (no profile fetched yet)
+        for (const studentId of Object.keys(enrollmentMap)) {
+            if (!byId.has(studentId)) {
+                byId.set(studentId, {
+                    userId: studentId,
+                    username: studentId,
+                    email: null,
+                    displayName: studentId,
+                    createdAt: null,
+                    lastLogin: null
+                });
+            }
+        }
+
+        const students = Array.from(byId.values()).map(s => ({
+            userId: s.userId,
+            username: s.username,
+            email: s.email,
+            displayName: s.displayName,
+            lastLogin: s.lastLogin,
+            createdAt: s.createdAt,
+            // Default enrolled=true if no override exists
+            enrolled: enrollmentMap[s.userId] ? !!enrollmentMap[s.userId].enrolled : true
+        }));
+
+        // Sort by displayName
+        students.sort((a, b) => (a.displayName || '').localeCompare(b.displayName || ''));
+
+        return res.json({
+            success: true,
+            data: {
+                courseId,
+                courseName: courseDoc?.courseName || courseId,
+                students,
+                totalStudents: students.length
+            }
+        });
+    } catch (error) {
+        console.error('Error listing course students:', error);
+        return res.status(500).json({ success: false, message: 'Internal server error while listing students' });
+    }
+});
+
+/**
+ * PUT /api/courses/:courseId/student-enrollment/:studentId
+ * Update a student's enrollment (enrolled=true/false) for a course
+ */
+router.put('/:courseId/student-enrollment/:studentId', async (req, res) => {
+    try {
+        const { courseId, studentId } = req.params;
+        const { enrolled } = req.body;
+
+        // Validate
+        if (typeof enrolled !== 'boolean') {
+            return res.status(400).json({ success: false, message: 'enrolled must be a boolean' });
+        }
+
+        // Auth
+        const user = req.user;
+        if (!user) {
+            return res.status(401).json({ success: false, message: 'Authentication required' });
+        }
+        if (user.role !== 'instructor') {
+            return res.status(403).json({ success: false, message: 'Only instructors can update enrollment' });
+        }
+
+        // DB
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({ success: false, message: 'Database connection not available' });
+        }
+
+        // Access check
+        const hasAccess = await CourseModel.userHasCourseAccess(db, courseId, user.userId, 'instructor');
+        if (!hasAccess) {
+            return res.status(403).json({ success: false, message: 'Access denied. You can only manage your own courses.' });
+        }
+
+        const result = await CourseModel.updateStudentEnrollment(db, courseId, studentId, enrolled);
+        if (!result.success) {
+            return res.status(400).json({ success: false, message: result.error || 'Failed to update enrollment' });
+        }
+
+        return res.json({
+            success: true,
+            message: 'Student enrollment updated successfully',
+            data: { courseId, studentId, enrolled }
+        });
+    } catch (error) {
+        console.error('Error updating student enrollment:', error);
+        return res.status(500).json({ success: false, message: 'Internal server error while updating enrollment' });
+    }
+});
+
+/**
+ * GET /api/courses/:courseId/student-enrollment
+ * Get current student's enrollment status for the course
+ */
+router.get('/:courseId/student-enrollment', async (req, res) => {
+    try {
+        const { courseId } = req.params;
+        const user = req.user;
+        if (!user) {
+            return res.status(401).json({ success: false, message: 'Authentication required' });
+        }
+        if (user.role !== 'student') {
+            return res.status(403).json({ success: false, message: 'Only students can view their enrollment' });
+        }
+
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({ success: false, message: 'Database connection not available' });
+        }
+
+        const result = await CourseModel.getStudentEnrollment(db, courseId, user.userId);
+        if (!result.success) {
+            return res.status(404).json({ success: false, message: 'Course not found' });
+        }
+
+        return res.json({ success: true, data: { courseId, enrolled: result.enrolled } });
+    } catch (error) {
+        console.error('Error getting student enrollment:', error);
+        return res.status(500).json({ success: false, message: 'Internal server error while getting enrollment' });
     }
 });
 

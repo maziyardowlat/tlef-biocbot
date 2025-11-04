@@ -1,0 +1,84 @@
+.students-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+    gap: 20px;
+    align-items: stretch;
+}
+
+.student-card {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    min-height: 160px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+}
+
+.student-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+
+.student-name {
+    margin: 0;
+    max-width: 70%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.student-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.controls-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.btn-small {
+    padding: 6px 10px;
+    font-size: 0.9rem;
+}
+
+.btn-secondary {
+    background: #f3f4f6;
+    border: 1px solid #e5e7eb;
+    color: #111827;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.btn-secondary:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.enroll-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.student-info p {
+    margin: 2px 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+}
+
+@media (max-width: 640px) {
+    .students-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+
