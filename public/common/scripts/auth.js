@@ -17,6 +17,7 @@ async function initAuth() {
         if (result.success && result.user) {
             currentUser = result.user;
             updateUserDisplay();
+            adjustNavigationForRole();
             setupLogoutHandler();
             // Notify listeners that auth/user state is ready
             try {
@@ -32,6 +33,24 @@ async function initAuth() {
         console.error('Error checking authentication:', error);
         // On error, redirect to login
         window.location.href = '/login';
+    }
+}
+
+/**
+ * Hide/show navigation items based on role
+ */
+function adjustNavigationForRole() {
+    try {
+        if (!currentUser) return;
+        // Hide Student Hub link from TAs
+        if (currentUser.role === 'ta') {
+            const studentHubNav = document.getElementById('instructor-student-hub-nav');
+            if (studentHubNav && studentHubNav.style) {
+                studentHubNav.style.display = 'none';
+            }
+        }
+    } catch (e) {
+        console.warn('adjustNavigationForRole failed:', e);
     }
 }
 
