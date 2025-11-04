@@ -453,16 +453,16 @@ function showNoHistoryMessage() {
  * Set up event listeners
  */
 function setupEventListeners() {
-    // Search functionality
-    const searchInput = document.getElementById('history-search');
-    if (searchInput) {
-        searchInput.addEventListener('input', handleSearch);
-    }
-    
     // Continue chat button
     const continueBtn = document.getElementById('continue-chat-btn');
     if (continueBtn) {
         continueBtn.addEventListener('click', handleContinueChat);
+    }
+    
+    // Download chat button
+    const downloadBtn = document.getElementById('download-chat-btn');
+    if (downloadBtn) {
+        downloadBtn.addEventListener('click', handleDownloadChat);
     }
     
     // Delete chat button
@@ -470,28 +470,6 @@ function setupEventListeners() {
     if (deleteBtn) {
         deleteBtn.addEventListener('click', handleDeleteChat);
     }
-}
-
-/**
- * Handle search input
- * @param {Event} event - Input event
- */
-function handleSearch(event) {
-    const searchTerm = event.target.value.toLowerCase().trim();
-    
-    if (searchTerm === '') {
-        displayChatHistory(allChatHistory);
-        return;
-    }
-    
-    const filteredHistory = allChatHistory.filter(chat => 
-        chat.title.toLowerCase().includes(searchTerm) ||
-        chat.preview.toLowerCase().includes(searchTerm) ||
-        chat.courseName.toLowerCase().includes(searchTerm) ||
-        chat.unitName.toLowerCase().includes(searchTerm)
-    );
-    
-    displayChatHistory(filteredHistory);
 }
 
 /**
@@ -687,6 +665,83 @@ async function handleDeleteChat() {
     } catch (error) {
         console.error('Error deleting chat:', error);
         alert('Error deleting chat. Please try again.');
+    }
+}
+
+/**
+ * Handle download chat button click
+ */
+async function handleDownloadChat() {
+    if (!currentSelectedChat) {
+        console.error('No chat selected');
+        alert('Please select a chat to download.');
+        return;
+    }
+    
+    try {
+        console.log('Downloading chat:', currentSelectedChat.id);
+        
+        // Get course ID from localStorage (same as used in loadChatHistory)
+        const courseId = localStorage.getItem('selectedCourseId');
+        if (!courseId) {
+            console.warn('No course ID found in localStorage');
+        }
+        
+        // Get student name from current user
+        const currentUser = getCurrentUser();
+        const studentName = currentUser?.displayName || currentUser?.username || 'Student';
+        
+        // Prepare the download data structure similar to instructor downloads
+        const downloadData = {
+            sessionId: currentSelectedChat.id,
+            title: currentSelectedChat.title,
+            courseId: courseId || 'Unknown',
+            studentName: studentName,
+            studentId: getCurrentStudentId(),
+            unitName: currentSelectedChat.unitName,
+            messageCount: currentSelectedChat.messageCount,
+            duration: currentSelectedChat.duration,
+            savedAt: currentSelectedChat.savedAt,
+            chatData: currentSelectedChat.chatData,
+            exportDate: new Date().toISOString()
+        };
+        
+        // Generate filename similar to instructor format
+        const dateStr = new Date(currentSelectedChat.savedAt).toISOString().split('T')[0];
+        const fileName = `BiocBot_Chat_${courseId || 'Unknown'}_${studentName.replace(/[^a-zA-Z0-9]/g, '_')}_${dateStr}.json`;
+        
+        // Download the JSON file
+        downloadJSON(downloadData, fileName);
+        
+        console.log('Chat downloaded successfully:', fileName);
+        
+    } catch (error) {
+        console.error('Error downloading chat:', error);
+        alert('Error downloading chat. Please try again.');
+    }
+}
+
+/**
+ * Download JSON data as a file
+ * @param {Object} data - Data to download
+ * @param {string} fileName - Name of the file
+ */
+function downloadJSON(data, fileName) {
+    try {
+        const jsonString = JSON.stringify(data, null, 2);
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    } catch (error) {
+        console.error('Error creating download:', error);
+        throw error;
     }
 }
 
