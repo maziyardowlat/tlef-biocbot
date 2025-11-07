@@ -180,7 +180,7 @@ function initializePassport(db) {
                         issuer: ubcShibIssuer,
                         callbackUrl: ubcShibCallbackUrl,
                         privateKeyPath: ubcShibPrivateKeyPath,
-                        attributeConfig: ubcShibAttributeConfig,
+                        attributeConfig: ['ubcEduCwlPuid', 'mail', 'eduPersonAffiliation'],
                         enableSLO: process.env.ENABLE_SLO !== 'false',
                         validateInResponseTo: process.env.SAML_VALIDATE_IN_RESPONSE_TO !== 'false',
                         acceptedClockSkewMs: parseInt(process.env.SAML_CLOCK_SKEW_MS) || 0
