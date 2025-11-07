@@ -3,6 +3,8 @@
  * Configures authentication strategies for BiocBot
  * Supports: Local (username/password), SAML, and UBC Shibboleth
  */
+const fs = require('fs');
+
 
 const passport = require('passport');
 const LocalStrategy = require('passport-local').Strategy;
@@ -16,7 +18,7 @@ try {
     // Import according to passport-ubcshib documentation
     // Documentation shows: const { Strategy } = require('passport-ubcshib');
     const ubcshib = require('passport-ubcshib');
-    
+    // addings 
     // Try different import patterns to handle various module export styles
     if (ubcshib.Strategy) {
         // Named export: { Strategy }
@@ -91,17 +93,17 @@ function initializePassport(db) {
     const samlEntryPoint = process.env.SAML_ENTRY_POINT;
     const samlIssuer = process.env.SAML_ISSUER;
     const samlCallbackUrl = process.env.SAML_CALLBACK_URL;
-    const samlCert = process.env.SAML_CERT;
+    const cert = fs.readFileSync(process.env.SAML_CERT_PATH, 'utf8');
     const samlPrivateKey = process.env.SAML_PRIVATE_KEY;
 
-    if (samlEntryPoint && samlIssuer && samlCallbackUrl && samlCert) {
+    if (samlEntryPoint && samlIssuer && samlCallbackUrl && cert) {
         try {
             passport.use('saml', new SamlStrategy(
                 {
                     entryPoint: samlEntryPoint,
                     issuer: samlIssuer,
                     callbackUrl: samlCallbackUrl,
-                    cert: samlCert,
+                    cert: cert,
                     privateKey: samlPrivateKey || null,
                     signatureAlgorithm: process.env.SAML_SIGNATURE_ALGORITHM || 'sha256',
                     digestAlgorithm: process.env.SAML_DIGEST_ALGORITHM || 'sha256',
