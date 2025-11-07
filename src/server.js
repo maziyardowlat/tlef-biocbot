@@ -23,6 +23,7 @@ const userAgreementRoutes = require('./routes/user-agreement');
 const LLMService = require('./services/llm');
 const AuthService = require('./services/authService');
 const createAuthMiddleware = require('./middleware/auth');
+const initializePassport = require('./config/passport');
 
 const app = express();
 const port = process.env.TLEF_BIOCBOT_PORT || 8080;
@@ -43,6 +44,7 @@ let db;
 let llmService;
 let authService;
 let authMiddleware;
+let passport;
 
 /**
  * Initialize the LLM service
@@ -55,6 +57,32 @@ async function initializeLLM() {
         app.locals.llm = llmService;
     } catch (error) {
         console.error('❌ Failed to initialize LLM service:', error.message);
+        throw error;
+    }
+}
+
+/**
+ * Initialize Passport authentication
+ * @returns {Promise<void>}
+ */
+async function initializePassportAuth() {
+    try {
+        console.log('🔐 Starting Passport initialization...');
+        
+        // Initialize Passport with database connection
+        passport = initializePassport(db);
+        
+        // Initialize Passport middleware (must be after session middleware)
+        app.use(passport.initialize());
+        app.use(passport.session());
+        
+        // Make passport available to routes
+        app.locals.passport = passport;
+        
+        console.log('✅ Passport initialized successfully');
+        
+    } catch (error) {
+        console.error('❌ Failed to initialize Passport:', error.message);
         throw error;
     }
 }
@@ -129,6 +157,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Basic session configuration (will be enhanced after MongoDB connection)
+// Note: Session must be configured before Passport initialization
 app.use(session({
     secret: process.env.SESSION_SECRET || 'biocbot-session-secret-change-in-production',
     resave: false,
@@ -461,6 +490,7 @@ async function startServer() {
         // Initialize core services
         await connectToMongoDB();
         await initializeLLM();
+        await initializePassportAuth(); // Initialize Passport after session middleware
         await initializeAuth();
         
         // Set up routes after authentication is initialized

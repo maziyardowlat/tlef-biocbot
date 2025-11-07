@@ -94,6 +94,54 @@
     cursor: not-allowed;
 }
 
+/* CWL/SAML Login Button */
+.btn-cwl {
+    width: 100%;
+    background-color: #002145; /* UBC Blue */
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+.btn-cwl:hover {
+    background-color: #003366; /* Darker UBC Blue */
+}
+
+.btn-cwl .cwl-icon {
+    font-size: 18px;
+}
+
+/* Login Divider */
+.login-divider {
+    display: flex;
+    align-items: center;
+    text-align: center;
+    margin: 20px 0;
+}
+
+.login-divider::before,
+.login-divider::after {
+    content: '';
+    flex: 1;
+    border-bottom: 1px solid #e1e5e9;
+}
+
+.login-divider span {
+    padding: 0 10px;
+    color: #6c757d;
+    font-size: 14px;
+}
+
 .form-footer {
     text-align: center;
     margin-top: 20px;

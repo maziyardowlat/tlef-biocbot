@@ -15,6 +15,14 @@ document.addEventListener('DOMContentLoaded', () => {
     const showLoginLink = document.getElementById('show-login');
     const messageContainer = document.getElementById('message-container');
     const messageElement = document.getElementById('message');
+    const cwlLoginBtn = document.getElementById('cwl-login-btn');
+    const loginDivider = document.getElementById('login-divider');
+    
+    // Check available authentication methods and show CWL button if available
+    checkAvailableAuthMethods();
+    
+    // Check for authentication errors in URL query parameters
+    checkAuthErrors();
     
     // Toggle between login and register forms
     showRegisterLink.addEventListener('click', (e) => {
@@ -144,6 +152,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
     
+    // Handle CWL/SAML login button click
+    if (cwlLoginBtn) {
+        cwlLoginBtn.addEventListener('click', () => {
+            // Redirect to UBC Shibboleth authentication endpoint
+            // This will redirect the user to UBC's login page
+            window.location.href = '/api/auth/ubcshib';
+        });
+    }
+    
     // Check if user is already authenticated
     checkAuthStatus();
 });
@@ -201,4 +218,57 @@ function showMessage(text, type = 'info') {
 function hideMessage() {
     const messageContainer = document.getElementById('message-container');
     messageContainer.style.display = 'none';
+}
+
+/**
+ * Check for authentication errors in URL query parameters
+ * Displays error messages if authentication failed
+ */
+function checkAuthErrors() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const error = urlParams.get('error');
+    
+    if (error) {
+        let errorMessage = 'Authentication failed. Please try again.';
+        
+        // Provide specific error messages based on error type
+        if (error === 'saml_failed' || error === 'ubcshib_failed') {
+            errorMessage = 'CWL authentication failed. Please try again or use your username and password.';
+        }
+        
+        showMessage(errorMessage, 'error');
+        
+        // Clean up URL by removing error parameter
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, newUrl);
+    }
+}
+
+/**
+ * Check available authentication methods
+ * Shows CWL/SAML login button if UBC Shibboleth is configured
+ */
+async function checkAvailableAuthMethods() {
+    try {
+        const response = await fetch('/api/auth/methods');
+        const result = await response.json();
+        
+        if (result.success && result.methods) {
+            // Get button and divider elements
+            const cwlLoginBtn = document.getElementById('cwl-login-btn');
+            const loginDivider = document.getElementById('login-divider');
+            
+            // Show CWL button if UBC Shibboleth is available
+            if (result.methods.ubcshib && cwlLoginBtn && loginDivider) {
+                cwlLoginBtn.style.display = 'block';
+                loginDivider.style.display = 'flex';
+            }
+            // Could also show SAML button if generic SAML is configured
+            // For now, we're focusing on UBC Shibboleth (CWL)
+        }
+    } catch (error) {
+        // If endpoint fails, don't show CWL button
+        // This is expected in local development where SAML may not be configured
+        console.log('Auth methods check failed (this is normal in local dev):', error);
+    }
 } 

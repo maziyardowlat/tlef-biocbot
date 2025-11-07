@@ -69,7 +69,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             window.autoContinued = true;
             
             // Load the current session data into the interface
-            loadCurrentSessionIntoInterface();
+            // Add a small delay to ensure DOM is fully ready
+            setTimeout(() => {
+                try {
+                    console.log('🔄 [AUTO-CONTINUE] Loading session into interface...');
+                    loadCurrentSessionIntoInterface();
+                } catch (error) {
+                    console.error('🔄 [AUTO-CONTINUE] Error loading session into interface:', error);
+                }
+            }, 200);
         }
             } else {
                 console.log('🔄 [AUTO-CONTINUE] Loading from history, skipping auto-continue check');
@@ -207,6 +215,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             // Check if we're continuing a chat and need to include conversation context
             const conversationContext = getConversationContext();
             
+            if (conversationContext) {
+                console.log('🔄 [CONTEXT] Conversation context retrieved:', {
+                    messageCount: conversationContext.conversationMessages ? conversationContext.conversationMessages.length : 0,
+                    mode: conversationContext.mode,
+                    hasPracticeTest: conversationContext.hasPracticeTest
+                });
+            } else {
+                console.log('🔄 [CONTEXT] No conversation context - starting new conversation');
+            }
+            
             const requestBody = {
                 message: message,
                 mode: currentMode,
@@ -220,6 +238,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.log('🚀 [SEND] Request URL:', '/api/chat');
             console.log('🚀 [SEND] Request method:', 'POST');
             console.log('🚀 [SEND] Request body:', requestBody);
+            if (conversationContext && conversationContext.conversationMessages) {
+                console.log('🚀 [SEND] Conversation context includes', conversationContext.conversationMessages.length, 'messages');
+            }
             
             const response = await fetch('/api/chat', {
                 method: 'POST',
@@ -242,11 +263,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 throw new Error(data.message || 'Failed to get response from LLM');
             }
             
-            // Clear the continuing chat flag after successful message send
-            if (conversationContext) {
-                sessionStorage.removeItem('isContinuingChat');
-                sessionStorage.removeItem('loadedChatData');
-            }
+            // Don't clear the continuing chat flags - we need them for the entire conversation
+            // The flags will be cleared when starting a new chat session or explicitly clearing chat
+            // This ensures the conversation context is maintained throughout the chat session
             
             return data;
             
@@ -257,24 +276,156 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     
     /**
+     * Check if the 15-message warning has already been shown
+     * @returns {boolean} True if warning was already shown
+     */
+    function hasWarningBeenShown() {
+        try {
+            const chatData = getCurrentChatData();
+            if (!chatData || !chatData.messages || chatData.messages.length === 0) {
+                return false;
+            }
+            
+            // Check if any bot message contains the warning text
+            const warningText = 'Please be aware that after 15 messages, the quality of the responses might be degraded.';
+            return chatData.messages.some(msg => 
+                msg.type === 'bot' && 
+                msg.content && 
+                msg.content.includes(warningText.substring(0, 50)) // Check first 50 chars to avoid exact match issues
+            );
+        } catch (error) {
+            console.error('Error checking if warning was shown:', error);
+            return false;
+        }
+    }
+    
+    /**
+     * Count messages starting from the first student message
+     * Only counts regular-chat messages (user and bot)
+     * @returns {number} Count of messages from first student message
+     */
+    function countMessagesFromFirstStudent() {
+        try {
+            const chatData = getCurrentChatData();
+            if (!chatData || !chatData.messages || chatData.messages.length === 0) {
+                console.log('🔢 [COUNT] No chat data or messages found');
+                return 0;
+            }
+            
+            console.log('🔢 [COUNT] Total messages in chatData:', chatData.messages.length);
+            
+            // Find the index of the first user message
+            const firstUserMessageIndex = chatData.messages.findIndex(msg => 
+                msg.type === 'user' && msg.messageType === 'regular-chat'
+            );
+            
+            // If no user message found, return 0
+            if (firstUserMessageIndex === -1) {
+                console.log('🔢 [COUNT] No first user message found');
+                return 0;
+            }
+            
+            console.log('🔢 [COUNT] First user message index:', firstUserMessageIndex);
+            
+            // Count all regular-chat messages (user and bot) from the first user message onwards
+            const messagesFromFirstStudent = chatData.messages.slice(firstUserMessageIndex).filter(msg =>
+                (msg.type === 'user' || msg.type === 'bot') && msg.messageType === 'regular-chat'
+            );
+            
+            console.log('🔢 [COUNT] Messages from first student:', messagesFromFirstStudent.length, 'out of', chatData.messages.slice(firstUserMessageIndex).length, 'total from that point');
+            console.log('🔢 [COUNT] Message types breakdown:', messagesFromFirstStudent.map(m => `${m.type}:${m.messageType || 'no-type'}`));
+            
+            return messagesFromFirstStudent.length;
+        } catch (error) {
+            console.error('Error counting messages from first student:', error);
+            return 0;
+        }
+    }
+    
+    /**
      * Get conversation context for continuing a chat
      * @returns {Object|null} Conversation context or null if not continuing a chat
      */
     function getConversationContext() {
+        console.log('🔄 [CONTEXT] Getting conversation context...');
+        
         // Check if we're continuing a chat (this flag is set when loading chat data)
         const isContinuingChat = sessionStorage.getItem('isContinuingChat') === 'true';
-        if (!isContinuingChat) {
+        console.log('🔄 [CONTEXT] isContinuingChat flag:', isContinuingChat);
+        
+        // Always get the latest chat data from localStorage to ensure we have the most recent messages
+        // The sessionStorage might be stale if messages were added after loading
+        const currentChatData = getCurrentChatData();
+        let loadedChatData = null;
+        
+        if (currentChatData && currentChatData.messages && currentChatData.messages.length > 0) {
+            console.log('🔄 [CONTEXT] Found', currentChatData.messages.length, 'messages in localStorage (latest)');
+            // Always use the latest data from localStorage
+            loadedChatData = JSON.stringify(currentChatData);
+            // Update sessionStorage with the latest data
+            sessionStorage.setItem('isContinuingChat', 'true');
+            sessionStorage.setItem('loadedChatData', loadedChatData);
+            console.log('🔄 [CONTEXT] Using latest chat data from localStorage and updating sessionStorage');
+        } else {
+            // Fallback: try sessionStorage if localStorage is empty
+            loadedChatData = sessionStorage.getItem('loadedChatData');
+            console.log('🔄 [CONTEXT] No localStorage data, checking sessionStorage:', !!loadedChatData);
+            if (!loadedChatData) {
+                console.log('🔄 [CONTEXT] No chat data found in localStorage or sessionStorage');
+            }
+        }
+        
+        if (!loadedChatData) {
+            console.log('🔄 [CONTEXT] No chat data available, returning null');
             return null;
         }
         
-        // Get the loaded chat data
-        const loadedChatData = sessionStorage.getItem('loadedChatData');
-        if (!loadedChatData) {
-            return null;
-        }
+        console.log('🔄 [CONTEXT] Chat data found, building conversation context...');
         
         try {
             const chatData = JSON.parse(loadedChatData);
+            
+            // Verify session ID matches - only use context if we're in the same session
+            const currentChatData = getCurrentChatData();
+            let currentSessionId = null;
+            if (currentChatData && currentChatData.sessionInfo && currentChatData.sessionInfo.sessionId) {
+                currentSessionId = currentChatData.sessionInfo.sessionId;
+            }
+            
+            const loadedSessionId = chatData.sessionInfo && chatData.sessionInfo.sessionId 
+                ? chatData.sessionInfo.sessionId 
+                : null;
+            
+            console.log('🔄 [CONTEXT] Session ID check - Current:', currentSessionId || 'none', 'Loaded:', loadedSessionId || 'none');
+            
+            // If we have a current session ID, verify it matches the loaded session ID
+            if (currentSessionId && loadedSessionId && currentSessionId !== loadedSessionId) {
+                console.log('🔄 [CONTEXT] Session ID mismatch! Current:', currentSessionId, 'Loaded:', loadedSessionId);
+                console.log('🔄 [CONTEXT] This is a new session - clearing old context and returning null');
+                // Clear the old context flags since they're from a different session
+                sessionStorage.removeItem('isContinuingChat');
+                sessionStorage.removeItem('loadedChatData');
+                return null;
+            }
+            
+            // If current session has no ID but loaded does, it means we're starting fresh
+            // Don't use old session context - new sessions should not reference old conversations
+            if (!currentSessionId && loadedSessionId) {
+                console.log('🔄 [CONTEXT] Current session has no ID but loaded data has session ID - new session, clearing old context');
+                sessionStorage.removeItem('isContinuingChat');
+                sessionStorage.removeItem('loadedChatData');
+                return null;
+            }
+            
+            // If both have the same session ID, or if we're continuing a chat (auto-continue scenario),
+            // we can use the context. If both are null, it's a brand new session without context.
+            if (currentSessionId && loadedSessionId && currentSessionId === loadedSessionId) {
+                console.log('🔄 [CONTEXT] Session ID matches - using context from session:', currentSessionId);
+            } else if (!currentSessionId && !loadedSessionId) {
+                // Both null - this shouldn't happen if loadedChatData exists, but handle it
+                console.log('🔄 [CONTEXT] Both session IDs are null - might be continuing without explicit session ID');
+            }
+            
             const currentMode = localStorage.getItem('studentMode') || 'tutor';
             const unitName = localStorage.getItem('selectedUnitName') || 'this unit';
             
@@ -338,14 +489,54 @@ document.addEventListener('DOMContentLoaded', async () => {
                     (msg.type === 'user' || msg.type === 'bot')
                 );
                 
+                console.log('🔄 [CONTEXT] Found', regularChatMessages.length, 'regular chat messages to include in context');
+                
                 // Add the conversation history
-                regularChatMessages.forEach(msg => {
+                regularChatMessages.forEach((msg, index) => {
                     conversationMessages.push({
                         role: msg.type === 'user' ? 'user' : 'assistant',
                         content: msg.content
                     });
+                    // Log first few messages for debugging
+                    if (index < 3) {
+                        console.log(`🔄 [CONTEXT] Message ${index + 1}:`, msg.type, '-', msg.content.substring(0, 50) + '...');
+                    }
                 });
+                
+                // Log last few messages with full content for debugging
+                if (regularChatMessages.length > 3) {
+                    const lastFew = regularChatMessages.slice(-3);
+                    lastFew.forEach((msg, idx) => {
+                        const actualIdx = regularChatMessages.length - 3 + idx;
+                        console.log(`🔄 [CONTEXT] Message ${actualIdx + 1}:`, msg.type, '-', msg.content.substring(0, 100) + (msg.content.length > 100 ? '...' : ''));
+                        // Log full content for hero-related messages to debug
+                        if (msg.content.toLowerCase().includes('hero') || msg.content.toLowerCase().includes('batman')) {
+                            console.log(`🔄 [CONTEXT] FULL CONTENT for message ${actualIdx + 1}:`, msg.content);
+                        }
+                    });
+                }
+                
+                // Also search through all messages for hero-related content to verify it's included
+                const heroMessages = regularChatMessages.filter(msg => 
+                    msg.content.toLowerCase().includes('hero') || 
+                    msg.content.toLowerCase().includes('batman') ||
+                    msg.content.toLowerCase().includes('favorite')
+                );
+                if (heroMessages.length > 0) {
+                    console.log('🔄 [CONTEXT] Found', heroMessages.length, 'messages with hero/batman/favorite keywords:');
+                    heroMessages.forEach((msg, idx) => {
+                        const msgIndex = regularChatMessages.indexOf(msg) + 1;
+                        console.log(`🔄 [CONTEXT] Hero message ${msgIndex}:`, msg.type, '-', msg.content);
+                    });
+                }
             }
+            
+            console.log('🔄 [CONTEXT] Total conversation messages in context:', conversationMessages.length);
+            console.log('🔄 [CONTEXT] Context summary:', {
+                totalMessages: conversationMessages.length,
+                mode: currentMode,
+                hasPracticeTest: !!(chatData.practiceTests && chatData.practiceTests.questions.length > 0)
+            });
             
             return {
                 conversationMessages: conversationMessages,
@@ -373,12 +564,40 @@ document.addEventListener('DOMContentLoaded', async () => {
             const message = chatInput.value.trim();
             if (!message) return;
             
+            // Check if we need to show the 15-message warning BEFORE adding the user message
+            // We want to show the warning before the bot responds to the student's 14th message
+            // If count is 13, after adding user message = 14, bot response = 15 (show warning)
+            // If count is 14, after adding user message = 15, bot response = 16 (we've passed the window)
+            // So we check for count === 13 OR count === 14 (to catch edge cases)
+            const messageCountBefore = countMessagesFromFirstStudent();
+            const warningAlreadyShown = hasWarningBeenShown();
+            const shouldShowWarning = !warningAlreadyShown && (messageCountBefore === 13 || messageCountBefore === 14);
+            
+            if (shouldShowWarning) {
+                console.log('⚠️ [CHAT] Will show 15-message warning after user message (current count:', messageCountBefore, ', warning already shown:', warningAlreadyShown, ')');
+            } else if (messageCountBefore === 13 || messageCountBefore === 14) {
+                console.log('⚠️ [CHAT] Warning already shown, skipping (current count:', messageCountBefore, ')');
+            }
+            
             // Add user message to chat
             console.log('💬 [CHAT] Adding user message to chat:', message.substring(0, 50) + '...');
             addMessage(message, 'user');
             
             // Clear input
             chatInput.value = '';
+            
+            // Show warning message if needed (before the bot responds)
+            // Since autoSaveMessage is synchronous, we can add the warning immediately
+            if (shouldShowWarning) {
+                console.log('⚠️ [CHAT] Showing 15-message warning');
+                // Add the warning message just like a normal bot response, with source attribution
+                addMessage('Please be aware that after 15 messages, the quality of the responses might be degraded.', 'bot', true, false, {
+                    source: 'System',
+                    description: 'System notification',
+                    unitName: null,
+                    documentType: null
+                });
+            }
             
             // Show typing indicator
             showTypingIndicator();
@@ -1130,11 +1349,21 @@ async function syncAutoSaveWithServer(chatData) {
 function getCurrentChatData() {
     try {
         const studentId = getCurrentStudentId();
+        if (!studentId) {
+            console.warn('⚠️ [GET_CHAT_DATA] No student ID available');
+            return null;
+        }
         const autoSaveKey = `biocbot_current_chat_${studentId}`;
         const chatData = localStorage.getItem(autoSaveKey);
         
         if (chatData) {
-            return JSON.parse(chatData);
+            const parsed = JSON.parse(chatData);
+            // Validate that we have the required structure
+            if (!parsed.messages) {
+                console.warn('⚠️ [GET_CHAT_DATA] Chat data missing messages array');
+                parsed.messages = [];
+            }
+            return parsed;
         }
         
         return null;
@@ -1181,6 +1410,12 @@ function loadCurrentSessionIntoInterface() {
         }
         
         console.log('🔄 [AUTO-CONTINUE] Loading', chatData.messages.length, 'messages into interface');
+        
+        // Set flags for continuing chat BEFORE loading data
+        // This ensures getConversationContext() can access the data
+        sessionStorage.setItem('isContinuingChat', 'true');
+        sessionStorage.setItem('loadedChatData', JSON.stringify(chatData));
+        console.log('🔄 [AUTO-CONTINUE] Set conversation context flags');
         
         // Load the chat data using the existing function
         loadChatData(chatData);
@@ -1297,10 +1532,16 @@ function checkForAutoContinue() {
             // Instead, we just restore the session state by updating the current chat data
             // This maintains the session continuity without creating a new session
             
+            // Validate metadata exists before accessing it
+            if (!chatData.metadata) {
+                console.error('🔄 [AUTO-CONTINUE] ❌ Chat data missing metadata, cannot auto-continue');
+                return false;
+            }
+            
             // Restore the session ID from localStorage to ensure continuity
-            const studentId = chatData.metadata.studentId;
-            const courseId = chatData.metadata.courseId;
-            const unitName = chatData.metadata.unitName;
+            const studentId = chatData.metadata.studentId || getCurrentStudentId();
+            const courseId = chatData.metadata.courseId || localStorage.getItem('selectedCourseId') || 'unknown';
+            const unitName = chatData.metadata.unitName || localStorage.getItem('selectedUnitName') || 'this unit';
             const sessionKey = `biocbot_session_${studentId}_${courseId}_${unitName}`;
             const existingSessionId = localStorage.getItem(sessionKey);
             
@@ -1364,7 +1605,12 @@ function clearCurrentChatData() {
         localStorage.removeItem(sessionKey);
         localStorage.removeItem(lastSyncKey);
         
-        console.log('Cleared current chat data and session tracking from auto-save storage');
+        // Clear conversation context flags from sessionStorage
+        // This ensures new sessions don't reference old conversations
+        sessionStorage.removeItem('isContinuingChat');
+        sessionStorage.removeItem('loadChatData');
+        sessionStorage.removeItem('loadedChatData');
+        console.log('Cleared current chat data, session tracking, and conversation context flags');
     } catch (error) {
         console.error('Error clearing current chat data:', error);
     }
@@ -2824,8 +3070,41 @@ function showUnitSelectionDropdown(publishedUnits) {
             updatedUnitSelect.appendChild(option);
         });
         
-        // Auto-select the most recently published unit
-        if (mostRecentUnit) {
+        // Check for saved chat data first - if it exists and is within 30 minutes, restore that unit instead
+        const savedChatData = getCurrentChatData();
+        let shouldRestoreSavedUnit = false;
+        let savedUnitName = null;
+        
+        if (savedChatData && savedChatData.messages && savedChatData.messages.length > 0 && savedChatData.lastActivityTimestamp) {
+            const lastActivity = new Date(savedChatData.lastActivityTimestamp);
+            const now = new Date();
+            const diffMs = now - lastActivity;
+            const diffMinutes = Math.floor(diffMs / (1000 * 60));
+            
+            if (diffMinutes <= 30 && savedChatData.metadata && savedChatData.metadata.unitName) {
+                savedUnitName = savedChatData.metadata.unitName;
+                // Check if the saved unit is in the published units list
+                const savedUnitExists = publishedUnits.some(u => u.name === savedUnitName);
+                if (savedUnitExists) {
+                    shouldRestoreSavedUnit = true;
+                    console.log(`🔄 [AUTO-CONTINUE] Found saved chat for unit: ${savedUnitName}, will restore instead of auto-selecting`);
+                } else {
+                    console.log(`🔄 [AUTO-CONTINUE] Saved unit ${savedUnitName} is not published, will auto-select most recent`);
+                }
+            }
+        }
+        
+        // Auto-select unit: prefer saved unit if it exists, otherwise use most recent
+        if (shouldRestoreSavedUnit && savedUnitName) {
+            updatedUnitSelect.value = savedUnitName;
+            console.log(`🔄 [AUTO-CONTINUE] Restored saved unit: ${savedUnitName}`);
+            
+            // Persist selection for chat retrieval
+            localStorage.setItem('selectedUnitName', savedUnitName);
+            
+            // Don't load questions immediately - let auto-continue handle the restoration
+            // The auto-continue check will happen after auth is ready and will restore the chat
+        } else if (mostRecentUnit) {
             updatedUnitSelect.value = mostRecentUnit.name;
             console.log(`Auto-selected most recent unit: ${mostRecentUnit.name}`);
             
@@ -2909,6 +3188,22 @@ function showUnitSelectionWelcomeMessage() {
 async function loadQuestionsForSelectedUnit(unitName) {
     try {
         console.log(`=== LOADING QUESTIONS FOR UNIT: ${unitName} ===`);
+        
+        // Check if we should auto-continue instead of starting a new assessment
+        // If there's saved chat data for this unit within 30 minutes, skip loading questions
+        const savedChatData = getCurrentChatData();
+        if (savedChatData && savedChatData.messages && savedChatData.messages.length > 0 && savedChatData.lastActivityTimestamp) {
+            const lastActivity = new Date(savedChatData.lastActivityTimestamp);
+            const now = new Date();
+            const diffMs = now - lastActivity;
+            const diffMinutes = Math.floor(diffMs / (1000 * 60));
+            
+            if (diffMinutes <= 30 && savedChatData.metadata && savedChatData.metadata.unitName === unitName) {
+                console.log(`🔄 [AUTO-CONTINUE] Found saved chat for unit ${unitName}, skipping question load - auto-continue will restore chat`);
+                // Don't load questions - let auto-continue handle restoration
+                return;
+            }
+        }
         
         // Hide chat input and mode toggle when starting new assessment
         const chatInputContainer = document.querySelector('.chat-input-container');
@@ -3111,7 +3406,8 @@ function showNoQuestionsForUnitMessage(unitName) {
     
     const messageText = document.createElement('p');
     messageText.innerHTML = `<strong>No Questions Available</strong><br>
-    There are no assessment questions available for ${unitName} at this time. You can select a different unit or chat directly with me about any topics you'd like to discuss.`;
+    There are no assessment questions available for ${unitName} at this time. You can select a different unit or chat directly with me about any topics you'd like to discuss.
+    Please pick either tutor or protege mode to continue your learning journey.`;
     
     contentDiv.appendChild(messageText);
     
@@ -3173,16 +3469,28 @@ function startAssessmentWithQuestions(questions, passThreshold = 0) {
         modeToggleContainer.style.display = 'none';
     }
     
-    // Clear any existing messages except the welcome message and unit selection dropdown
+    // Get chat messages container (needed for both clearing and adding messages)
     const chatMessages = document.getElementById('chat-messages');
-    const welcomeMessage = chatMessages.querySelector('.message:not(.calibration-question):not(.mode-result):not(.unit-selection-welcome)');
-    if (welcomeMessage) {
-        chatMessages.innerHTML = '';
-        chatMessages.appendChild(welcomeMessage);
-        
-        // Clear auto-save data when starting assessment - this is a new session
-        console.log('🔄 [AUTO-SAVE] Starting assessment - clearing auto-save data for new session');
-        clearCurrentChatData();
+    if (!chatMessages) {
+        console.error('Chat messages container not found');
+        return;
+    }
+    
+    // Only clear chat data if this is a new session (not auto-continued)
+    // Check if chat was auto-continued before clearing
+    if (!window.autoContinued) {
+        // Clear any existing messages except the welcome message and unit selection dropdown
+        const welcomeMessage = chatMessages.querySelector('.message:not(.calibration-question):not(.mode-result):not(.unit-selection-welcome)');
+        if (welcomeMessage) {
+            chatMessages.innerHTML = '';
+            chatMessages.appendChild(welcomeMessage);
+            
+            // Clear auto-save data when starting assessment - this is a new session
+            console.log('🔄 [AUTO-SAVE] Starting assessment - clearing auto-save data for new session');
+            clearCurrentChatData();
+        }
+    } else {
+        console.log('🔄 [AUTO-SAVE] Chat was auto-continued, preserving chat data');
     }
     
     // Add message about starting assessment for the selected unit
