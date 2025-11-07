@@ -163,24 +163,38 @@ function initializePassport(db) {
         const ubcShibIssuer = process.env.SAML_ISSUER;
         const ubcShibCallbackUrl = process.env.SAML_CALLBACK_URL;
         const ubcShibPrivateKeyPath = process.env.SAML_PRIVATE_KEY_PATH;
+        const ubcShibCertPath = process.env.SAML_CERT_PATH;
         const ubcShibEnvironment = process.env.SAML_ENVIRONMENT || 'STAGING';
         const ubcShibAttributeConfig = process.env.SAML_ATTRIBUTES 
             ? process.env.SAML_ATTRIBUTES.split(',').map(a => a.trim())
             : ['ubcEduCwlPuid', 'mail', 'eduPersonAffiliation'];
 
+        // Read SAML certificate if path is provided
+        let ubcShibCert = null;
+        if (ubcShibCertPath) {
+            try {
+                ubcShibCert = fs.readFileSync(ubcShibCertPath, 'utf8');
+            } catch (error) {
+                console.error(`❌ Failed to read SAML certificate from ${ubcShibCertPath}:`, error.message);
+            }
+        }
+
         console.log('🔍 Checking UBC Shibboleth configuration...');
         console.log(`   SAML_ISSUER: ${ubcShibIssuer ? '✓ Set' : '✗ Missing'}`);
         console.log(`   SAML_CALLBACK_URL: ${ubcShibCallbackUrl ? '✓ Set' : '✗ Missing'}`);
         console.log(`   SAML_PRIVATE_KEY_PATH: ${ubcShibPrivateKeyPath ? '✓ Set' : '✗ Missing'}`);
+        console.log(`   SAML_CERT_PATH: ${ubcShibCertPath ? '✓ Set' : '✗ Missing'}`);
+        console.log(`   SAML_CERT: ${ubcShibCert ? '✓ Loaded' : '✗ Not loaded'}`);
         console.log(`   SAML_ENVIRONMENT: ${ubcShibEnvironment}`);
 
-        if (ubcShibIssuer && ubcShibCallbackUrl) {
+        if (ubcShibIssuer && ubcShibCallbackUrl && ubcShibCert) {
             try {
                 console.log('🔧 Registering UBC Shibboleth strategy...');
                 passport.use('ubcshib', new UBCShibStrategy(
                     {
                         issuer: ubcShibIssuer,
                         callbackUrl: ubcShibCallbackUrl,
+                        cert: ubcShibCert,
                         privateKeyPath: ubcShibPrivateKeyPath,
                         attributeConfig: ['ubcEduCwlPuid', 'mail', 'eduPersonAffiliation'],
                         enableSLO: process.env.ENABLE_SLO !== 'false',
@@ -248,7 +262,7 @@ function initializePassport(db) {
             }
         } else {
             console.log('ℹ️ UBC Shibboleth strategy not configured (missing required environment variables)');
-            console.log('   Required: SAML_ISSUER and SAML_CALLBACK_URL');
+            console.log('   Required: SAML_ISSUER, SAML_CALLBACK_URL, and SAML_CERT_PATH');
         }
     } else {
         console.log('ℹ️ UBC Shibboleth strategy not available (passport-ubcshib module not loaded)');
