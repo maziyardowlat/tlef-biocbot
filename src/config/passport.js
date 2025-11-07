@@ -11,12 +11,40 @@ const User = require('../models/User');
 
 // Try to import passport-ubcshib (may not be available in all environments)
 let UBCShibStrategy;
+let ubcShibHelpers;
 try {
+    // Import according to passport-ubcshib documentation
+    // Documentation shows: const { Strategy } = require('passport-ubcshib');
     const ubcshib = require('passport-ubcshib');
-    UBCShibStrategy = ubcshib.Strategy;
+    
+    // Try different import patterns to handle various module export styles
+    if (ubcshib.Strategy) {
+        // Named export: { Strategy }
+        UBCShibStrategy = ubcshib.Strategy;
+    } else if (ubcshib.default && ubcshib.default.Strategy) {
+        // Default export with Strategy property
+        UBCShibStrategy = ubcshib.default.Strategy;
+    } else if (typeof ubcshib === 'function') {
+        // Direct export as constructor function
+        UBCShibStrategy = ubcshib;
+    } else {
+        throw new Error('Could not find Strategy in passport-ubcshib module');
+    }
+    
+    // Import helper middleware (ensureAuthenticated, logout, conditionalAuth)
+    ubcShibHelpers = {
+        ensureAuthenticated: ubcshib.ensureAuthenticated || (ubcshib.default && ubcshib.default.ensureAuthenticated),
+        logout: ubcshib.logout || (ubcshib.default && ubcshib.default.logout),
+        conditionalAuth: ubcshib.conditionalAuth || (ubcshib.default && ubcshib.default.conditionalAuth)
+    };
+    
+    console.log('✅ passport-ubcshib module loaded successfully');
+    console.log(`   Strategy type: ${typeof UBCShibStrategy}`);
 } catch (error) {
     console.warn('⚠️ passport-ubcshib not available, UBC Shibboleth authentication will be disabled');
+    console.warn(`   Error: ${error.message}`);
     UBCShibStrategy = null;
+    ubcShibHelpers = null;
 }
 
 /**
@@ -127,28 +155,35 @@ function initializePassport(db) {
     /**
      * UBC Shibboleth Strategy - UBC-specific SAML Authentication
      * Uses passport-ubcshib for UBC's Shibboleth IdP integration
-     * Only configured if UBC Shibboleth environment variables are set
+     * Only configured if SAML environment variables are set
      */
     if (UBCShibStrategy) {
-        const ubcShibIssuer = process.env.UBC_SAML_ISSUER || process.env.SAML_ISSUER;
-        const ubcShibCallbackUrl = process.env.UBC_SAML_CALLBACK_URL || process.env.SAML_CALLBACK_URL;
-        const ubcShibPrivateKeyPath = process.env.UBC_SAML_PRIVATE_KEY_PATH || process.env.SAML_PRIVATE_KEY_PATH;
-        const ubcShibEnvironment = process.env.SAML_ENVIRONMENT || process.env.UBC_SAML_ENVIRONMENT || 'STAGING';
-        const ubcShibAttributeConfig = process.env.UBC_SAML_ATTRIBUTES 
-            ? process.env.UBC_SAML_ATTRIBUTES.split(',').map(a => a.trim())
+        const ubcShibIssuer = process.env.SAML_ISSUER;
+        const ubcShibCallbackUrl = process.env.SAML_CALLBACK_URL;
+        const ubcShibPrivateKeyPath = process.env.SAML_PRIVATE_KEY_PATH;
+        const ubcShibEnvironment = process.env.SAML_ENVIRONMENT || 'STAGING';
+        const ubcShibAttributeConfig = process.env.SAML_ATTRIBUTES 
+            ? process.env.SAML_ATTRIBUTES.split(',').map(a => a.trim())
             : ['ubcEduCwlPuid', 'mail', 'eduPersonAffiliation'];
+
+        console.log('🔍 Checking UBC Shibboleth configuration...');
+        console.log(`   SAML_ISSUER: ${ubcShibIssuer ? '✓ Set' : '✗ Missing'}`);
+        console.log(`   SAML_CALLBACK_URL: ${ubcShibCallbackUrl ? '✓ Set' : '✗ Missing'}`);
+        console.log(`   SAML_PRIVATE_KEY_PATH: ${ubcShibPrivateKeyPath ? '✓ Set' : '✗ Missing'}`);
+        console.log(`   SAML_ENVIRONMENT: ${ubcShibEnvironment}`);
 
         if (ubcShibIssuer && ubcShibCallbackUrl) {
             try {
+                console.log('🔧 Registering UBC Shibboleth strategy...');
                 passport.use('ubcshib', new UBCShibStrategy(
                     {
                         issuer: ubcShibIssuer,
                         callbackUrl: ubcShibCallbackUrl,
                         privateKeyPath: ubcShibPrivateKeyPath,
                         attributeConfig: ubcShibAttributeConfig,
-                        enableSLO: process.env.UBC_SAML_ENABLE_SLO !== 'false',
-                        validateInResponseTo: process.env.UBC_SAML_VALIDATE_IN_RESPONSE_TO !== 'false',
-                        acceptedClockSkewMs: parseInt(process.env.UBC_SAML_CLOCK_SKEW_MS) || 0
+                        enableSLO: process.env.ENABLE_SLO !== 'false',
+                        validateInResponseTo: process.env.SAML_VALIDATE_IN_RESPONSE_TO !== 'false',
+                        acceptedClockSkewMs: parseInt(process.env.SAML_CLOCK_SKEW_MS) || 0
                     },
                     async (profile, done) => {
                         try {
@@ -207,10 +242,14 @@ function initializePassport(db) {
                 console.log(`✅ UBC Shibboleth strategy configured (${ubcShibEnvironment})`);
             } catch (error) {
                 console.error('❌ Failed to configure UBC Shibboleth strategy:', error.message);
+                console.error('   Error details:', error);
             }
         } else {
-            console.log('ℹ️ UBC Shibboleth strategy not configured (missing environment variables)');
+            console.log('ℹ️ UBC Shibboleth strategy not configured (missing required environment variables)');
+            console.log('   Required: SAML_ISSUER and SAML_CALLBACK_URL');
         }
+    } else {
+        console.log('ℹ️ UBC Shibboleth strategy not available (passport-ubcshib module not loaded)');
     }
 
     /**
@@ -244,6 +283,11 @@ function initializePassport(db) {
             done(error);
         }
     });
+
+    // Export helper middleware if available
+    if (ubcShibHelpers) {
+        passport.ubcShibHelpers = ubcShibHelpers;
+    }
 
     return passport;
 }

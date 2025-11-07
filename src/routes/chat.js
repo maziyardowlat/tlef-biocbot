@@ -423,8 +423,28 @@ router.post('/', async (req, res) => {
         }
 
         // Initialize Qdrant and DB
-        const qdrant = new QdrantService();
-        await qdrant.initialize();
+        let qdrant;
+        try {
+            qdrant = new QdrantService();
+            await qdrant.initialize();
+        } catch (qdrantError) {
+            console.error('❌ Qdrant initialization failed:', qdrantError.message);
+            // Check if it's a connection error
+            if (qdrantError.message.includes('ECONNREFUSED') || qdrantError.message.includes('fetch failed')) {
+                return res.status(503).json({
+                    success: false,
+                    message: 'Qdrant vector database is not available. Please ensure Qdrant is running.',
+                    error: 'QDRANT_CONNECTION_FAILED',
+                    instructions: 'Start Qdrant with: docker run -p 6333:6333 qdrant/qdrant'
+                });
+            }
+            // Other Qdrant errors
+            return res.status(503).json({
+                success: false,
+                message: 'Vector database service error',
+                error: qdrantError.message
+            });
+        }
 
         const db = req.app.locals.db;
         if (!db) {

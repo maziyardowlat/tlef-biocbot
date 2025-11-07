@@ -615,13 +615,78 @@ router.post('/saml/callback',
 );
 
 /**
+ * GET /api/auth/methods
+ * Get available authentication methods
+ * Returns which auth methods are configured and available
+ */
+router.get('/methods', (req, res) => {
+    try {
+        const methods = {
+            local: true, // Local auth is always available
+            saml: false,
+            ubcshib: false
+        };
+
+        // Check if SAML is configured
+        if (process.env.SAML_ENTRY_POINT && 
+            process.env.SAML_ISSUER && 
+            process.env.SAML_CALLBACK_URL && 
+            process.env.SAML_CERT) {
+            methods.saml = true;
+        }
+
+        // Check if UBC Shibboleth is configured
+        // Uses generic SAML_ variables (not UBC_SAML_ prefix)
+        const ubcShibIssuer = process.env.SAML_ISSUER;
+        const ubcShibCallbackUrl = process.env.SAML_CALLBACK_URL;
+        if (ubcShibIssuer && ubcShibCallbackUrl) {
+            methods.ubcshib = true;
+        }
+
+        res.json({
+            success: true,
+            methods: methods
+        });
+    } catch (error) {
+        console.error('Error getting auth methods:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to get authentication methods'
+        });
+    }
+});
+
+/**
  * GET /api/auth/ubcshib
  * Initiate UBC Shibboleth authentication flow
  * Redirects to UBC's Shibboleth Identity Provider
  */
-router.get('/ubcshib', passport.authenticate('ubcshib', {
-    failureRedirect: '/login?error=ubcshib_failed'
-}));
+router.get('/ubcshib', (req, res, next) => {
+    // Check if required environment variables are set
+    if (!process.env.SAML_ISSUER || !process.env.SAML_CALLBACK_URL) {
+        console.error('❌ UBC Shibboleth not configured - missing environment variables');
+        console.error('   Required: SAML_ISSUER and SAML_CALLBACK_URL');
+        return res.status(503).json({
+            success: false,
+            error: 'UBC Shibboleth authentication is not configured. Please contact the administrator.'
+        });
+    }
+    
+    // Use Passport's authenticate middleware
+    // This will throw an error if strategy isn't registered, so we catch it
+    try {
+        passport.authenticate('ubcshib', {
+            failureRedirect: '/login?error=ubcshib_failed'
+        })(req, res, next);
+    } catch (error) {
+        console.error('❌ UBC Shibboleth strategy not registered:', error.message);
+        console.error('   Make sure passport-ubcshib is installed and environment variables are set');
+        return res.status(503).json({
+            success: false,
+            error: 'UBC Shibboleth authentication is not configured. Please contact the administrator.'
+        });
+    }
+});
 
 /**
  * POST /api/auth/ubcshib/callback
