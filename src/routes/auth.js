@@ -1,9 +1,11 @@
 /**
  * Authentication Routes
  * Handles user login, logout, and session management
+ * Uses Passport.js for authentication strategies
  */
 
 const express = require('express');
+const passport = require('passport');
 const router = express.Router();
 
 // Middleware to parse JSON bodies
@@ -11,80 +13,82 @@ router.use(express.json());
 
 /**
  * POST /api/auth/login
- * Authenticate user with username and password
+ * Authenticate user with username and password using Passport Local Strategy
  */
-router.post('/login', async (req, res) => {
-    try {
-        const { username, password } = req.body;
-        
-        // Validate required fields
-        if (!username || !password) {
-            return res.status(400).json({
-                success: false,
-                error: 'Username and password are required'
-            });
-        }
+router.post('/login', (req, res, next) => {
+    // Validate required fields before Passport authentication
+    const { username, password } = req.body;
+    
+    if (!username || !password) {
+        return res.status(400).json({
+            success: false,
+            error: 'Username and password are required'
+        });
+    }
 
-        // Get auth service from app locals
-        const authService = req.app.locals.authService;
-        if (!authService) {
+    // Use Passport's local strategy for authentication
+    passport.authenticate('local', (err, user, info) => {
+        if (err) {
+            console.error('Error in Passport authentication:', err);
             return res.status(500).json({
                 success: false,
-                error: 'Authentication service not available'
+                error: 'Login failed. Please try again.'
             });
         }
 
-        // Authenticate user
-        const result = await authService.loginUser(username, password);
-        
-        if (!result.success) {
+        if (!user) {
+            // Authentication failed
             return res.status(401).json({
                 success: false,
-                error: result.error
+                error: info && info.message ? info.message : 'Invalid username or password'
             });
         }
 
-        // Create session
-        req.session.userId = result.user.userId;
-        req.session.userRole = result.user.role;
-        req.session.userDisplayName = result.user.displayName;
-        
-        // Save session
-        req.session.save((err) => {
-            if (err) {
-                console.error('Session save error:', err);
+        // Log user in (creates session via Passport)
+        req.login(user, (loginErr) => {
+            if (loginErr) {
+                console.error('Error logging in user:', loginErr);
                 return res.status(500).json({
                     success: false,
                     error: 'Failed to create session'
                 });
             }
 
-            console.log(`User logged in: ${result.user.userId} (${result.user.role})`);
+            // Get auth service for creating session user object
+            const authService = req.app.locals.authService;
+            
+            // Also store role in session for backward compatibility
+            req.session.userId = user.userId;
+            req.session.userRole = user.role;
+            req.session.userDisplayName = user.displayName;
+
+            console.log(`User logged in: ${user.userId} (${user.role})`);
             
             // Determine redirect based on role
             let redirectPath = '/login';
-            if (result.user.role === 'instructor') {
+            if (user.role === 'instructor') {
                 redirectPath = '/instructor/home';
-            } else if (result.user.role === 'student') {
+            } else if (user.role === 'student') {
                 redirectPath = '/student';
-            } else if (result.user.role === 'ta') {
+            } else if (user.role === 'ta') {
                 redirectPath = '/ta';
             }
             
             res.json({
                 success: true,
-                user: authService.createSessionUser(result.user),
+                user: authService ? authService.createSessionUser(user) : {
+                    userId: user.userId,
+                    username: user.username,
+                    email: user.email,
+                    role: user.role,
+                    displayName: user.displayName,
+                    authProvider: user.authProvider,
+                    preferences: user.preferences
+                },
                 redirect: redirectPath
             });
         });
-
-    } catch (error) {
-        console.error('Error in login endpoint:', error);
-        res.status(500).json({
-            success: false,
-            error: 'Login failed. Please try again.'
-        });
-    }
+    })(req, res, next);
 });
 
 /**
@@ -155,28 +159,35 @@ router.post('/register', async (req, res) => {
 
 /**
  * POST /api/auth/logout
- * Logout user and destroy session
+ * Logout user and destroy session using Passport
  */
 router.post('/logout', (req, res) => {
     try {
-        const userId = req.session.userId;
+        const userId = req.user ? req.user.userId : req.session.userId;
         
-        // Destroy session
-        req.session.destroy((err) => {
+        // Use Passport's logout method
+        req.logout((err) => {
             if (err) {
-                console.error('Session destroy error:', err);
-                return res.status(500).json({
-                    success: false,
-                    error: 'Failed to logout'
-                });
+                console.error('Passport logout error:', err);
             }
-
-            console.log(`User logged out: ${userId}`);
             
-            res.json({
-                success: true,
-                message: 'Logged out successfully',
-                redirect: '/login'
+            // Destroy session
+            req.session.destroy((destroyErr) => {
+                if (destroyErr) {
+                    console.error('Session destroy error:', destroyErr);
+                    return res.status(500).json({
+                        success: false,
+                        error: 'Failed to logout'
+                    });
+                }
+
+                console.log(`User logged out: ${userId}`);
+                
+                res.json({
+                    success: true,
+                    message: 'Logged out successfully',
+                    redirect: '/login'
+                });
             });
         });
 
@@ -192,16 +203,29 @@ router.post('/logout', (req, res) => {
 /**
  * GET /api/auth/me
  * Get current user information
+ * Uses Passport's req.user if available, falls back to session
  */
 router.get('/me', async (req, res) => {
     try {
         console.log('Auth /me endpoint called');
+        console.log('Passport user:', req.user);
         console.log('Session:', req.session);
         console.log('Session userId:', req.session?.userId);
         
-        // Check if user is authenticated
-        if (!req.session || !req.session.userId) {
-            console.log('User not authenticated - no session or userId');
+        // Check if user is authenticated via Passport
+        // Passport populates req.user after deserialization
+        let user = req.user;
+        
+        // Fallback to session-based auth for backward compatibility
+        if (!user && req.session && req.session.userId) {
+            const authService = req.app.locals.authService;
+            if (authService) {
+                user = await authService.getUserById(req.session.userId);
+            }
+        }
+        
+        if (!user) {
+            console.log('User not authenticated - no user found');
             return res.status(401).json({
                 success: false,
                 error: 'Not authenticated',
@@ -209,24 +233,12 @@ router.get('/me', async (req, res) => {
             });
         }
 
-        // Get auth service from app locals
+        // Get auth service for creating session user object
         const authService = req.app.locals.authService;
         if (!authService) {
             return res.status(500).json({
                 success: false,
                 error: 'Authentication service not available'
-            });
-        }
-
-        // Get user details
-        const user = await authService.getUserById(req.session.userId);
-        if (!user) {
-            // User not found, clear session
-            req.session.destroy();
-            return res.status(401).json({
-                success: false,
-                error: 'User not found',
-                redirect: '/login'
             });
         }
 
@@ -558,5 +570,91 @@ router.delete('/tas/:taId', async (req, res) => {
         });
     }
 });
+
+/**
+ * GET /api/auth/saml
+ * Initiate SAML authentication flow
+ * Redirects to SAML Identity Provider
+ */
+router.get('/saml', passport.authenticate('saml', {
+    failureRedirect: '/login?error=saml_failed'
+}));
+
+/**
+ * POST /api/auth/saml/callback
+ * SAML callback endpoint (called by IdP after authentication)
+ */
+router.post('/saml/callback',
+    passport.authenticate('saml', {
+        failureRedirect: '/login?error=saml_failed',
+        session: true
+    }),
+    (req, res) => {
+        // Successful SAML authentication
+        // Determine redirect based on role
+        let redirectPath = '/login';
+        if (req.user && req.user.role) {
+            if (req.user.role === 'instructor') {
+                redirectPath = '/instructor/home';
+            } else if (req.user.role === 'student') {
+                redirectPath = '/student';
+            } else if (req.user.role === 'ta') {
+                redirectPath = '/ta';
+            }
+        }
+        
+        // Store role in session for backward compatibility
+        if (req.user) {
+            req.session.userId = req.user.userId;
+            req.session.userRole = req.user.role;
+            req.session.userDisplayName = req.user.displayName;
+        }
+        
+        res.redirect(redirectPath);
+    }
+);
+
+/**
+ * GET /api/auth/ubcshib
+ * Initiate UBC Shibboleth authentication flow
+ * Redirects to UBC's Shibboleth Identity Provider
+ */
+router.get('/ubcshib', passport.authenticate('ubcshib', {
+    failureRedirect: '/login?error=ubcshib_failed'
+}));
+
+/**
+ * POST /api/auth/ubcshib/callback
+ * UBC Shibboleth callback endpoint (called by UBC IdP after authentication)
+ */
+router.post('/ubcshib/callback',
+    passport.authenticate('ubcshib', {
+        failureRedirect: '/login?error=ubcshib_failed',
+        session: true
+    }),
+    (req, res) => {
+        // Successful UBC Shibboleth authentication
+        // Determine redirect based on role
+        let redirectPath = '/login';
+        if (req.user && req.user.role) {
+            if (req.user.role === 'instructor') {
+                redirectPath = '/instructor/home';
+            } else if (req.user.role === 'student') {
+                redirectPath = '/student';
+            } else if (req.user.role === 'ta') {
+                redirectPath = '/ta';
+            }
+        }
+        
+        // Store role in session for backward compatibility
+        if (req.user) {
+            req.session.userId = req.user.userId;
+            req.session.userRole = req.user.role;
+            req.session.userDisplayName = req.user.displayName;
+        }
+        
+        res.redirect(redirectPath);
+    }
+);
 
 module.exports = router;

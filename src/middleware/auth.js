@@ -15,77 +15,98 @@ function createAuthMiddleware(db) {
 
     /**
      * Middleware to check if user is authenticated
+     * Works with Passport.js (checks req.user) and falls back to session-based auth
      * @param {Object} req - Express request object
      * @param {Object} res - Express response object
      * @param {Function} next - Express next function
      */
     function requireAuth(req, res, next) {
         console.log('🔐 [AUTH] Checking authentication for:', req.path);
+        console.log('🔐 [AUTH] Passport user:', !!req.user);
         console.log('🔐 [AUTH] Session exists:', !!req.session);
-        console.log('🔐 [AUTH] User ID:', req.session?.userId);
+        console.log('🔐 [AUTH] User ID:', req.user?.userId || req.session?.userId);
         
-        // Check if user is in session
-        if (!req.session || !req.session.userId) {
-            console.log('🔐 [AUTH] Authentication failed - no session or user ID');
-            // If it's an API request, return JSON error
-            if (req.path.startsWith('/api/')) {
-                return res.status(401).json({
-                    success: false,
-                    error: 'Authentication required',
-                    redirect: '/login'
-                });
-            }
-            
-            // For page requests, redirect to login
-            return res.redirect('/login');
+        // Check if user is authenticated via Passport (preferred method)
+        if (req.user) {
+            console.log('🔐 [AUTH] Authentication successful via Passport');
+            // User is authenticated via Passport, continue
+            next();
+            return;
         }
         
-        console.log('🔐 [AUTH] Authentication successful');
-
-        // Set user information for routes that need it
-        req.user = {
-            userId: req.session.userId,
-            role: req.session.userRole,
-            displayName: req.session.userDisplayName
-        };
-
-        // User is authenticated, continue
-        next();
+        // Fallback: Check if user is in session (backward compatibility)
+        if (req.session && req.session.userId) {
+            console.log('🔐 [AUTH] Authentication successful via session (fallback)');
+            
+            // Set user information for routes that need it
+            req.user = {
+                userId: req.session.userId,
+                role: req.session.userRole,
+                displayName: req.session.userDisplayName
+            };
+            
+            // User is authenticated, continue
+            next();
+            return;
+        }
+        
+        // No authentication found
+        console.log('🔐 [AUTH] Authentication failed - no user or session');
+        
+        // If it's an API request, return JSON error
+        if (req.path.startsWith('/api/')) {
+            return res.status(401).json({
+                success: false,
+                error: 'Authentication required',
+                redirect: '/login'
+            });
+        }
+        
+        // For page requests, redirect to login
+        return res.redirect('/login');
     }
 
     /**
      * Middleware to check if user has specific role
-     * @param {string} requiredRole - Required role ('instructor' or 'student')
+     * Works with Passport.js (uses req.user) and falls back to session-based auth
+     * @param {string} requiredRole - Required role ('instructor', 'student', or 'ta')
      * @returns {Function} Middleware function
      */
     function requireRole(requiredRole) {
         return async (req, res, next) => {
             try {
-                // First check if user is authenticated
-                if (!req.session || !req.session.userId) {
-                    if (req.path.startsWith('/api/')) {
-                        return res.status(401).json({
-                            success: false,
-                            error: 'Authentication required',
-                            redirect: '/login'
-                        });
-                    }
-                    return res.redirect('/login');
-                }
-
-                // Get user details
-                const user = await authService.getUserById(req.session.userId);
+                let user = req.user;
+                
+                // If Passport hasn't populated req.user, try to get from session
                 if (!user) {
-                    // User not found, clear session
-                    req.session.destroy();
-                    if (req.path.startsWith('/api/')) {
-                        return res.status(401).json({
-                            success: false,
-                            error: 'User not found',
-                            redirect: '/login'
-                        });
+                    if (!req.session || !req.session.userId) {
+                        if (req.path.startsWith('/api/')) {
+                            return res.status(401).json({
+                                success: false,
+                                error: 'Authentication required',
+                                redirect: '/login'
+                            });
+                        }
+                        return res.redirect('/login');
                     }
-                    return res.redirect('/login');
+
+                    // Get user details from database
+                    user = await authService.getUserById(req.session.userId);
+                    if (!user) {
+                        // User not found, clear session
+                        req.session.destroy();
+                        if (req.path.startsWith('/api/')) {
+                            return res.status(401).json({
+                                success: false,
+                                error: 'User not found',
+                                redirect: '/login'
+                            });
+                        }
+                        return res.redirect('/login');
+                    }
+                    
+                    // Set user in request for future use
+                    req.user = user;
                 }
 
                 // Check role
@@ -110,8 +131,7 @@ function createAuthMiddleware(db) {
                     }
                 }
 
-                // Add user to request object for easy access
-                req.user = user;
+                // User has required role, continue
                 next();
 
             } catch (error) {
@@ -159,37 +179,45 @@ function createAuthMiddleware(db) {
 
     /**
      * Middleware to require instructor or TA role (for shared instructor/TA pages)
+     * Works with Passport.js (uses req.user) and falls back to session-based auth
      * @param {Object} req - Express request object
      * @param {Object} res - Express response object
      * @param {Function} next - Express next function
      */
     async function requireInstructorOrTA(req, res, next) {
         try {
-            // First check if user is authenticated
-            if (!req.session || !req.session.userId) {
-                if (req.path.startsWith('/api/')) {
-                    return res.status(401).json({
-                        success: false,
-                        error: 'Authentication required',
-                        redirect: '/login'
-                    });
-                }
-                return res.redirect('/login');
-            }
-
-            // Get user details
-            const user = await authService.getUserById(req.session.userId);
+            let user = req.user;
+            
+            // If Passport hasn't populated req.user, try to get from session
             if (!user) {
-                // User not found, clear session
-                req.session.destroy();
-                if (req.path.startsWith('/api/')) {
-                    return res.status(401).json({
-                        success: false,
-                        error: 'User not found',
-                        redirect: '/login'
-                    });
+                if (!req.session || !req.session.userId) {
+                    if (req.path.startsWith('/api/')) {
+                        return res.status(401).json({
+                            success: false,
+                            error: 'Authentication required',
+                            redirect: '/login'
+                        });
+                    }
+                    return res.redirect('/login');
                 }
-                return res.redirect('/login');
+
+                // Get user details from database
+                user = await authService.getUserById(req.session.userId);
+                if (!user) {
+                    // User not found, clear session
+                    req.session.destroy();
+                    if (req.path.startsWith('/api/')) {
+                        return res.status(401).json({
+                            success: false,
+                            error: 'User not found',
+                            redirect: '/login'
+                        });
+                    }
+                    return res.redirect('/login');
+                }
+                
+                // Set user in request for future use
+                req.user = user;
             }
 
             // Check role - allow both instructor and TA
@@ -214,8 +242,7 @@ function createAuthMiddleware(db) {
                 }
             }
 
-            // Add user to request object for easy access
-            req.user = user;
+            // User has required role, continue
             next();
 
         } catch (error) {
@@ -232,12 +259,20 @@ function createAuthMiddleware(db) {
 
     /**
      * Middleware to populate user data in request
+     * Works with Passport.js (req.user is already populated) and falls back to session
      * @param {Object} req - Express request object
      * @param {Object} res - Express response object
      * @param {Function} next - Express next function
      */
     async function populateUser(req, res, next) {
         try {
+            // If Passport has already populated req.user, use it
+            if (req.user) {
+                next();
+                return;
+            }
+            
+            // Fallback: Populate from session if available
             if (req.session && req.session.userId) {
                 const user = await authService.getUserById(req.session.userId);
                 if (user) {
