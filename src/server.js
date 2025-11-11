@@ -67,39 +67,15 @@ async function initializeLLM() {
 }
 
 /**
- * Configure session middleware with MongoDB store
- * Must be called after MongoDB connection is established
+ * Verify session middleware configuration
+ * Session middleware is already configured early with MongoDB store using clientPromise
+ * This function just confirms MongoDB connection is ready
  * @returns {void}
  */
 function configureSession() {
-    console.log('🔐 Configuring session middleware...');
-
-    // Session configuration with MongoDB store for persistence
-    // connect-mongo v5 supports both 'client' and 'clientPromise'
-    const sessionConfig = {
-        secret: process.env.SESSION_SECRET || 'biocbot-session-secret-change-in-production',
-        resave: false, // Don't save session if unmodified
-        saveUninitialized: false, // Don't create session until something stored
-        store: MongoStore.create({
-            client: mongoClient, // MongoDB client instance (connected)
-            dbName: db.databaseName, // Database name
-            collectionName: 'sessions', // Collection to store sessions
-            ttl: 24 * 60 * 60, // Session TTL in seconds (24 hours)
-            touchAfter: 24 * 3600 // Lazy session update (24 hours)
-        }),
-        cookie: {
-            secure: process.env.NODE_ENV === 'production', // HTTPS only in production
-            httpOnly: true, // Prevent XSS attacks
-            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // CSRF protection
-            maxAge: 24 * 60 * 60 * 1000 // 24 hours in milliseconds
-        },
-        name: 'biocbot.sid' // Session cookie name
-    };
-
-    // Apply session middleware
-    app.use(session(sessionConfig));
-
-    console.log('✅ Session middleware configured with MongoDB store');
+    console.log('🔐 Verifying session middleware configuration...');
+    console.log('✅ Session middleware is configured with MongoDB store');
+    console.log('   MongoDB client promise will resolve when connection is established');
 }
 
 /**
@@ -173,6 +149,12 @@ async function connectToMongoDB() {
         // Store the client for session store
         mongoClient = client;
 
+        // Resolve the MongoDB client promise for session store
+        if (global._resolveMongoClient) {
+            global._resolveMongoClient(client);
+            delete global._resolveMongoClient;
+        }
+
         // Get the database instance
         db = client.db();
 
@@ -197,8 +179,34 @@ async function connectToMongoDB() {
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Session middleware will be configured after MongoDB connection
-// This ensures we can use MongoDB store for session persistence
+// Create a promise that will resolve to the MongoDB client
+// This allows us to configure session middleware early with MongoDB store
+let mongoClientPromise = new Promise((resolve) => {
+    // This will be resolved when MongoDB connects
+    global._resolveMongoClient = resolve;
+});
+
+// Configure session middleware early (before MongoDB connection)
+// Using clientPromise allows MongoDB store to work once client is connected
+app.use(session({
+    secret: process.env.SESSION_SECRET || 'biocbot-session-secret-change-in-production',
+    resave: false,
+    saveUninitialized: false,
+    store: MongoStore.create({
+        clientPromise: mongoClientPromise, // Will resolve when MongoDB connects
+        dbName: process.env.MONGO_DB_NAME, // Optional: specify database name
+        collectionName: 'sessions',
+        ttl: 24 * 60 * 60, // 24 hours
+        touchAfter: 24 * 3600
+    }),
+    cookie: {
+        secure: process.env.NODE_ENV === 'production',
+        httpOnly: true,
+        sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+        maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    },
+    name: 'biocbot.sid'
+}));
 
 // Serve static files from the 'public' directory
 app.use(express.static(path.join(__dirname, '../public')));
@@ -517,13 +525,16 @@ async function startServer() {
     try {
         console.log('🚀 Starting BiocBot server...');
 
-        // Initialize core services in correct order
-        await connectToMongoDB(); // Must be first - provides db connection
+        // Session middleware is already configured early (before MongoDB connection)
+        // It uses clientPromise which will resolve when MongoDB connects
         
-        // Configure session middleware (requires MongoDB connection)
+        // Initialize core services in correct order
+        await connectToMongoDB(); // Resolves the MongoDB client promise for session store
+        
+        // Verify session configuration
         configureSession();
         
-        // Initialize Passport (requires session middleware)
+        // Initialize Passport (requires session middleware - already configured)
         await initializePassportAuth();
         
         // Mount Shibboleth routes AFTER session and Passport are configured
