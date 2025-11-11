@@ -307,4 +307,3 @@ function initializePassport(db) {
 }
 
 module.exports = initializePassport;
-

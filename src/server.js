@@ -40,11 +40,12 @@ app.use(cors({
 // Serve static files from the public directory
 app.use(express.static(path.join(__dirname, '../public')));
 
-// Mount the Shibboleth routes at the root level to match IdP metadata
-app.use('/', shibbolethRoutes);
+// Shibboleth routes will be mounted after session and Passport are configured
+// This ensures session support is available for Passport authentication
 
 // Service connections
 let db;
+let mongoClient; // Store MongoDB client for session store
 let llmService;
 let authService;
 let authMiddleware;
@@ -66,7 +67,44 @@ async function initializeLLM() {
 }
 
 /**
+ * Configure session middleware with MongoDB store
+ * Must be called after MongoDB connection is established
+ * @returns {void}
+ */
+function configureSession() {
+    console.log('🔐 Configuring session middleware...');
+
+    // Session configuration with MongoDB store for persistence
+    // connect-mongo v5 supports both 'client' and 'clientPromise'
+    const sessionConfig = {
+        secret: process.env.SESSION_SECRET || 'biocbot-session-secret-change-in-production',
+        resave: false, // Don't save session if unmodified
+        saveUninitialized: false, // Don't create session until something stored
+        store: MongoStore.create({
+            client: mongoClient, // MongoDB client instance (connected)
+            dbName: db.databaseName, // Database name
+            collectionName: 'sessions', // Collection to store sessions
+            ttl: 24 * 60 * 60, // Session TTL in seconds (24 hours)
+            touchAfter: 24 * 3600 // Lazy session update (24 hours)
+        }),
+        cookie: {
+            secure: process.env.NODE_ENV === 'production', // HTTPS only in production
+            httpOnly: true, // Prevent XSS attacks
+            sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // CSRF protection
+            maxAge: 24 * 60 * 60 * 1000 // 24 hours in milliseconds
+        },
+        name: 'biocbot.sid' // Session cookie name
+    };
+
+    // Apply session middleware
+    app.use(session(sessionConfig));
+
+    console.log('✅ Session middleware configured with MongoDB store');
+}
+
+/**
  * Initialize Passport authentication
+ * Must be called after session middleware is configured
  * @returns {Promise<void>}
  */
 async function initializePassportAuth() {
@@ -132,6 +170,9 @@ async function connectToMongoDB() {
         const client = new MongoClient(mongoUri);
         await client.connect();
 
+        // Store the client for session store
+        mongoClient = client;
+
         // Get the database instance
         db = client.db();
 
@@ -139,10 +180,6 @@ async function connectToMongoDB() {
 
         // Make the database available to routes
         app.locals.db = db;
-
-        // Enhance session store with MongoDB after connection
-        // Note: This will be used for future session persistence improvements
-        console.log('✅ MongoDB session store available for future use');
 
         // Test the connection by listing collections
         const collections = await db.listCollections().toArray();
@@ -160,19 +197,8 @@ async function connectToMongoDB() {
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Basic session configuration (will be enhanced after MongoDB connection)
-// Note: Session must be configured before Passport initialization
-app.use(session({
-    secret: process.env.SESSION_SECRET || 'biocbot-session-secret-change-in-production',
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-        secure: process.env.NODE_ENV === 'production',
-        httpOnly: true,
-        sameSite: 'lax',
-        maxAge: 24 * 60 * 60 * 1000 // 24 hours
-    }
-}));
+// Session middleware will be configured after MongoDB connection
+// This ensures we can use MongoDB store for session persistence
 
 // Serve static files from the 'public' directory
 app.use(express.static(path.join(__dirname, '../public')));
@@ -491,10 +517,21 @@ async function startServer() {
     try {
         console.log('🚀 Starting BiocBot server...');
 
-        // Initialize core services
-        await connectToMongoDB();
+        // Initialize core services in correct order
+        await connectToMongoDB(); // Must be first - provides db connection
+        
+        // Configure session middleware (requires MongoDB connection)
+        configureSession();
+        
+        // Initialize Passport (requires session middleware)
+        await initializePassportAuth();
+        
+        // Mount Shibboleth routes AFTER session and Passport are configured
+        // These routes use Passport authentication and require session support
+        app.use('/', shibbolethRoutes);
+        
+        // Initialize other services
         await initializeLLM();
-        await initializePassportAuth(); // Initialize Passport after session middleware
         await initializeAuth();
 
         // Set up routes after authentication is initialized
