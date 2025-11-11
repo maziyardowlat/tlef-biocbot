@@ -5,7 +5,7 @@
 
 document.addEventListener('DOMContentLoaded', () => {
     console.log('Login page loaded');
-    
+
     // Get form elements
     const loginForm = document.getElementById('auth-form');
     const registerForm = document.getElementById('register-form-element');
@@ -17,13 +17,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const messageElement = document.getElementById('message');
     const cwlLoginBtn = document.getElementById('cwl-login-btn');
     const loginDivider = document.getElementById('login-divider');
-    
+
     // Check available authentication methods and show CWL button if available
     checkAvailableAuthMethods();
-    
+
     // Check for authentication errors in URL query parameters
     checkAuthErrors();
-    
+
     // Toggle between login and register forms
     showRegisterLink.addEventListener('click', (e) => {
         e.preventDefault();
@@ -31,36 +31,36 @@ document.addEventListener('DOMContentLoaded', () => {
         registerSection.style.display = 'block';
         hideMessage();
     });
-    
+
     showLoginLink.addEventListener('click', (e) => {
         e.preventDefault();
         registerSection.style.display = 'none';
         loginSection.style.display = 'block';
         hideMessage();
     });
-    
+
     // Handle login form submission
     loginForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        
+
         const formData = new FormData(loginForm);
         const loginData = {
             username: formData.get('username'),
             password: formData.get('password')
         };
-        
+
         // Validate form
         if (!loginData.username || !loginData.password) {
             showMessage('Please fill in all required fields', 'error');
             return;
         }
-        
+
         // Show loading state
         const loginBtn = document.getElementById('login-btn');
         const originalText = loginBtn.textContent;
         loginBtn.textContent = 'Signing in...';
         loginBtn.disabled = true;
-        
+
         try {
             const response = await fetch('/api/auth/login', {
                 method: 'POST',
@@ -69,12 +69,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 },
                 body: JSON.stringify(loginData)
             });
-            
+
             const result = await response.json();
-            
+
             if (result.success) {
                 showMessage('Login successful! Redirecting...', 'success');
-                
+
                 // Redirect to appropriate dashboard
                 setTimeout(() => {
                     window.location.href = result.redirect;
@@ -82,7 +82,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 showMessage(result.error || 'Login failed', 'error');
             }
-            
+
         } catch (error) {
             console.error('Login error:', error);
             showMessage('Login failed. Please try again.', 'error');
@@ -92,11 +92,11 @@ document.addEventListener('DOMContentLoaded', () => {
             loginBtn.disabled = false;
         }
     });
-    
+
     // Handle registration form submission
     registerForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        
+
         const formData = new FormData(registerForm);
         const registerData = {
             username: formData.get('username'),
@@ -105,19 +105,19 @@ document.addEventListener('DOMContentLoaded', () => {
             role: formData.get('role'),
             displayName: formData.get('displayName')
         };
-        
+
         // Validate form
         if (!registerData.username || !registerData.password || !registerData.role) {
             showMessage('Please fill in all required fields', 'error');
             return;
         }
-        
+
         // Show loading state
         const registerBtn = document.getElementById('register-btn');
         const originalText = registerBtn.textContent;
         registerBtn.textContent = 'Creating account...';
         registerBtn.disabled = true;
-        
+
         try {
             const response = await fetch('/api/auth/register', {
                 method: 'POST',
@@ -126,12 +126,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 },
                 body: JSON.stringify(registerData)
             });
-            
+
             const result = await response.json();
-            
+
             if (result.success) {
                 showMessage('Account created successfully! Please sign in.', 'success');
-                
+
                 // Switch to login form
                 setTimeout(() => {
                     registerSection.style.display = 'none';
@@ -141,7 +141,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 showMessage(result.error || 'Registration failed', 'error');
             }
-            
+
         } catch (error) {
             console.error('Registration error:', error);
             showMessage('Registration failed. Please try again.', 'error');
@@ -151,16 +151,16 @@ document.addEventListener('DOMContentLoaded', () => {
             registerBtn.disabled = false;
         }
     });
-    
+
     // Handle CWL/SAML login button click
     if (cwlLoginBtn) {
         cwlLoginBtn.addEventListener('click', () => {
-            // Redirect to UBC Shibboleth authentication endpoint
+            // Redirect to the new Shibboleth authentication endpoint that matches the IdP metadata
             // This will redirect the user to UBC's login page
-            window.location.href = '/api/auth/ubcshib';
+            window.location.href = '/Shibboleth.sso/Login';
         });
     }
-    
+
     // Check if user is already authenticated
     checkAuthStatus();
 });
@@ -172,7 +172,7 @@ async function checkAuthStatus() {
     try {
         const response = await fetch('/api/auth/me');
         const result = await response.json();
-        
+
         if (result.success && result.user) {
             // User is already authenticated, redirect to appropriate dashboard
             let redirectUrl = '/login';
@@ -199,11 +199,11 @@ async function checkAuthStatus() {
 function showMessage(text, type = 'info') {
     const messageContainer = document.getElementById('message-container');
     const messageElement = document.getElementById('message');
-    
+
     messageElement.textContent = text;
     messageElement.className = `message message-${type}`;
     messageContainer.style.display = 'block';
-    
+
     // Auto-hide success messages
     if (type === 'success') {
         setTimeout(() => {
@@ -227,17 +227,17 @@ function hideMessage() {
 function checkAuthErrors() {
     const urlParams = new URLSearchParams(window.location.search);
     const error = urlParams.get('error');
-    
+
     if (error) {
         let errorMessage = 'Authentication failed. Please try again.';
-        
+
         // Provide specific error messages based on error type
         if (error === 'saml_failed' || error === 'ubcshib_failed') {
             errorMessage = 'CWL authentication failed. Please try again or use your username and password.';
         }
-        
+
         showMessage(errorMessage, 'error');
-        
+
         // Clean up URL by removing error parameter
         const newUrl = window.location.pathname;
         window.history.replaceState({}, document.title, newUrl);
@@ -252,12 +252,12 @@ async function checkAvailableAuthMethods() {
     try {
         const response = await fetch('/api/auth/methods');
         const result = await response.json();
-        
+
         if (result.success && result.methods) {
             // Get button and divider elements
             const cwlLoginBtn = document.getElementById('cwl-login-btn');
             const loginDivider = document.getElementById('login-divider');
-            
+
             // Show CWL button if UBC Shibboleth is available
             if (result.methods.ubcshib && cwlLoginBtn && loginDivider) {
                 cwlLoginBtn.style.display = 'block';
@@ -271,4 +271,4 @@ async function checkAvailableAuthMethods() {
         // This is expected in local development where SAML may not be configured
         console.log('Auth methods check failed (this is normal in local dev):', error);
     }
-} 
+}
