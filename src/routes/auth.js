@@ -11,6 +11,14 @@ const router = express.Router();
 // Middleware to parse JSON bodies
 router.use(express.json());
 
+// Generic middleware to log all incoming requests to this router for debugging
+router.use((req, res, next) => {
+    console.log(`[AUTH DEBUG] Incoming request: ${req.method} ${req.originalUrl}`);
+    console.log(`[AUTH DEBUG] Request Body:`, req.body);
+    console.log(`[AUTH DEBUG] Request Query:`, req.query);
+    next();
+});
+
 /**
  * POST /api/auth/login
  * Authenticate user with username and password using Passport Local Strategy
@@ -18,7 +26,7 @@ router.use(express.json());
 router.post('/login', (req, res, next) => {
     // Validate required fields before Passport authentication
     const { username, password } = req.body;
-    
+
     if (!username || !password) {
         return res.status(400).json({
             success: false,
@@ -56,14 +64,14 @@ router.post('/login', (req, res, next) => {
 
             // Get auth service for creating session user object
             const authService = req.app.locals.authService;
-            
+
             // Also store role in session for backward compatibility
             req.session.userId = user.userId;
             req.session.userRole = user.role;
             req.session.userDisplayName = user.displayName;
 
             console.log(`User logged in: ${user.userId} (${user.role})`);
-            
+
             // Determine redirect based on role
             let redirectPath = '/login';
             if (user.role === 'instructor') {
@@ -73,7 +81,7 @@ router.post('/login', (req, res, next) => {
             } else if (user.role === 'ta') {
                 redirectPath = '/ta';
             }
-            
+
             res.json({
                 success: true,
                 user: authService ? authService.createSessionUser(user) : {
@@ -98,7 +106,7 @@ router.post('/login', (req, res, next) => {
 router.post('/register', async (req, res) => {
     try {
         const { username, password, email, role, displayName } = req.body;
-        
+
         // Validate required fields
         if (!username || !password || !role) {
             return res.status(400).json({
@@ -132,7 +140,7 @@ router.post('/register', async (req, res) => {
             role,
             displayName
         });
-        
+
         if (!result.success) {
             return res.status(400).json({
                 success: false,
@@ -141,7 +149,7 @@ router.post('/register', async (req, res) => {
         }
 
         console.log(`User registered: ${result.userId} (${role})`);
-        
+
         res.json({
             success: true,
             message: 'Account created successfully',
@@ -164,13 +172,13 @@ router.post('/register', async (req, res) => {
 router.post('/logout', (req, res) => {
     try {
         const userId = req.user ? req.user.userId : req.session.userId;
-        
+
         // Use Passport's logout method
         req.logout((err) => {
             if (err) {
                 console.error('Passport logout error:', err);
             }
-            
+
             // Destroy session
             req.session.destroy((destroyErr) => {
                 if (destroyErr) {
@@ -182,7 +190,7 @@ router.post('/logout', (req, res) => {
                 }
 
                 console.log(`User logged out: ${userId}`);
-                
+
                 res.json({
                     success: true,
                     message: 'Logged out successfully',
@@ -211,11 +219,11 @@ router.get('/me', async (req, res) => {
         console.log('Passport user:', req.user);
         console.log('Session:', req.session);
         console.log('Session userId:', req.session?.userId);
-        
+
         // Check if user is authenticated via Passport
         // Passport populates req.user after deserialization
         let user = req.user;
-        
+
         // Fallback to session-based auth for backward compatibility
         if (!user && req.session && req.session.userId) {
             const authService = req.app.locals.authService;
@@ -223,7 +231,7 @@ router.get('/me', async (req, res) => {
                 user = await authService.getUserById(req.session.userId);
             }
         }
-        
+
         if (!user) {
             console.log('User not authenticated - no user found');
             return res.status(401).json({
@@ -272,7 +280,7 @@ router.put('/preferences', async (req, res) => {
         }
 
         const { preferences } = req.body;
-        
+
         if (!preferences || typeof preferences !== 'object') {
             return res.status(400).json({
                 success: false,
@@ -291,7 +299,7 @@ router.put('/preferences', async (req, res) => {
 
         // Update preferences
         const result = await authService.updateUserPreferences(req.session.userId, preferences);
-        
+
         if (!result.success) {
             return res.status(400).json({
                 success: false,
@@ -329,7 +337,7 @@ router.post('/set-course', async (req, res) => {
         }
 
         const { courseId } = req.body;
-        
+
         if (!courseId) {
             return res.status(400).json({
                 success: false,
@@ -348,7 +356,7 @@ router.post('/set-course', async (req, res) => {
 
         // Set course context
         const result = await authService.setCurrentCourseId(req.session.userId, courseId);
-        
+
         if (!result.success) {
             return res.status(400).json({
                 success: false,
@@ -380,7 +388,7 @@ router.get('/tas', async (req, res) => {
         console.log('🔍 [AUTH_TAS] Request received');
         console.log('🔍 [AUTH_TAS] Session:', req.session);
         console.log('🔍 [AUTH_TAS] User:', req.user);
-        
+
         // Get authenticated user information
         const user = req.user;
         if (!user) {
@@ -390,7 +398,7 @@ router.get('/tas', async (req, res) => {
                 message: 'Authentication required'
             });
         }
-        
+
         // Only instructors can view TAs
         if (user.role !== 'instructor') {
             return res.status(403).json({
@@ -398,7 +406,7 @@ router.get('/tas', async (req, res) => {
                 message: 'Only instructors can view TAs'
             });
         }
-        
+
         // Get database instance from app.locals
         const db = req.app.locals.db;
         if (!db) {
@@ -407,7 +415,7 @@ router.get('/tas', async (req, res) => {
                 message: 'Database connection not available'
             });
         }
-        
+
         // Get all users with TA role
         const usersCollection = db.collection('users');
         const tas = await usersCollection.find({ role: 'ta' })
@@ -422,14 +430,14 @@ router.get('/tas', async (req, res) => {
             })
             .sort({ createdAt: -1 })
             .toArray();
-        
+
         console.log(`Retrieved ${tas.length} TAs`);
-        
+
         res.json({
             success: true,
             data: tas
         });
-        
+
     } catch (error) {
         console.error('Error fetching TAs:', error);
         res.status(500).json({
@@ -446,7 +454,7 @@ router.get('/tas', async (req, res) => {
 router.get('/users/:userId', async (req, res) => {
     try {
         const { userId } = req.params;
-        
+
         // Get authenticated user information
         const user = req.user;
         if (!user) {
@@ -455,7 +463,7 @@ router.get('/users/:userId', async (req, res) => {
                 message: 'Authentication required'
             });
         }
-        
+
         // Only instructors can view user details
         if (user.role !== 'instructor') {
             return res.status(403).json({
@@ -463,7 +471,7 @@ router.get('/users/:userId', async (req, res) => {
                 message: 'Only instructors can view user details'
             });
         }
-        
+
         // Get database instance from app.locals
         const db = req.app.locals.db;
         if (!db) {
@@ -472,7 +480,7 @@ router.get('/users/:userId', async (req, res) => {
                 message: 'Database connection not available'
             });
         }
-        
+
         // Get user by ID
         const usersCollection = db.collection('users');
         const userData = await usersCollection.findOne({ userId })
@@ -486,21 +494,21 @@ router.get('/users/:userId', async (req, res) => {
                 createdAt: 1,
                 lastLogin: 1
             });
-        
+
         if (!userData) {
             return res.status(404).json({
                 success: false,
                 message: 'User not found'
             });
         }
-        
+
         console.log(`Retrieved user details for: ${userId}`);
-        
+
         res.json({
             success: true,
             data: userData
         });
-        
+
     } catch (error) {
         console.error('Error fetching user details:', error);
         res.status(500).json({
@@ -517,7 +525,7 @@ router.get('/users/:userId', async (req, res) => {
 router.delete('/tas/:taId', async (req, res) => {
     try {
         const { taId } = req.params;
-        
+
         // Get authenticated user information
         const user = req.user;
         if (!user) {
@@ -526,7 +534,7 @@ router.delete('/tas/:taId', async (req, res) => {
                 message: 'Authentication required'
             });
         }
-        
+
         // Only instructors can remove TAs
         if (user.role !== 'instructor') {
             return res.status(403).json({
@@ -534,7 +542,7 @@ router.delete('/tas/:taId', async (req, res) => {
                 message: 'Only instructors can remove TAs'
             });
         }
-        
+
         // Get database instance from app.locals
         const db = req.app.locals.db;
         if (!db) {
@@ -543,16 +551,16 @@ router.delete('/tas/:taId', async (req, res) => {
                 message: 'Database connection not available'
             });
         }
-        
+
         // Remove TA from all courses
         const coursesCollection = db.collection('courses');
         const result = await coursesCollection.updateMany(
             { tas: taId },
             { $pull: { tas: taId } }
         );
-        
+
         console.log(`Removed TA ${taId} from ${result.modifiedCount} courses`);
-        
+
         res.json({
             success: true,
             message: 'TA removed from all courses successfully',
@@ -561,7 +569,7 @@ router.delete('/tas/:taId', async (req, res) => {
                 modifiedCount: result.modifiedCount
             }
         });
-        
+
     } catch (error) {
         console.error('Error removing TA:', error);
         res.status(500).json({
@@ -576,15 +584,23 @@ router.delete('/tas/:taId', async (req, res) => {
  * Initiate SAML authentication flow
  * Redirects to SAML Identity Provider
  */
-router.get('/saml', passport.authenticate('saml', {
-    failureRedirect: '/login?error=saml_failed'
-}));
+router.get('/saml', (req, res, next) => {
+    console.log('[AUTH DEBUG] Initiating SAML authentication flow via /api/auth/saml');
+    passport.authenticate('saml', {
+        failureRedirect: '/login?error=saml_failed'
+    })(req, res, next);
+});
 
 /**
  * POST /api/auth/saml/callback
  * SAML callback endpoint (called by IdP after authentication)
  */
 router.post('/saml/callback',
+    (req, res, next) => {
+        console.log('[AUTH DEBUG] SAML callback received at /api/auth/saml/callback.');
+        console.log('[AUTH DEBUG] Request body:', req.body);
+        next();
+    },
     passport.authenticate('saml', {
         failureRedirect: '/login?error=saml_failed',
         session: true
@@ -602,14 +618,14 @@ router.post('/saml/callback',
                 redirectPath = '/ta';
             }
         }
-        
+
         // Store role in session for backward compatibility
         if (req.user) {
             req.session.userId = req.user.userId;
             req.session.userRole = req.user.role;
             req.session.userDisplayName = req.user.displayName;
         }
-        
+
         res.redirect(redirectPath);
     }
 );
@@ -628,9 +644,9 @@ router.get('/methods', (req, res) => {
         };
 
         // Check if SAML is configured
-        if (process.env.SAML_ENTRY_POINT && 
-            process.env.SAML_ISSUER && 
-            process.env.SAML_CALLBACK_URL && 
+        if (process.env.SAML_ENTRY_POINT &&
+            process.env.SAML_ISSUER &&
+            process.env.SAML_CALLBACK_URL &&
             process.env.SAML_CERT) {
             methods.saml = true;
         }
@@ -662,6 +678,7 @@ router.get('/methods', (req, res) => {
  * Redirects to UBC's Shibboleth Identity Provider
  */
 router.get('/ubcshib', (req, res, next) => {
+    console.log('[AUTH DEBUG] Initiating UBC Shibboleth authentication flow via /api/auth/ubcshib');
     // Check if required environment variables are set
     if (!process.env.SAML_ISSUER || !process.env.SAML_CALLBACK_URL) {
         console.error('❌ UBC Shibboleth not configured - missing environment variables');
@@ -671,7 +688,7 @@ router.get('/ubcshib', (req, res, next) => {
             error: 'UBC Shibboleth authentication is not configured. Please contact the administrator.'
         });
     }
-    
+
     // Use Passport's authenticate middleware
     // This will throw an error if strategy isn't registered, so we catch it
     try {
@@ -693,6 +710,11 @@ router.get('/ubcshib', (req, res, next) => {
  * UBC Shibboleth callback endpoint (called by UBC IdP after authentication)
  */
 router.post('/ubcshib/callback',
+    (req, res, next) => {
+        console.log('[AUTH DEBUG] UBC Shibboleth callback received at /api/auth/ubcshib/callback.');
+        console.log('[AUTH DEBUG] Request body:', req.body);
+        next();
+    },
     passport.authenticate('ubcshib', {
         failureRedirect: '/login?error=ubcshib_failed',
         session: true
@@ -710,14 +732,14 @@ router.post('/ubcshib/callback',
                 redirectPath = '/ta';
             }
         }
-        
+
         // Store role in session for backward compatibility
         if (req.user) {
             req.session.userId = req.user.userId;
             req.session.userRole = req.user.role;
             req.session.userDisplayName = req.user.displayName;
         }
-        
+
         res.redirect(redirectPath);
     }
 );
