@@ -187,6 +187,15 @@ function initializePassport(db) {
         console.log(`   SAML_CERT: ${ubcShibCert ? '✓ Loaded' : '✗ Not loaded'}`);
         console.log(`   SAML_ENVIRONMENT: ${ubcShibEnvironment}`);
 
+        // IMPORTANT: Verify that the callback URL matches the IdP metadata
+        const expectedCallbackUrl = 'https://biocbot.staging.apps.ltic.ubc.ca/Shibboleth.sso/SAML2/POST';
+        if (ubcShibCallbackUrl !== expectedCallbackUrl) {
+            console.warn('⚠️ [PASSPORT CONFIG WARNING] SAML_CALLBACK_URL environment variable might be incorrect!');
+            console.warn(`   Your config: ${ubcShibCallbackUrl}`);
+            console.warn(`   IdP expects: ${expectedCallbackUrl}`);
+            console.warn('   Authentication will likely fail if these do not match exactly.');
+        }
+
         if (ubcShibIssuer && ubcShibCallbackUrl && ubcShibCert) {
             try {
                 const ubcShibStrategyOptions = {

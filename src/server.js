@@ -12,6 +12,7 @@ const lecturesRoutes = require('./routes/lectures');
 const modeQuestionsRoutes = require('./routes/mode-questions');
 const chatRoutes = require('./routes/chat');
 const authRoutes = require('./routes/auth');
+const shibbolethRoutes = require('./routes/shibboleth');
 
 const learningObjectivesRoutes = require('./routes/learning-objectives');
 const documentsRoutes = require('./routes/documents');
@@ -38,6 +39,9 @@ app.use(cors({
 
 // Serve static files from the public directory
 app.use(express.static(path.join(__dirname, '../public')));
+
+// Mount the Shibboleth routes at the root level to match IdP metadata
+app.use('/', shibbolethRoutes);
 
 // Service connections
 let db;
@@ -68,19 +72,19 @@ async function initializeLLM() {
 async function initializePassportAuth() {
     try {
         console.log('🔐 Starting Passport initialization...');
-        
+
         // Initialize Passport with database connection
         passport = initializePassport(db);
-        
+
         // Initialize Passport middleware (must be after session middleware)
         app.use(passport.initialize());
         app.use(passport.session());
-        
+
         // Make passport available to routes
         app.locals.passport = passport;
-        
+
         console.log('✅ Passport initialized successfully');
-        
+
     } catch (error) {
         console.error('❌ Failed to initialize Passport:', error.message);
         throw error;
@@ -96,10 +100,10 @@ async function initializeAuth() {
         console.log('🔐 Starting authentication service initialization...');
         authService = new AuthService(db);
         authMiddleware = createAuthMiddleware(db);
-        
+
         // Make auth service available to routes
         app.locals.authService = authService;
-        
+
         // Initialize default users for development
         const initResult = await authService.initializeDefaultUsers();
         if (initResult.success) {
@@ -107,7 +111,7 @@ async function initializeAuth() {
         } else {
             console.log('ℹ️ Default users already exist or failed to initialize');
         }
-        
+
     } catch (error) {
         console.error('❌ Failed to initialize authentication service:', error.message);
         throw error;
@@ -127,23 +131,23 @@ async function connectToMongoDB() {
 
         const client = new MongoClient(mongoUri);
         await client.connect();
-        
+
         // Get the database instance
         db = client.db();
-        
+
         console.log('✅ Successfully connected to MongoDB');
-        
+
         // Make the database available to routes
         app.locals.db = db;
-        
+
         // Enhance session store with MongoDB after connection
         // Note: This will be used for future session persistence improvements
         console.log('✅ MongoDB session store available for future use');
-        
+
         // Test the connection by listing collections
         const collections = await db.listCollections().toArray();
         console.log(`📚 Available collections: ${collections.map(c => c.name).join(', ') || 'None'}`);
-        
+
     } catch (error) {
         console.error('❌ Failed to connect to MongoDB:', error.message);
         process.exit(1);
@@ -188,18 +192,18 @@ app.get('/test-qdrant', async (req, res) => {
     try {
         const QdrantService = require('./services/qdrantService');
         const qdrantService = new QdrantService();
-        
+
         console.log('🧪 Testing Qdrant connection...');
         await qdrantService.initialize();
-        
+
         const stats = await qdrantService.getCollectionStats();
-        
+
         res.json({
             success: true,
             message: 'Qdrant connection successful!',
             collection: stats
         });
-        
+
     } catch (error) {
         console.error('❌ Qdrant test failed:', error);
         res.status(500).json({
@@ -277,25 +281,25 @@ function setupProtectedRoutes() {
     app.get('/instructor/onboarding', authMiddleware.requireInstructor, async (req, res) => {
         try {
             const instructorId = req.user.userId; // Get from authenticated user
-            
+
             // Check if instructor has completed onboarding
             const db = req.app.locals.db;
             if (db) {
                 const collection = db.collection('courses');
-                const existingCourse = await collection.findOne({ 
+                const existingCourse = await collection.findOne({
                     instructorId,
-                    isOnboardingComplete: true 
+                    isOnboardingComplete: true
                 });
-                
+
                 if (existingCourse) {
                     // Redirect to course upload page if onboarding is complete
                     return res.redirect(`/instructor/documents?courseId=${existingCourse.courseId}`);
                 }
             }
-            
+
             // If no completed course, show onboarding
             res.sendFile(path.join(__dirname, '../public/instructor/onboarding.html'));
-            
+
         } catch (error) {
             console.error('Error checking onboarding status:', error);
             // If there's an error, show onboarding
@@ -350,7 +354,7 @@ app.get('/api/health', async (req, res) => {
             OLLAMA_ENDPOINT: process.env.OLLAMA_ENDPOINT ? 'SET' : 'NOT SET'
         }
     };
-    
+
     try {
         // Test MongoDB connection
         if (!db) {
@@ -363,14 +367,14 @@ app.get('/api/health', async (req, res) => {
                 healthStatus.services.mongodb = { status: 'error', message: error.message };
             }
         }
-        
+
         // Test configuration loading
         try {
             const config = require('./services/config');
             const llmConfig = config.getLLMConfig();
             const vectorConfig = config.getVectorDBConfig();
-            healthStatus.services.config = { 
-                status: 'healthy', 
+            healthStatus.services.config = {
+                status: 'healthy',
                 message: 'Configuration loaded successfully',
                 llmProvider: llmConfig.provider,
                 vectorHost: vectorConfig.host,
@@ -379,7 +383,7 @@ app.get('/api/health', async (req, res) => {
         } catch (error) {
             healthStatus.services.config = { status: 'error', message: error.message };
         }
-        
+
         // Test Qdrant connection
         try {
             const QdrantService = require('./services/qdrantService');
@@ -389,28 +393,28 @@ app.get('/api/health', async (req, res) => {
         } catch (error) {
             healthStatus.services.qdrant = { status: 'error', message: error.message };
         }
-        
+
         // Test LLM connection
         try {
             const llmService = require('./services/llm');
             const isConnected = await llmService.testConnection();
-            healthStatus.services.llm = { 
-                status: isConnected ? 'healthy' : 'error', 
+            healthStatus.services.llm = {
+                status: isConnected ? 'healthy' : 'error',
                 message: isConnected ? 'Connected' : 'Connection failed',
                 provider: llmService.getProviderName()
             };
         } catch (error) {
             healthStatus.services.llm = { status: 'error', message: error.message };
         }
-        
+
         // Determine overall status
         const allHealthy = Object.values(healthStatus.services).every(service => service.status === 'healthy');
         healthStatus.status = allHealthy ? 'healthy' : 'degraded';
         healthStatus.message = allHealthy ? 'All services are running' : 'Some services are not available';
-        
+
         const statusCode = allHealthy ? 200 : 503;
         res.status(statusCode).json(healthStatus);
-        
+
     } catch (error) {
         healthStatus.status = 'error';
         healthStatus.message = 'Health check failed';
@@ -437,11 +441,11 @@ function setupAPIRoutes() {
                     message: 'Database connection not available'
                 });
             }
-            
+
             // Query database for all active courses
             const collection = db.collection('courses');
             const courses = await collection.find({ status: { $ne: 'deleted' } }).toArray();
-            
+
             // Transform the data to match expected format for both sides
             const transformedCourses = courses.map(course => ({
                 courseId: course.courseId,
@@ -450,14 +454,14 @@ function setupAPIRoutes() {
                 status: course.status || 'active',
                 createdAt: course.createdAt?.toISOString() || new Date().toISOString()
             }));
-            
+
             console.log(`Retrieved ${transformedCourses.length} available courses`);
-            
+
             res.json({
                 success: true,
                 data: transformedCourses
             });
-            
+
         } catch (error) {
             console.error('Error fetching available courses:', error);
             res.status(500).json({
@@ -486,17 +490,17 @@ function setupAPIRoutes() {
 async function startServer() {
     try {
         console.log('🚀 Starting BiocBot server...');
-        
+
         // Initialize core services
         await connectToMongoDB();
         await initializeLLM();
         await initializePassportAuth(); // Initialize Passport after session middleware
         await initializeAuth();
-        
+
         // Set up routes after authentication is initialized
         setupProtectedRoutes();
         setupAPIRoutes();
-        
+
         // Start the Express server
         app.listen(port, () => {
             console.log('\n✨ All services initialized successfully!');
@@ -505,7 +509,7 @@ async function startServer() {
             console.log(`👨‍🏫 Instructor interface: http://localhost:${port}/instructor`);
             console.log(`🔍 Health check: http://localhost:${port}/api/health`);
         });
-        
+
     } catch (error) {
         console.error('❌ Failed to start server:', error.message);
         process.exit(1);
