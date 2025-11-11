@@ -4,8 +4,7 @@
  * Supports: Local (username/password), SAML, and UBC Shibboleth
  */
 const fs = require('fs');
-
-
+const path = require('path');
 const passport = require('passport');
 const LocalStrategy = require('passport-local').Strategy;
 const SamlStrategy = require('passport-saml').Strategy;
@@ -186,6 +185,19 @@ function initializePassport(db) {
         console.log(`   SAML_CERT_PATH: ${ubcShibCertPath ? '✓ Set' : '✗ Missing'}`);
         console.log(`   SAML_CERT: ${ubcShibCert ? '✓ Loaded' : '✗ Not loaded'}`);
         console.log(`   SAML_ENVIRONMENT: ${ubcShibEnvironment}`);
+
+        // [DIAGNOSTIC] Attempt to read the private key directly to verify access
+        if (ubcShibPrivateKeyPath) {
+            try {
+                const keyContent = fs.readFileSync(ubcShibPrivateKeyPath, 'utf8');
+                console.log(`✅ [KEY DEBUG] Successfully read private key file at ${ubcShibPrivateKeyPath}. Length: ${keyContent.length}`);
+            } catch (error) {
+                console.error(`❌ [KEY DEBUG] FAILED to read private key file at ${ubcShibPrivateKeyPath}`);
+                console.error(`   Error details:`, error);
+            }
+        } else {
+            console.warn('⚠️ [KEY DEBUG] SAML_PRIVATE_KEY_PATH is not set. Decryption will fail if assertions are encrypted.');
+        }
 
         // IMPORTANT: Verify that the callback URL matches the IdP metadata
         const expectedCallbackUrl = 'https://biocbot.staging.apps.ltic.ubc.ca/Shibboleth.sso/SAML2/POST';
