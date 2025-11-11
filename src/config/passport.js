@@ -189,18 +189,22 @@ function initializePassport(db) {
 
         if (ubcShibIssuer && ubcShibCallbackUrl && ubcShibCert) {
             try {
+                const ubcShibStrategyOptions = {
+                    issuer: ubcShibIssuer,
+                    callbackUrl: ubcShibCallbackUrl,
+                    cert: ubcShibCert,
+                    privateKeyPath: ubcShibPrivateKeyPath,
+                    attributeConfig: ['ubcEduCwlPuid', 'mail', 'eduPersonAffiliation'],
+                    enableSLO: process.env.ENABLE_SLO !== 'false',
+                    validateInResponseTo: process.env.SAML_VALIDATE_IN_RESPONSE_TO !== 'false',
+                    acceptedClockSkewMs: parseInt(process.env.SAML_CLOCK_SKEW_MS) || 0
+                };
+
+                console.log('🔧 Initializing UBC Shibboleth strategy with options:', JSON.stringify(ubcShibStrategyOptions, null, 2));
+
                 console.log('🔧 Registering UBC Shibboleth strategy...');
                 passport.use('ubcshib', new UBCShibStrategy(
-                    {
-                        issuer: ubcShibIssuer,
-                        callbackUrl: ubcShibCallbackUrl,
-                        cert: ubcShibCert,
-                        privateKeyPath: ubcShibPrivateKeyPath,
-                        attributeConfig: ['ubcEduCwlPuid', 'mail', 'eduPersonAffiliation'],
-                        enableSLO: process.env.ENABLE_SLO !== 'false',
-                        validateInResponseTo: process.env.SAML_VALIDATE_IN_RESPONSE_TO !== 'false',
-                        acceptedClockSkewMs: parseInt(process.env.SAML_CLOCK_SKEW_MS) || 0
-                    },
+                    ubcShibStrategyOptions,
                     async (profile, done) => {
 
                         console.log( 'passport.js profile', profile );
