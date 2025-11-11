@@ -4,8 +4,7 @@
  * Supports: Local (username/password), SAML, and UBC Shibboleth
  */
 const fs = require('fs');
-
-
+const path = require('path');
 const passport = require('passport');
 const LocalStrategy = require('passport-local').Strategy;
 const SamlStrategy = require('passport-saml').Strategy;
@@ -18,7 +17,7 @@ try {
     // Import according to passport-ubcshib documentation
     // Documentation shows: const { Strategy } = require('passport-ubcshib');
     const ubcshib = require('passport-ubcshib');
-    // addings 
+    // addings
     // Try different import patterns to handle various module export styles
     if (ubcshib.Strategy) {
         // Named export: { Strategy }
@@ -32,14 +31,14 @@ try {
     } else {
         throw new Error('Could not find Strategy in passport-ubcshib module');
     }
-    
+
     // Import helper middleware (ensureAuthenticated, logout, conditionalAuth)
     ubcShibHelpers = {
         ensureAuthenticated: ubcshib.ensureAuthenticated || (ubcshib.default && ubcshib.default.ensureAuthenticated),
         logout: ubcshib.logout || (ubcshib.default && ubcshib.default.logout),
         conditionalAuth: ubcshib.conditionalAuth || (ubcshib.default && ubcshib.default.conditionalAuth)
     };
-    
+
     console.log('✅ passport-ubcshib module loaded successfully');
     console.log(`   Strategy type: ${typeof UBCShibStrategy}`);
 } catch (error) {
@@ -69,15 +68,15 @@ function initializePassport(db) {
             try {
                 // Authenticate user using existing User model
                 const result = await User.authenticateUser(db, username, password);
-                
+
                 if (!result.success) {
                     // Authentication failed
                     return done(null, false, { message: result.error });
                 }
-                
+
                 // Authentication successful - return user
                 return done(null, result.user);
-                
+
             } catch (error) {
                 console.error('Error in local strategy:', error);
                 return done(error);
@@ -93,27 +92,17 @@ function initializePassport(db) {
     const samlEntryPoint = process.env.SAML_ENTRY_POINT;
     const samlIssuer = process.env.SAML_ISSUER;
     const samlCallbackUrl = process.env.SAML_CALLBACK_URL;
-    const samlCertPath = process.env.SAML_CERT_PATH;
+    const cert = fs.readFileSync(process.env.SAML_CERT_PATH, 'utf8');
     const samlPrivateKey = process.env.SAML_PRIVATE_KEY;
 
-    // Read SAML certificate if path is provided
-    let samlCert = null;
-    if (samlCertPath) {
-        try {
-            samlCert = fs.readFileSync(samlCertPath, 'utf8');
-        } catch (error) {
-            console.error(`❌ Failed to read SAML certificate from ${samlCertPath}:`, error.message);
-        }
-    }
-
-    if (samlEntryPoint && samlIssuer && samlCallbackUrl && samlCert) {
+    if (samlEntryPoint && samlIssuer && samlCallbackUrl && cert) {
         try {
             passport.use('saml', new SamlStrategy(
                 {
                     entryPoint: samlEntryPoint,
                     issuer: samlIssuer,
                     callbackUrl: samlCallbackUrl,
-                    cert: samlCert,
+                    cert: cert,
                     privateKey: samlPrivateKey || null,
                     signatureAlgorithm: process.env.SAML_SIGNATURE_ALGORITHM || 'sha256',
                     digestAlgorithm: process.env.SAML_DIGEST_ALGORITHM || 'sha256',
@@ -142,7 +131,7 @@ function initializePassport(db) {
                         };
 
                         const result = await User.createOrGetSAMLUser(db, samlData);
-                        
+
                         if (!result.success) {
                             return done(null, false, { message: result.error });
                         }
@@ -175,9 +164,6 @@ function initializePassport(db) {
         const ubcShibPrivateKeyPath = process.env.SAML_PRIVATE_KEY_PATH;
         const ubcShibCertPath = process.env.SAML_CERT_PATH;
         const ubcShibEnvironment = process.env.SAML_ENVIRONMENT || 'STAGING';
-        const ubcShibAttributeConfig = process.env.SAML_ATTRIBUTES 
-            ? process.env.SAML_ATTRIBUTES.split(',').map(a => a.trim())
-            : ['ubcEduCwlPuid', 'mail', 'eduPersonAffiliation'];
 
         // Read SAML certificate if path is provided
         let ubcShibCert = null;
@@ -199,7 +185,6 @@ function initializePassport(db) {
 
         if (ubcShibIssuer && ubcShibCallbackUrl && ubcShibCert) {
             try {
-                console.log('🔧 Registering UBC Shibboleth strategy...');
                 passport.use('ubcshib', new UBCShibStrategy(
                     {
                         issuer: ubcShibIssuer,
@@ -212,6 +197,9 @@ function initializePassport(db) {
                         acceptedClockSkewMs: parseInt(process.env.SAML_CLOCK_SKEW_MS) || 0
                     },
                     async (profile, done) => {
+
+                        console.log( 'passport.js profile', profile );
+
                         try {
                             // Extract UBC Shibboleth attributes
                             const samlId = profile.nameID || profile.attributes?.ubcEduCwlPuid;
@@ -245,7 +233,7 @@ function initializePassport(db) {
                             };
 
                             const result = await User.createOrGetSAMLUser(db, samlData);
-                            
+
                             if (!result.success) {
                                 return done(null, false, { message: result.error });
                             }
@@ -319,4 +307,3 @@ function initializePassport(db) {
 }
 
 module.exports = initializePassport;
-
