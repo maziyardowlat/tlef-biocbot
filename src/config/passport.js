@@ -164,9 +164,6 @@ function initializePassport(db) {
         const ubcShibPrivateKeyPath = process.env.SAML_PRIVATE_KEY_PATH;
         const ubcShibCertPath = process.env.SAML_CERT_PATH;
         const ubcShibEnvironment = process.env.SAML_ENVIRONMENT || 'STAGING';
-        const ubcShibAttributeConfig = process.env.SAML_ATTRIBUTES
-            ? process.env.SAML_ATTRIBUTES.split(',').map(a => a.trim())
-            : ['ubcEduCwlPuid', 'mail', 'eduPersonAffiliation'];
 
         // Read SAML certificate if path is provided
         let ubcShibCert = null;
@@ -186,46 +183,19 @@ function initializePassport(db) {
         console.log(`   SAML_CERT: ${ubcShibCert ? '✓ Loaded' : '✗ Not loaded'}`);
         console.log(`   SAML_ENVIRONMENT: ${ubcShibEnvironment}`);
 
-        // [DIAGNOSTIC] Attempt to read the private key directly to verify access
-        if (ubcShibPrivateKeyPath) {
-            try {
-                const keyContent = fs.readFileSync(ubcShibPrivateKeyPath, 'utf8');
-                console.log(`✅ [KEY DEBUG] Successfully read private key file at ${ubcShibPrivateKeyPath}. Length: ${keyContent.length}`);
-            } catch (error) {
-                console.error(`❌ [KEY DEBUG] FAILED to read private key file at ${ubcShibPrivateKeyPath}`);
-                console.error(`   Error details:`, error);
-            }
-        } else {
-            console.warn('⚠️ [KEY DEBUG] SAML_PRIVATE_KEY_PATH is not set. Decryption will fail if assertions are encrypted.');
-        }
-
-        // IMPORTANT: Verify that the callback URL matches the IdP metadata
-        const expectedCallbackUrl = 'https://biocbot.staging.apps.ltic.ubc.ca/Shibboleth.sso/SAML2/POST';
-        if (ubcShibCallbackUrl !== expectedCallbackUrl) {
-            console.warn('⚠️ [PASSPORT CONFIG WARNING] SAML_CALLBACK_URL environment variable might be incorrect!');
-            console.warn(`   Your config: ${ubcShibCallbackUrl}`);
-            console.warn(`   IdP expects: ${expectedCallbackUrl}`);
-            console.warn('   Authentication will likely fail if these do not match exactly.');
-        }
-
         if (ubcShibIssuer && ubcShibCallbackUrl && ubcShibCert) {
             try {
-                const ubcShibStrategyOptions = {
-                    issuer: ubcShibIssuer,
-                    callbackUrl: ubcShibCallbackUrl,
-                    cert: ubcShibCert,
-                    privateKeyPath: ubcShibPrivateKeyPath,
-                    attributeConfig: ['ubcEduCwlPuid', 'mail', 'eduPersonAffiliation'],
-                    enableSLO: process.env.ENABLE_SLO !== 'false',
-                    validateInResponseTo: process.env.SAML_VALIDATE_IN_RESPONSE_TO !== 'false',
-                    acceptedClockSkewMs: parseInt(process.env.SAML_CLOCK_SKEW_MS) || 0
-                };
-
-                console.log('🔧 Initializing UBC Shibboleth strategy with options:', JSON.stringify(ubcShibStrategyOptions, null, 2));
-
-                console.log('🔧 Registering UBC Shibboleth strategy...');
                 passport.use('ubcshib', new UBCShibStrategy(
-                    ubcShibStrategyOptions,
+                    {
+                        issuer: ubcShibIssuer,
+                        callbackUrl: ubcShibCallbackUrl,
+                        cert: ubcShibCert,
+                        privateKeyPath: ubcShibPrivateKeyPath,
+                        attributeConfig: ['ubcEduCwlPuid', 'mail', 'eduPersonAffiliation'],
+                        enableSLO: process.env.ENABLE_SLO !== 'false',
+                        validateInResponseTo: process.env.SAML_VALIDATE_IN_RESPONSE_TO !== 'false',
+                        acceptedClockSkewMs: parseInt(process.env.SAML_CLOCK_SKEW_MS) || 0
+                    },
                     async (profile, done) => {
 
                         console.log( 'passport.js profile', profile );
