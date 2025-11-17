@@ -235,8 +235,10 @@ function initializePassport(db) {
                             }
 
                             // Create or get user from UBC Shibboleth data
+                            // PUID is the primary identifier for CWL users
                             const samlData = {
                                 samlId: samlId || ubcPuid,
+                                puid: ubcPuid, // Store PUID as primary identifier for CWL users
                                 email: email,
                                 username: ubcPuid || email.split('@')[0],
                                 displayName: displayName,
@@ -249,11 +251,8 @@ function initializePassport(db) {
                                 return done(null, false, { message: result.error });
                             }
 
-                            // Store UBC-specific attributes in user preferences
-                            if (ubcPuid && result.user) {
-                                // Could store additional UBC attributes here if needed
-                                result.user.ubcPuid = ubcPuid;
-                            }
+                            // PUID is now stored in the user document via createOrGetSAMLUser
+                            // No need to store it separately in preferences
 
                             // Return user object
                             return done(null, result.user);
