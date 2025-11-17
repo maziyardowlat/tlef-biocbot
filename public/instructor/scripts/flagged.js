@@ -881,13 +881,14 @@ async function sendApprovalMessage(flagId) {
             cancelButton.disabled = true;
         }
         
-        // TODO: Replace with actual instructor ID from auth
+        // Get actual user information from auth
         const instructorId = getCurrentInstructorId();
         if (!instructorId) {
             console.error('No instructor ID found. User not authenticated.');
             return;
         }
-        const instructorName = 'Instructor Name';
+        const currentUser = getCurrentUser();
+        const instructorName = currentUser ? (currentUser.displayName || currentUser.username) : 'Instructor';
         
         // Send instructor response using the new API
         const response = await fetch(`/api/flags/${flagId}/response`, {
@@ -968,13 +969,14 @@ async function handleFlagAction(flagId, action, skipSuccessMessage = false) {
         const buttons = flagElement.querySelectorAll('.action-btn');
         buttons.forEach(btn => btn.disabled = true);
         
-        // TODO: Replace with actual instructor ID from auth
+        // Get actual user information from auth
         const instructorId = getCurrentInstructorId();
         if (!instructorId) {
             console.error('No instructor ID found. User not authenticated.');
             return;
         }
-        const instructorName = 'Instructor Name';
+        const currentUser = getCurrentUser();
+        const instructorName = currentUser ? (currentUser.displayName || currentUser.username) : 'Instructor';
         
         // Map old action names to new ones
         const actionMap = {

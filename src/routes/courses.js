@@ -303,6 +303,180 @@ router.get('/', async (req, res) => {
 });
 
 /**
+ * GET /api/courses/statistics
+ * Get aggregated statistics for all instructor courses
+ * NOTE: This route must come before /:courseId to avoid route matching issues
+ */
+router.get('/statistics', async (req, res) => {
+    try {
+        // Get authenticated user information
+        const user = req.user;
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                message: 'Authentication required'
+            });
+        }
+        
+        // Only instructors can access statistics
+        if (user.role !== 'instructor') {
+            return res.status(403).json({
+                success: false,
+                message: 'Only instructors can access statistics'
+            });
+        }
+        
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
+        
+        // Get all courses for this instructor
+        const coursesCollection = db.collection('courses');
+        const courses = await coursesCollection.find({ 
+            instructorId: user.userId 
+        }).toArray();
+        
+        if (courses.length === 0) {
+            return res.json({
+                success: true,
+                data: {
+                    totalStudents: 0,
+                    totalSessions: 0,
+                    modeDistribution: { tutor: 0, protege: 0 },
+                    averageSessionLength: 0,
+                    averageMessagesPerSession: 0,
+                    averageMessageLength: 0
+                }
+            });
+        }
+        
+        const courseIds = courses.map(c => c.courseId);
+        
+        // Get all chat sessions for these courses
+        const chatSessionsCollection = db.collection('chat_sessions');
+        const allSessions = await chatSessionsCollection.find({
+            courseId: { $in: courseIds },
+            $or: [
+                { isDeleted: { $exists: false } },
+                { isDeleted: false }
+            ]
+        }).toArray();
+        
+        // Calculate statistics
+        const uniqueStudents = new Set();
+        let totalMessages = 0;
+        let totalMessageLength = 0;
+        let messageCount = 0;
+        let modeDistribution = { tutor: 0, protege: 0 };
+        let totalSessionDurationMs = 0;
+        let sessionsWithDuration = 0;
+        
+        allSessions.forEach(session => {
+            // Count unique students
+            if (session.studentId) {
+                uniqueStudents.add(session.studentId);
+            }
+            
+            // Get mode from chatData
+            if (session.chatData && session.chatData.metadata) {
+                const mode = session.chatData.metadata.currentMode || 'tutor';
+                if (mode === 'protege' || mode === 'protégé') {
+                    modeDistribution.protege++;
+                } else {
+                    modeDistribution.tutor++;
+                }
+            } else {
+                // Default to tutor if mode not found
+                modeDistribution.tutor++;
+            }
+            
+            // Calculate message statistics
+            if (session.chatData && session.chatData.messages && Array.isArray(session.chatData.messages)) {
+                const messages = session.chatData.messages;
+                totalMessages += messages.length;
+                
+                messages.forEach(msg => {
+                    if (msg.content && typeof msg.content === 'string') {
+                        totalMessageLength += msg.content.length;
+                        messageCount++;
+                    }
+                });
+            }
+            
+            // Calculate session duration
+            if (session.chatData && session.chatData.messages && session.chatData.messages.length > 0) {
+                const messages = session.chatData.messages;
+                const firstUserMessage = messages.find(msg => msg.type === 'user');
+                const lastBotMessage = messages.slice().reverse().find(msg => msg.type === 'bot');
+                
+                if (firstUserMessage && lastBotMessage && firstUserMessage.timestamp && lastBotMessage.timestamp) {
+                    const start = new Date(firstUserMessage.timestamp);
+                    const end = new Date(lastBotMessage.timestamp);
+                    const durationMs = end - start;
+                    
+                    if (durationMs > 0) {
+                        totalSessionDurationMs += durationMs;
+                        sessionsWithDuration++;
+                    }
+                }
+            }
+        });
+        
+        // Calculate averages
+        const totalSessions = allSessions.length;
+        const averageSessionLength = sessionsWithDuration > 0 
+            ? Math.round(totalSessionDurationMs / sessionsWithDuration / 1000) // in seconds
+            : 0;
+        const averageMessagesPerSession = totalSessions > 0 
+            ? Math.round((totalMessages / totalSessions) * 10) / 10 
+            : 0;
+        const averageMessageLength = messageCount > 0 
+            ? Math.round(totalMessageLength / messageCount) 
+            : 0;
+        
+        // Format average session length
+        const formatDuration = (seconds) => {
+            if (seconds < 60) {
+                return `${seconds}s`;
+            } else if (seconds < 3600) {
+                const minutes = Math.floor(seconds / 60);
+                const secs = seconds % 60;
+                return `${minutes}m ${secs}s`;
+            } else {
+                const hours = Math.floor(seconds / 3600);
+                const minutes = Math.floor((seconds % 3600) / 60);
+                return `${hours}h ${minutes}m`;
+            }
+        };
+        
+        res.json({
+            success: true,
+            data: {
+                totalStudents: uniqueStudents.size,
+                totalSessions: totalSessions,
+                modeDistribution: modeDistribution,
+                averageSessionLength: formatDuration(averageSessionLength),
+                averageSessionLengthSeconds: averageSessionLength,
+                averageMessagesPerSession: averageMessagesPerSession,
+                averageMessageLength: averageMessageLength
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error fetching statistics:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while fetching statistics'
+        });
+    }
+});
+
+/**
  * GET /api/courses/:courseId
  * Get course details (for instructors)
  */

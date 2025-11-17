@@ -67,6 +67,53 @@
                     </div>
                 </section>
 
+                <!-- Statistics Section -->
+                <section class="home-section statistics-section" id="statistics-section" style="display: none;">
+                    <div class="section-header">
+                        <h2>📊 Course Statistics</h2>
+                    </div>
+                    <div class="statistics-content">
+                        <div class="statistics-grid">
+                            <div class="stat-card">
+                                <div class="stat-label">Total Students</div>
+                                <div class="stat-value" id="stat-total-students">0</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">Total Sessions</div>
+                                <div class="stat-value" id="stat-total-sessions">0</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">Avg. Session Length</div>
+                                <div class="stat-value" id="stat-avg-session-length">0s</div>
+                            </div>
+                            <div class="stat-card">
+                                <div class="stat-label">Avg. Message Length</div>
+                                <div class="stat-value" id="stat-avg-message-length">0</div>
+                                <div class="stat-sublabel">characters</div>
+                            </div>
+                        </div>
+                        <div class="mode-distribution">
+                            <div class="stat-label">Mode Distribution</div>
+                            <div class="mode-bars">
+                                <div class="mode-bar-item">
+                                    <div class="mode-label">Tutor Mode</div>
+                                    <div class="mode-bar">
+                                        <div class="mode-bar-fill tutor" id="tutor-bar" style="width: 0%"></div>
+                                    </div>
+                                    <div class="mode-count" id="tutor-count">0</div>
+                                </div>
+                                <div class="mode-bar-item">
+                                    <div class="mode-label">Protégé Mode</div>
+                                    <div class="mode-bar">
+                                        <div class="mode-bar-fill protege" id="protege-bar" style="width: 0%"></div>
+                                    </div>
+                                    <div class="mode-count" id="protege-count">0</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
                 <!-- Flagged Content Section -->
                 <section class="home-section flagged-section">
                     <div class="section-header">

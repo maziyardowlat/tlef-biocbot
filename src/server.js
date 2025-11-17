@@ -266,10 +266,6 @@ function setupProtectedRoutes() {
         res.sendFile(path.join(__dirname, '../public/student/history.html'));
     });
 
-    app.get('/student/settings', authMiddleware.requireStudent, (req, res) => {
-        res.sendFile(path.join(__dirname, '../public/student/settings.html'));
-    });
-
     // Student flagged content page
     app.get('/student/flagged', authMiddleware.requireStudent, (req, res) => {
         res.sendFile(path.join(__dirname, '../public/student/flagged.html'));
@@ -372,7 +368,7 @@ function setupProtectedRoutes() {
 
 // Legacy routes (redirect to new structure)
 app.get('/settings', (req, res) => {
-    res.redirect('/student/settings');
+    res.redirect('/student');
 });
 
 // Health check endpoint to verify all services

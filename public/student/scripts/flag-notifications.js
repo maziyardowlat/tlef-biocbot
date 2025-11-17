@@ -1,0 +1,530 @@
+/**
+ * Flag Notification System for Students
+ * Monitors flag status changes and shows notifications when flags are approved/rejected
+ * or when instructor responses are added
+ */
+
+/**
+ * Flag notification state management
+ */
+const flagNotificationState = {
+    lastKnownFlags: [], // Store last known flag states
+    pollingInterval: null, // Store interval ID for cleanup
+    isPolling: false, // Prevent multiple polling instances
+    isChecking: false, // Prevent concurrent flag update checks
+    pollIntervalMs: 30000, // Poll every 30 seconds
+    storageKey: 'biocbot_last_known_flags' // localStorage key
+};
+
+/**
+ * Initialize flag notification system
+ * Should be called when the student page loads
+ */
+async function initializeFlagNotifications() {
+    console.log('🔔 [FLAG_NOTIFICATIONS] Initializing flag notification system...');
+    
+    // Wait for authentication to be ready
+    await waitForAuthReady();
+    
+    // Load last known flags from localStorage
+    loadLastKnownFlags();
+    
+    // Start polling for flag updates
+    startFlagPolling();
+    
+    // Also check immediately on page load (with a small delay to ensure page is ready)
+    setTimeout(() => {
+        checkForFlagUpdates();
+    }, 2000); // Wait 2 seconds after page load to check for updates
+    
+    // Also check when page becomes visible (in case user was away when flag was approved)
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+            console.log('🔔 [FLAG_NOTIFICATIONS] Page became visible, checking for updates...');
+            // Small delay to ensure page is fully visible
+            setTimeout(() => {
+                checkForFlagUpdates();
+            }, 500);
+        }
+    });
+    
+    console.log('✅ [FLAG_NOTIFICATIONS] Flag notification system initialized');
+}
+
+/**
+ * Wait for authentication to be ready
+ * @returns {Promise<void>}
+ */
+async function waitForAuthReady() {
+    // Check if auth is already ready
+    if (typeof getCurrentUser === 'function' && getCurrentUser()) {
+        return;
+    }
+    
+    // Wait for auth:ready event
+    return new Promise((resolve) => {
+        const checkAuth = () => {
+            if (typeof getCurrentUser === 'function' && getCurrentUser()) {
+                resolve();
+            } else {
+                document.addEventListener('auth:ready', () => resolve(), { once: true });
+            }
+        };
+        checkAuth();
+    });
+}
+
+/**
+ * Load last known flags from localStorage
+ */
+function loadLastKnownFlags() {
+    try {
+        const stored = localStorage.getItem(flagNotificationState.storageKey);
+        if (stored) {
+            flagNotificationState.lastKnownFlags = JSON.parse(stored);
+            console.log('🔔 [FLAG_NOTIFICATIONS] Loaded', flagNotificationState.lastKnownFlags.length, 'last known flags from storage');
+        }
+    } catch (error) {
+        console.warn('🔔 [FLAG_NOTIFICATIONS] Error loading last known flags:', error);
+        flagNotificationState.lastKnownFlags = [];
+    }
+}
+
+/**
+ * Save last known flags to localStorage
+ * @param {Array} flags - Array of flag objects
+ */
+function saveLastKnownFlags(flags) {
+    try {
+        // Store only essential data for comparison
+        const flagsToStore = flags.map(flag => ({
+            flagId: flag.flagId,
+            flagStatus: flag.flagStatus,
+            instructorResponse: flag.instructorResponse || null,
+            updatedAt: flag.updatedAt || flag.createdAt,
+            createdAt: flag.createdAt // Also store createdAt for reference
+        }));
+        
+        localStorage.setItem(flagNotificationState.storageKey, JSON.stringify(flagsToStore));
+        flagNotificationState.lastKnownFlags = flagsToStore;
+        console.log('🔔 [FLAG_NOTIFICATIONS] Saved', flagsToStore.length, 'flags to localStorage');
+    } catch (error) {
+        console.warn('🔔 [FLAG_NOTIFICATIONS] Error saving last known flags:', error);
+    }
+}
+
+/**
+ * Start polling for flag updates
+ */
+function startFlagPolling() {
+    // Prevent multiple polling instances
+    if (flagNotificationState.isPolling) {
+        console.warn('🔔 [FLAG_NOTIFICATIONS] Polling already started, skipping');
+        return;
+    }
+    
+    // Clear any existing interval
+    if (flagNotificationState.pollingInterval) {
+        clearInterval(flagNotificationState.pollingInterval);
+    }
+    
+    flagNotificationState.isPolling = true;
+    
+    // Set up polling interval
+    flagNotificationState.pollingInterval = setInterval(() => {
+        checkForFlagUpdates();
+    }, flagNotificationState.pollIntervalMs);
+    
+    console.log(`🔔 [FLAG_NOTIFICATIONS] Started polling every ${flagNotificationState.pollIntervalMs / 1000} seconds`);
+    
+    // Stop polling when page becomes hidden (to save resources)
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+            console.log('🔔 [FLAG_NOTIFICATIONS] Page hidden, pausing polling');
+            if (flagNotificationState.pollingInterval) {
+                clearInterval(flagNotificationState.pollingInterval);
+                flagNotificationState.pollingInterval = null;
+            }
+        } else {
+            console.log('🔔 [FLAG_NOTIFICATIONS] Page visible, resuming polling');
+            if (!flagNotificationState.pollingInterval) {
+                flagNotificationState.pollingInterval = setInterval(() => {
+                    checkForFlagUpdates();
+                }, flagNotificationState.pollIntervalMs);
+            }
+        }
+    });
+}
+
+/**
+ * Stop polling for flag updates
+ */
+function stopFlagPolling() {
+    if (flagNotificationState.pollingInterval) {
+        clearInterval(flagNotificationState.pollingInterval);
+        flagNotificationState.pollingInterval = null;
+    }
+    flagNotificationState.isPolling = false;
+    console.log('🔔 [FLAG_NOTIFICATIONS] Stopped polling');
+}
+
+/**
+ * Check for flag updates by fetching current flags and comparing with last known state
+ */
+async function checkForFlagUpdates() {
+    try {
+        // Skip if already checking (prevent concurrent requests)
+        if (flagNotificationState.isChecking) {
+            console.log('🔔 [FLAG_NOTIFICATIONS] Already checking, skipping...');
+            return;
+        }
+        
+        flagNotificationState.isChecking = true;
+        
+        console.log('🔔 [FLAG_NOTIFICATIONS] Checking for flag updates...');
+        console.log('🔔 [FLAG_NOTIFICATIONS] Last known flags count:', flagNotificationState.lastKnownFlags.length);
+        
+        // Fetch current flags
+        const response = await fetch('/api/flags/my', { credentials: 'include' });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        
+        if (!result.success) {
+            throw new Error(result.message || 'Failed to fetch flags');
+        }
+        
+        const currentFlags = result.data.flags || [];
+        console.log('🔔 [FLAG_NOTIFICATIONS] Current flags count:', currentFlags.length);
+        
+        // Compare with last known flags
+        if (flagNotificationState.lastKnownFlags.length > 0) {
+            console.log('🔔 [FLAG_NOTIFICATIONS] Comparing flags for changes...');
+            console.log('🔔 [FLAG_NOTIFICATIONS] Last known flags:', flagNotificationState.lastKnownFlags.map(f => ({
+                flagId: f.flagId,
+                status: f.flagStatus,
+                hasResponse: !!f.instructorResponse
+            })));
+            console.log('🔔 [FLAG_NOTIFICATIONS] Current flags:', currentFlags.map(f => ({
+                flagId: f.flagId,
+                status: f.flagStatus,
+                hasResponse: !!f.instructorResponse,
+                instructorName: f.instructorName
+            })));
+            
+            detectFlagChanges(flagNotificationState.lastKnownFlags, currentFlags);
+        } else {
+            console.log('🔔 [FLAG_NOTIFICATIONS] No last known flags, skipping comparison (first load)');
+        }
+        
+        // Update last known flags
+        saveLastKnownFlags(currentFlags);
+        console.log('🔔 [FLAG_NOTIFICATIONS] Updated last known flags');
+        
+    } catch (error) {
+        console.error('🔔 [FLAG_NOTIFICATIONS] Error checking for flag updates:', error);
+    } finally {
+        flagNotificationState.isChecking = false;
+    }
+}
+
+/**
+ * Detect changes between last known flags and current flags
+ * @param {Array} lastKnownFlags - Previously stored flags
+ * @param {Array} currentFlags - Current flags from API
+ */
+function detectFlagChanges(lastKnownFlags, currentFlags) {
+    // Create a map of last known flags by flagId for quick lookup
+    const lastKnownMap = new Map();
+    lastKnownFlags.forEach(flag => {
+        lastKnownMap.set(flag.flagId, flag);
+    });
+    
+    let changesDetected = 0;
+    
+    // Check each current flag for changes
+    currentFlags.forEach(currentFlag => {
+        const lastKnownFlag = lastKnownMap.get(currentFlag.flagId);
+        
+        if (!lastKnownFlag) {
+            // New flag (not in last known) - check if it's already resolved/dismissed
+            // This handles the case where a flag was created and approved before the next poll
+            if (currentFlag.flagStatus === 'resolved' || currentFlag.flagStatus === 'dismissed') {
+                // Check if this flag was created recently (within last 2 hours)
+                // This indicates it was likely created by the user and then approved
+                const flagCreatedAt = new Date(currentFlag.createdAt || currentFlag.updatedAt);
+                const now = new Date();
+                const timeDiff = now - flagCreatedAt;
+                const twoHours = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
+                
+                if (timeDiff < twoHours && timeDiff > 0) {
+                    // Flag was created recently and is already resolved/dismissed
+                    // This likely means it was approved while the user was away
+                    const responderName = currentFlag.instructorName || 'Instructor';
+                    const statusText = currentFlag.flagStatus === 'resolved' ? 'approved' : 'dismissed';
+                    
+                    console.log(`🔔 [FLAG_NOTIFICATIONS] ✅ New resolved flag detected: ${currentFlag.flagId} (created ${Math.round(timeDiff / 1000 / 60)} minutes ago, already ${currentFlag.flagStatus})`);
+                    showFlagStatusNotification(currentFlag, statusText, responderName);
+                    changesDetected++;
+                } else {
+                    console.log(`🔔 [FLAG_NOTIFICATIONS] New flag detected: ${currentFlag.flagId} (skipping notification - not recently created or already old)`);
+                }
+            } else {
+                console.log(`🔔 [FLAG_NOTIFICATIONS] New flag detected: ${currentFlag.flagId} (status: ${currentFlag.flagStatus}, skipping notification)`);
+            }
+            return;
+        }
+        
+        console.log(`🔔 [FLAG_NOTIFICATIONS] Checking flag ${currentFlag.flagId}:`);
+        console.log(`  Last status: ${lastKnownFlag.flagStatus}, Current status: ${currentFlag.flagStatus}`);
+        console.log(`  Last has response: ${!!lastKnownFlag.instructorResponse}, Current has response: ${!!currentFlag.instructorResponse}`);
+        
+        // Check for new instructor response first (this is more informative than just status change)
+        // If both status changed AND response was added, we only show the response notification
+        if (!lastKnownFlag.instructorResponse && currentFlag.instructorResponse) {
+            const responderName = currentFlag.instructorName || 'Instructor';
+            console.log(`🔔 [FLAG_NOTIFICATIONS] ✅ New response detected! Flag ${currentFlag.flagId} now has instructor response`);
+            showFlagResponseNotification(currentFlag, responderName);
+            changesDetected++;
+        } 
+        // Only check for status change if there's no new response (to avoid duplicate notifications)
+        else if (lastKnownFlag.flagStatus === 'pending' && 
+            (currentFlag.flagStatus === 'resolved' || currentFlag.flagStatus === 'dismissed')) {
+            
+            const responderName = currentFlag.instructorName || 'Instructor';
+            const statusText = currentFlag.flagStatus === 'resolved' ? 'approved' : 'dismissed';
+            
+            console.log(`🔔 [FLAG_NOTIFICATIONS] ✅ Status change detected! Flag ${currentFlag.flagId} changed from pending to ${currentFlag.flagStatus}`);
+            showFlagStatusNotification(currentFlag, statusText, responderName);
+            changesDetected++;
+        }
+        
+        // Check if instructor response was updated (different content)
+        if (lastKnownFlag.instructorResponse && 
+            currentFlag.instructorResponse && 
+            lastKnownFlag.instructorResponse !== currentFlag.instructorResponse) {
+            
+            // Also check if updatedAt changed to ensure it's actually an update
+            const lastUpdated = new Date(lastKnownFlag.updatedAt || lastKnownFlag.createdAt);
+            const currentUpdated = new Date(currentFlag.updatedAt || currentFlag.createdAt);
+            
+            if (currentUpdated > lastUpdated) {
+                const responderName = currentFlag.instructorName || 'Instructor';
+                console.log(`🔔 [FLAG_NOTIFICATIONS] ✅ Response updated! Flag ${currentFlag.flagId} has updated instructor response`);
+                showFlagResponseNotification(currentFlag, responderName, true);
+                changesDetected++;
+            }
+        }
+    });
+    
+    console.log(`🔔 [FLAG_NOTIFICATIONS] Total changes detected: ${changesDetected}`);
+}
+
+/**
+ * Show notification when flag status changes
+ * @param {Object} flag - The flag object
+ * @param {string} statusText - Status text ('approved' or 'dismissed')
+ * @param {string} responderName - Name of the person who responded
+ */
+function showFlagStatusNotification(flag, statusText, responderName) {
+    const questionText = flag.questionContent?.question || 'your flagged question';
+    const truncatedQuestion = questionText.length > 50 
+        ? questionText.substring(0, 50) + '...' 
+        : questionText;
+    
+    const message = statusText === 'approved' 
+        ? `Your flag has been ${statusText} by ${responderName}. Click to view details.`
+        : `Your flag has been ${statusText} by ${responderName}.`;
+    
+    const notification = createNotificationElement(
+        message,
+        statusText === 'approved' ? 'success' : 'info',
+        () => {
+            // Navigate to flagged page when clicked
+            window.location.href = '/student/flagged';
+        }
+    );
+    
+    showNotification(notification);
+    
+    console.log(`🔔 [FLAG_NOTIFICATIONS] Flag ${statusText}:`, flag.flagId);
+}
+
+/**
+ * Show notification when instructor response is added or updated
+ * @param {Object} flag - The flag object
+ * @param {string} responderName - Name of the person who responded
+ * @param {boolean} isUpdate - Whether this is an update to an existing response
+ */
+function showFlagResponseNotification(flag, responderName, isUpdate = false) {
+    const message = isUpdate
+        ? `${responderName} updated their response to your flag. Click to view.`
+        : `${responderName} responded to your flag. Click to view their response.`;
+    
+    const notification = createNotificationElement(
+        message,
+        'success',
+        () => {
+            // Navigate to flagged page when clicked
+            window.location.href = '/student/flagged';
+        }
+    );
+    
+    showNotification(notification);
+    
+    console.log(`🔔 [FLAG_NOTIFICATIONS] Instructor response ${isUpdate ? 'updated' : 'added'}:`, flag.flagId);
+}
+
+/**
+ * Create a notification element
+ * @param {string} message - Notification message
+ * @param {string} type - Notification type ('success', 'info', 'error', 'warning')
+ * @param {Function} onClick - Optional click handler
+ * @returns {HTMLElement} Notification element
+ */
+function createNotificationElement(message, type = 'info', onClick = null) {
+    const notification = document.createElement('div');
+    notification.className = `flag-notification flag-notification-${type}`;
+    
+    // Set styles
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        background: ${getNotificationColor(type)};
+        color: white;
+        padding: 16px 20px;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        z-index: 10000;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        font-size: 14px;
+        font-weight: 500;
+        max-width: 400px;
+        word-wrap: break-word;
+        cursor: ${onClick ? 'pointer' : 'default'};
+        animation: slideInRight 0.3s ease-out;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+    `;
+    
+    // Add icon
+    const icon = document.createElement('span');
+    icon.textContent = getNotificationIcon(type);
+    icon.style.cssText = 'font-size: 20px; flex-shrink: 0;';
+    notification.appendChild(icon);
+    
+    // Add message
+    const messageSpan = document.createElement('span');
+    messageSpan.textContent = message;
+    messageSpan.style.flex = '1';
+    notification.appendChild(messageSpan);
+    
+    // Add click handler if provided
+    if (onClick) {
+        notification.addEventListener('click', onClick);
+        notification.style.cursor = 'pointer';
+        notification.title = 'Click to view details';
+    }
+    
+    // Add hover effect
+    notification.addEventListener('mouseenter', () => {
+        notification.style.transform = 'translateX(-4px)';
+        notification.style.transition = 'transform 0.2s ease';
+    });
+    
+    notification.addEventListener('mouseleave', () => {
+        notification.style.transform = 'translateX(0)';
+    });
+    
+    return notification;
+}
+
+/**
+ * Get notification color based on type
+ * @param {string} type - Notification type
+ * @returns {string} Color hex code
+ */
+function getNotificationColor(type) {
+    const colors = {
+        success: '#10b981',
+        info: '#3b82f6',
+        warning: '#f59e0b',
+        error: '#ef4444'
+    };
+    return colors[type] || colors.info;
+}
+
+/**
+ * Get notification icon based on type
+ * @param {string} type - Notification type
+ * @returns {string} Icon emoji or character
+ */
+function getNotificationIcon(type) {
+    const icons = {
+        success: '✓',
+        info: 'ℹ',
+        warning: '⚠',
+        error: '✕'
+    };
+    return icons[type] || icons.info;
+}
+
+/**
+ * Show notification on the page
+ * @param {HTMLElement} notification - Notification element to show
+ */
+function showNotification(notification) {
+    // Add animation styles if not already added
+    if (!document.querySelector('#flag-notification-animations')) {
+        const style = document.createElement('style');
+        style.id = 'flag-notification-animations';
+        style.textContent = `
+            @keyframes slideInRight {
+                from { transform: translateX(100%); opacity: 0; }
+                to { transform: translateX(0); opacity: 1; }
+            }
+            @keyframes slideOutRight {
+                from { transform: translateX(0); opacity: 1; }
+                to { transform: translateX(100%); opacity: 0; }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+    
+    // Calculate position based on existing notifications
+    const existingNotifications = document.querySelectorAll('.flag-notification');
+    const topOffset = 20 + (existingNotifications.length * 80); // Stack notifications 80px apart
+    notification.style.top = `${topOffset}px`;
+    
+    // Add to page
+    document.body.appendChild(notification);
+    
+    // Auto-remove after 8 seconds (longer for important notifications)
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.style.animation = 'slideOutRight 0.3s ease-out';
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.parentNode.removeChild(notification);
+                }
+            }, 300);
+        }
+    }, 8000);
+}
+
+/**
+ * Cleanup function to stop polling when page unloads
+ */
+function cleanupFlagNotifications() {
+    stopFlagPolling();
+    console.log('🔔 [FLAG_NOTIFICATIONS] Cleaned up flag notification system');
+}
+
+// Cleanup on page unload
+window.addEventListener('beforeunload', cleanupFlagNotifications);
+

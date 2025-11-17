@@ -53,6 +53,9 @@ async function initializeHomePage() {
         // Onboarding is complete, hide prompt and show normal content
         hideOnboardingPrompt();
         
+        // Load statistics
+        await loadStatistics();
+        
         // Load flagged content count
         await loadFlaggedContent();
         
@@ -151,6 +154,92 @@ function hideOnboardingPrompt() {
     }
     
     // Other sections will be shown/hidden by their own functions
+}
+
+/**
+ * Load statistics for all instructor courses
+ */
+async function loadStatistics() {
+    try {
+        const response = await fetch('/api/courses/statistics', {
+            credentials: 'include'
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to fetch statistics');
+        }
+        
+        const result = await response.json();
+        
+        if (!result.success || !result.data) {
+            console.log('No statistics data available');
+            return;
+        }
+        
+        const stats = result.data;
+        
+        // Update statistics display
+        updateStatisticsDisplay(stats);
+        
+    } catch (error) {
+        console.error('Error loading statistics:', error);
+        // Don't show error to user, just hide the section
+        document.getElementById('statistics-section')?.setAttribute('style', 'display: none;');
+    }
+}
+
+/**
+ * Update the statistics display with fetched data
+ * @param {Object} stats - Statistics data object
+ */
+function updateStatisticsDisplay(stats) {
+    const statisticsSection = document.getElementById('statistics-section');
+    if (!statisticsSection) {
+        return;
+    }
+    
+    // Show the section if we have data
+    if (stats.totalSessions > 0) {
+        statisticsSection.setAttribute('style', 'display: block;');
+    } else {
+        statisticsSection.setAttribute('style', 'display: none;');
+        return;
+    }
+    
+    // Update stat values
+    const totalStudentsEl = document.getElementById('stat-total-students');
+    const totalSessionsEl = document.getElementById('stat-total-sessions');
+    const avgSessionLengthEl = document.getElementById('stat-avg-session-length');
+    const avgMessageLengthEl = document.getElementById('stat-avg-message-length');
+    
+    if (totalStudentsEl) totalStudentsEl.textContent = stats.totalStudents || 0;
+    if (totalSessionsEl) totalSessionsEl.textContent = stats.totalSessions || 0;
+    if (avgSessionLengthEl) avgSessionLengthEl.textContent = stats.averageSessionLength || '0s';
+    if (avgMessageLengthEl) avgMessageLengthEl.textContent = stats.averageMessageLength || 0;
+    
+    // Update mode distribution
+    const tutorCount = stats.modeDistribution?.tutor || 0;
+    const protegeCount = stats.modeDistribution?.protege || 0;
+    const totalModes = tutorCount + protegeCount;
+    
+    const tutorCountEl = document.getElementById('tutor-count');
+    const protegeCountEl = document.getElementById('protege-count');
+    const tutorBarEl = document.getElementById('tutor-bar');
+    const protegeBarEl = document.getElementById('protege-bar');
+    
+    if (tutorCountEl) tutorCountEl.textContent = tutorCount;
+    if (protegeCountEl) protegeCountEl.textContent = protegeCount;
+    
+    if (totalModes > 0) {
+        const tutorPercentage = Math.round((tutorCount / totalModes) * 100);
+        const protegePercentage = Math.round((protegeCount / totalModes) * 100);
+        
+        if (tutorBarEl) tutorBarEl.style.width = `${tutorPercentage}%`;
+        if (protegeBarEl) protegeBarEl.style.width = `${protegePercentage}%`;
+    } else {
+        if (tutorBarEl) tutorBarEl.style.width = '0%';
+        if (protegeBarEl) protegeBarEl.style.width = '0%';
+    }
 }
 
 /**
