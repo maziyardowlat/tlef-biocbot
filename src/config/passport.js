@@ -92,8 +92,19 @@ function initializePassport(db) {
     const samlEntryPoint = process.env.SAML_ENTRY_POINT;
     const samlIssuer = process.env.SAML_ISSUER;
     const samlCallbackUrl = process.env.SAML_CALLBACK_URL;
-    const cert = fs.readFileSync(process.env.SAML_CERT_PATH, 'utf8');
+    const samlCertPath = process.env.SAML_CERT_PATH;
     const samlPrivateKey = process.env.SAML_PRIVATE_KEY;
+
+    // Only read certificate file if SAML_CERT_PATH is provided
+    let cert = null;
+    if (samlCertPath) {
+        try {
+            cert = fs.readFileSync(samlCertPath, 'utf8');
+        } catch (error) {
+            console.error(`❌ Failed to read SAML certificate from ${samlCertPath}:`, error.message);
+            cert = null;
+        }
+    }
 
     if (samlEntryPoint && samlIssuer && samlCallbackUrl && cert) {
         try {

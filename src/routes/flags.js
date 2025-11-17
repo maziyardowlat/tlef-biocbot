@@ -292,11 +292,11 @@ router.put('/:flagId/response', async (req, res) => {
             });
         }
         
-        // Only instructors can respond to flags
-        if (user.role !== 'instructor') {
+        // Only instructors and TAs can respond to flags
+        if (user.role !== 'instructor' && user.role !== 'ta') {
             return res.status(403).json({
                 success: false,
-                message: 'Only instructors can respond to flagged questions'
+                message: 'Only instructors and TAs can respond to flagged questions'
             });
         }
         
@@ -317,6 +317,7 @@ router.put('/:flagId/response', async (req, res) => {
         }
         
         // Update the instructor response with authenticated user info
+        // Use appropriate field name based on role (instructorId for both instructors and TAs)
         const result = await FlaggedQuestionModel.updateInstructorResponse(db, flagId, {
             response,
             instructorId: user.userId,
@@ -331,7 +332,8 @@ router.put('/:flagId/response', async (req, res) => {
             });
         }
         
-        console.log(`Instructor response updated for flag: ${flagId} by ${user.userId}`);
+        const roleLabel = user.role === 'ta' ? 'TA' : 'Instructor';
+        console.log(`${roleLabel} response updated for flag: ${flagId} by ${user.userId}`);
         
         res.json({
             success: true,
@@ -369,11 +371,11 @@ router.put('/:flagId/status', async (req, res) => {
             });
         }
         
-        // Only instructors can update flag status
-        if (user.role !== 'instructor') {
+        // Only instructors and TAs can update flag status
+        if (user.role !== 'instructor' && user.role !== 'ta') {
             return res.status(403).json({
                 success: false,
-                message: 'Only instructors can update flag status'
+                message: 'Only instructors and TAs can update flag status'
             });
         }
         
@@ -403,7 +405,8 @@ router.put('/:flagId/status', async (req, res) => {
             });
         }
         
-        console.log(`Flag status updated to ${status} for flag: ${flagId} by ${user.userId}`);
+        const roleLabel = user.role === 'ta' ? 'TA' : 'Instructor';
+        console.log(`Flag status updated to ${status} for flag: ${flagId} by ${roleLabel} ${user.userId}`);
         
         res.json({
             success: true,

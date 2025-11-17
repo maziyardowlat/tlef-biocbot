@@ -28,7 +28,6 @@
                     <li><a href="/student"><span class="icon"></span> Chat</a></li>
                     <li class="active"><a href="/student/history"><span class="icon"></span> Chat History</a></li>
                     <li><a href="/student/flagged"><span class="icon"></span> Flagged</a></li>
-                    <li><a href="/student/settings"><span class="icon"></span> Settings</a></li>
                 </ul>
             </nav>
             <div class="user-info">
@@ -36,7 +35,6 @@
                 <div class="user-name" id="user-display-name">Student Name</div>
                 <div class="user-role">Student</div>
                 <div class="user-actions">
-                    <a href="/student/settings" class="user-action">Settings</a>
                     <a href="#" id="logout-btn" class="user-action">Logout</a>
                 </div>
             </div>
@@ -90,6 +88,20 @@
     </div>
     <script src="../common/scripts/auth.js"></script>
     <script src="../common/scripts/agreement-modal.js"></script>
+    <script src="./scripts/flag-notifications.js"></script>
     <script src="./scripts/history.js"></script>
+    <script>
+        // Initialize flag notifications after DOM is ready
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Wait a bit for auth to initialize
+            setTimeout(async () => {
+                try {
+                    await initializeFlagNotifications();
+                } catch (error) {
+                    console.error('Error initializing flag notifications:', error);
+                }
+            }, 1000);
+        });
+    </script>
 </body>
 </html> 

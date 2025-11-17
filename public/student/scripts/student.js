@@ -935,10 +935,7 @@ async function initializeAutoSave() {
                 version: '1.0'
             },
             messages: [],
-            practiceTests: {
-                questions: [],
-                passThreshold: 70
-            },
+            practiceTests: null,
             studentAnswers: {
                 answers: []
             },
@@ -1177,6 +1174,14 @@ function updateAssessmentDataInAutoSave(chatData) {
         const studentAnswers = window.studentAnswers || [];
         
         // Update practice test data
+        // Initialize practiceTests if it doesn't exist
+        if (!chatData.practiceTests) {
+            chatData.practiceTests = {
+                questions: [],
+                passThreshold: null
+            };
+        }
+        
         if (questions.length > 0) {
             chatData.practiceTests.questions = questions.map((q, index) => {
                 const studentAnswerIndex = studentAnswers[index];
@@ -1238,14 +1243,17 @@ function updateAssessmentDataInAutoSave(chatData) {
         }));
         
         // Update pass threshold to use the actual calculated threshold
-        if (window.currentPassThreshold !== undefined) {
+        if (window.currentPassThreshold !== undefined && questions.length > 0) {
             chatData.practiceTests.passThreshold = window.currentPassThreshold;
+        } else if (questions.length === 0) {
+            // If no questions, set practiceTests to null
+            chatData.practiceTests = null;
         }
         
         console.log('🔄 [AUTO-SAVE] Updated assessment data:', {
-            questionsCount: chatData.practiceTests.questions.length,
+            questionsCount: chatData.practiceTests ? chatData.practiceTests.questions.length : 0,
             answersCount: chatData.studentAnswers.answers.length,
-            passThreshold: chatData.practiceTests.passThreshold
+            passThreshold: chatData.practiceTests ? chatData.practiceTests.passThreshold : null
         });
         
     } catch (error) {
@@ -2099,6 +2107,16 @@ async function submitFlag(messageText, flagType) {
         
         const result = await response.json();
         console.log('Flag submitted successfully:', result);
+        
+        // Immediately refresh flag notifications to track the new flag
+        // This ensures the flag is in lastKnownFlags so we can detect when it's approved
+        if (result.success && typeof checkForFlagUpdates === 'function') {
+            console.log('🔄 [FLAG] Triggering immediate flag check after flag submission...');
+            // Small delay to ensure the flag is saved on the server
+            setTimeout(() => {
+                checkForFlagUpdates();
+            }, 1000);
+        }
         
     } catch (error) {
         console.error('Error submitting flag:', error);
@@ -4412,6 +4430,11 @@ function extractModeData(messageElement) {
  * @returns {Object} Practice test data
  */
 function collectPracticeTestData() {
+    // If there are no practice questions, return null instead of an empty object
+    if (!currentCalibrationQuestions || currentCalibrationQuestions.length === 0) {
+        return null;
+    }
+    
     return {
         questions: currentCalibrationQuestions.map((question, index) => ({
             questionId: question.id,
@@ -4705,7 +4728,7 @@ function generateChatTitle(chatData) {
     }
     
     // Fallback titles based on content
-    if (chatData.practiceTests.questions.length > 0) {
+    if (chatData.practiceTests && chatData.practiceTests.questions && chatData.practiceTests.questions.length > 0) {
         return `${courseName} - ${unitName} Assessment (${messageCount} messages)`;
     }
     

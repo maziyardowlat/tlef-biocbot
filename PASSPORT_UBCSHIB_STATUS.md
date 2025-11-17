@@ -111,3 +111,5 @@ Users can authenticate via:
 
 The integration is complete and matches the passport-ubcshib documentation. Once environment variables are configured and UBC IAM registration is complete, UBC Shibboleth authentication will work automatically.
 
+
+
