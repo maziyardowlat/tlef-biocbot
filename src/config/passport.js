@@ -213,34 +213,70 @@ function initializePassport(db) {
 
                         try {
                             // Extract UBC Shibboleth attributes
-                            const samlId = profile.nameID || profile.attributes?.ubcEduCwlPuid;
-                            const email = profile.attributes?.mail || profile.attributes?.email || profile.nameID;
-                            const displayName = profile.attributes?.displayName || profile.attributes?.cn || email;
-                            const ubcPuid = profile.attributes?.ubcEduCwlPuid;
-                            const affiliation = profile.attributes?.eduPersonAffiliation || [];
+                            // The attribute is called 'ubcEduCwlPuid' and can be in multiple formats:
+                            // 1. profile.attributes.ubcEduCwlPuid (friendly name)
+                            // 2. profile['urn:mace:dir:attribute-def:ubcEduCwlPuid'] (MACE format)
+                            // 3. profile['urn:oid:1.3.6.1.4.1.60.6.1.6'] (OID format)
+                            const ubcEduCwlPuid = profile.attributes?.ubcEduCwlPuid ||
+                                                   profile['urn:mace:dir:attribute-def:ubcEduCwlPuid'] ||
+                                                   profile['urn:oid:1.3.6.1.4.1.60.6.1.6'];
+                            
+                            // Log available attributes for debugging
+                            if (!ubcEduCwlPuid) {
+                                console.warn('[UBC SHIB] ubcEduCwlPuid not found in profile');
+                                console.warn('[UBC SHIB] Available profile keys:', Object.keys(profile));
+                                console.warn('[UBC SHIB] Available attributes:', Object.keys(profile.attributes || {}));
+                            } else {
+                                console.log(`[UBC SHIB] Extracted ubcEduCwlPuid: ${ubcEduCwlPuid}`);
+                            }
+                            
+                            const samlId = profile.nameID || ubcEduCwlPuid;
+                            const email = profile.attributes?.mail || 
+                                         profile.attributes?.email || 
+                                         profile['urn:oid:0.9.2342.19200300.100.1.3'] ||
+                                         profile.mail ||
+                                         profile.email ||
+                                         profile.nameID;
+                            const displayName = profile.attributes?.displayName || 
+                                               profile.attributes?.cn || 
+                                               profile['urn:oid:2.16.840.1.113730.3.1.241'] ||
+                                               email;
+                            const affiliation = profile.attributes?.eduPersonAffiliation || 
+                                               profile['urn:oid:1.3.6.1.4.1.5923.1.1.1.1'] ||
+                                               [];
+
+                            // ubcEduCwlPuid is required for CWL authentication (primary identifier)
+                            if (!ubcEduCwlPuid) {
+                                return done(null, false, { message: 'UBC Shibboleth profile missing required attribute: ubcEduCwlPuid' });
+                            }
 
                             if (!samlId || !email) {
-                                return done(null, false, { message: 'UBC Shibboleth profile missing required attributes' });
+                                return done(null, false, { message: 'UBC Shibboleth profile missing required attributes (email or nameID)' });
                             }
 
                             // Determine role from affiliation
                             // UBC affiliation can be: student, faculty, staff, member, etc.
+                            // Note: affiliation can be a string or array
                             let role = 'student'; // Default role
-                            if (Array.isArray(affiliation)) {
-                                if (affiliation.includes('faculty') || affiliation.includes('staff')) {
-                                    role = 'instructor'; // Faculty/staff are instructors
-                                } else if (affiliation.includes('student')) {
-                                    role = 'student';
-                                }
+                            const affiliationList = Array.isArray(affiliation) ? affiliation : [affiliation];
+                            
+                            if (affiliationList.includes('faculty') || 
+                                affiliationList.includes('staff') || 
+                                affiliationList.includes('member')) {
+                                role = 'instructor'; // Faculty/staff/member are instructors
+                            } else if (affiliationList.includes('student')) {
+                                role = 'student';
                             }
+                            
+                            console.log(`[UBC SHIB] Affiliation: ${JSON.stringify(affiliation)}, Role: ${role}`);
 
                             // Create or get user from UBC Shibboleth data
-                            // PUID is the primary identifier for CWL users
+                            // ubcEduCwlPuid is the primary identifier for CWL users
                             const samlData = {
-                                samlId: samlId || ubcPuid,
-                                puid: ubcPuid, // Store PUID as primary identifier for CWL users
+                                samlId: samlId || ubcEduCwlPuid,
+                                puid: ubcEduCwlPuid, // Store ubcEduCwlPuid as primary identifier for CWL users
                                 email: email,
-                                username: ubcPuid || email.split('@')[0],
+                                username: ubcEduCwlPuid || email.split('@')[0],
                                 displayName: displayName,
                                 role: role
                             };
