@@ -19,6 +19,7 @@ const bcrypt = require('bcryptjs');
  *   displayName: String,         // Display name for UI
  *   authProvider: String,        // "basic" or "saml" (for future)
  *   samlId: String,              // SAML identifier (for future)
+ *   puid: String,                // UBC Personal Unique Identifier (for CWL authentication)
  *   isActive: Boolean,           // Account status
  *   lastLogin: Date,             // Last login timestamp
  *   createdAt: Date,             // Account creation timestamp
@@ -70,6 +71,7 @@ async function createUser(db, userData) {
         displayName: userData.displayName && userData.displayName.trim() !== '' ? userData.displayName : userData.username,
         authProvider: userData.authProvider || 'basic',
         samlId: userData.samlId || null,
+        puid: userData.puid || null, // UBC Personal Unique Identifier (for CWL authentication)
         isActive: true,
         lastLogin: null,
         createdAt: now,
@@ -217,6 +219,42 @@ async function getUserById(db, userId) {
 }
 
 /**
+ * Get user by PUID (UBC Personal Unique Identifier)
+ * Used for CWL authentication to find existing users
+ * @param {Object} db - MongoDB database instance
+ * @param {string} puid - UBC Personal Unique Identifier
+ * @returns {Promise<Object>} User object or null
+ */
+async function getUserByPuid(db, puid) {
+    const collection = getUsersCollection(db);
+    
+    if (!puid) {
+        return null;
+    }
+    
+    const user = await collection.findOne({ 
+        puid,
+        isActive: true 
+    });
+    
+    if (!user) {
+        return null;
+    }
+    
+    return {
+        userId: user.userId,
+        username: user.username,
+        email: user.email,
+        role: user.role,
+        displayName: user.displayName,
+        authProvider: user.authProvider,
+        preferences: user.preferences,
+        lastLogin: user.lastLogin,
+        puid: user.puid
+    };
+}
+
+/**
  * Update user preferences
  * @param {Object} db - MongoDB database instance
  * @param {string} userId - User identifier
@@ -247,26 +285,66 @@ async function updateUserPreferences(db, userId, preferences) {
 }
 
 /**
- * Create or get user for SAML authentication (future implementation)
+ * Create or get user for SAML authentication
+ * For CWL (UBC Shibboleth) users, PUID is the primary identifier
  * @param {Object} db - MongoDB database instance
  * @param {Object} samlData - SAML authentication data
+ * @param {string} samlData.samlId - SAML identifier (nameID or fallback)
+ * @param {string} samlData.puid - UBC Personal Unique Identifier (for CWL users)
+ * @param {string} samlData.email - User email address
+ * @param {string} samlData.username - Username
+ * @param {string} samlData.displayName - Display name
+ * @param {string} samlData.role - User role
  * @returns {Promise<Object>} User result
  */
 async function createOrGetSAMLUser(db, samlData) {
     const collection = getUsersCollection(db);
     
-    // Check if user already exists with this SAML ID
+    // For CWL users, PUID is the primary identifier for user lookup
+    // Check if user already exists by PUID first (most reliable for CWL)
+    // Then fall back to samlId if PUID is not available
+    const queryConditions = [];
+    
+    if (samlData.puid) {
+        // PUID is the primary identifier for CWL users
+        queryConditions.push({ puid: samlData.puid, authProvider: 'saml' });
+    }
+    
+    // Also check by samlId as fallback (for non-CWL SAML users)
+    if (samlData.samlId) {
+        queryConditions.push({ samlId: samlData.samlId, authProvider: 'saml' });
+    }
+    
+    // If no query conditions, we can't look up existing users
+    if (queryConditions.length === 0) {
+        return {
+            success: false,
+            error: 'SAML data missing required identifier (puid or samlId)'
+        };
+    }
+    
+    // Find existing user by PUID or samlId
     const existingUser = await collection.findOne({
-        samlId: samlData.samlId,
-        authProvider: 'saml'
+        $or: queryConditions
     });
     
     if (existingUser) {
-        // Update last login
-        const now = new Date();
+        // User exists - update PUID if it wasn't stored before (migration case)
+        const updateFields = {
+            lastLogin: new Date(),
+            updatedAt: new Date()
+        };
+        
+        // If PUID is provided but not stored, add it
+        if (samlData.puid && !existingUser.puid) {
+            updateFields.puid = samlData.puid;
+            console.log(`Updating existing user ${existingUser.userId} with PUID: ${samlData.puid}`);
+        }
+        
+        // Update last login and PUID if needed
         await collection.updateOne(
             { userId: existingUser.userId },
-            { $set: { lastLogin: now, updatedAt: now } }
+            { $set: updateFields }
         );
         
         return {
@@ -295,7 +373,8 @@ async function createOrGetSAMLUser(db, samlData) {
         role: samlData.role || 'student', // Default to student, can be updated
         displayName: samlData.displayName || samlData.username,
         authProvider: 'saml',
-        samlId: samlData.samlId,
+        samlId: samlData.samlId || null,
+        puid: samlData.puid || null, // Store PUID for CWL users
         isActive: true,
         lastLogin: now,
         createdAt: now,
@@ -309,7 +388,7 @@ async function createOrGetSAMLUser(db, samlData) {
     
     const result = await collection.insertOne(user);
     
-    console.log(`SAML user created: ${userId} (${user.role})`);
+    console.log(`SAML user created: ${userId} (${user.role})${samlData.puid ? ` with PUID: ${samlData.puid}` : ''}`);
     
     return {
         success: true,
@@ -388,6 +467,7 @@ module.exports = {
     createUser,
     authenticateUser,
     getUserById,
+    getUserByPuid,
     updateUserPreferences,
     createOrGetSAMLUser,
     getUsersByRole,
