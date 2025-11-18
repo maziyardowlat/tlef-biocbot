@@ -46,9 +46,9 @@ async function determineSourceAttribution(searchResults, courseId, unitName, db)
         // Check if search results are relevant enough (low scores indicate poor matches)
         const avgScore = searchResults.reduce((sum, result) => sum + (result.score || 0), 0) / searchResults.length;
         const maxScore = Math.max(...searchResults.map(result => result.score || 0));
-        
+
         console.log('🔍 [SOURCE_DEBUG] Search relevance - avgScore:', avgScore, 'maxScore:', maxScore);
-        
+
         // If scores are too low, treat as GPT (no relevant materials found)
         // Very low thresholds to match actual score ranges (0.05-0.4 range)
         if (avgScore < 0.05 || maxScore < 0.08) {
@@ -76,7 +76,7 @@ async function determineSourceAttribution(searchResults, courseId, unitName, db)
         // Analyze the retrieved chunks to determine primary source
         const sourceAnalysis = analyzeChunkSources(searchResults);
         console.log('🔍 [SOURCE_DEBUG] Source analysis:', sourceAnalysis);
-        
+
         // Debug: Log details about practice quiz chunks specifically
         const practiceQuizChunks = searchResults.filter(r => r.type === 'practice_q_tutorials' || r.documentType === 'practice-quiz');
         if (practiceQuizChunks.length > 0) {
@@ -86,7 +86,7 @@ async function determineSourceAttribution(searchResults, courseId, unitName, db)
                 chunkPreview: c.chunkText.substring(0, 100) + '...'
             })));
         }
-        
+
         // Check if any chunks are from learning objectives
         let hasLearningObjectives = false;
         try {
@@ -96,11 +96,11 @@ async function determineSourceAttribution(searchResults, courseId, unitName, db)
             console.error('🔍 [SOURCE_DEBUG] Error checking learning objectives:', error);
             hasLearningObjectives = false;
         }
-        
+
         // Determine primary source based on the highest scoring document type
         // Find the document type with the highest average score
         const documentTypeScores = {};
-        
+
         // Group results by document type and calculate average scores
         searchResults.forEach(result => {
             const docType = result.type || result.documentType || 'unknown';
@@ -110,25 +110,25 @@ async function determineSourceAttribution(searchResults, courseId, unitName, db)
             documentTypeScores[docType].scores.push(result.score || 0);
             documentTypeScores[docType].count++;
         });
-        
+
         // Calculate average scores for each document type
         Object.keys(documentTypeScores).forEach(docType => {
             const scores = documentTypeScores[docType].scores;
             documentTypeScores[docType].avgScore = scores.reduce((sum, score) => sum + score, 0) / scores.length;
         });
-        
+
         console.log('🔍 [SOURCE_DEBUG] Document type scores:', documentTypeScores);
-        
+
         // Find the document type with the highest average score
-        const highestScoringType = Object.keys(documentTypeScores).reduce((a, b) => 
+        const highestScoringType = Object.keys(documentTypeScores).reduce((a, b) =>
             documentTypeScores[a].avgScore > documentTypeScores[b].avgScore ? a : b
         );
-        
+
         const highestScore = documentTypeScores[highestScoringType].avgScore;
-        
+
         console.log('🔍 [SOURCE_DEBUG] Highest scoring document type:', highestScoringType);
         console.log('🔍 [SOURCE_DEBUG] Highest score:', highestScore);
-        
+
         // If the highest score is too low, treat as GPT
         if (highestScore < 0.1) {
             console.log('🔍 [SOURCE_DEBUG] Highest score too low, treating as GPT');
@@ -139,7 +139,7 @@ async function determineSourceAttribution(searchResults, courseId, unitName, db)
                 documentType: null
             };
         }
-        
+
         // Additional check: if the highest score is still relatively low, treat as GPT
         if (highestScore < 0.2) {
             console.log('🔍 [SOURCE_DEBUG] Highest score still too low, treating as GPT');
@@ -150,7 +150,7 @@ async function determineSourceAttribution(searchResults, courseId, unitName, db)
                 documentType: null
             };
         }
-        
+
         // Return source attribution based on the highest scoring document type
         switch (highestScoringType) {
             case 'lecture_notes':
@@ -197,7 +197,7 @@ async function determineSourceAttribution(searchResults, courseId, unitName, db)
                     documentType: null
                 };
         }
-        
+
         if (sourceAnalysis.hasReadings) {
             return {
                 source: 'readings',
@@ -206,7 +206,7 @@ async function determineSourceAttribution(searchResults, courseId, unitName, db)
                 documentType: 'readings'
             };
         }
-        
+
         if (sourceAnalysis.hasSyllabus) {
             return {
                 source: 'syllabus',
@@ -215,7 +215,7 @@ async function determineSourceAttribution(searchResults, courseId, unitName, db)
                 documentType: 'syllabus'
             };
         }
-        
+
         if (sourceAnalysis.hasAdditionalMaterials) {
             return {
                 source: 'additional-materials',
@@ -224,7 +224,7 @@ async function determineSourceAttribution(searchResults, courseId, unitName, db)
                 documentType: 'additional'
             };
         }
-        
+
         // Fallback to GPT if no clear source identified
         return {
             source: 'GPT',
@@ -232,7 +232,7 @@ async function determineSourceAttribution(searchResults, courseId, unitName, db)
             unitName: null,
             documentType: null
         };
-        
+
     } catch (error) {
         console.error('Error determining source attribution:', error);
         return {
@@ -258,11 +258,11 @@ function analyzeChunkSources(searchResults) {
         hasSyllabus: false,
         hasUnknownType: false
     };
-    
+
     for (const result of searchResults) {
         const docType = result.type || result.documentType || 'unknown';
         console.log('🔍 [SOURCE_DEBUG] Analyzing chunk with docType:', docType, 'fileName:', result.fileName);
-        
+
         switch (docType) {
             case 'lecture_notes':
                 analysis.hasLectureNotes = true;
@@ -284,7 +284,7 @@ function analyzeChunkSources(searchResults) {
                 // Try to infer type from filename for legacy documents
                 const fileName = (result.fileName || '').toLowerCase();
                 console.log('🔍 [SOURCE_DEBUG] Inferring type from filename:', fileName);
-                
+
                 // Be more specific about lecture notes inference
                 if (fileName.includes('lecture') && (fileName.includes('notes') || fileName.includes('note'))) {
                     analysis.hasLectureNotes = true;
@@ -301,7 +301,7 @@ function analyzeChunkSources(searchResults) {
                 break;
         }
     }
-    
+
     return analysis;
 }
 
@@ -317,28 +317,28 @@ async function checkLearningObjectivesMatch(searchResults, courseId, unitName, d
     try {
         // Get learning objectives for the unit
         const learningObjectives = await CourseModel.getLearningObjectives(db, courseId, unitName);
-        
+
         if (!learningObjectives || learningObjectives.length === 0) {
             return false;
         }
-        
+
         // Check if any chunk text contains learning objective keywords
-        const objectiveKeywords = learningObjectives.flatMap(obj => 
+        const objectiveKeywords = learningObjectives.flatMap(obj =>
             obj.toLowerCase().split(/\s+/).filter(word => word.length > 3)
         );
-        
+
         for (const result of searchResults) {
             const chunkText = result.chunkText.toLowerCase();
-            const matches = objectiveKeywords.filter(keyword => 
+            const matches = objectiveKeywords.filter(keyword =>
                 chunkText.includes(keyword)
             );
-            
+
             // If chunk matches multiple learning objective keywords, likely from objectives
             if (matches.length >= 2) {
                 return true;
             }
         }
-        
+
         return false;
     } catch (error) {
         console.error('Error checking learning objectives match:', error);
@@ -358,7 +358,7 @@ router.post('/', async (req, res) => {
         console.log('💬 [CHAT_API] New chat request received');
         console.log('💬 [CHAT_API] Message:', req.body.message?.substring(0, 50) + '...');
         console.log('💬 [CHAT_API] Has conversationContext:', !!req.body.conversationContext);
-        
+
         // Check if LLM service is initialized
         if (!llmService) {
             return res.status(503).json({
@@ -368,8 +368,8 @@ router.post('/', async (req, res) => {
         }
 
         const { message, conversationId, mode, unitName, courseId, conversationContext } = req.body;
-        
-        
+
+
         // Validate required fields
         if (!message || typeof message !== 'string') {
             return res.status(400).json({
@@ -377,7 +377,7 @@ router.post('/', async (req, res) => {
                 message: 'Message is required and must be a string'
             });
         }
-        
+
         console.log(`💬 Chat request received: "${message.substring(0, 50)}..."`);
         console.log(`🎯 Mode: ${mode || 'default'}`);
 
@@ -520,7 +520,7 @@ router.post('/', async (req, res) => {
         const contextText = searchResults
             .map(r => `From ${r.lectureName} (${r.fileName}):\n${r.chunkText}`)
             .join('\n\n---\n\n');
-        
+
         // Determine source attribution based on retrieved chunks
         console.log('🔍 [SOURCE_DEBUG] Retrieved chunks for source analysis:', searchResults.map(r => ({
             fileName: r.fileName,
@@ -528,7 +528,7 @@ router.post('/', async (req, res) => {
             type: r.type,
             lectureName: r.lectureName
         })));
-        
+
         let sourceAttribution;
         try {
             sourceAttribution = await determineSourceAttribution(searchResults, courseId, unitName, db);
@@ -542,7 +542,7 @@ router.post('/', async (req, res) => {
                 documentType: null
             };
         }
-        
+
         // Build the message to send to LLM
         let messageToSend = `Use only the provided course context to answer. Cite which unit a fact came from.
 \n\nCourse context:\n${contextText}\n\nStudent question: ${message}`;
@@ -550,17 +550,17 @@ router.post('/', async (req, res) => {
         // If we have conversation context (continuing a chat), use structured conversation approach
         if (conversationContext && conversationContext.conversationMessages) {
             console.log('🔄 [CHAT_CONTINUE] Using structured conversation context');
-            
+
             // Build the conversation history as a single message
             let conversationHistory = '';
             conversationContext.conversationMessages.forEach(msg => {
                 const speaker = msg.role === 'user' ? 'Student' : 'BiocBot';
                 conversationHistory += `${speaker}: ${msg.content}\n\n`;
             });
-            
+
             // Add the student's new message
             conversationHistory += `Student: ${message}`;
-            
+
             // Create the full message with conversation context
             messageToSend = `Use only the provided course context to answer. Cite which unit a fact came from.
 
@@ -571,6 +571,61 @@ Previous conversation:
 ${conversationHistory}`;
         }
 
+        let protegePrompt = `
+PROTÉGÉ MODE: You are the learner, and the student is teaching you.
+
+Your Role:
+The student has demonstrated understanding of the material. Your job is to help them deepen that understanding by letting them teach and explain concepts to you. This "learning by teaching" approach helps students consolidate their knowledge and identify gaps.
+
+How to Engage:
+- Show genuine curiosity about what they're explaining
+- Ask thoughtful follow-up questions that prompt them to elaborate: "How does that work at the molecular level?" or "What would happen if that enzyme was inhibited?"
+- Request examples or applications: "Can you give me an example of when that pathway would be activated?" or "How does this connect to what we learned about glycolysis?"
+- Express occasional mild confusion to prompt clearer explanations: "I'm not quite following how that cofactor fits in - can you walk me through that part again?"
+- Celebrate good explanations: "Oh, that makes sense now! So basically..." (then paraphrase to confirm understanding)
+- Ask comparative questions: "How is this different from the process we talked about earlier?"
+
+What to Avoid:
+- Don't be adversarial or overly critical - you're a supportive peer, not an examiner
+- Don't ask rapid-fire factual questions that feel like a quiz
+- Don't pretend to know less than you do about basic concepts - you're a peer in the course
+- Don't give mini-lectures or correct them directly - instead, ask questions that help them self-correct
+
+Example Interactions:
+- Student: "Enzymes lower activation energy"
+- You: "Right, and how exactly do they do that? Like what's happening at the active site?"
+
+- Student: "The Krebs cycle produces ATP"
+- You: "I remember it makes some ATP, but isn't there something about it producing molecules that are used later? What else comes out of it?"`
+
+        let tutorPrompt = `INSTRUCTOR MODE: You are the guide, and the student is learning.
+
+Your Role:
+The student needs support understanding the material. Your job is to provide clear explanations, guide their thinking, and help build their understanding step by step. You're a knowledgeable peer tutor, not a lecturer.
+
+How to Engage:
+- Start by understanding what they already know: "What's your current understanding of this?" or "What parts make sense so far?"
+- Provide clear, structured explanations that build on what they know
+- Use concrete examples from cellular biology: "Think about how a muscle cell needs quick ATP during exercise..."
+- Break complex processes into steps: "Let's take this one step at a time. First..."
+- Check for understanding along the way: "Does that part make sense?" or "Can you explain back to me how that step works?"
+- Connect new concepts to things they've already learned: "Remember how we talked about enzyme regulation? This is similar because..."
+- Encourage them to think through problems: "What do you think would happen if... ?" instead of just giving answers
+
+What to Avoid:
+- Don't dump information - keep explanations digestible and interactive
+- Don't just give direct answers to homework questions - guide them to the answer
+- Don't use overly technical language without explanation
+- Don't move on without checking they're following along
+- Don't make them feel bad for not knowing - everyone learns at their own pace
+
+Example Interactions:
+- Student: "I don't understand enzyme inhibition"
+- You: "Okay, let's start with what you do know. Can you explain what an enzyme does in general? Then we'll build from there to talk about how inhibition works."
+
+- Student: "Why does the cell need so many steps in glycolysis?"
+- You: "Great question! Let's think about this together. What would happen if the cell tried to break down glucose in just one big reaction? Think about energy release..."`;
+
         // For now, we'll use single message approach
         // In the future, we can implement conversation persistence
         let response = await llmService.sendMessage(
@@ -578,14 +633,11 @@ ${conversationHistory}`;
             {
             // Adjust response based on student mode
             temperature: mode === 'protege' ? 0.5 : 0.5,
-            maxTokens: mode === 'protege' ? 1000 : 1000,
-            systemPrompt: llmService.getSystemPrompt() + 
-                (mode === 'protege' ? 
-                    '\n\nYou are in protégé mode. The student has demonstrated good understanding. Engage them as a study partner, ask follow-up questions, and explore topics together.' :
-                    '\n\nYou are in tutor mode. The student needs guidance. Provide clear explanations, examples, and step-by-step help.'
-                )
+            maxTokens: mode === 'protege' ? 32768 : 32768,
+            systemPrompt: llmService.getSystemPrompt() +
+                (mode === 'protege' ? protegePrompt : tutorPrompt)
         });
-        
+
         let fullContent = response && response.content ? response.content : '';
 
         // Detect truncation and auto-continue up to N times
@@ -602,7 +654,7 @@ ${conversationHistory}`;
             const endsClean = /[\.\!\?]\s*$/.test(tail);
             return !endsClean && content.length > 300;
         }
-        
+
         const MAX_CONTINUATIONS = 2;
         let cont = 0;
         while (cont < MAX_CONTINUATIONS && isLikelyTruncated(response, fullContent)) {
@@ -613,11 +665,8 @@ ${conversationHistory}`;
             const contResp = await llmService.sendMessage(contPrompt, {
                 temperature: mode === 'protege' ? 0.8 : 0.6,
                 maxTokens: mode === 'protege' ? 800 : 800,
-                systemPrompt: llmService.getSystemPrompt() + 
-                    (mode === 'protege' ? 
-                        '\n\nYou are in protégé mode. The student has demonstrated good understanding. Continue the explanation succinctly.' :
-                        '\n\nYou are in tutor mode. Continue the explanation clearly and step-by-step.'
-                    )
+                systemPrompt: llmService.getSystemPrompt() +
+                    (mode === 'protege' ? protegePrompt : tutorPrompt)
             });
             const chunk = contResp && contResp.content ? contResp.content : '';
             console.log(`📎 [CHAT_CONTINUE] Received chunk ${cont} length=${chunk.length}`);
@@ -626,7 +675,7 @@ ${conversationHistory}`;
             }
             response = contResp;
         }
-        
+
         // Format response for frontend
         const chatResponse = {
             success: true,
@@ -648,18 +697,18 @@ ${conversationHistory}`;
                 lectureNames
             }
         };
-        
+
         console.log(`✅ Chat response sent successfully`);
-        
+
         res.json(chatResponse);
-        
+
     } catch (error) {
         console.error('❌ Error in chat endpoint:', error);
-        
+
         // Provide user-friendly error messages
         let errorMessage = 'Sorry, I encountered an error processing your message.';
         let statusCode = 500;
-        
+
         if (error.message.includes('OLLAMA_ENDPOINT')) {
             errorMessage = 'Ollama service is not available. Please check if Ollama is running.';
             statusCode = 503;
@@ -670,7 +719,7 @@ ${conversationHistory}`;
             errorMessage = 'Service endpoint is not reachable. Please check your configuration.';
             statusCode = 503;
         }
-        
+
         res.status(statusCode).json({
             success: false,
             message: errorMessage,
@@ -688,24 +737,24 @@ ${conversationHistory}`;
 router.get('/status', async (req, res) => {
     try {
         const llmService = req.app.locals.llm;
-        
+
         if (!llmService) {
             return res.status(503).json({
                 success: false,
                 message: 'LLM service is not initialized'
             });
         }
-        
+
         const status = llmService.getStatus();
-        
+
         res.json({
             success: true,
             data: status
         });
-        
+
     } catch (error) {
         console.error('❌ Error getting chat status:', error);
-        
+
         res.status(500).json({
             success: false,
             message: 'Failed to get chat status',
@@ -723,18 +772,18 @@ router.get('/status', async (req, res) => {
 router.post('/test', async (req, res) => {
     try {
         console.log('🧪 Testing LLM connection...');
-        
+
         const llmService = req.app.locals.llm;
-        
+
         if (!llmService) {
             return res.status(503).json({
                 success: false,
                 message: 'LLM service is not initialized'
             });
         }
-        
+
         const isConnected = await llmService.testConnection();
-        
+
         if (isConnected) {
             res.json({
                 success: true,
@@ -750,10 +799,10 @@ router.post('/test', async (req, res) => {
                 timestamp: new Date().toISOString()
             });
         }
-        
+
     } catch (error) {
         console.error('❌ Error testing LLM connection:', error);
-        
+
         res.status(500).json({
             success: false,
             message: 'Failed to test LLM connection',
@@ -770,16 +819,16 @@ router.post('/test', async (req, res) => {
 router.get('/models', async (req, res) => {
     try {
         const llmService = req.app.locals.llm;
-        
+
         if (!llmService) {
             return res.status(503).json({
                 success: false,
                 message: 'LLM service is not initialized'
             });
         }
-        
+
         const models = await llmService.getAvailableModels();
-        
+
         res.json({
             success: true,
             data: {
@@ -788,10 +837,10 @@ router.get('/models', async (req, res) => {
                 timestamp: new Date().toISOString()
             }
         });
-        
+
     } catch (error) {
         console.error('❌ Error getting available models:', error);
-        
+
         res.status(500).json({
             success: false,
             message: 'Failed to get available models',
@@ -806,19 +855,19 @@ router.get('/models', async (req, res) => {
  */
 router.post('/save', async (req, res) => {
     try {
-        const { 
-            sessionId, 
-            courseId, 
-            studentId, 
-            studentName, 
-            unitName, 
-            title, 
-            messageCount, 
-            duration, 
-            savedAt, 
-            chatData 
+        const {
+            sessionId,
+            courseId,
+            studentId,
+            studentName,
+            unitName,
+            title,
+            messageCount,
+            duration,
+            savedAt,
+            chatData
         } = req.body;
-        
+
         // Validate required fields
         if (!sessionId || !courseId || !studentId || !studentName) {
             return res.status(400).json({
@@ -826,7 +875,7 @@ router.post('/save', async (req, res) => {
                 message: 'Missing required fields: sessionId, courseId, studentId, studentName'
             });
         }
-        
+
         // Get database instance from app.locals
         const db = req.app.locals.db;
         if (!db) {
@@ -835,10 +884,10 @@ router.post('/save', async (req, res) => {
                 message: 'Database connection not available'
             });
         }
-        
+
         // Save chat session to database
         const chatSessionsCollection = db.collection('chat_sessions');
-        
+
         const sessionData = {
             sessionId,
             courseId,
@@ -853,16 +902,16 @@ router.post('/save', async (req, res) => {
             isDeleted: false, // Soft deletion flag
             createdAt: new Date()
         };
-        
+
         // Insert or update the session
         await chatSessionsCollection.replaceOne(
             { sessionId: sessionId },
             sessionData,
             { upsert: true }
         );
-        
+
         console.log(`Chat session saved: ${sessionId} for student ${studentName} in course ${courseId}`);
-        
+
         res.json({
             success: true,
             message: 'Chat session saved successfully',
@@ -872,7 +921,7 @@ router.post('/save', async (req, res) => {
                 studentId: studentId
             }
         });
-        
+
     } catch (error) {
         console.error('Error saving chat session:', error);
         res.status(500).json({
@@ -882,4 +931,4 @@ router.post('/save', async (req, res) => {
     }
 });
 
-module.exports = router; 
+module.exports = router;

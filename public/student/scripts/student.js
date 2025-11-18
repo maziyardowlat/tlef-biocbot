@@ -15,7 +15,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const chatForm = document.getElementById('chat-form');
     const chatInput = document.getElementById('chat-input');
     const chatMessages = document.getElementById('chat-messages');
-    
+
     // Guard: Only allow students on this page; redirect others immediately
     const handleRoleGuard = (user) => {
         if (!user) return; // auth.js will handle redirect if unauthenticated
@@ -30,7 +30,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         window.location.href = '/login';
     };
-    
+
     // Perform role check as early as possible
     try {
         const existingUser = typeof getCurrentUser === 'function' ? getCurrentUser() : null;
@@ -43,31 +43,31 @@ document.addEventListener('DOMContentLoaded', async () => {
         // If anything goes wrong, rely on server-side protection
         console.warn('Student role guard failed softly:', e);
     }
-    
+
     // Initialize chat
     console.log('Student chat interface initialized');
-    
+
     // Wait for authentication to be ready before initializing auto-save
     const initializeAutoSaveWhenReady = async () => {
         console.log('🔐 [AUTH] Authentication ready, initializing auto-save...');
         await initializeAutoSave();
-        
+
         // Check for auto-continue after authentication is ready
         // Add a small delay to ensure auto-save data is fully loaded
         setTimeout(() => {
             // Only check for auto-continue if we're NOT loading from history
             const isLoadingFromHistory = sessionStorage.getItem('loadChatData');
             const isAlreadyLoadingFromHistory = window.loadingFromHistory;
-            
+
             if (!isLoadingFromHistory && !isAlreadyLoadingFromHistory) {
                 console.log('🔄 [AUTO-CONTINUE] Checking for auto-continue after auth ready...');
                 const wasAutoContinued = checkForAutoContinue();
-                
+
         if (wasAutoContinued) {
             console.log('🔄 [AUTO-CONTINUE] Chat was auto-continued, skipping assessment questions');
             // Set a flag to prevent assessment questions from loading
             window.autoContinued = true;
-            
+
             // Load the current session data into the interface
             // Add a small delay to ensure DOM is fully ready
             setTimeout(() => {
@@ -86,7 +86,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }, 100);
     };
-    
+
     // Check if auth is already ready
     if (getCurrentUser()) {
         console.log('🔐 [AUTH] User already authenticated, initializing auto-save immediately...');
@@ -95,7 +95,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Wait for auth:ready event
         document.addEventListener('auth:ready', initializeAutoSaveWhenReady);
     }
-    
+
     // Add beforeunload event to ensure auto-save data is preserved and synced
     window.addEventListener('beforeunload', async () => {
         console.log('Page unloading - syncing final auto-save data with server...');
@@ -104,13 +104,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             await syncAutoSaveWithServer(chatData);
         }
     });
-    
+
     // Load current course information and update UI
     loadCurrentCourseInfo();
-    
+
     // Check if we're loading from history first
     const isLoadingFromHistory = sessionStorage.getItem('loadChatData');
-    
+
     if (!isLoadingFromHistory) {
         // Check for published units and load real assessment questions
         // If no units are published, allow direct chat
@@ -118,34 +118,34 @@ document.addEventListener('DOMContentLoaded', async () => {
     } else {
         console.log('Loading from history, skipping assessment questions');
     }
-    
+
     // Initialize mode toggle functionality
     initializeModeToggle();
-    
+
     // Ensure mode toggle is properly set after a short delay (fallback for timing issues)
     setTimeout(() => {
         const currentMode = localStorage.getItem('studentMode') || 'tutor';
         console.log('🔧 [MODE_FALLBACK] Ensuring mode toggle is set to:', currentMode);
         updateModeToggleUI(currentMode);
     }, 200);
-    
+
     // Set up periodic timestamp updates
     setInterval(updateTimestamps, 20000); // Update every 20 seconds
-    
+
     // Initialize chat history storage
     initializeChatHistoryStorage();
-    
+
     // Check for chat data to load from history (after DOM is ready)
     setTimeout(() => {
         checkForChatDataToLoad();
     }, 100);
-    
+
     // Initialize user agreement modal
     initializeUserAgreement();
-    
+
     // Initialize new session button
     initializeNewSessionButton();
-    
+
     /**
      * Format timestamp for display
      * @param {Date} timestamp - The timestamp to format
@@ -158,7 +158,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const diffMinutes = Math.floor(diffSeconds / 60);
         const diffHours = Math.floor(diffMinutes / 60);
         const diffDays = Math.floor(diffHours / 24);
-        
+
         // Format based on how long ago
         if (diffSeconds < 60) {
             return 'Just now';
@@ -179,7 +179,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
     }
-    
+
     /**
      * Update all timestamps to show relative time
      */
@@ -193,7 +193,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         });
     }
-    
+
     /**
      * Send message to LLM service
      * @param {string} message - The message to send
@@ -203,18 +203,18 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             // Get current student mode for context
             const currentMode = localStorage.getItem('studentMode') || 'tutor';
-            
+
             // Get course ID from localStorage (should be set after course selection)
             const courseId = localStorage.getItem('selectedCourseId');
             if (!courseId) {
                 throw new Error('No course selected. Please select a course first.');
             }
-            
+
             const unitName = localStorage.getItem('selectedUnitName') || getCurrentUnitName();
-            
+
             // Check if we're continuing a chat and need to include conversation context
             const conversationContext = getConversationContext();
-            
+
             if (conversationContext) {
                 console.log('🔄 [CONTEXT] Conversation context retrieved:', {
                     messageCount: conversationContext.conversationMessages ? conversationContext.conversationMessages.length : 0,
@@ -224,7 +224,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             } else {
                 console.log('🔄 [CONTEXT] No conversation context - starting new conversation');
             }
-            
+
             const requestBody = {
                 message: message,
                 mode: currentMode,
@@ -232,8 +232,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 unitName: unitName,
                 conversationContext: conversationContext
             };
-            
-            
+
+
             console.log('🚀 [SEND] About to send request to /api/chat');
             console.log('🚀 [SEND] Request URL:', '/api/chat');
             console.log('🚀 [SEND] Request method:', 'POST');
@@ -241,7 +241,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (conversationContext && conversationContext.conversationMessages) {
                 console.log('🚀 [SEND] Conversation context includes', conversationContext.conversationMessages.length, 'messages');
             }
-            
+
             const response = await fetch('/api/chat', {
                 method: 'POST',
                 headers: {
@@ -249,32 +249,32 @@ document.addEventListener('DOMContentLoaded', async () => {
                 },
                 body: JSON.stringify(requestBody)
             });
-            
+
             console.log('🚀 [SEND] Response received:', response.status, response.statusText);
-            
+
             if (!response.ok) {
                 const errorData = await response.json();
                 throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
             }
-            
+
             const data = await response.json();
-            
+
             if (!data.success) {
                 throw new Error(data.message || 'Failed to get response from LLM');
             }
-            
+
             // Don't clear the continuing chat flags - we need them for the entire conversation
             // The flags will be cleared when starting a new chat session or explicitly clearing chat
             // This ensures the conversation context is maintained throughout the chat session
-            
+
             return data;
-            
+
         } catch (error) {
             console.error('Error sending message to LLM:', error);
             throw error;
         }
     }
-    
+
     /**
      * Check if the 15-message warning has already been shown
      * @returns {boolean} True if warning was already shown
@@ -285,12 +285,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (!chatData || !chatData.messages || chatData.messages.length === 0) {
                 return false;
             }
-            
+
             // Check if any bot message contains the warning text
             const warningText = 'Please be aware that after 15 messages, the quality of the responses might be degraded.';
-            return chatData.messages.some(msg => 
-                msg.type === 'bot' && 
-                msg.content && 
+            return chatData.messages.some(msg =>
+                msg.type === 'bot' &&
+                msg.content &&
                 msg.content.includes(warningText.substring(0, 50)) // Check first 50 chars to avoid exact match issues
             );
         } catch (error) {
@@ -298,7 +298,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             return false;
         }
     }
-    
+
     /**
      * Count messages starting from the first student message
      * Only counts regular-chat messages (user and bot)
@@ -311,53 +311,53 @@ document.addEventListener('DOMContentLoaded', async () => {
                 console.log('🔢 [COUNT] No chat data or messages found');
                 return 0;
             }
-            
+
             console.log('🔢 [COUNT] Total messages in chatData:', chatData.messages.length);
-            
+
             // Find the index of the first user message
-            const firstUserMessageIndex = chatData.messages.findIndex(msg => 
+            const firstUserMessageIndex = chatData.messages.findIndex(msg =>
                 msg.type === 'user' && msg.messageType === 'regular-chat'
             );
-            
+
             // If no user message found, return 0
             if (firstUserMessageIndex === -1) {
                 console.log('🔢 [COUNT] No first user message found');
                 return 0;
             }
-            
+
             console.log('🔢 [COUNT] First user message index:', firstUserMessageIndex);
-            
+
             // Count all regular-chat messages (user and bot) from the first user message onwards
             const messagesFromFirstStudent = chatData.messages.slice(firstUserMessageIndex).filter(msg =>
                 (msg.type === 'user' || msg.type === 'bot') && msg.messageType === 'regular-chat'
             );
-            
+
             console.log('🔢 [COUNT] Messages from first student:', messagesFromFirstStudent.length, 'out of', chatData.messages.slice(firstUserMessageIndex).length, 'total from that point');
             console.log('🔢 [COUNT] Message types breakdown:', messagesFromFirstStudent.map(m => `${m.type}:${m.messageType || 'no-type'}`));
-            
+
             return messagesFromFirstStudent.length;
         } catch (error) {
             console.error('Error counting messages from first student:', error);
             return 0;
         }
     }
-    
+
     /**
      * Get conversation context for continuing a chat
      * @returns {Object|null} Conversation context or null if not continuing a chat
      */
     function getConversationContext() {
         console.log('🔄 [CONTEXT] Getting conversation context...');
-        
+
         // Check if we're continuing a chat (this flag is set when loading chat data)
         const isContinuingChat = sessionStorage.getItem('isContinuingChat') === 'true';
         console.log('🔄 [CONTEXT] isContinuingChat flag:', isContinuingChat);
-        
+
         // Always get the latest chat data from localStorage to ensure we have the most recent messages
         // The sessionStorage might be stale if messages were added after loading
         const currentChatData = getCurrentChatData();
         let loadedChatData = null;
-        
+
         if (currentChatData && currentChatData.messages && currentChatData.messages.length > 0) {
             console.log('🔄 [CONTEXT] Found', currentChatData.messages.length, 'messages in localStorage (latest)');
             // Always use the latest data from localStorage
@@ -374,30 +374,30 @@ document.addEventListener('DOMContentLoaded', async () => {
                 console.log('🔄 [CONTEXT] No chat data found in localStorage or sessionStorage');
             }
         }
-        
+
         if (!loadedChatData) {
             console.log('🔄 [CONTEXT] No chat data available, returning null');
             return null;
         }
-        
+
         console.log('🔄 [CONTEXT] Chat data found, building conversation context...');
-        
+
         try {
             const chatData = JSON.parse(loadedChatData);
-            
+
             // Verify session ID matches - only use context if we're in the same session
             const currentChatData = getCurrentChatData();
             let currentSessionId = null;
             if (currentChatData && currentChatData.sessionInfo && currentChatData.sessionInfo.sessionId) {
                 currentSessionId = currentChatData.sessionInfo.sessionId;
             }
-            
-            const loadedSessionId = chatData.sessionInfo && chatData.sessionInfo.sessionId 
-                ? chatData.sessionInfo.sessionId 
+
+            const loadedSessionId = chatData.sessionInfo && chatData.sessionInfo.sessionId
+                ? chatData.sessionInfo.sessionId
                 : null;
-            
+
             console.log('🔄 [CONTEXT] Session ID check - Current:', currentSessionId || 'none', 'Loaded:', loadedSessionId || 'none');
-            
+
             // If we have a current session ID, verify it matches the loaded session ID
             if (currentSessionId && loadedSessionId && currentSessionId !== loadedSessionId) {
                 console.log('🔄 [CONTEXT] Session ID mismatch! Current:', currentSessionId, 'Loaded:', loadedSessionId);
@@ -407,7 +407,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 sessionStorage.removeItem('loadedChatData');
                 return null;
             }
-            
+
             // If current session has no ID but loaded does, it means we're starting fresh
             // Don't use old session context - new sessions should not reference old conversations
             if (!currentSessionId && loadedSessionId) {
@@ -416,7 +416,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 sessionStorage.removeItem('loadedChatData');
                 return null;
             }
-            
+
             // If both have the same session ID, or if we're continuing a chat (auto-continue scenario),
             // we can use the context. If both are null, it's a brand new session without context.
             if (currentSessionId && loadedSessionId && currentSessionId === loadedSessionId) {
@@ -425,33 +425,33 @@ document.addEventListener('DOMContentLoaded', async () => {
                 // Both null - this shouldn't happen if loadedChatData exists, but handle it
                 console.log('🔄 [CONTEXT] Both session IDs are null - might be continuing without explicit session ID');
             }
-            
+
             const currentMode = localStorage.getItem('studentMode') || 'tutor';
             const unitName = localStorage.getItem('selectedUnitName') || 'this unit';
-            
+
             // Build structured conversation context
             const conversationMessages = [];
-            
+
             // 1) System prompt (handled by the API)
-            
+
             // 2) Hardcoded assistant response with learning objectives and test questions
             let assistantResponse = `I'm BiocBot in ${currentMode === 'protege' ? 'Protégé' : 'Tutor'} Mode. We're discussing ${unitName} this week.`;
-            
+
             if (chatData.practiceTests && chatData.practiceTests.questions.length > 0) {
                 assistantResponse += ` How did you get on with the test questions?`;
             } else {
                 assistantResponse += ` How can I help you today?`;
             }
-            
+
             conversationMessages.push({
                 role: 'assistant',
                 content: assistantResponse
             });
-            
+
             // 3) Hardcoded student response with test answers (if practice test exists)
-            if (chatData.practiceTests && chatData.practiceTests.questions.length > 0 && 
+            if (chatData.practiceTests && chatData.practiceTests.questions.length > 0 &&
                 chatData.studentAnswers && chatData.studentAnswers.answers.length > 0) {
-                
+
                 let studentResponse = `Here's my responses to those:\n\n`;
                 chatData.studentAnswers.answers.forEach((answer, index) => {
                     const question = chatData.practiceTests.questions[index];
@@ -462,35 +462,35 @@ document.addEventListener('DOMContentLoaded', async () => {
                         studentResponse += `   Result: ${answer.isCorrect ? 'Correct' : 'Incorrect'}\n\n`;
                     }
                 });
-                
+
                 conversationMessages.push({
                     role: 'user',
                     content: studentResponse
                 });
-                
+
                 // 4) Hardcoded assistant response acknowledging the test
                 // Calculate overall performance
                 const correctAnswers = chatData.studentAnswers.answers.filter(a => a.isCorrect).length;
                 const totalAnswers = chatData.studentAnswers.answers.length;
                 const performance = correctAnswers / totalAnswers;
                 const passThreshold = chatData.practiceTests.passThreshold / 100;
-                
+
                 conversationMessages.push({
                     role: 'assistant',
                     content: `Thank you for that. Based on your responses, I can see you ${performance >= passThreshold ? 'demonstrated good understanding' : 'need some additional support'}. So how can I help you today?`
                 });
             }
-            
+
             // 5) Add the actual conversation history from the previous chat
             if (chatData.messages && chatData.messages.length > 0) {
                 // Filter out system messages and only include actual conversation
-                const regularChatMessages = chatData.messages.filter(msg => 
-                    msg.messageType === 'regular-chat' && 
+                const regularChatMessages = chatData.messages.filter(msg =>
+                    msg.messageType === 'regular-chat' &&
                     (msg.type === 'user' || msg.type === 'bot')
                 );
-                
+
                 console.log('🔄 [CONTEXT] Found', regularChatMessages.length, 'regular chat messages to include in context');
-                
+
                 // Add the conversation history
                 regularChatMessages.forEach((msg, index) => {
                     conversationMessages.push({
@@ -502,7 +502,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         console.log(`🔄 [CONTEXT] Message ${index + 1}:`, msg.type, '-', msg.content.substring(0, 50) + '...');
                     }
                 });
-                
+
                 // Log last few messages with full content for debugging
                 if (regularChatMessages.length > 3) {
                     const lastFew = regularChatMessages.slice(-3);
@@ -515,10 +515,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                         }
                     });
                 }
-                
+
                 // Also search through all messages for hero-related content to verify it's included
-                const heroMessages = regularChatMessages.filter(msg => 
-                    msg.content.toLowerCase().includes('hero') || 
+                const heroMessages = regularChatMessages.filter(msg =>
+                    msg.content.toLowerCase().includes('hero') ||
                     msg.content.toLowerCase().includes('batman') ||
                     msg.content.toLowerCase().includes('favorite')
                 );
@@ -530,40 +530,40 @@ document.addEventListener('DOMContentLoaded', async () => {
                     });
                 }
             }
-            
+
             console.log('🔄 [CONTEXT] Total conversation messages in context:', conversationMessages.length);
             console.log('🔄 [CONTEXT] Context summary:', {
                 totalMessages: conversationMessages.length,
                 mode: currentMode,
                 hasPracticeTest: !!(chatData.practiceTests && chatData.practiceTests.questions.length > 0)
             });
-            
+
             return {
                 conversationMessages: conversationMessages,
                 mode: currentMode,
                 hasPracticeTest: !!(chatData.practiceTests && chatData.practiceTests.questions.length > 0)
             };
-            
+
         } catch (error) {
             console.error('Error building conversation context:', error);
             return null;
         }
     }
-    
+
     // Handle chat form submission
     if (chatForm) {
         chatForm.addEventListener('submit', async (e) => {
             e.preventDefault();
-            
+
             // Prevent chat if no published units are available
             if (window.noPublishedUnits) {
                 console.log('Chat disabled - no published units available');
                 return;
             }
-            
+
             const message = chatInput.value.trim();
             if (!message) return;
-            
+
             // Check if we need to show the 15-message warning BEFORE adding the user message
             // We want to show the warning before the bot responds to the student's 14th message
             // If count is 13, after adding user message = 14, bot response = 15 (show warning)
@@ -572,20 +572,20 @@ document.addEventListener('DOMContentLoaded', async () => {
             const messageCountBefore = countMessagesFromFirstStudent();
             const warningAlreadyShown = hasWarningBeenShown();
             const shouldShowWarning = !warningAlreadyShown && (messageCountBefore === 13 || messageCountBefore === 14);
-            
+
             if (shouldShowWarning) {
                 console.log('⚠️ [CHAT] Will show 15-message warning after user message (current count:', messageCountBefore, ', warning already shown:', warningAlreadyShown, ')');
             } else if (messageCountBefore === 13 || messageCountBefore === 14) {
                 console.log('⚠️ [CHAT] Warning already shown, skipping (current count:', messageCountBefore, ')');
             }
-            
+
             // Add user message to chat
             console.log('💬 [CHAT] Adding user message to chat:', message.substring(0, 50) + '...');
             addMessage(message, 'user');
-            
+
             // Clear input
             chatInput.value = '';
-            
+
             // Show warning message if needed (before the bot responds)
             // Since autoSaveMessage is synchronous, we can add the warning immediately
             if (shouldShowWarning) {
@@ -598,20 +598,20 @@ document.addEventListener('DOMContentLoaded', async () => {
                     documentType: null
                 });
             }
-            
+
             // Show typing indicator
             showTypingIndicator();
-            
+
             // Send message to real LLM service
             try {
                 const response = await sendMessageToLLM(message);
-                
+
                 // Remove typing indicator
                 removeTypingIndicator();
-                
+
                 // Add real bot response
                 console.log('💬 [CHAT] Adding bot response to chat:', response.message.substring(0, 50) + '...');
-                
+
                 // Log debug information for source attribution
                 if (response.debug) {
                     console.log('🔍 [SOURCE_DEBUG] Search results count:', response.debug.searchResultsCount);
@@ -620,13 +620,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                     console.log('🔍 [SOURCE_DEBUG] Document types:', response.debug.documentTypes);
                     console.log('🔍 [SOURCE_DEBUG] Source attribution:', response.sourceAttribution);
                 }
-                
+
                 addMessage(response.message, 'bot', true, false, response.sourceAttribution);
-                
+
             } catch (error) {
                 // Remove typing indicator
                 removeTypingIndicator();
-                
+
                 // Show error message
                 console.error('Chat error:', error);
                 console.log('💬 [CHAT] Adding error message to chat');
@@ -634,37 +634,37 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         });
     }
-    
+
     // Note: addMessage function is defined globally below with auto-save functionality
-    
+
     // Function to show typing indicator
     function showTypingIndicator() {
         const typingDiv = document.createElement('div');
         typingDiv.classList.add('message', 'bot-message', 'typing-indicator');
         typingDiv.id = 'typing-indicator';
-        
+
         const avatarDiv = document.createElement('div');
         avatarDiv.classList.add('message-avatar');
         avatarDiv.textContent = 'B';
-        
+
         const dotsDiv = document.createElement('div');
         dotsDiv.classList.add('dots');
-        
+
         for (let i = 0; i < 3; i++) {
             const dot = document.createElement('div');
             dot.classList.add('dot');
             dotsDiv.appendChild(dot);
         }
-        
+
         typingDiv.appendChild(avatarDiv);
         typingDiv.appendChild(dotsDiv);
-        
+
         chatMessages.appendChild(typingDiv);
-        
+
         // Scroll to bottom
         chatMessages.scrollTop = chatMessages.scrollHeight;
     }
-    
+
     // Function to remove typing indicator
     function removeTypingIndicator() {
         const typingIndicator = document.getElementById('typing-indicator');
@@ -752,7 +752,7 @@ async function renderStandaloneCourseSelectorBelowHeader(container) {
  */
 function addMessage(content, sender, withSource = false, skipAutoSave = false, sourceAttribution = null) {
     console.log('🔧 [ADD_MESSAGE] Function called with:', { content: content.substring(0, 50) + '...', sender, withSource });
-    
+
     const chatMessages = document.getElementById('chat-messages');
     if (!chatMessages) {
         console.error('Chat messages container not found');
@@ -761,52 +761,52 @@ function addMessage(content, sender, withSource = false, skipAutoSave = false, s
 
     const messageDiv = document.createElement('div');
     messageDiv.classList.add('message', sender + '-message');
-    
+
     const avatarDiv = document.createElement('div');
     avatarDiv.classList.add('message-avatar');
     avatarDiv.textContent = sender === 'user' ? 'S' : 'B';
-    
+
     const contentDiv = document.createElement('div');
     contentDiv.classList.add('message-content');
-    
+
     const paragraph = document.createElement('p');
     paragraph.textContent = content;
-    
+
     contentDiv.appendChild(paragraph);
-    
+
     // Create message footer for bottom elements
     const footerDiv = document.createElement('div');
     footerDiv.classList.add('message-footer');
-    
+
     // Add source citation if needed
     if (withSource && sender === 'bot') {
         const sourceDiv = document.createElement('div');
         sourceDiv.classList.add('message-source');
-        
+
         // Use actual source attribution if available, otherwise show TBD
         if (sourceAttribution && sourceAttribution.description) {
             sourceDiv.innerHTML = `Source: ${sourceAttribution.description}`;
         } else {
             sourceDiv.innerHTML = 'Source: TBD';
         }
-        
+
         footerDiv.appendChild(sourceDiv);
     }
-    
+
     // Create right side container for timestamp and flag button
     const rightContainer = document.createElement('div');
     rightContainer.classList.add('message-footer-right');
-    
+
     const timestamp = document.createElement('span');
     timestamp.classList.add('timestamp');
-    
+
     // Create real timestamp
     const messageTime = new Date();
     timestamp.textContent = formatTimestamp(messageTime);
-    
+
     // Store timestamp in message div for future updates
     messageDiv.dataset.timestamp = messageTime.getTime();
-    
+
     // Add title attribute for exact time on hover
     timestamp.title = messageTime.toLocaleString('en-US', {
         weekday: 'long',
@@ -818,20 +818,20 @@ function addMessage(content, sender, withSource = false, skipAutoSave = false, s
         second: '2-digit',
         hour12: true
     });
-    
+
     rightContainer.appendChild(timestamp);
-    
+
     // Add flag button for bot messages
     if (sender === 'bot') {
         const flagContainer = document.createElement('div');
         flagContainer.classList.add('message-flag-container');
-        
+
         const flagButton = document.createElement('button');
         flagButton.classList.add('flag-button');
         flagButton.innerHTML = '⚑';
         flagButton.title = 'Flag this message';
         flagButton.onclick = () => toggleFlagMenu(flagButton);
-        
+
         // Create flag menu
         const flagMenu = document.createElement('div');
         flagMenu.classList.add('flag-menu');
@@ -840,23 +840,23 @@ function addMessage(content, sender, withSource = false, skipAutoSave = false, s
             <div class="flag-option" onclick="flagMessage(this, 'incorrect')">Incorrect</div>
             <div class="flag-option" onclick="flagMessage(this, 'unclear')">Unclear</div>
         `;
-        
+
         flagContainer.appendChild(flagButton);
         flagContainer.appendChild(flagMenu);
         rightContainer.appendChild(flagContainer);
     }
-    
+
     footerDiv.appendChild(rightContainer);
     contentDiv.appendChild(footerDiv);
-    
+
     messageDiv.appendChild(avatarDiv);
     messageDiv.appendChild(contentDiv);
-    
+
     chatMessages.appendChild(messageDiv);
-    
+
     // Scroll to bottom
     chatMessages.scrollTop = chatMessages.scrollHeight;
-    
+
     // Auto-save the message
     // Only auto-save if not explicitly skipped
     if (!skipAutoSave) {
@@ -876,7 +876,7 @@ function addMessage(content, sender, withSource = false, skipAutoSave = false, s
 async function initializeAutoSave() {
     try {
         console.log('=== INITIALIZING AUTO-SAVE ===');
-        
+
         // Get current student info using the same functions as the rest of the code
         const studentId = getCurrentStudentId();
         // Get student name synchronously from currentUser to avoid Promise issues
@@ -886,22 +886,22 @@ async function initializeAutoSave() {
         const courseName = document.querySelector('.course-name')?.textContent || 'Unknown Course';
         const unitName = localStorage.getItem('selectedUnitName') || 'this unit';
         const currentMode = localStorage.getItem('studentMode') || 'tutor';
-        
+
         console.log('Auto-save student info:', { studentId, studentName, courseId, courseName, unitName, currentMode });
-        
+
         // Check if there's already existing chat data
         const autoSaveKey = `biocbot_current_chat_${studentId}`;
         const existingChatData = localStorage.getItem(autoSaveKey);
-        
+
         if (existingChatData) {
             const parsedData = JSON.parse(existingChatData);
             if (parsedData.messages && parsedData.messages.length > 0) {
                 console.log('🔄 [AUTO-SAVE] Existing chat data found with', parsedData.messages.length, 'messages, not overwriting');
-                
+
                 // Ensure the session ID is properly restored if it exists in localStorage
                 const sessionKey = `biocbot_session_${studentId}_${courseId}_${unitName}`;
                 const existingSessionId = localStorage.getItem(sessionKey);
-                
+
                 // If localStorage has a session ID but chat data doesn't, restore it
                 if (existingSessionId && (!parsedData.sessionInfo || !parsedData.sessionInfo.sessionId)) {
                     if (!parsedData.sessionInfo) {
@@ -910,17 +910,17 @@ async function initializeAutoSave() {
                     parsedData.sessionInfo.sessionId = existingSessionId;
                     localStorage.setItem(autoSaveKey, JSON.stringify(parsedData));
                     console.log('🔄 [AUTO-SAVE] Restored session ID from localStorage:', existingSessionId);
-                } 
+                }
                 // If chat data has a session ID but localStorage doesn't, restore it
                 else if (parsedData.sessionInfo && parsedData.sessionInfo.sessionId && !existingSessionId) {
                     localStorage.setItem(sessionKey, parsedData.sessionInfo.sessionId);
                     console.log('🔄 [AUTO-SAVE] Restored session ID to localStorage:', parsedData.sessionInfo.sessionId);
                 }
-                
+
                 return; // Don't overwrite existing chat data
             }
         }
-        
+
         // Create initial empty chat data structure only if no existing data
         const initialChatData = {
             metadata: {
@@ -945,13 +945,13 @@ async function initializeAutoSave() {
                 duration: '0 minutes'
             }
         };
-        
+
         // Store in localStorage for auto-save updates
         localStorage.setItem(autoSaveKey, JSON.stringify(initialChatData));
-        
+
         console.log('Auto-save initialized with empty chat data structure');
         console.log('Auto-save key:', autoSaveKey);
-        
+
     } catch (error) {
         console.error('Error initializing auto-save:', error);
     }
@@ -968,18 +968,18 @@ function autoSaveMessage(content, sender, withSource = false, sourceAttribution 
     try {
         console.log('=== AUTO-SAVING MESSAGE ===');
         console.log('Message:', { content: content.substring(0, 50) + '...', sender, withSource });
-        
+
         // Get current student ID using the same function as the rest of the code
         const studentId = getCurrentStudentId();
         const autoSaveKey = `biocbot_current_chat_${studentId}`;
         console.log('🔄 [AUTO-SAVE] Student ID:', studentId);
         console.log('🔄 [AUTO-SAVE] Auto-save key:', autoSaveKey);
-        
+
         // Get current chat data
         let currentChatData = JSON.parse(localStorage.getItem(autoSaveKey) || '{}');
         console.log('🔄 [AUTO-SAVE] Current chat data exists:', !!currentChatData.messages);
         console.log('🔄 [AUTO-SAVE] Current message count:', currentChatData.messages ? currentChatData.messages.length : 0);
-        
+
         // If no current chat data exists, initialize it
         if (!currentChatData.messages) {
             console.log('🔄 [AUTO-SAVE] No current chat data found, initializing...');
@@ -992,7 +992,7 @@ function autoSaveMessage(content, sender, withSource = false, sourceAttribution 
             const courseName = document.querySelector('.course-name')?.textContent || 'Unknown Course';
             const unitName = localStorage.getItem('selectedUnitName') || 'this unit';
             const currentMode = localStorage.getItem('studentMode') || 'tutor';
-            
+
             currentChatData = {
                 metadata: {
                     exportDate: new Date().toISOString(),
@@ -1020,7 +1020,7 @@ function autoSaveMessage(content, sender, withSource = false, sourceAttribution 
                 },
                 lastActivityTimestamp: new Date().toISOString()
             };
-            
+
             // Ensure session ID is set when creating new chat data
             // This prevents new sessions from being created on page refresh
             const sessionKey = `biocbot_session_${studentId}_${courseId}_${unitName}`;
@@ -1033,10 +1033,10 @@ function autoSaveMessage(content, sender, withSource = false, sourceAttribution 
                 console.log('🔄 [AUTO-SAVE] Using existing session ID:', sessionId);
             }
             currentChatData.sessionInfo.sessionId = sessionId;
-            
+
             console.log('🔄 [AUTO-SAVE] Initialized empty chat data structure with session ID');
         }
-        
+
         // Create new message object
         const newMessage = {
             type: sender,
@@ -1046,28 +1046,28 @@ function autoSaveMessage(content, sender, withSource = false, sourceAttribution 
             messageType: 'regular-chat',
             sourceAttribution: sourceAttribution || null  // Save source attribution for restoration
         };
-        
+
         // Add message to messages array
         currentChatData.messages.push(newMessage);
-        
+
         // Update metadata - only count actual chat messages (not assessment messages)
         currentChatData.metadata.totalMessages = currentChatData.messages.length;
         currentChatData.metadata.exportDate = new Date().toISOString();
         currentChatData.metadata.currentMode = localStorage.getItem('studentMode') || 'tutor'; // Update current mode
         currentChatData.sessionInfo.endTime = new Date().toISOString();
         currentChatData.sessionInfo.duration = calculateSessionDuration(currentChatData);
-        
+
         // Update last activity timestamp for auto-continue feature
         currentChatData.lastActivityTimestamp = new Date().toISOString();
-        
+
         // Update assessment data if available
         updateAssessmentDataInAutoSave(currentChatData);
-        
+
         // Save back to localStorage
         localStorage.setItem(autoSaveKey, JSON.stringify(currentChatData));
-        
+
         console.log(`🔄 [AUTO-SAVE] ✅ Successfully auto-saved message. Total messages: ${currentChatData.messages.length}`);
-        
+
         // Debug: Log the current auto-save data structure
         console.log('🔄 [AUTO-SAVE] Current auto-save data:', {
             totalMessages: currentChatData.messages.length,
@@ -1075,15 +1075,15 @@ function autoSaveMessage(content, sender, withSource = false, sourceAttribution 
             courseId: currentChatData.metadata.courseId,
             studentId: currentChatData.metadata.studentId
         });
-        
+
         // Verify the save worked
         const verifyData = JSON.parse(localStorage.getItem(autoSaveKey) || '{}');
         console.log('🔄 [AUTO-SAVE] Verification - saved data has', verifyData.messages ? verifyData.messages.length : 0, 'messages');
-        
+
         // Sync with server after every message to ensure nothing is lost
         console.log('🔄 [AUTO-SAVE] Syncing with server after each message...');
         syncAutoSaveWithServer(currentChatData);
-        
+
     } catch (error) {
         console.error('Error auto-saving message:', error);
     }
@@ -1098,17 +1098,17 @@ function getCurrentSessionId(chatData) {
     const studentId = chatData.metadata.studentId;
     const courseId = chatData.metadata.courseId;
     const unitName = chatData.metadata.unitName;
-    
+
     // First, check if the chat data already has a session ID (from loaded history)
     if (chatData.sessionInfo && chatData.sessionInfo.sessionId) {
         console.log('🔄 [SESSION] Using session ID from chat data:', chatData.sessionInfo.sessionId);
         return chatData.sessionInfo.sessionId;
     }
-    
+
     // Check if we have a stored session ID for this chat
     const sessionKey = `biocbot_session_${studentId}_${courseId}_${unitName}`;
     let sessionId = localStorage.getItem(sessionKey);
-    
+
     if (!sessionId) {
         // Create a new session ID
         sessionId = `autosave_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -1117,7 +1117,7 @@ function getCurrentSessionId(chatData) {
     } else {
         console.log('🔄 [SESSION] Using existing session ID:', sessionId);
     }
-    
+
     // Ensure the session ID is stored in chatData.sessionInfo for consistency
     // This prevents the session ID from being lost on page refresh
     if (chatData && (!chatData.sessionInfo || !chatData.sessionInfo.sessionId || chatData.sessionInfo.sessionId !== sessionId)) {
@@ -1125,7 +1125,7 @@ function getCurrentSessionId(chatData) {
             chatData.sessionInfo = {};
         }
         chatData.sessionInfo.sessionId = sessionId;
-        
+
         // Also update localStorage to keep it in sync
         const studentIdFromData = chatData.metadata.studentId;
         const autoSaveKey = `biocbot_current_chat_${studentIdFromData}`;
@@ -1136,7 +1136,7 @@ function getCurrentSessionId(chatData) {
             console.warn('🔄 [SESSION] Could not update session ID in chat data:', error);
         }
     }
-    
+
     return sessionId;
 }
 
@@ -1151,13 +1151,13 @@ function shouldCreateNewSession(chatData) {
     if (!chatInputContainer) {
         return false;
     }
-    
+
     // If chat input is disabled, assessment is being taken - create new session
     if (chatInputContainer.style.display === 'none') {
         console.log('🔄 [SESSION] Assessment in progress (chat disabled) - creating new session');
         return true;
     }
-    
+
     // If chat input is enabled, assessment is completed - use existing session
     console.log('🔄 [SESSION] Assessment completed (chat enabled) - using existing session');
     return false;
@@ -1172,7 +1172,7 @@ function updateAssessmentDataInAutoSave(chatData) {
         // Get current assessment questions and answers from the correct variables
         const questions = window.currentCalibrationQuestions || [];
         const studentAnswers = window.studentAnswers || [];
-        
+
         // Update practice test data
         // Initialize practiceTests if it doesn't exist
         if (!chatData.practiceTests) {
@@ -1181,13 +1181,13 @@ function updateAssessmentDataInAutoSave(chatData) {
                 passThreshold: null
             };
         }
-        
+
         if (questions.length > 0) {
             chatData.practiceTests.questions = questions.map((q, index) => {
                 const studentAnswerIndex = studentAnswers[index];
                 let studentAnswerText = null;
                 let isCorrect = null;
-                
+
                 if (studentAnswerIndex !== undefined && studentAnswerIndex !== null) {
                     // Convert student answer index to actual answer text
                     if (q.type === 'true-false') {
@@ -1202,7 +1202,7 @@ function updateAssessmentDataInAutoSave(chatData) {
                     } else {
                         studentAnswerText = studentAnswerIndex;
                     }
-                    
+
                     // Check if answer is correct
                     if (q.type === 'true-false') {
                         const expectedAnswer = q.correctAnswer === true || q.correctAnswer === 'true';
@@ -1216,11 +1216,11 @@ function updateAssessmentDataInAutoSave(chatData) {
                         }
                         isCorrect = (studentAnswerIndex === expectedIndex);
                     } else {
-                        isCorrect = (studentAnswerIndex === q.correctAnswer || 
+                        isCorrect = (studentAnswerIndex === q.correctAnswer ||
                                    studentAnswerIndex === q.correctAnswer.toString());
                     }
                 }
-                
+
                 return {
                     questionId: q.id || index,
                     question: q.question,
@@ -1234,14 +1234,14 @@ function updateAssessmentDataInAutoSave(chatData) {
                 };
             });
         }
-        
+
         // Update student answers
         chatData.studentAnswers.answers = studentAnswers.map((answer, index) => ({
             questionIndex: index,
             answer: answer,
             timestamp: new Date().toISOString()
         }));
-        
+
         // Update pass threshold to use the actual calculated threshold
         if (window.currentPassThreshold !== undefined && questions.length > 0) {
             chatData.practiceTests.passThreshold = window.currentPassThreshold;
@@ -1249,13 +1249,13 @@ function updateAssessmentDataInAutoSave(chatData) {
             // If no questions, set practiceTests to null
             chatData.practiceTests = null;
         }
-        
+
         console.log('🔄 [AUTO-SAVE] Updated assessment data:', {
             questionsCount: chatData.practiceTests ? chatData.practiceTests.questions.length : 0,
             answersCount: chatData.studentAnswers.answers.length,
             passThreshold: chatData.practiceTests ? chatData.practiceTests.passThreshold : null
         });
-        
+
     } catch (error) {
         console.error('Error updating assessment data in auto-save:', error);
     }
@@ -1268,11 +1268,11 @@ function updateAssessmentDataInAutoSave(chatData) {
 async function syncAutoSaveWithServer(chatData) {
     try {
         console.log('🔄 [SERVER-SYNC] Syncing auto-save data with server...');
-        
+
         // Check if we should create a new session
         const shouldCreateNew = shouldCreateNewSession(chatData);
         let sessionId;
-        
+
         if (shouldCreateNew) {
             // Create new session ID and clear the old one
             const studentId = chatData.metadata.studentId;
@@ -1282,16 +1282,16 @@ async function syncAutoSaveWithServer(chatData) {
             localStorage.removeItem(sessionKey);
             console.log('🔄 [SESSION] Creating new session (assessment in progress)');
         }
-        
+
         sessionId = getCurrentSessionId(chatData);
-        
+
         // Update last sync time
         const studentId = chatData.metadata.studentId;
         const courseId = chatData.metadata.courseId;
         const unitName = chatData.metadata.unitName;
         const lastSyncKey = `biocbot_last_sync_${studentId}_${courseId}_${unitName}`;
         localStorage.setItem(lastSyncKey, Date.now().toString());
-        
+
         // Prepare data for server
         const serverData = {
             sessionId: sessionId,
@@ -1305,7 +1305,7 @@ async function syncAutoSaveWithServer(chatData) {
             savedAt: chatData.metadata.exportDate,
             chatData: chatData
         };
-        
+
         console.log('🔄 [SERVER-SYNC] Sending data to server:', {
             sessionId,
             courseId: serverData.courseId,
@@ -1314,12 +1314,12 @@ async function syncAutoSaveWithServer(chatData) {
             messageCount: serverData.messageCount,
             isNewSession: shouldCreateNew
         });
-        
+
         // Debug: Check if studentName is valid
         if (!serverData.studentName || typeof serverData.studentName !== 'string') {
             console.warn('🔄 [SERVER-SYNC] ⚠️ Invalid studentName:', serverData.studentName);
         }
-        
+
         // Use a simple fetch without await to avoid blocking the UI
         // This ensures the student's message is saved even if the server is slow
         fetch('/api/chat/save', {
@@ -1344,7 +1344,7 @@ async function syncAutoSaveWithServer(chatData) {
         }).catch(error => {
             console.warn('🔄 [SERVER-SYNC] ⚠️ Server sync failed:', error.message);
         });
-        
+
     } catch (error) {
         console.error('🔄 [SERVER-SYNC] ❌ Error syncing with server:', error);
     }
@@ -1363,7 +1363,7 @@ function getCurrentChatData() {
         }
         const autoSaveKey = `biocbot_current_chat_${studentId}`;
         const chatData = localStorage.getItem(autoSaveKey);
-        
+
         if (chatData) {
             const parsed = JSON.parse(chatData);
             // Validate that we have the required structure
@@ -1373,7 +1373,7 @@ function getCurrentChatData() {
             }
             return parsed;
         }
-        
+
         return null;
     } catch (error) {
         console.error('Error getting current chat data:', error);
@@ -1390,12 +1390,12 @@ function updateLastActivityTimestamp() {
         const chatData = getCurrentChatData();
         if (chatData) {
             chatData.lastActivityTimestamp = new Date().toISOString();
-            
+
             // Save the updated data back to localStorage
             const studentId = getCurrentStudentId();
             const autoSaveKey = `biocbot_current_chat_${studentId}`;
             localStorage.setItem(autoSaveKey, JSON.stringify(chatData));
-            
+
             console.log('🔄 [AUTO-CONTINUE] Updated last activity timestamp:', chatData.lastActivityTimestamp);
         }
     } catch (error) {
@@ -1410,26 +1410,26 @@ function updateLastActivityTimestamp() {
 function loadCurrentSessionIntoInterface() {
     try {
         console.log('🔄 [AUTO-CONTINUE] Loading current session into interface...');
-        
+
         const chatData = getCurrentChatData();
         if (!chatData || !chatData.messages || chatData.messages.length === 0) {
             console.log('🔄 [AUTO-CONTINUE] No current session data to load');
             return;
         }
-        
+
         console.log('🔄 [AUTO-CONTINUE] Loading', chatData.messages.length, 'messages into interface');
-        
+
         // Set flags for continuing chat BEFORE loading data
         // This ensures getConversationContext() can access the data
         sessionStorage.setItem('isContinuingChat', 'true');
         sessionStorage.setItem('loadedChatData', JSON.stringify(chatData));
         console.log('🔄 [AUTO-CONTINUE] Set conversation context flags');
-        
+
         // Load the chat data using the existing function
         loadChatData(chatData);
-        
+
         console.log('🔄 [AUTO-CONTINUE] ✅ Current session loaded into interface');
-        
+
     } catch (error) {
         console.error('Error loading current session into interface:', error);
     }
@@ -1457,14 +1457,14 @@ function showAutoContinueNotification() {
             max-width: 300px;
             animation: slideIn 0.3s ease-out;
         `;
-        
+
         notification.innerHTML = `
             <div style="display: flex; align-items: center; gap: 8px;">
                 <span style="font-size: 16px;">🔄</span>
                 <span>Chat continued from where you left off</span>
             </div>
         `;
-        
+
         // Add CSS animation
         const style = document.createElement('style');
         style.textContent = `
@@ -1474,10 +1474,10 @@ function showAutoContinueNotification() {
             }
         `;
         document.head.appendChild(style);
-        
+
         // Add to page
         document.body.appendChild(notification);
-        
+
         // Remove after 3 seconds
         setTimeout(() => {
             if (notification.parentNode) {
@@ -1489,7 +1489,7 @@ function showAutoContinueNotification() {
                 }, 300);
             }
         }, 3000);
-        
+
     } catch (error) {
         console.error('Error showing auto-continue notification:', error);
     }
@@ -1503,56 +1503,56 @@ function showAutoContinueNotification() {
 function checkForAutoContinue() {
     try {
         console.log('🔄 [AUTO-CONTINUE] Checking for auto-continue...');
-        
+
         const chatData = getCurrentChatData();
         console.log('🔄 [AUTO-CONTINUE] Chat data found:', !!chatData);
         if (chatData) {
             console.log('🔄 [AUTO-CONTINUE] Messages count:', chatData.messages ? chatData.messages.length : 'No messages array');
             console.log('🔄 [AUTO-CONTINUE] Last activity timestamp:', chatData.lastActivityTimestamp);
         }
-        
+
         if (!chatData || !chatData.messages || chatData.messages.length === 0) {
             console.log('🔄 [AUTO-CONTINUE] No chat data or empty chat, skipping auto-continue');
             return false;
         }
-        
+
         // Check if we have a last activity timestamp
         if (!chatData.lastActivityTimestamp) {
             console.log('🔄 [AUTO-CONTINUE] No last activity timestamp found, skipping auto-continue');
             return false;
         }
-        
+
         // Calculate time difference
         const lastActivity = new Date(chatData.lastActivityTimestamp);
         const now = new Date();
         const diffMs = now - lastActivity;
         const diffMinutes = Math.floor(diffMs / (1000 * 60));
-        
+
         console.log('🔄 [AUTO-CONTINUE] Last activity:', lastActivity.toISOString());
         console.log('🔄 [AUTO-CONTINUE] Current time:', now.toISOString());
         console.log('🔄 [AUTO-CONTINUE] Time difference:', diffMinutes, 'minutes');
-        
+
         // Check if within 30 minutes
         if (diffMinutes <= 30) {
             console.log('🔄 [AUTO-CONTINUE] ✅ Within 30 minutes, auto-continuing chat...');
-            
+
             // For auto-continue, we don't load the chat data into the interface
             // Instead, we just restore the session state by updating the current chat data
             // This maintains the session continuity without creating a new session
-            
+
             // Validate metadata exists before accessing it
             if (!chatData.metadata) {
                 console.error('🔄 [AUTO-CONTINUE] ❌ Chat data missing metadata, cannot auto-continue');
                 return false;
             }
-            
+
             // Restore the session ID from localStorage to ensure continuity
             const studentId = chatData.metadata.studentId || getCurrentStudentId();
             const courseId = chatData.metadata.courseId || localStorage.getItem('selectedCourseId') || 'unknown';
             const unitName = chatData.metadata.unitName || localStorage.getItem('selectedUnitName') || 'this unit';
             const sessionKey = `biocbot_session_${studentId}_${courseId}_${unitName}`;
             const existingSessionId = localStorage.getItem(sessionKey);
-            
+
             // If we have a stored session ID, ensure it's in the chat data
             if (existingSessionId) {
                 if (!chatData.sessionInfo) {
@@ -1573,22 +1573,22 @@ function checkForAutoContinue() {
                 chatData.sessionInfo.sessionId = sessionId;
                 console.log('🔄 [AUTO-CONTINUE] Created new session ID:', sessionId);
             }
-            
+
             // Update the current chat data with the restored data (including session ID)
             const autoSaveKey = `biocbot_current_chat_${studentId}`;
             localStorage.setItem(autoSaveKey, JSON.stringify(chatData));
-            
+
             console.log('🔄 [AUTO-CONTINUE] ✅ Successfully restored session state');
-            
+
             // Show a brief notification to the user
             showAutoContinueNotification();
-            
+
             return true;
         } else {
             console.log('🔄 [AUTO-CONTINUE] ❌ Outside 30-minute window, not auto-continuing');
             return false;
         }
-        
+
     } catch (error) {
         console.error('Error checking for auto-continue:', error);
         return false;
@@ -1604,7 +1604,7 @@ function clearCurrentChatData() {
         const studentId = getCurrentStudentId();
         const autoSaveKey = `biocbot_current_chat_${studentId}`;
         localStorage.removeItem(autoSaveKey);
-        
+
         // Also clear session tracking data
         const courseId = localStorage.getItem('selectedCourseId') || 'unknown';
         const unitName = localStorage.getItem('selectedUnitName') || 'unknown';
@@ -1612,7 +1612,7 @@ function clearCurrentChatData() {
         const lastSyncKey = `biocbot_last_sync_${studentId}_${courseId}_${unitName}`;
         localStorage.removeItem(sessionKey);
         localStorage.removeItem(lastSyncKey);
-        
+
         // Clear conversation context flags from sessionStorage
         // This ensures new sessions don't reference old conversations
         sessionStorage.removeItem('isContinuingChat');
@@ -1652,29 +1652,29 @@ function debugAutoSaveData() {
 function testAutoContinue() {
     console.log('=== TESTING AUTO-CONTINUE ===');
     const chatData = getCurrentChatData();
-    
+
     if (!chatData || !chatData.messages || chatData.messages.length === 0) {
         console.log('❌ No chat data found. Send some messages first.');
         console.log('💡 To test: Send a message, then refresh the page within 30 minutes');
         return;
     }
-    
+
     console.log('Current chat data found:');
     console.log('- Messages:', chatData.messages.length);
     console.log('- Last Activity:', chatData.lastActivityTimestamp);
-    
+
     if (chatData.lastActivityTimestamp) {
         const lastActivity = new Date(chatData.lastActivityTimestamp);
         const now = new Date();
         const diffMs = now - lastActivity;
         const diffMinutes = Math.floor(diffMs / (1000 * 60));
-        
+
         console.log('- Time since last activity:', diffMinutes, 'minutes');
         console.log('- Would auto-continue:', diffMinutes <= 30 ? 'YES' : 'NO');
     } else {
         console.log('❌ No last activity timestamp found');
     }
-    
+
     console.log('===============================');
 }
 
@@ -1685,22 +1685,22 @@ function testAutoContinue() {
 function simulateAutoContinue() {
     console.log('=== SIMULATING AUTO-CONTINUE ===');
     const chatData = getCurrentChatData();
-    
+
     if (!chatData || !chatData.messages || chatData.messages.length === 0) {
         console.log('❌ No chat data found. Send some messages first.');
         return;
     }
-    
+
     console.log('Simulating auto-continue with current chat data...');
-    
+
     // Store the chat data in sessionStorage (same as continue chat)
     sessionStorage.setItem('loadChatData', JSON.stringify(chatData));
     console.log('✅ Stored chat data in sessionStorage');
-    
+
     // Load the chat data using the existing function
     loadChatData(chatData);
     console.log('✅ Loaded chat data into interface');
-    
+
     console.log('===============================');
 }
 
@@ -1711,14 +1711,14 @@ function simulateAutoContinue() {
 function forceAutoContinueCheck() {
     console.log('=== FORCING AUTO-CONTINUE CHECK ===');
     const wasAutoContinued = checkForAutoContinue();
-    
+
     if (wasAutoContinued) {
         console.log('✅ Auto-continue was successful');
         window.autoContinued = true;
     } else {
         console.log('❌ Auto-continue did not trigger');
     }
-    
+
     console.log('===============================');
 }
 
@@ -1730,13 +1730,13 @@ function checkLocalStorageData() {
     console.log('=== CHECKING LOCALSTORAGE DATA ===');
     const studentId = getCurrentStudentId();
     const autoSaveKey = `biocbot_current_chat_${studentId}`;
-    
+
     console.log('Student ID:', studentId);
     console.log('Auto-save key:', autoSaveKey);
-    
+
     const rawData = localStorage.getItem(autoSaveKey);
     console.log('Raw localStorage data:', rawData);
-    
+
     if (rawData) {
         try {
             const parsedData = JSON.parse(rawData);
@@ -1749,7 +1749,7 @@ function checkLocalStorageData() {
     } else {
         console.log('No data found in localStorage');
     }
-    
+
     console.log('===============================');
 }
 
@@ -1762,7 +1762,7 @@ function checkHistoryLoadingStatus() {
     console.log('sessionStorage loadChatData:', !!sessionStorage.getItem('loadChatData'));
     console.log('window.loadingFromHistory:', !!window.loadingFromHistory);
     console.log('window.autoContinued:', !!window.autoContinued);
-    
+
     const loadChatData = sessionStorage.getItem('loadChatData');
     if (loadChatData) {
         try {
@@ -1772,7 +1772,7 @@ function checkHistoryLoadingStatus() {
             console.error('Error parsing history data:', error);
         }
     }
-    
+
     console.log('===============================');
 }
 
@@ -1782,21 +1782,21 @@ function checkHistoryLoadingStatus() {
  */
 function checkSessionIdStatus() {
     console.log('=== CHECKING SESSION ID STATUS ===');
-    
+
     const studentId = getCurrentStudentId();
     const courseId = localStorage.getItem('selectedCourseId');
     const unitName = localStorage.getItem('selectedUnitName') || 'this unit';
-    
+
     console.log('Student ID:', studentId);
     console.log('Course ID:', courseId);
     console.log('Unit Name:', unitName);
-    
+
     if (studentId && courseId) {
         const sessionKey = `biocbot_session_${studentId}_${courseId}_${unitName}`;
         const currentSessionId = localStorage.getItem(sessionKey);
         console.log('Session Key:', sessionKey);
         console.log('Current Session ID:', currentSessionId);
-        
+
         // Check current chat data
         const chatData = getCurrentChatData();
         if (chatData && chatData.sessionInfo) {
@@ -1804,7 +1804,7 @@ function checkSessionIdStatus() {
             console.log('Session IDs Match:', currentSessionId === chatData.sessionInfo.sessionId);
         }
     }
-    
+
     console.log('===============================');
 }
 
@@ -1818,10 +1818,10 @@ function initializeNewSessionButton() {
             console.log('New session button not found');
             return;
         }
-        
+
         newSessionBtn.addEventListener('click', handleNewSession);
         console.log('✅ New session button initialized');
-        
+
     } catch (error) {
         console.error('Error initializing new session button:', error);
     }
@@ -1833,26 +1833,26 @@ function initializeNewSessionButton() {
 async function handleNewSession() {
     try {
         console.log('🔄 [NEW-SESSION] Starting new session...');
-        
+
         // Clear any existing session data
         clearCurrentChatData();
-        
+
         // Generate a new session ID for the new session
         const studentId = getCurrentStudentId();
         const courseId = localStorage.getItem('selectedCourseId');
         const unitName = localStorage.getItem('selectedUnitName') || 'this unit';
-        
+
         if (studentId && courseId) {
             const sessionKey = `biocbot_session_${studentId}_${courseId}_${unitName}`;
             const newSessionId = `autosave_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
             localStorage.setItem(sessionKey, newSessionId);
             console.log('🔄 [NEW-SESSION] Generated new session ID:', newSessionId);
         }
-        
+
         // Get the current course name from localStorage or fetch it
         const storedCourseName = localStorage.getItem('selectedCourseName');
         let courseName = storedCourseName || 'BIOC 202'; // Fallback to default if not found
-        
+
         // If course name not in localStorage, try to fetch it
         if (!storedCourseName && courseId) {
             try {
@@ -1869,7 +1869,7 @@ async function handleNewSession() {
                 console.warn('Could not fetch course name, using stored or default:', error);
             }
         }
-        
+
         // Clear the chat interface
         const chatMessages = document.getElementById('chat-messages');
         if (chatMessages) {
@@ -1901,11 +1901,11 @@ async function handleNewSession() {
                 </div>
             `;
         }
-        
+
         // Reset flags
         window.autoContinued = false;
         window.loadingFromHistory = false;
-        
+
         // Update course display to ensure header and other elements are synced
         if (courseName) {
             // Update the course name in the header
@@ -1919,16 +1919,16 @@ async function handleNewSession() {
                 userRoleElement.textContent = `Student - ${courseName}`;
             }
         }
-        
+
         // Show notification
         showNewSessionNotification();
-        
+
         // Trigger the full initialization process including assessment questions
         console.log('🔄 [NEW-SESSION] Triggering full initialization...');
         checkPublishedUnitsAndLoadQuestions();
-        
+
         console.log('🔄 [NEW-SESSION] ✅ New session started successfully');
-        
+
     } catch (error) {
         console.error('Error starting new session:', error);
     }
@@ -1956,17 +1956,17 @@ function showNewSessionNotification() {
             max-width: 300px;
             animation: slideIn 0.3s ease-out;
         `;
-        
+
         notification.innerHTML = `
             <div style="display: flex; align-items: center; gap: 8px;">
                 <span style="font-size: 16px;">✨</span>
                 <span>New chat session started</span>
             </div>
         `;
-        
+
         // Add to page
         document.body.appendChild(notification);
-        
+
         // Remove after 3 seconds
         setTimeout(() => {
             if (notification.parentNode) {
@@ -1978,7 +1978,7 @@ function showNewSessionNotification() {
                 }, 300);
             }
         }, 3000);
-        
+
     } catch (error) {
         console.error('Error showing new session notification:', error);
     }
@@ -1996,7 +1996,7 @@ function formatTimestamp(timestamp) {
     const diffMinutes = Math.floor(diffSeconds / 60);
     const diffHours = Math.floor(diffMinutes / 60);
     const diffDays = Math.floor(diffHours / 24);
-    
+
     // Format based on how long ago
     if (diffSeconds < 60) {
         return 'Just now';
@@ -2029,7 +2029,7 @@ function toggleFlagMenu(button) {
             menu.classList.remove('show');
         }
     });
-    
+
     // Toggle the clicked menu
     const menu = button.nextElementSibling;
     if (menu && menu.classList.contains('flag-menu')) {
@@ -2046,13 +2046,13 @@ function flagMessage(button, flagType) {
     const menu = button.closest('.flag-menu');
     const messageContent = menu.closest('.message-content');
     const messageText = messageContent.querySelector('p').textContent;
-    
+
     // Close the menu
     menu.classList.remove('show');
-    
+
     // Send flag to server
     submitFlag(messageText, flagType);
-    
+
     // Replace the message content with thank you message
     replaceMessageWithThankYou(messageContent, flagType);
 }
@@ -2072,7 +2072,7 @@ async function submitFlag(messageText, flagType) {
         const studentId = getCurrentStudentId();
         const studentName = getCurrentStudentName();
         const unitName = getCurrentUnitName();
-        
+
         // Create flag data for the new flagged questions API
         const flagData = {
             questionId: generateQuestionId(messageText), // Generate a unique ID for this "question"
@@ -2090,9 +2090,9 @@ async function submitFlag(messageText, flagType) {
                 explanation: 'This is a flagged bot response from the student chat interface'
             }
         };
-        
+
         console.log('Submitting flag with data:', flagData);
-        
+
         const response = await fetch('/api/flags', {
             method: 'POST',
             headers: {
@@ -2100,14 +2100,14 @@ async function submitFlag(messageText, flagType) {
             },
             body: JSON.stringify(flagData)
         });
-        
+
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
-        
+
         const result = await response.json();
         console.log('Flag submitted successfully:', result);
-        
+
         // Immediately refresh flag notifications to track the new flag
         // This ensures the flag is in lastKnownFlags so we can detect when it's approved
         if (result.success && typeof checkForFlagUpdates === 'function') {
@@ -2117,7 +2117,7 @@ async function submitFlag(messageText, flagType) {
                 checkForFlagUpdates();
             }, 1000);
         }
-        
+
     } catch (error) {
         console.error('Error submitting flag:', error);
         // Still show confirmation to user even if server request fails
@@ -2132,7 +2132,7 @@ async function submitFlag(messageText, flagType) {
 function replaceMessageWithThankYou(messageContent, flagType) {
     // Get the paragraph element
     const paragraph = messageContent.querySelector('p');
-    
+
     // Map flag types to user-friendly descriptions
     const flagTypeDescriptions = {
         'incorrect': 'incorrect information',
@@ -2143,29 +2143,29 @@ function replaceMessageWithThankYou(messageContent, flagType) {
         'offensive': 'offensive content',
         'irrelevant': 'irrelevant content'
     };
-    
+
     const description = flagTypeDescriptions[flagType] || flagType;
-    
+
     // Replace the message text
     paragraph.textContent = `Thank you for reporting this response as ${description}. This has been logged and will be reviewed by your instructor.`;
-    
+
     // Add a visual indicator that this message was flagged
     paragraph.style.color = '#666';
     paragraph.style.fontStyle = 'italic';
-    
+
     // Remove the flag button and menu
     const flagContainer = messageContent.querySelector('.message-flag-container');
     if (flagContainer) {
         flagContainer.remove();
     }
-    
+
     // Update the timestamp to show when it was flagged
     const timestamp = messageContent.querySelector('.timestamp');
     if (timestamp) {
         timestamp.textContent = 'Flagged just now';
         timestamp.style.color = '#888';
     }
-    
+
     // Add a subtle background color to indicate the message was flagged
     messageContent.style.backgroundColor = '#f8f9fa';
     messageContent.style.border = '1px solid #e9ecef';
@@ -2179,20 +2179,20 @@ function replaceMessageWithThankYou(messageContent, flagType) {
 async function loadCurrentCourseInfo() {
     try {
         console.log('Loading current course information...');
-        
+
         // Get student name first
         const studentName = await getCurrentStudentName();
         console.log('Student name loaded:', studentName);
-        
+
         // Update student name display
         const userNameElement = document.getElementById('user-display-name');
         if (userNameElement && studentName) {
             userNameElement.textContent = studentName;
         }
-        
+
         // Load available courses and show course selection
         await loadAvailableCourses();
-        
+
     } catch (error) {
         console.error('Error loading course information:', error);
         // Keep default display if course loading fails
@@ -2205,7 +2205,7 @@ async function loadCurrentCourseInfo() {
 async function loadAvailableCourses() {
     try {
         console.log('Loading available courses...');
-        
+
         // Check if there's already a selected course in localStorage
         const storedCourseId = localStorage.getItem('selectedCourseId');
         const storedCourseName = localStorage.getItem('selectedCourseName');
@@ -2223,28 +2223,28 @@ async function loadAvailableCourses() {
                 // Continue to fetch fresh courses below
             }
         }
-        
+
         // Fetch available courses
         const response = await fetch('/api/courses/available/all');
         if (!response.ok) {
             throw new Error(`Failed to fetch courses: ${response.status}`);
         }
-        
+
         const result = await response.json();
         if (!result.success || !result.data) {
             throw new Error('Invalid courses data received');
         }
-        
+
         const courses = result.data;
         console.log('Available courses loaded:', courses);
         console.log('Course names in dropdown:', courses.map(c => c.courseName));
-        
+
         if (courses.length === 0) {
             console.log('No courses available');
             showNoCoursesMessage();
             return;
         }
-        
+
         if (courses.length === 1) {
             // Only one course available, use it directly
             console.log('Only one course available, using it directly');
@@ -2254,7 +2254,7 @@ async function loadAvailableCourses() {
             console.log('Multiple courses available, showing selection');
             showCourseSelection(courses);
         }
-        
+
     } catch (error) {
         console.error('Error loading available courses:', error);
         showNoCoursesMessage();
@@ -2267,7 +2267,7 @@ async function loadAvailableCourses() {
  */
 function showCourseSelection(courses) {
     console.log('Showing course selection for courses:', courses);
-    
+
     // Create course selection dropdown
     const courseSelectionHTML = `
         <div class="course-selection-container" style="margin: 20px 0; padding: 15px; background-color: #f8f9fa; border-radius: 8px; border-left: 4px solid var(--primary-color);">
@@ -2279,23 +2279,23 @@ function showCourseSelection(courses) {
             </select>
         </div>
     `;
-    
+
     // Insert course selection before the chat messages
     const chatMessages = document.getElementById('chat-messages');
     const existingWelcome = chatMessages.querySelector('.message.bot-message');
-    
+
     // Create a container for the course selection
     const courseSelectionDiv = document.createElement('div');
     courseSelectionDiv.innerHTML = courseSelectionHTML;
     courseSelectionDiv.id = 'course-selection-wrapper';
-    
+
     // Insert before the existing welcome message
     if (existingWelcome) {
         chatMessages.insertBefore(courseSelectionDiv, existingWelcome);
     } else {
         chatMessages.appendChild(courseSelectionDiv);
     }
-    
+
     // Add event listener for course selection
     const courseSelect = document.getElementById('course-select');
     if (courseSelect) {
@@ -2304,7 +2304,7 @@ function showCourseSelection(courses) {
             if (selectedCourseId) {
                 console.log('Course selected:', selectedCourseId);
                 await loadCourseData(selectedCourseId);
-                
+
                 // Hide the course selection after selection
                 const courseSelectionWrapper = document.getElementById('course-selection-wrapper');
                 if (courseSelectionWrapper) {
@@ -2322,52 +2322,52 @@ function showCourseSelection(courses) {
 async function loadCourseData(courseId) {
     try {
         console.log('Loading course data for:', courseId);
-        
+
         // Store the selected course in localStorage
         localStorage.setItem('selectedCourseId', courseId);
-        
+
         // Fetch course details
         const response = await fetch(`/api/courses/${courseId}`);
         if (!response.ok) {
             throw new Error(`Failed to fetch course data: ${response.status}`);
         }
-        
+
         const courseData = await response.json();
         if (!courseData.success || !courseData.data) {
             throw new Error('Invalid course data received');
         }
-        
+
         const course = courseData.data;
         console.log('Course data loaded:', course);
         console.log('Course name from API (courseName):', course.courseName);
         console.log('Course name from API (name):', course.name);
-        
+
         // Use name property if courseName is not available (API compatibility)
         const courseName = course.courseName || course.name;
         console.log('Using course name:', courseName);
-        
+
         // Store course name in localStorage for persistence
         if (courseName) {
             localStorage.setItem('selectedCourseName', courseName);
             console.log('Stored course name in localStorage:', courseName);
         }
-        
+
         // Update UI elements with actual course information
         console.log('Calling updateCourseDisplay with course:', course);
         updateCourseDisplay(course);
-        
+
         // Force a small delay and try again to ensure DOM is updated
         setTimeout(() => {
             console.log('Retrying course display update after delay...');
             updateCourseDisplay(course);
         }, 100);
-        
+
         // Add change course functionality
         addChangeCourseButton();
-        
+
     } catch (error) {
         console.error('Error loading course data:', error);
-        
+
         // If this was a 404 error, clear localStorage and try to load available courses
         if (error.message.includes('404')) {
             console.log('Course not found, clearing localStorage and loading available courses');
@@ -2375,7 +2375,7 @@ async function loadCourseData(courseId) {
             await loadAvailableCourses();
             return;
         }
-        
+
         showCourseLoadError();
     }
 }
@@ -2386,29 +2386,29 @@ async function loadCourseData(courseId) {
 function showNoCoursesMessage() {
     const noCoursesMessage = document.createElement('div');
     noCoursesMessage.classList.add('message', 'bot-message');
-    
+
     const avatarDiv = document.createElement('div');
     avatarDiv.classList.add('message-avatar');
     avatarDiv.textContent = 'B';
-    
+
     const contentDiv = document.createElement('div');
     contentDiv.classList.add('message-content');
-    
+
     const messageText = document.createElement('p');
     messageText.innerHTML = `<strong>No Courses Available</strong><br>
     There are no courses available at this time. Please contact your instructor or administrator.`;
-    
+
     contentDiv.appendChild(messageText);
-    
+
     // Add timestamp
     const timestamp = document.createElement('span');
     timestamp.classList.add('timestamp');
     timestamp.textContent = 'Just now';
     contentDiv.appendChild(timestamp);
-    
+
     noCoursesMessage.appendChild(avatarDiv);
     noCoursesMessage.appendChild(contentDiv);
-    
+
     // Add to chat
     const chatMessages = document.getElementById('chat-messages');
     chatMessages.appendChild(noCoursesMessage);
@@ -2420,29 +2420,29 @@ function showNoCoursesMessage() {
 function showCourseLoadError() {
     const errorMessage = document.createElement('div');
     errorMessage.classList.add('message', 'bot-message');
-    
+
     const avatarDiv = document.createElement('div');
     avatarDiv.classList.add('message-avatar');
     avatarDiv.textContent = 'B';
-    
+
     const contentDiv = document.createElement('div');
     contentDiv.classList.add('message-content');
-    
+
     const messageText = document.createElement('p');
     messageText.innerHTML = `<strong>Error Loading Course</strong><br>
     There was an error loading the course information. Please try refreshing the page or contact support.`;
-    
+
     contentDiv.appendChild(messageText);
-    
+
     // Add timestamp
     const timestamp = document.createElement('span');
     timestamp.classList.add('timestamp');
     timestamp.textContent = 'Just now';
     contentDiv.appendChild(timestamp);
-    
+
     errorMessage.appendChild(avatarDiv);
     errorMessage.appendChild(contentDiv);
-    
+
     // Add to chat
     const chatMessages = document.getElementById('chat-messages');
     chatMessages.appendChild(errorMessage);
@@ -2455,34 +2455,34 @@ function showCourseLoadError() {
  */
 function updateCourseDisplay(course, studentName) {
     console.log('updateCourseDisplay called with course:', course);
-    
+
     // Use name property if courseName is not available (API compatibility)
     const courseName = course.courseName || course.name;
     console.log('Using course name for display:', courseName);
-    
+
     // Update course name in header - try multiple selectors
     let courseNameElement = document.querySelector('.course-name');
     console.log('courseNameElement found with .course-name:', courseNameElement);
-    
+
     // If not found, try alternative selectors
     if (!courseNameElement) {
         courseNameElement = document.querySelector('span.course-name');
         console.log('courseNameElement found with span.course-name:', courseNameElement);
     }
-    
+
     if (!courseNameElement) {
         courseNameElement = document.querySelector('.current-course .course-name');
         console.log('courseNameElement found with .current-course .course-name:', courseNameElement);
     }
-    
+
     console.log('Final courseNameElement:', courseNameElement);
     console.log('courseName to use:', courseName);
-    
+
     if (courseNameElement && courseName) {
         const oldText = courseNameElement.textContent;
         courseNameElement.textContent = courseName;
         console.log(`Updated course name from "${oldText}" to "${courseName}"`);
-        
+
         // Verify the update worked
         const newText = courseNameElement.textContent;
         console.log('Verification - course name element now contains:', newText);
@@ -2490,7 +2490,7 @@ function updateCourseDisplay(course, studentName) {
         console.warn('Could not update course name - element or courseName missing');
         console.warn('Element found:', !!courseNameElement);
         console.warn('Course name provided:', courseName);
-        
+
         // Try the more aggressive approach
         if (courseName) {
             console.log('Trying force update approach...');
@@ -2502,14 +2502,14 @@ function updateCourseDisplay(course, studentName) {
             }
         }
     }
-    
+
     // Update user role display
     const userRoleElement = document.querySelector('.user-role');
     if (userRoleElement && courseName) {
         userRoleElement.textContent = `Student - ${courseName}`;
         console.log('Updated user role to:', `Student - ${courseName}`);
     }
-    
+
     // Update student name display if provided
     if (studentName) {
         const userNameElement = document.getElementById('user-display-name');
@@ -2517,13 +2517,13 @@ function updateCourseDisplay(course, studentName) {
             userNameElement.textContent = studentName;
         }
     }
-    
+
     // Update welcome message
     const welcomeMessage = document.querySelector('.message.bot-message p');
     if (welcomeMessage && courseName) {
         welcomeMessage.textContent = `Hello! I'm BiocBot, your AI study assistant for ${courseName}. How can I help you today?`;
     }
-    
+
     console.log('Course display updated with:', courseName, 'Student:', studentName || 'not provided');
 }
 
@@ -2533,21 +2533,21 @@ function updateCourseDisplay(course, studentName) {
  */
 function forceUpdateCourseName(courseName) {
     console.log('Force updating course name to:', courseName);
-    
+
     // Try multiple approaches to find and update the course name
     const selectors = [
         '.course-name',
-        'span.course-name', 
+        'span.course-name',
         '.current-course .course-name',
         '.chat-header .course-name',
         'header .course-name'
     ];
-    
+
     let updated = false;
     for (const selector of selectors) {
         const elements = document.querySelectorAll(selector);
         console.log(`Found ${elements.length} elements with selector: ${selector}`);
-        
+
         elements.forEach((element, index) => {
             console.log(`Element ${index}:`, element);
             console.log(`Current text: "${element.textContent}"`);
@@ -2556,7 +2556,7 @@ function forceUpdateCourseName(courseName) {
             updated = true;
         });
     }
-    
+
     if (!updated) {
         console.error('Could not find any course name elements to update!');
         // List all elements that might be relevant
@@ -2568,7 +2568,7 @@ function forceUpdateCourseName(courseName) {
             }
         });
     }
-    
+
     return updated;
 }
 
@@ -2580,7 +2580,7 @@ function addChangeCourseButton() {
     if (document.getElementById('change-course-btn')) {
         return;
     }
-    
+
     // Create change course button
     const changeCourseBtn = document.createElement('button');
     changeCourseBtn.id = 'change-course-btn';
@@ -2595,22 +2595,22 @@ function addChangeCourseButton() {
         cursor: pointer;
         margin-left: 10px;
     `;
-    
+
     // Add click handler
     changeCourseBtn.addEventListener('click', async () => {
         if (confirm('Are you sure you want to change your course? This will clear your current selection.')) {
             // Clear localStorage
             localStorage.removeItem('selectedCourseId');
             localStorage.removeItem('selectedCourseName');
-            
+
             // Remove the button
             changeCourseBtn.remove();
-            
+
             // Reload available courses to show selection
             await loadAvailableCourses();
         }
     });
-    
+
     // Add button to the course display area
     const courseDisplay = document.querySelector('.current-course');
     if (courseDisplay) {
@@ -2627,19 +2627,19 @@ function getCurrentStudentId() {
         // Get the current user from the auth system
         const currentUser = getCurrentUser();
         console.log('getCurrentStudentId - currentUser:', currentUser);
-        
+
         if (currentUser && currentUser.userId) {
             console.log('getCurrentStudentId - using userId from currentUser:', currentUser.userId);
             return currentUser.userId;
         }
-        
+
         // Fallback: try to get from localStorage or sessionStorage
         const storedUserId = localStorage.getItem('userId') || sessionStorage.getItem('userId');
         if (storedUserId) {
             console.log('getCurrentStudentId - using stored userId:', storedUserId);
             return storedUserId;
         }
-        
+
         // Last resort: generate a unique ID for this session
         let sessionId = sessionStorage.getItem('sessionId');
         if (!sessionId) {
@@ -2650,7 +2650,7 @@ function getCurrentStudentId() {
             console.log('getCurrentStudentId - using existing sessionId:', sessionId);
         }
         return sessionId;
-        
+
     } catch (error) {
         console.error('Error getting student ID:', error);
         // Fallback to a unique session-based ID
@@ -2680,7 +2680,7 @@ async function getCurrentStudentName() {
     } catch (error) {
         console.error('Error fetching student name:', error);
     }
-    
+
     // Fallback to placeholder
     return 'Student Name';
 }
@@ -2700,29 +2700,29 @@ async function getCurrentCourseId() {
                 return userData.user.preferences.courseId;
             }
         }
-        
+
         // Check localStorage for previously selected course
         const storedCourseId = localStorage.getItem('selectedCourseId');
         if (storedCourseId) {
             console.log('Found stored course ID, will verify it exists:', storedCourseId);
             return storedCourseId;
         }
-        
+
         // If no course context, fetch available courses
         const response = await fetch('/api/courses/available/all');
-        
+
         if (!response.ok) {
             throw new Error(`HTTP error! status: ${response.status}`);
         }
-        
+
         const result = await response.json();
-        
+
         if (!result.success) {
             throw new Error(result.message || 'Failed to fetch courses');
         }
-        
+
         const courses = result.data;
-        
+
         // Only auto-select if there's exactly one course
         if (courses.length === 1) {
             console.log('Only one course available, using it:', courses[0].courseId);
@@ -2734,11 +2734,11 @@ async function getCurrentCourseId() {
             console.log('Multiple courses available, user should select one');
             throw new Error('Multiple courses available - user selection required');
         }
-        
+
         // Fallback to a default course ID if no courses are available
         console.log('No courses available, using fallback');
         return 'default-course-id';
-        
+
     } catch (error) {
         console.error('Error fetching course ID:', error);
         // Fallback to a default course ID if API fails
@@ -2806,13 +2806,13 @@ window.studentAnswers = studentAnswers;
 async function checkPublishedUnitsAndLoadQuestions() {
     try {
         console.log('=== CHECKING FOR PUBLISHED UNITS ===');
-        
+
         // Check if chat was auto-continued
         if (window.autoContinued) {
             console.log('🔄 [AUTO-CONTINUE] Chat was auto-continued, skipping assessment questions');
             return;
         }
-        
+
         // Get current course ID from localStorage
         const courseId = localStorage.getItem('selectedCourseId');
         if (!courseId) {
@@ -2820,17 +2820,17 @@ async function checkPublishedUnitsAndLoadQuestions() {
             return;
         }
         console.log('Checking course:', courseId);
-        
+
         // Fetch course data to check which units are published
         console.log(`Making API request to: /api/courses/${courseId}`);
         const response = await fetch(`/api/courses/${courseId}`);
         console.log('API response status:', response.status);
         console.log('API response headers:', Object.fromEntries(response.headers.entries()));
-        
+
         if (!response.ok) {
             const errorText = await response.text();
             console.error('API error response body:', errorText);
-            
+
             // If course not found, clear localStorage and try to load available courses
             if (response.status === 404) {
                 console.log('Course not found, clearing localStorage and loading available courses');
@@ -2838,10 +2838,10 @@ async function checkPublishedUnitsAndLoadQuestions() {
                 await loadAvailableCourses();
                 return;
             }
-            
+
             throw new Error(`Failed to fetch course data: ${response.status} - ${errorText}`);
         }
-        
+
         const courseData = await response.json();
         console.log('=== COURSE DATA RECEIVED ===');
         console.log('Full course data:', courseData);
@@ -2853,32 +2853,32 @@ async function checkPublishedUnitsAndLoadQuestions() {
             lecturesType: courseData.data && courseData.data.lectures ? typeof courseData.data.lectures : 'no lectures',
             lecturesLength: courseData.data && courseData.data.lectures ? courseData.data.lectures.length : 'no lectures'
         });
-        
+
         if (!courseData.data || !courseData.data.lectures) {
             console.log('No course data or lectures found');
             console.log('Available data keys:', courseData.data ? Object.keys(courseData.data) : 'no data');
             showNoQuestionsMessage();
             return;
         }
-        
+
         // Find published units
         const publishedUnits = courseData.data.lectures.filter(unit => unit.isPublished === true);
         console.log('=== PUBLISHED UNITS ANALYSIS ===');
         console.log('All lectures:', courseData.data.lectures);
         console.log('Published units found:', publishedUnits);
         console.log('Published units count:', publishedUnits.length);
-        
+
         if (publishedUnits.length === 0) {
             console.log('No published units found');
             console.log('All units:', courseData.data.lectures.map(u => ({ name: u.name, isPublished: u.isPublished })));
             showNoQuestionsMessage();
             return;
         }
-        
+
         // Show unit selection dropdown instead of automatically loading all questions
         console.log('Showing unit selection dropdown for published units...');
         showUnitSelectionDropdown(publishedUnits);
-        
+
     } catch (error) {
         console.error('=== ERROR CHECKING PUBLISHED UNITS ===');
         console.error('Error details:', error);
@@ -2894,13 +2894,13 @@ async function checkPublishedUnitsAndLoadQuestions() {
 function enableChatInput() {
     // Clear the noPublishedUnits flag since units are now available
     window.noPublishedUnits = false;
-    
+
     // Show chat input container
     const chatInputContainer = document.querySelector('.chat-input-container');
     if (chatInputContainer) {
         chatInputContainer.style.display = 'block';
     }
-    
+
     // Re-enable the chat input field
     const chatInput = document.getElementById('chat-input');
     if (chatInput) {
@@ -2909,7 +2909,7 @@ function enableChatInput() {
         chatInput.classList.remove('disabled-input');
         chatInput.style.cursor = 'text';
     }
-    
+
     // Re-enable the send button
     const sendButton = document.getElementById('send-button');
     if (sendButton) {
@@ -2918,7 +2918,7 @@ function enableChatInput() {
         sendButton.style.cursor = 'pointer';
         sendButton.style.opacity = '1';
     }
-    
+
     // Show mode toggle
     const modeToggleContainer = document.querySelector('.mode-toggle-container');
     if (modeToggleContainer) {
@@ -2932,20 +2932,20 @@ function enableChatInput() {
  */
 function showNoQuestionsMessage() {
     console.log('Showing no questions message - no published units available');
-    
+
     // Set a global flag to prevent chat functionality
     window.noPublishedUnits = true;
-    
+
     // Set default mode to tutor
     localStorage.setItem('studentMode', 'tutor');
     updateModeToggleUI('tutor');
-    
+
     // Show chat input container but disable the input
     const chatInputContainer = document.querySelector('.chat-input-container');
     if (chatInputContainer) {
         chatInputContainer.style.display = 'block';
     }
-    
+
     // Disable the chat input field - make it not typable
     const chatInput = document.getElementById('chat-input');
     if (chatInput) {
@@ -2954,7 +2954,7 @@ function showNoQuestionsMessage() {
         chatInput.classList.add('disabled-input');
         chatInput.style.cursor = 'not-allowed';
     }
-    
+
     // Disable the send button
     const sendButton = document.getElementById('send-button');
     if (sendButton) {
@@ -2963,29 +2963,29 @@ function showNoQuestionsMessage() {
         sendButton.style.cursor = 'not-allowed';
         sendButton.style.opacity = '0.6';
     }
-    
+
     // Hide mode toggle since chat is disabled
     const modeToggleContainer = document.querySelector('.mode-toggle-container');
     if (modeToggleContainer) {
         modeToggleContainer.style.display = 'none';
     }
-    
+
     // Add message to chat with the specified text
     const noQuestionsMessage = document.createElement('div');
     noQuestionsMessage.classList.add('message', 'bot-message');
-    
+
     const avatarDiv = document.createElement('div');
     avatarDiv.classList.add('message-avatar');
     avatarDiv.textContent = 'B';
-    
+
     const contentDiv = document.createElement('div');
     contentDiv.classList.add('message-content');
-    
+
     const messageText = document.createElement('p');
     messageText.textContent = 'No units published at this time, so please check back with your instructor and get back to me with regards to anything you need';
-    
+
     contentDiv.appendChild(messageText);
-    
+
     // Add timestamp
     const footerDiv = document.createElement('div');
     footerDiv.classList.add('message-footer');
@@ -2997,14 +2997,14 @@ function showNoQuestionsMessage() {
     footerRight.appendChild(timestamp);
     footerDiv.appendChild(footerRight);
     contentDiv.appendChild(footerDiv);
-    
+
     noQuestionsMessage.appendChild(avatarDiv);
     noQuestionsMessage.appendChild(contentDiv);
-    
+
     // Add to chat
     const chatMessages = document.getElementById('chat-messages');
     chatMessages.appendChild(noQuestionsMessage);
-    
+
     // Scroll to bottom
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
@@ -3017,7 +3017,7 @@ function showNoQuestionsMessage() {
 function showUnitSelectionDropdown(publishedUnits) {
     console.log('=== SHOWING UNIT SELECTION DROPDOWN ===');
     console.log('Published units for dropdown:', publishedUnits);
-    
+
     // Sort published units to find the most recently published one
     // Strategy: Try to sort by updatedAt first, then by unit number, then by array position
     const sortedUnits = [...publishedUnits].sort((a, b) => {
@@ -3029,57 +3029,57 @@ function showUnitSelectionDropdown(publishedUnits) {
                 return bDate - aDate; // Descending order (most recent first)
             }
         }
-        
+
         // If updatedAt is not available or equal, extract unit number from name
         // Handles formats like "Unit 1", "Unit 4", "Week 1", etc.
         const extractUnitNumber = (name) => {
             const match = name.match(/(\d+)/);
             return match ? parseInt(match[1], 10) : 0;
         };
-        
+
         const aNum = extractUnitNumber(a.name);
         const bNum = extractUnitNumber(b.name);
-        
+
         if (aNum !== bNum) {
             return bNum - aNum; // Descending order (higher number = more recent)
         }
-        
+
         // If unit numbers are the same or can't be extracted, maintain original order
         return 0;
     });
-    
+
     // Get the most recently published unit (first in sorted array)
     const mostRecentUnit = sortedUnits.length > 0 ? sortedUnits[0] : null;
     console.log('Most recently published unit:', mostRecentUnit);
     console.log('Sorted units order:', sortedUnits.map(u => u.name));
-    
+
     // Show the unit selection container
     const unitSelectionContainer = document.getElementById('unit-selection-container');
     if (unitSelectionContainer) {
         unitSelectionContainer.style.display = 'flex';
     }
-    
+
     // Populate the dropdown with published units
     const unitSelect = document.getElementById('unit-select');
     if (unitSelect) {
         // Clear existing options
         unitSelect.innerHTML = '<option value="">Choose a unit...</option>';
-        
+
         // Remove any existing change event listeners by replacing the element
         // This prevents duplicate event listeners if the function is called multiple times
         const oldSelect = unitSelect;
         const newSelect = oldSelect.cloneNode(false); // Clone without children
         oldSelect.parentNode.replaceChild(newSelect, oldSelect);
-        
+
         // Get reference to the new select element
         const updatedUnitSelect = document.getElementById('unit-select');
-        
+
         // Add placeholder option
         const placeholderOption = document.createElement('option');
         placeholderOption.value = '';
         placeholderOption.textContent = 'Choose a unit...';
         updatedUnitSelect.appendChild(placeholderOption);
-        
+
         // Add options for each published unit (in original order for display)
         publishedUnits.forEach(unit => {
             const option = document.createElement('option');
@@ -3087,18 +3087,18 @@ function showUnitSelectionDropdown(publishedUnits) {
             option.textContent = unit.name;
             updatedUnitSelect.appendChild(option);
         });
-        
+
         // Check for saved chat data first - if it exists and is within 30 minutes, restore that unit instead
         const savedChatData = getCurrentChatData();
         let shouldRestoreSavedUnit = false;
         let savedUnitName = null;
-        
+
         if (savedChatData && savedChatData.messages && savedChatData.messages.length > 0 && savedChatData.lastActivityTimestamp) {
             const lastActivity = new Date(savedChatData.lastActivityTimestamp);
             const now = new Date();
             const diffMs = now - lastActivity;
             const diffMinutes = Math.floor(diffMs / (1000 * 60));
-            
+
             if (diffMinutes <= 30 && savedChatData.metadata && savedChatData.metadata.unitName) {
                 savedUnitName = savedChatData.metadata.unitName;
                 // Check if the saved unit is in the published units list
@@ -3111,28 +3111,28 @@ function showUnitSelectionDropdown(publishedUnits) {
                 }
             }
         }
-        
+
         // Auto-select unit: prefer saved unit if it exists, otherwise use most recent
         if (shouldRestoreSavedUnit && savedUnitName) {
             updatedUnitSelect.value = savedUnitName;
             console.log(`🔄 [AUTO-CONTINUE] Restored saved unit: ${savedUnitName}`);
-            
+
             // Persist selection for chat retrieval
             localStorage.setItem('selectedUnitName', savedUnitName);
-            
+
             // Don't load questions immediately - let auto-continue handle the restoration
             // The auto-continue check will happen after auth is ready and will restore the chat
         } else if (mostRecentUnit) {
             updatedUnitSelect.value = mostRecentUnit.name;
             console.log(`Auto-selected most recent unit: ${mostRecentUnit.name}`);
-            
+
             // Persist selection for chat retrieval
             localStorage.setItem('selectedUnitName', mostRecentUnit.name);
-            
+
             // Trigger the load immediately (without waiting for user interaction)
             loadQuestionsForSelectedUnit(mostRecentUnit.name);
         }
-        
+
         // Add event listener for manual unit selection changes
         updatedUnitSelect.addEventListener('change', async function() {
             const selectedUnit = this.value;
@@ -3144,10 +3144,10 @@ function showUnitSelectionDropdown(publishedUnits) {
             }
         });
     }
-    
+
     // Show welcome message with unit selection instructions
     showUnitSelectionWelcomeMessage();
-    
+
     // Hide chat input and mode toggle until assessment is completed
     const chatInputContainer = document.querySelector('.chat-input-container');
     if (chatInputContainer) {
@@ -3164,37 +3164,37 @@ function showUnitSelectionDropdown(publishedUnits) {
  */
 function showUnitSelectionWelcomeMessage() {
     console.log('Showing unit selection welcome message');
-    
+
     // Add message to chat
     const welcomeMessage = document.createElement('div');
     welcomeMessage.classList.add('message', 'bot-message', 'unit-selection-welcome');
-    
+
     const avatarDiv = document.createElement('div');
     avatarDiv.classList.add('message-avatar');
     avatarDiv.textContent = 'B';
-    
+
     const contentDiv = document.createElement('div');
     contentDiv.classList.add('message-content');
-    
+
     const messageText = document.createElement('p');
     messageText.innerHTML = `<strong>Welcome to BiocBot!</strong><br>
     I can see you have access to published units. Please select a unit from the dropdown above to start your assessment, or feel free to chat with me about any topics you'd like to discuss.`;
-    
+
     contentDiv.appendChild(messageText);
-    
+
     // Add timestamp
     const timestamp = document.createElement('span');
     timestamp.classList.add('timestamp');
     timestamp.textContent = 'Just now';
     contentDiv.appendChild(timestamp);
-    
+
     welcomeMessage.appendChild(avatarDiv);
     welcomeMessage.appendChild(contentDiv);
-    
+
     // Add to chat
     const chatMessages = document.getElementById('chat-messages');
     chatMessages.appendChild(welcomeMessage);
-    
+
     // Scroll to bottom
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
@@ -3206,7 +3206,7 @@ function showUnitSelectionWelcomeMessage() {
 async function loadQuestionsForSelectedUnit(unitName) {
     try {
         console.log(`=== LOADING QUESTIONS FOR UNIT: ${unitName} ===`);
-        
+
         // Check if we should auto-continue instead of starting a new assessment
         // If there's saved chat data for this unit within 30 minutes, skip loading questions
         const savedChatData = getCurrentChatData();
@@ -3215,14 +3215,14 @@ async function loadQuestionsForSelectedUnit(unitName) {
             const now = new Date();
             const diffMs = now - lastActivity;
             const diffMinutes = Math.floor(diffMs / (1000 * 60));
-            
+
             if (diffMinutes <= 30 && savedChatData.metadata && savedChatData.metadata.unitName === unitName) {
                 console.log(`🔄 [AUTO-CONTINUE] Found saved chat for unit ${unitName}, skipping question load - auto-continue will restore chat`);
                 // Don't load questions - let auto-continue handle restoration
                 return;
             }
         }
-        
+
         // Hide chat input and mode toggle when starting new assessment
         const chatInputContainer = document.querySelector('.chat-input-container');
         if (chatInputContainer) {
@@ -3232,36 +3232,36 @@ async function loadQuestionsForSelectedUnit(unitName) {
         if (modeToggleContainer) {
             modeToggleContainer.style.display = 'none';
         }
-        
+
         // Get current course ID from localStorage
         const courseId = localStorage.getItem('selectedCourseId');
         if (!courseId) {
             throw new Error('No course selected. Please select a course first.');
         }
-        
+
         // Find the selected unit from the published units
         const courseResponse = await fetch(`/api/courses/${courseId}`);
         if (!courseResponse.ok) {
             throw new Error(`Failed to fetch course data: ${courseResponse.status}`);
         }
-        
+
         const courseData = await courseResponse.json();
         const selectedUnit = courseData.data.lectures.find(unit => unit.name === unitName);
-        
+
         if (!selectedUnit) {
             throw new Error(`Unit ${unitName} not found`);
         }
-        
+
         console.log(`Selected unit data:`, selectedUnit);
         console.log(`Unit pass threshold:`, selectedUnit.passThreshold);
-        
+
         // Collect questions for this specific unit
         const unitQuestions = [];
-        
+
         // Check if the unit has assessment questions directly embedded
         if (selectedUnit.assessmentQuestions && selectedUnit.assessmentQuestions.length > 0) {
             console.log(`Found ${selectedUnit.assessmentQuestions.length} embedded questions in ${unitName}`);
-            
+
             // Transform embedded questions to match our format
             const transformedQuestions = selectedUnit.assessmentQuestions.map(q => {
                 // Clean the options format - remove "A,", "B,", "C," prefixes if present
@@ -3286,7 +3286,7 @@ async function loadQuestionsForSelectedUnit(unitName) {
                     });
                     console.log(`Final cleaned embedded options:`, cleanOptions);
                 }
-                
+
                 return {
                     id: q.questionId || q.id || q._id,
                     type: q.questionType || 'multiple-choice',
@@ -3298,33 +3298,33 @@ async function loadQuestionsForSelectedUnit(unitName) {
                     passThreshold: selectedUnit.passThreshold !== undefined && selectedUnit.passThreshold !== null ? selectedUnit.passThreshold : 0
                 };
             });
-            
+
             unitQuestions.push(...transformedQuestions);
             console.log(`Added ${transformedQuestions.length} embedded questions from ${unitName}`);
         } else {
             console.log(`No embedded questions found for ${unitName}, trying API endpoint...`);
-            
+
             try {
                 // Try to fetch questions from API endpoint
                 const questionsResponse = await fetch(`/api/questions/lecture?courseId=${courseId}&lectureName=${unitName}`);
                 console.log(`API response for ${unitName}:`, questionsResponse.status, questionsResponse.statusText);
-                
+
                 if (questionsResponse.ok) {
                     const questionsData = await questionsResponse.json();
                     console.log(`API questions for ${unitName}:`, questionsData);
-                    
+
                     if (questionsData.data && questionsData.data.questions && questionsData.data.questions.length > 0) {
                         // Transform API questions to match our format
                         const transformedQuestions = questionsData.data.questions.map(q => {
                             console.log(`Raw question from API:`, q);
-                            
+
                             // Fix the correct answer format - remove "A" prefix if present
                             let cleanCorrectAnswer = q.correctAnswer;
                             if (typeof cleanCorrectAnswer === 'string' && cleanCorrectAnswer.startsWith('A')) {
                                 cleanCorrectAnswer = cleanCorrectAnswer.substring(1);
                                 console.log(`Cleaned correct answer from "${q.correctAnswer}" to "${cleanCorrectAnswer}"`);
                             }
-                            
+
                             // Fix the options format - remove "A,", "B,", "C," prefixes if present
                             let cleanOptions = q.options;
                             if (q.options && typeof q.options === 'object') {
@@ -3347,7 +3347,7 @@ async function loadQuestionsForSelectedUnit(unitName) {
                                 });
                                 console.log(`Final cleaned options:`, cleanOptions);
                             }
-                            
+
                             return {
                                 id: q.questionId || q.id || q._id,
                                 type: q.questionType || 'multiple-choice',
@@ -3359,7 +3359,7 @@ async function loadQuestionsForSelectedUnit(unitName) {
                                 passThreshold: selectedUnit.passThreshold !== undefined && selectedUnit.passThreshold !== null ? selectedUnit.passThreshold : 0
                             };
                         });
-                        
+
                         unitQuestions.push(...transformedQuestions);
                         console.log(`Added ${transformedQuestions.length} API questions from ${unitName}`);
                     } else {
@@ -3373,24 +3373,24 @@ async function loadQuestionsForSelectedUnit(unitName) {
                 console.error(`Error loading API questions for ${unitName}:`, error);
             }
         }
-        
+
         console.log(`Total questions loaded for ${unitName}:`, unitQuestions.length);
-        
+
         if (unitQuestions.length === 0) {
             console.log(`No assessment questions found for ${unitName}`);
             showNoQuestionsForUnitMessage(unitName);
             return;
         }
-        
+
         // Start the assessment process with questions from the selected unit
         // Use the pass threshold from the unit, or default to 0 if not set
         // Note: Check for null/undefined separately since 0 is a valid threshold value
-        const unitPassThreshold = (selectedUnit.passThreshold !== undefined && selectedUnit.passThreshold !== null) 
-            ? selectedUnit.passThreshold 
+        const unitPassThreshold = (selectedUnit.passThreshold !== undefined && selectedUnit.passThreshold !== null)
+            ? selectedUnit.passThreshold
             : 0;
         console.log(`Using pass threshold for ${unitName}: ${unitPassThreshold} (from unit data: ${selectedUnit.passThreshold})`);
         startAssessmentWithQuestions(unitQuestions, unitPassThreshold);
-        
+
     } catch (error) {
         console.error(`Error loading questions for unit ${unitName}:`, error);
         showNoQuestionsForUnitMessage(unitName);
@@ -3403,48 +3403,48 @@ async function loadQuestionsForSelectedUnit(unitName) {
  */
 function showNoQuestionsForUnitMessage(unitName) {
     console.log(`Showing no questions message for unit: ${unitName}`);
-    
+
     // Set default mode to tutor
     localStorage.setItem('studentMode', 'tutor');
     updateModeToggleUI('tutor');
-    
+
     // Enable chat since questions are available for this unit
     enableChatInput();
-    
+
     // Add message to chat
     const noQuestionsMessage = document.createElement('div');
     noQuestionsMessage.classList.add('message', 'bot-message');
-    
+
     const avatarDiv = document.createElement('div');
     avatarDiv.classList.add('message-avatar');
     avatarDiv.textContent = 'B';
-    
+
     const contentDiv = document.createElement('div');
     contentDiv.classList.add('message-content');
-    
+
     const messageText = document.createElement('p');
     messageText.innerHTML = `<strong>No Questions Available</strong><br>
     There are no assessment questions available for ${unitName} at this time. You can select a different unit or chat directly with me about any topics you'd like to discuss.
     Please pick either tutor or protege mode to continue your learning journey.`;
-    
+
     contentDiv.appendChild(messageText);
-    
+
     // Add timestamp
     const timestamp = document.createElement('span');
     timestamp.classList.add('timestamp');
     timestamp.textContent = 'Just now';
     contentDiv.appendChild(timestamp);
-    
+
     noQuestionsMessage.appendChild(avatarDiv);
     noQuestionsMessage.appendChild(contentDiv);
-    
+
     // Add to chat
     const chatMessages = document.getElementById('chat-messages');
     chatMessages.appendChild(noQuestionsMessage);
-    
+
     // Scroll to bottom
     chatMessages.scrollTop = chatMessages.scrollHeight;
-    
+
     // Reset unit selection to allow choosing another unit
     const unitSelect = document.getElementById('unit-select');
     if (unitSelect) {
@@ -3459,10 +3459,10 @@ function startAssessmentWithQuestions(questions, passThreshold = 0) {
     console.log('=== STARTING ASSESSMENT ===');
     console.log(`Original pass threshold: ${passThreshold}`);
     console.log(`Number of questions: ${questions.length}`);
-    
+
     // Clear any existing mode
     localStorage.removeItem('studentMode');
-    
+
     // Set up the questions and pass threshold
     currentCalibrationQuestions = questions;
     window.currentCalibrationQuestions = questions; // Update global reference
@@ -3472,28 +3472,28 @@ function startAssessmentWithQuestions(questions, passThreshold = 0) {
     currentQuestionIndex = 0;
     studentAnswers = [];
     window.studentAnswers = studentAnswers; // Update global reference
-    
+
     console.log(`Adjusted pass threshold: ${currentPassThreshold} (min of ${passThreshold} and ${questions.length})`);
-    
+
     // Hide chat input during assessment
     const chatInputContainer = document.querySelector('.chat-input-container');
     if (chatInputContainer) {
         chatInputContainer.style.display = 'none';
     }
-    
+
     // Hide mode toggle during assessment
     const modeToggleContainer = document.querySelector('.mode-toggle-container');
     if (modeToggleContainer) {
         modeToggleContainer.style.display = 'none';
     }
-    
+
     // Get chat messages container (needed for both clearing and adding messages)
     const chatMessages = document.getElementById('chat-messages');
     if (!chatMessages) {
         console.error('Chat messages container not found');
         return;
     }
-    
+
     // Only clear chat data if this is a new session (not auto-continued)
     // Check if chat was auto-continued before clearing
     if (!window.autoContinued) {
@@ -3502,7 +3502,7 @@ function startAssessmentWithQuestions(questions, passThreshold = 0) {
         if (welcomeMessage) {
             chatMessages.innerHTML = '';
             chatMessages.appendChild(welcomeMessage);
-            
+
             // Clear auto-save data when starting assessment - this is a new session
             console.log('🔄 [AUTO-SAVE] Starting assessment - clearing auto-save data for new session');
             clearCurrentChatData();
@@ -3510,40 +3510,40 @@ function startAssessmentWithQuestions(questions, passThreshold = 0) {
     } else {
         console.log('🔄 [AUTO-SAVE] Chat was auto-continued, preserving chat data');
     }
-    
+
     // Add message about starting assessment for the selected unit
     const unitName = questions.length > 0 ? questions[0].unitName : 'the selected unit';
     const assessmentStartMessage = document.createElement('div');
     assessmentStartMessage.classList.add('message', 'bot-message', 'assessment-start');
-    
+
     const avatarDiv = document.createElement('div');
     avatarDiv.classList.add('message-avatar');
     avatarDiv.textContent = 'B';
-    
+
     const contentDiv = document.createElement('div');
     contentDiv.classList.add('message-content');
-    
+
     const messageText = document.createElement('p');
     messageText.innerHTML = `<strong>Starting Assessment for ${unitName}</strong><br>
     I'll ask you a few questions to understand your current knowledge level. This will help me provide the most helpful responses for your learning needs.`;
-    
+
     contentDiv.appendChild(messageText);
-    
+
     // Add timestamp
     const timestamp = document.createElement('span');
     timestamp.classList.add('timestamp');
     timestamp.textContent = 'Just now';
     contentDiv.appendChild(timestamp);
-    
+
     assessmentStartMessage.appendChild(avatarDiv);
     assessmentStartMessage.appendChild(contentDiv);
-    
+
     // Add to chat
     chatMessages.appendChild(assessmentStartMessage);
-    
+
     // Scroll to bottom
     chatMessages.scrollTop = chatMessages.scrollHeight;
-    
+
     // Show first question
     showCalibrationQuestion();
 }
@@ -3557,68 +3557,68 @@ function showCalibrationQuestion() {
         calculateStudentMode();
         return;
     }
-    
+
     const question = currentCalibrationQuestions[currentQuestionIndex];
-    
+
     // Create question message
     const questionMessage = document.createElement('div');
     questionMessage.classList.add('message', 'bot-message', 'calibration-question');
     questionMessage.id = `calibration-question-${currentQuestionIndex}`; // Unique ID for each question
-    
+
     const avatarDiv = document.createElement('div');
     avatarDiv.classList.add('message-avatar');
     avatarDiv.textContent = 'B';
-    
+
     const contentDiv = document.createElement('div');
     contentDiv.classList.add('message-content');
-    
+
     const questionText = document.createElement('p');
     questionText.textContent = `Question ${currentQuestionIndex + 1}: ${question.question}`;
     contentDiv.appendChild(questionText);
-    
+
     // Handle different question types
     if (question.type === 'true-false') {
         // Create True/False options
         const optionsDiv = document.createElement('div');
         optionsDiv.classList.add('calibration-options');
-        
+
         // For true-false, always create True/False options
         const options = ['True', 'False'];
-        
+
         options.forEach((option, index) => {
             const optionContainer = document.createElement('div');
             optionContainer.classList.add('calibration-option-container');
-            
+
             const optionButton = document.createElement('button');
             optionButton.classList.add('calibration-option');
             optionButton.textContent = option;
             optionButton.onclick = () => selectCalibrationAnswer(index, currentQuestionIndex);
-            
+
             optionContainer.appendChild(optionButton);
             optionsDiv.appendChild(optionContainer);
         });
-        
+
         contentDiv.appendChild(optionsDiv);
-        
+
     } else if (question.type === 'multiple-choice') {
         // Create Multiple Choice options
         const optionsDiv = document.createElement('div');
         optionsDiv.classList.add('calibration-options');
-        
+
         if (question.options && Object.keys(question.options).length > 0) {
             // Use the options from the question (handle both array and object formats)
             const optionEntries = Array.isArray(question.options) ? question.options : Object.entries(question.options);
-            
+
             console.log(`Displaying question options:`, question.options);
             console.log(`Option entries for display:`, optionEntries);
-            
+
             optionEntries.forEach((option, index) => {
                 const optionContainer = document.createElement('div');
                 optionContainer.classList.add('calibration-option-container');
-                
+
                 const optionButton = document.createElement('button');
                 optionButton.classList.add('calibration-option');
-                
+
                 // Handle both array and object formats
                 let optionText = '';
                 if (Array.isArray(option)) {
@@ -3629,13 +3629,13 @@ function showCalibrationQuestion() {
                 } else {
                     optionText = option || `Option ${index + 1}`;
                 }
-                
+
                 console.log(`Final option text for button ${index}: "${optionText}"`);
-                
+
                 // Don't add extra letters since we're cleaning the options from the database
                 optionButton.textContent = `${String.fromCharCode(65 + index)}. ${optionText}`;
                 optionButton.onclick = () => selectCalibrationAnswer(index, currentQuestionIndex);
-                
+
                 optionContainer.appendChild(optionButton);
                 optionsDiv.appendChild(optionContainer);
             });
@@ -3645,79 +3645,79 @@ function showCalibrationQuestion() {
             fallbackOptions.forEach((option, index) => {
                 const optionContainer = document.createElement('div');
                 optionContainer.classList.add('calibration-option-container');
-                
+
                 const optionButton = document.createElement('button');
                 optionButton.classList.add('calibration-option');
                 optionButton.textContent = `${String.fromCharCode(65 + index)}. ${option}`;
                 optionButton.onclick = () => selectCalibrationAnswer(index, currentQuestionIndex);
-                
+
                 optionContainer.appendChild(optionButton);
                 optionsDiv.appendChild(optionContainer);
             });
         }
-        
+
         contentDiv.appendChild(optionsDiv);
-        
+
     } else if (question.type === 'short-answer') {
         // Create Short Answer input
         const answerContainer = document.createElement('div');
         answerContainer.classList.add('calibration-short-answer');
-        
+
         const answerInput = document.createElement('textarea');
         answerInput.classList.add('calibration-answer-input');
         answerInput.placeholder = 'Type your answer here...';
         answerInput.rows = 3;
-        
+
         const submitButton = document.createElement('button');
         submitButton.classList.add('calibration-submit-btn');
         submitButton.textContent = 'Submit Answer';
         submitButton.onclick = () => submitShortAnswer(answerInput.value, currentQuestionIndex);
-        
+
         answerContainer.appendChild(answerInput);
         answerContainer.appendChild(submitButton);
         contentDiv.appendChild(answerContainer);
     } else {
         // Handle unknown question types by defaulting to multiple choice
         console.warn(`Unknown question type: ${question.type}, defaulting to multiple choice`);
-        
+
         const optionsDiv = document.createElement('div');
         optionsDiv.classList.add('calibration-options');
-        
+
         const fallbackOptions = ['Option A', 'Option B', 'Option C', 'Option D'];
         fallbackOptions.forEach((option, index) => {
             const optionContainer = document.createElement('div');
             optionContainer.classList.add('calibration-option-container');
-            
+
             const optionButton = document.createElement('button');
             optionButton.classList.add('calibration-option');
             optionButton.textContent = `${String.fromCharCode(65 + index)}. ${option}`;
             optionButton.onclick = () => selectCalibrationAnswer(index, currentQuestionIndex);
-            
+
             optionContainer.appendChild(optionButton);
             optionsDiv.appendChild(optionContainer);
         });
-        
+
         contentDiv.appendChild(optionsDiv);
     }
-    
+
     // Create message footer for timestamp only (no flag button for calibration questions)
     const footerDiv = document.createElement('div');
     footerDiv.classList.add('message-footer');
-    
+
     // Create right side container for timestamp only
     const rightContainer = document.createElement('div');
     rightContainer.classList.add('message-footer-right');
-    
+
     const timestamp = document.createElement('span');
     timestamp.classList.add('timestamp');
-    
+
         // Create real timestamp for calibration question
         const questionTime = new Date();
         timestamp.textContent = formatTimestamp(questionTime);
-        
+
         // Store timestamp in question message div for future updates
         questionMessage.dataset.timestamp = questionTime.getTime();
-        
+
         // Add title attribute for exact time on hover
         timestamp.title = questionTime.toLocaleString('en-US', {
             weekday: 'long',
@@ -3729,19 +3729,19 @@ function showCalibrationQuestion() {
             second: '2-digit',
             hour12: true
         });
-    
+
     rightContainer.appendChild(timestamp);
-    
+
     footerDiv.appendChild(rightContainer);
     contentDiv.appendChild(footerDiv);
-    
+
     questionMessage.appendChild(avatarDiv);
     questionMessage.appendChild(contentDiv);
-    
+
     // Add to chat
     const chatMessages = document.getElementById('chat-messages');
     chatMessages.appendChild(questionMessage);
-    
+
     // Scroll to bottom
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
@@ -3755,7 +3755,7 @@ function selectCalibrationAnswer(answerIndex, questionIndex) {
     // Store the answer
     studentAnswers[questionIndex] = answerIndex;
     window.studentAnswers = studentAnswers; // Update global reference
-    
+
     // Update auto-save with assessment data
     const studentId = getCurrentStudentId();
     const autoSaveKey = `biocbot_current_chat_${studentId}`;
@@ -3765,7 +3765,7 @@ function selectCalibrationAnswer(answerIndex, questionIndex) {
         localStorage.setItem(autoSaveKey, JSON.stringify(currentChatData));
         console.log('🔄 [AUTO-SAVE] Updated assessment data after answer submission');
     }
-    
+
     // Disable all options to prevent changing answers
     const questionMessage = document.getElementById(`calibration-question-${questionIndex}`);
     if (questionMessage) {
@@ -3774,7 +3774,7 @@ function selectCalibrationAnswer(answerIndex, questionIndex) {
             // Disable all options
             option.disabled = true;
             option.style.cursor = 'not-allowed';
-            
+
             // Highlight the selected answer
             if (index === answerIndex) {
                 option.classList.add('selected');
@@ -3789,11 +3789,11 @@ function selectCalibrationAnswer(answerIndex, questionIndex) {
             }
         });
     }
-    
+
     // Automatically proceed to next question after a short delay
     setTimeout(() => {
         currentQuestionIndex++;
-        
+
         // Show next question or finish
         if (currentQuestionIndex < currentCalibrationQuestions.length) {
             showCalibrationQuestion();
@@ -3813,11 +3813,11 @@ function submitShortAnswer(answer, questionIndex) {
         alert('Please enter an answer before submitting.');
         return;
     }
-    
+
     // Store the answer
     studentAnswers[questionIndex] = answer;
     window.studentAnswers = studentAnswers; // Update global reference
-    
+
     // Update auto-save with assessment data
     const studentId = getCurrentStudentId();
     const autoSaveKey = `biocbot_current_chat_${studentId}`;
@@ -3827,19 +3827,19 @@ function submitShortAnswer(answer, questionIndex) {
         localStorage.setItem(autoSaveKey, JSON.stringify(currentChatData));
         console.log('🔄 [AUTO-SAVE] Updated assessment data after text answer submission');
     }
-    
+
     // Disable the input and submit button to show it's been answered
     const questionMessage = document.getElementById(`calibration-question-${questionIndex}`);
     if (questionMessage) {
         const answerInput = questionMessage.querySelector('.calibration-answer-input');
         const submitButton = questionMessage.querySelector('.calibration-submit-btn');
-        
+
         if (answerInput) {
             answerInput.disabled = true;
             answerInput.style.backgroundColor = '#f8f9fa';
             answerInput.style.borderColor = 'var(--primary-color)';
         }
-        
+
         if (submitButton) {
             submitButton.disabled = true;
             submitButton.textContent = 'Answer Submitted';
@@ -3847,11 +3847,11 @@ function submitShortAnswer(answer, questionIndex) {
             submitButton.style.opacity = '0.7';
         }
     }
-    
+
     // Automatically proceed to next question after a short delay
     setTimeout(() => {
         currentQuestionIndex++;
-        
+
         // Show next question or finish
         if (currentQuestionIndex < currentCalibrationQuestions.length) {
             showCalibrationQuestion();
@@ -3869,16 +3869,16 @@ async function calculateStudentMode() {
         console.log('=== CALCULATING STUDENT MODE ===');
         console.log('Student answers:', studentAnswers);
         console.log('Questions:', currentCalibrationQuestions);
-        
+
         // Calculate total correct answers
         let totalCorrect = 0;
         const totalQuestions = currentCalibrationQuestions.length;
-        
+
         // Check each answer against the correct answer
         for (let i = 0; i < Math.min(studentAnswers.length, totalQuestions); i++) {
             const question = currentCalibrationQuestions[i];
             const studentAnswerIndex = studentAnswers[i];
-            
+
             // Convert student answer index to actual answer text for display
             let studentAnswerText = '';
             if (question.type === 'true-false') {
@@ -3894,20 +3894,20 @@ async function calculateStudentMode() {
             } else {
                 studentAnswerText = studentAnswerIndex;
             }
-            
+
             console.log(`Question ${i + 1}:`, question.question);
             console.log(`Student answer index:`, studentAnswerIndex);
             console.log(`Student answer text:`, studentAnswerText);
             console.log(`Correct answer:`, question.correctAnswer);
-            
+
             let isCorrect = false;
-            
+
             if (question.type === 'true-false') {
                 // For true-false, check if the answer matches
                 // Handle both string and boolean formats
                 const expectedAnswer = question.correctAnswer;
                 const studentAnswerText = studentAnswerIndex === 0 ? 'True' : 'False';
-                
+
                 if (typeof expectedAnswer === 'string') {
                     // Convert to lowercase for comparison
                     isCorrect = (studentAnswerText.toLowerCase() === expectedAnswer.toLowerCase());
@@ -3918,9 +3918,9 @@ async function calculateStudentMode() {
                     // Default comparison
                     isCorrect = (studentAnswerIndex === expectedAnswer);
                 }
-                
+
                 console.log(`True/False check: student answered ${studentAnswerText}, expected ${expectedAnswer}, correct: ${isCorrect}`);
-                
+
             } else if (question.type === 'multiple-choice') {
                 // For multiple choice, check if the answer index matches
                 // Convert correct answer key to index
@@ -3940,7 +3940,7 @@ async function calculateStudentMode() {
                 // For unknown types, default to checking if answer matches
                 isCorrect = (studentAnswerIndex === question.correctAnswer);
             }
-            
+
             if (isCorrect) {
                 totalCorrect++;
                 console.log(`Question ${i + 1} is CORRECT`);
@@ -3948,22 +3948,22 @@ async function calculateStudentMode() {
                 console.log(`Question ${i + 1} is INCORRECT`);
             }
         }
-        
+
         console.log(`Total correct: ${totalCorrect}/${totalQuestions}`);
         console.log(`Pass threshold: ${currentPassThreshold}`);
-        
+
         // Calculate percentage
         const percentage = (totalCorrect / totalQuestions) * 100;
         console.log(`Percentage: ${percentage}%`);
-        
+
         // Determine mode based on performance using the instructor's pass threshold
         // If they get the required number of questions correct, they're in protégé mode
         // Otherwise, they're in tutor mode (need more guidance)
         const passed = totalCorrect >= currentPassThreshold;
         const mode = passed ? 'protege' : 'tutor';
-        
+
         console.log(`Student passed: ${passed} (needed ${currentPassThreshold}, got ${totalCorrect})`);
-        
+
         const score = {
             totalCorrect: totalCorrect,
             totalQuestions: totalQuestions,
@@ -3972,27 +3972,27 @@ async function calculateStudentMode() {
             passed: passed,
             mode: mode
         };
-        
+
         console.log(`Determined mode: ${mode}`);
-        
+
         // Store mode in localStorage
         localStorage.setItem('studentMode', mode);
-        
+
         // Update mode toggle UI to reflect the determined mode
         updateModeToggleUI(mode);
-        
+
         // Show mode result message
         showModeResult(mode, score);
-        
+
         // Re-enable chat (clears noPublishedUnits flag and enables inputs)
         enableChatInput();
-        
+
     } catch (error) {
         console.error('Error calculating mode:', error);
         // Default to tutor mode on error
         localStorage.setItem('studentMode', 'tutor');
         updateModeToggleUI('tutor');
-        
+
         // Re-enable chat (clears noPublishedUnits flag and enables inputs)
         enableChatInput();
     }
@@ -4006,21 +4006,21 @@ async function calculateStudentMode() {
 function showModeResult(mode, score) {
     const modeMessage = document.createElement('div');
     modeMessage.classList.add('message', 'bot-message', 'mode-result', 'standard-mode-result');
-    
+
     const avatarDiv = document.createElement('div');
     avatarDiv.classList.add('message-avatar');
     avatarDiv.textContent = 'B';
-    
+
     const contentDiv = document.createElement('div');
     contentDiv.classList.add('message-content', 'standard-mode-content');
-    
+
     const resultText = document.createElement('p');
-    
-    
+
+
     // Show mode explanation
     const modeExplanation = document.createElement('div');
     modeExplanation.classList.add('mode-explanation');
-    
+
     if (mode === 'protege') {
         modeExplanation.innerHTML = `
             <strong>BiocBot is in protégé mode</strong><br>
@@ -4030,31 +4030,31 @@ function showModeResult(mode, score) {
             <strong>BiocBot is in tutor mode</strong><br>
             Thanks for completing the assessment! I'm here to guide your learning and help explain concepts clearly. What questions do you have about the course material?`;
     }
-    
+
     contentDiv.appendChild(modeExplanation);
-    
+
     // Add unit selection option after assessment completion
-    const unitSelectionOption = document.createElement('div');
-    unitSelectionOption.classList.add('unit-selection-option');
-    unitSelectionOption.innerHTML = `
-        <div style="margin-top: 15px; padding: 12px; background-color: #f8f9fa; border-radius: 6px; border-left: 4px solid var(--primary-color);">
-            <strong>Want to try another unit?</strong><br>
-            You can select a different unit from the dropdown above to take another assessment, or continue chatting with me about any topics you'd like to discuss.
-        </div>
-    `;
-    contentDiv.appendChild(unitSelectionOption);
-    
+    // const unitSelectionOption = document.createElement('div');
+    // unitSelectionOption.classList.add('unit-selection-option');
+    // unitSelectionOption.innerHTML = `
+    //     <div style="margin-top: 15px; padding: 12px; background-color: #f8f9fa; border-radius: 6px; border-left: 4px solid var(--primary-color);">
+    //         <strong>Want to try another unit?</strong><br>
+    //         You can select a different unit from the dropdown above to take another assessment, or continue chatting with me about any topics you'd like to discuss.
+    //     </div>
+    // `;
+    // contentDiv.appendChild(unitSelectionOption);
+
     // Add timestamp
     const timestamp = document.createElement('span');
     timestamp.classList.add('timestamp');
-    
+
         // Create real timestamp for mode result
         const modeTime = new Date();
         timestamp.textContent = formatTimestamp(modeTime);
-        
+
         // Store timestamp in mode message div for future updates
         modeMessage.dataset.timestamp = modeTime.getTime();
-        
+
         // Add title attribute for exact time on hover
         timestamp.title = modeTime.toLocaleString('en-US', {
             weekday: 'long',
@@ -4066,16 +4066,16 @@ function showModeResult(mode, score) {
             second: '2-digit',
             hour12: true
         });
-    
+
     contentDiv.appendChild(timestamp);
-    
+
     modeMessage.appendChild(avatarDiv);
     modeMessage.appendChild(contentDiv);
-    
+
     // Add to chat
     const chatMessages = document.getElementById('chat-messages');
     chatMessages.appendChild(modeMessage);
-    
+
     // Scroll to bottom
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
@@ -4087,14 +4087,14 @@ function showModeResult(mode, score) {
 function showModeToggleResult(mode) {
     const modeMessage = document.createElement('div');
     modeMessage.classList.add('message', 'bot-message', 'mode-toggle-result');
-    
+
     const avatarDiv = document.createElement('div');
     avatarDiv.classList.add('message-avatar');
     avatarDiv.textContent = 'B';
-    
+
     const contentDiv = document.createElement('div');
     contentDiv.classList.add('message-content');
-    
+
     const resultText = document.createElement('p');
     if (mode === 'protege') {
         resultText.innerHTML = `<strong>BiocBot is now in protégé mode</strong><br>
@@ -4103,19 +4103,19 @@ function showModeToggleResult(mode) {
         resultText.innerHTML = `<strong>BiocBot is now in tutor mode</strong><br>
         I'm ready to guide your learning! I can help explain concepts, provide examples, and answer your questions about the course material.`;
     }
-    
+
     contentDiv.appendChild(resultText);
-    
+
     const timestamp = document.createElement('span');
     timestamp.classList.add('timestamp');
-    
+
         // Create real timestamp for mode toggle result
         const toggleTime = new Date();
         timestamp.textContent = formatTimestamp(toggleTime);
-        
+
         // Store timestamp in mode message div for future updates
         modeMessage.dataset.timestamp = toggleTime.getTime();
-        
+
         // Add title attribute for exact time on hover
         timestamp.title = toggleTime.toLocaleString('en-US', {
             weekday: 'long',
@@ -4127,16 +4127,16 @@ function showModeToggleResult(mode) {
             second: '2-digit',
             hour12: true
         });
-    
+
     contentDiv.appendChild(timestamp);
-    
+
     modeMessage.appendChild(avatarDiv);
     modeMessage.appendChild(contentDiv);
-    
+
     // Add to chat
     const chatMessages = document.getElementById('chat-messages');
     chatMessages.appendChild(modeMessage);
-    
+
     // Scroll to bottom
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
@@ -4148,34 +4148,34 @@ function initializeModeToggle() {
     const modeToggleCheckbox = document.getElementById('mode-toggle-checkbox');
     const protegeLabel = document.querySelector('.protege-label');
     const tutorLabel = document.querySelector('.tutor-label');
-    
+
     if (!modeToggleCheckbox) return;
-    
+
     // Set initial mode from localStorage or default to tutor
     const currentMode = localStorage.getItem('studentMode') || 'tutor';
     console.log('🔧 [MODE_INIT] Initializing mode toggle with mode:', currentMode);
     updateModeToggleUI(currentMode);
-    
+
     // Add event listener for mode toggle
     modeToggleCheckbox.addEventListener('change', function() {
         console.log('Mode toggle changed!');
         const newMode = this.checked ? 'tutor' : 'protege';
         console.log(`New mode: ${newMode}`);
-        
+
         // Update localStorage
         localStorage.setItem('studentMode', newMode);
-        
+
         // Record the timestamp of this manual mode change
         localStorage.setItem('lastModeChange', Date.now().toString());
         console.log('🔧 [MODE_TOGGLE] Recorded manual mode change timestamp');
-        
+
         // Update UI
         updateModeToggleUI(newMode);
-        
+
         // Show mode confirmation popup
         console.log('Calling showModeToggleResult...');
         showModeToggleResult(newMode);
-        
+
         console.log(`Mode switched to: ${newMode}`);
     });
 }
@@ -4188,9 +4188,9 @@ function updateModeToggleUI(mode) {
     const modeToggleCheckbox = document.getElementById('mode-toggle-checkbox');
     const protegeLabel = document.querySelector('.protege-label');
     const tutorLabel = document.querySelector('.tutor-label');
-    
+
     if (!modeToggleCheckbox || !protegeLabel || !tutorLabel) return;
-    
+
     if (mode === 'tutor') {
         // Checkbox checked = tutor mode
         modeToggleCheckbox.checked = true;
@@ -4212,7 +4212,7 @@ function updateModeToggleUI(mode) {
 async function collectAllChatData() {
     const chatMessages = document.getElementById('chat-messages');
     const messages = [];
-    
+
     // Get current course and student information
     const courseId = localStorage.getItem('selectedCourseId');
     if (!courseId) {
@@ -4222,7 +4222,7 @@ async function collectAllChatData() {
     const studentId = getCurrentStudentId();
     const unitName = localStorage.getItem('selectedUnitName') || getCurrentUnitName();
     const currentMode = localStorage.getItem('studentMode') || 'tutor';
-    
+
     // Process all message elements
     const messageElements = chatMessages.querySelectorAll('.message');
     messageElements.forEach((messageElement, index) => {
@@ -4231,13 +4231,13 @@ async function collectAllChatData() {
             messages.push(messageData);
         }
     });
-    
+
     // Collect practice test data
     const practiceTestData = collectPracticeTestData();
-    
+
     // Collect student answers
     const studentAnswersData = collectStudentAnswersData();
-    
+
     // Create comprehensive chat data object
     const chatData = {
         metadata: {
@@ -4260,7 +4260,7 @@ async function collectAllChatData() {
             duration: calculateSessionDuration(chatData)
         }
     };
-    
+
     return chatData;
 }
 
@@ -4278,20 +4278,20 @@ function extractMessageData(messageElement, index) {
         const isModeResult = messageElement.classList.contains('mode-result');
         const isAssessmentStart = messageElement.classList.contains('assessment-start');
         const isTypingIndicator = messageElement.classList.contains('typing-indicator');
-        
+
         // Skip typing indicators
         if (isTypingIndicator) {
             return null;
         }
-        
+
         const avatarElement = messageElement.querySelector('.message-avatar');
         const contentElement = messageElement.querySelector('.message-content');
         const timestampElement = messageElement.querySelector('.timestamp');
-        
+
         if (!contentElement) {
             return null;
         }
-        
+
         // Extract basic message data
         const messageData = {
             index: index,
@@ -4304,24 +4304,24 @@ function extractMessageData(messageElement, index) {
             isModeResult: isModeResult,
             isAssessmentStart: isAssessmentStart
         };
-        
+
         // Extract additional data for specific message types
         if (isCalibrationQuestion) {
             messageData.questionData = extractQuestionData(messageElement);
         }
-        
+
         if (isModeResult) {
             messageData.modeData = extractModeData(messageElement);
         }
-        
+
         // Extract flag information if present
         const flagContainer = messageElement.querySelector('.message-flag-container');
         if (flagContainer) {
             messageData.hasFlagButton = true;
         }
-        
+
         return messageData;
-        
+
     } catch (error) {
         console.error('Error extracting message data:', error);
         return null;
@@ -4338,7 +4338,7 @@ function extractMessageContent(contentElement) {
     if (paragraph) {
         return paragraph.textContent || paragraph.innerText || '';
     }
-    
+
     // Fallback to all text content
     return contentElement.textContent || contentElement.innerText || '';
 }
@@ -4373,11 +4373,11 @@ function extractQuestionData(messageElement) {
     try {
         const contentElement = messageElement.querySelector('.message-content');
         if (!contentElement) return null;
-        
+
         const questionText = contentElement.querySelector('p')?.textContent || '';
         const optionsContainer = contentElement.querySelector('.calibration-options');
         const options = [];
-        
+
         if (optionsContainer) {
             const optionButtons = optionsContainer.querySelectorAll('.calibration-option');
             optionButtons.forEach((button, index) => {
@@ -4388,13 +4388,13 @@ function extractQuestionData(messageElement) {
                 });
             });
         }
-        
+
         return {
             questionText: questionText,
             options: options,
             questionIndex: currentQuestionIndex
         };
-        
+
     } catch (error) {
         console.error('Error extracting question data:', error);
         return null;
@@ -4410,15 +4410,15 @@ function extractModeData(messageElement) {
     try {
         const contentElement = messageElement.querySelector('.message-content');
         if (!contentElement) return null;
-        
+
         const modeExplanation = contentElement.querySelector('.mode-explanation');
         const modeText = modeExplanation?.textContent || contentElement.querySelector('p')?.textContent || '';
-        
+
         return {
             modeText: modeText,
             determinedMode: localStorage.getItem('studentMode') || 'tutor'
         };
-        
+
     } catch (error) {
         console.error('Error extracting mode data:', error);
         return null;
@@ -4434,7 +4434,7 @@ function collectPracticeTestData() {
     if (!currentCalibrationQuestions || currentCalibrationQuestions.length === 0) {
         return null;
     }
-    
+
     return {
         questions: currentCalibrationQuestions.map((question, index) => ({
             questionId: question.id,
@@ -4485,20 +4485,20 @@ function getSessionStartTime() {
         if (firstUserMessage && firstUserMessage.timestamp) {
             return firstUserMessage.timestamp;
         }
-        
+
         // If no user message found, use the first message
         const firstMessage = currentChatData.messages[0];
         if (firstMessage && firstMessage.timestamp) {
             return firstMessage.timestamp;
         }
     }
-    
+
     // Try to get from DOM as fallback
     const firstMessage = document.querySelector('.message');
     if (firstMessage && firstMessage.dataset.timestamp) {
         return new Date(parseInt(firstMessage.dataset.timestamp)).toISOString();
     }
-    
+
     // Last resort fallback to current time minus estimated duration
     return new Date(Date.now() - 3600000).toISOString(); // 1 hour ago as fallback
 }
@@ -4512,13 +4512,13 @@ function calculateSessionDuration(chatData) {
     if (!chatData || !chatData.messages || chatData.messages.length === 0) {
         return '0s';
     }
-    
+
     // Find the first user message (student message)
     const firstUserMessage = chatData.messages.find(msg => msg.type === 'user');
     if (!firstUserMessage || !firstUserMessage.timestamp) {
         return '0s';
     }
-    
+
     // Find the last bot message
     const lastBotMessage = chatData.messages.slice().reverse().find(msg => msg.type === 'bot');
     if (!lastBotMessage || !lastBotMessage.timestamp) {
@@ -4530,11 +4530,11 @@ function calculateSessionDuration(chatData) {
         const start = new Date(firstUserMessage.timestamp);
         const end = new Date(lastMessage.timestamp);
         const diffMs = end - start;
-        
+
         const hours = Math.floor(diffMs / (1000 * 60 * 60));
         const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
         const seconds = Math.floor((diffMs % (1000 * 60)) / 1000);
-        
+
         if (hours > 0) {
             return `${hours}h ${minutes}m ${seconds}s`;
         } else if (minutes > 0) {
@@ -4543,15 +4543,15 @@ function calculateSessionDuration(chatData) {
             return `${seconds}s`;
         }
     }
-    
+
     const start = new Date(firstUserMessage.timestamp);
     const end = new Date(lastBotMessage.timestamp);
     const diffMs = end - start;
-    
+
     const hours = Math.floor(diffMs / (1000 * 60 * 60));
     const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
     const seconds = Math.floor((diffMs % (1000 * 60)) / 1000);
-    
+
     if (hours > 0) {
         return `${hours}h ${minutes}m ${seconds}s`;
     } else if (minutes > 0) {
@@ -4579,7 +4579,7 @@ function initializeUserAgreement() {
     // The agreement modal is automatically initialized by the agreement-modal.js script
     // This function is here for consistency with other initialize functions
     console.log('User agreement system initialized');
-    
+
     // Listen for agreement acceptance event
     document.addEventListener('userAgreementAccepted', (event) => {
         console.log('User agreement accepted:', event.detail);
@@ -4602,17 +4602,17 @@ function saveChatToHistory(chatData) {
             firstMessage: chatData.messages[0]?.content?.substring(0, 50) + '...',
             lastMessage: chatData.messages[chatData.messages.length - 1]?.content?.substring(0, 50) + '...'
         });
-        
+
         // Use student-specific localStorage key for security
         const studentId = chatData.metadata.studentId;
         const historyKey = `biocbot_chat_history_${studentId}`;
         let history = JSON.parse(localStorage.getItem(historyKey) || '[]');
         console.log('Current history length:', history.length);
-        
+
         // Create a unique ID for this chat session
         const chatId = `chat_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         console.log('Generated chat ID:', chatId);
-        
+
         // Create history entry
         const historyEntry = {
             id: chatId,
@@ -4626,32 +4626,32 @@ function saveChatToHistory(chatData) {
             duration: chatData.sessionInfo.duration,
             chatData: chatData
         };
-        
+
         console.log('Created history entry:', historyEntry);
-        
+
         // Add to beginning of history (most recent first)
         history.unshift(historyEntry);
         console.log('History after adding entry, length:', history.length);
-        
+
         // Keep only last 50 chat sessions to prevent storage bloat
         if (history.length > 50) {
             history = history.slice(0, 50);
             console.log('Trimmed history to 50 entries');
         }
-        
+
         // Save back to localStorage
         localStorage.setItem(historyKey, JSON.stringify(history));
         console.log('Saved to localStorage, key:', historyKey);
-        
+
         // Verify it was saved
         const savedData = localStorage.getItem(historyKey);
         console.log('Verification - saved data length:', savedData ? savedData.length : 'null');
-        
+
         console.log('Chat saved to history successfully:', historyEntry.title);
-        
+
         // Also save to server for instructor access
         saveChatToServer(chatData, chatId);
-        
+
     } catch (error) {
         console.error('Error saving chat to history:', error);
     }
@@ -4665,7 +4665,7 @@ function saveChatToHistory(chatData) {
 async function saveChatToServer(chatData, chatId) {
     try {
         console.log('=== SAVING CHAT TO SERVER ===');
-        
+
         // Prepare server data
         const serverData = {
             sessionId: chatId,
@@ -4679,14 +4679,14 @@ async function saveChatToServer(chatData, chatId) {
             savedAt: chatData.metadata.exportDate,
             chatData: chatData
         };
-        
+
         console.log('Sending chat data to server:', {
             sessionId: serverData.sessionId,
             courseId: serverData.courseId,
             studentId: serverData.studentId,
             messageCount: serverData.messageCount
         });
-        
+
         // Send to server
         const response = await fetch('/api/chat/save', {
             method: 'POST',
@@ -4695,14 +4695,14 @@ async function saveChatToServer(chatData, chatId) {
             },
             body: JSON.stringify(serverData)
         });
-        
+
         if (!response.ok) {
             throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
         }
-        
+
         const result = await response.json();
         console.log('Chat saved to server successfully:', result);
-        
+
     } catch (error) {
         console.error('Error saving chat to server:', error);
         // Don't show error to user as this is background saving
@@ -4719,19 +4719,19 @@ function generateChatTitle(chatData) {
     const courseName = chatData.metadata.courseName;
     const unitName = chatData.metadata.unitName;
     const messageCount = chatData.metadata.totalMessages;
-    
+
     // Try to find the first user question
     const firstUserMessage = chatData.messages.find(msg => msg.type === 'user');
     if (firstUserMessage) {
         const question = firstUserMessage.content.substring(0, 50);
         return `${courseName} - ${question}${question.length >= 50 ? '...' : ''}`;
     }
-    
+
     // Fallback titles based on content
     if (chatData.practiceTests && chatData.practiceTests.questions && chatData.practiceTests.questions.length > 0) {
         return `${courseName} - ${unitName} Assessment (${messageCount} messages)`;
     }
-    
+
     return `${courseName} - Chat Session (${messageCount} messages)`;
 }
 
@@ -4746,13 +4746,13 @@ function generateChatPreview(chatData) {
     if (firstUserMessage) {
         return firstUserMessage.content.substring(0, 100) + (firstUserMessage.content.length > 100 ? '...' : '');
     }
-    
+
     // Find the first bot message
     const firstBotMessage = chatData.messages.find(msg => msg.type === 'bot');
     if (firstBotMessage) {
         return firstBotMessage.content.substring(0, 100) + (firstBotMessage.content.length > 100 ? '...' : '');
     }
-    
+
     return 'Chat session with BiocBot';
 }
 
@@ -4768,7 +4768,7 @@ function getChatHistory() {
             console.error('No student ID found - cannot load chat history');
             return [];
         }
-        
+
         const historyKey = `biocbot_chat_history_${studentId}`;
         return JSON.parse(localStorage.getItem(historyKey) || '[]');
     } catch (error) {
@@ -4817,20 +4817,20 @@ function loadChatData(chatData) {
     try {
         console.log('=== LOADING CHAT DATA ===');
         console.log('Chat data to load:', chatData);
-        
+
         // Clear existing messages
         const chatMessages = document.getElementById('chat-messages');
         if (!chatMessages) {
             console.error('Chat messages container not found');
             return;
         }
-        
+
         // Clear ALL existing messages
         chatMessages.innerHTML = '';
-        
+
         // Don't clear auto-save data when loading from history - we want to preserve it
         console.log('🔄 [AUTO-SAVE] Loading chat history - preserving auto-save data');
-        
+
         // Add a loading message first
         const loadingMessage = document.createElement('div');
         loadingMessage.classList.add('message', 'bot-message');
@@ -4842,19 +4842,19 @@ function loadChatData(chatData) {
             </div>
         `;
         chatMessages.appendChild(loadingMessage);
-        
+
         // Scroll to bottom
         chatMessages.scrollTop = chatMessages.scrollHeight;
-        
+
         // Use setTimeout to ensure the loading message is visible
         setTimeout(() => {
             // Clear the loading message
             chatMessages.innerHTML = '';
-            
+
             // Load each message from the chat data WITHOUT triggering auto-save
             chatData.messages.forEach((messageData, index) => {
                 console.log(`Loading message ${index}:`, messageData);
-                
+
                 if (messageData.type === 'user') {
                     addMessage(messageData.content, 'user', false, true); // Skip auto-save
                 } else if (messageData.type === 'bot') {
@@ -4874,7 +4874,7 @@ function loadChatData(chatData) {
                     }
                 }
             });
-            
+
             // Restore practice test data if present
             if (chatData.practiceTests && chatData.practiceTests.questions.length > 0) {
                 console.log('Restoring practice test data:', chatData.practiceTests);
@@ -4884,16 +4884,16 @@ function loadChatData(chatData) {
                 currentQuestionIndex = chatData.practiceTests.currentQuestionIndex;
                 studentAnswers = chatData.studentAnswers.answers.map(answer => answer.answer);
             }
-            
+
             // Restore mode if present, but only if no recent mode change has occurred
             const currentStoredMode = localStorage.getItem('studentMode') || 'tutor';
             const chatDataMode = chatData.metadata.currentMode;
-            
+
             // Check if the user has manually changed the mode recently (within last 5 minutes)
             const lastModeChange = localStorage.getItem('lastModeChange');
             const now = Date.now();
             const fiveMinutesAgo = now - (5 * 60 * 1000);
-            
+
             if (lastModeChange && parseInt(lastModeChange) > fiveMinutesAgo) {
                 // User recently changed mode, keep their current choice
                 console.log('🔄 [HISTORY] User recently changed mode, keeping current mode:', currentStoredMode);
@@ -4908,36 +4908,36 @@ function loadChatData(chatData) {
                 console.log('🔄 [HISTORY] No mode found in chat data, using current localStorage value');
                 updateModeToggleUI(currentStoredMode);
             }
-            
+
             // Restore unit selection if present
             if (chatData.metadata.unitName) {
                 console.log('Restoring unit:', chatData.metadata.unitName);
                 localStorage.setItem('selectedUnitName', chatData.metadata.unitName);
-                
+
                 // Update unit selection dropdown if it exists
                 const unitSelect = document.getElementById('unit-select');
                 if (unitSelect) {
                     unitSelect.value = chatData.metadata.unitName;
                 }
             }
-            
+
             // Ensure chat input and mode toggle are visible (enable chat)
             enableChatInput();
-            
+
             // Show success message (skip auto-save for system messages)
             addMessage('✅ Chat history loaded successfully! You can continue where you left off.', 'bot', false, true, null);
-            
+
             // Set flags for continuing chat
             sessionStorage.setItem('isContinuingChat', 'true');
             sessionStorage.setItem('loadedChatData', JSON.stringify(chatData));
-            
+
             // Update the current session ID to match the loaded chat data
             if (chatData.sessionInfo && chatData.sessionInfo.sessionId) {
                 const studentId = chatData.metadata.studentId;
                 const courseId = chatData.metadata.courseId;
                 const unitName = chatData.metadata.unitName;
                 const sessionKey = `biocbot_session_${studentId}_${courseId}_${unitName}`;
-                
+
                 // Store the session ID from the loaded chat data
                 localStorage.setItem(sessionKey, chatData.sessionInfo.sessionId);
                 console.log('🔄 [SESSION] Updated session ID to match loaded chat:', chatData.sessionInfo.sessionId);
@@ -4947,30 +4947,30 @@ function loadChatData(chatData) {
                 const courseId = chatData.metadata.courseId;
                 const unitName = chatData.metadata.unitName;
                 const sessionKey = `biocbot_session_${studentId}_${courseId}_${unitName}`;
-                
+
                 // Generate a new session ID for this chat
                 const newSessionId = `autosave_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
                 localStorage.setItem(sessionKey, newSessionId);
-                
+
                 // Update the chat data with the new session ID
                 if (!chatData.sessionInfo) {
                     chatData.sessionInfo = {};
                 }
                 chatData.sessionInfo.sessionId = newSessionId;
-                
+
                 console.log('🔄 [SESSION] Generated new session ID for loaded chat:', newSessionId);
             }
-            
+
             // Replace the current auto-save data with the loaded chat data
             const studentId = chatData.metadata.studentId;
             const autoSaveKey = `biocbot_current_chat_${studentId}`;
             localStorage.setItem(autoSaveKey, JSON.stringify(chatData));
             console.log('🔄 [HISTORY] Replaced current auto-save data with loaded chat data');
-            
+
             console.log('Chat data loaded successfully');
-            
+
         }, 500); // Small delay to show loading message
-        
+
     } catch (error) {
         console.error('Error loading chat data:', error);
         addMessage('❌ Error loading chat history. Please try again.', 'bot', false, true, null);
@@ -4988,29 +4988,29 @@ function formatHistoryDate(dateString) {
         const now = new Date();
         const diffMs = now - date;
         const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-        
+
         if (diffDays === 0) {
-            return 'Today, ' + date.toLocaleTimeString('en-US', { 
-                hour: 'numeric', 
+            return 'Today, ' + date.toLocaleTimeString('en-US', {
+                hour: 'numeric',
                 minute: '2-digit',
-                hour12: true 
+                hour12: true
             });
         } else if (diffDays === 1) {
-            return 'Yesterday, ' + date.toLocaleTimeString('en-US', { 
-                hour: 'numeric', 
+            return 'Yesterday, ' + date.toLocaleTimeString('en-US', {
+                hour: 'numeric',
                 minute: '2-digit',
-                hour12: true 
+                hour12: true
             });
         } else if (diffDays < 7) {
-            return date.toLocaleDateString('en-US', { 
+            return date.toLocaleDateString('en-US', {
                 weekday: 'short',
-                hour: 'numeric', 
+                hour: 'numeric',
                 minute: '2-digit',
-                hour12: true 
+                hour12: true
             });
         } else {
-            return date.toLocaleDateString('en-US', { 
-                month: 'short', 
+            return date.toLocaleDateString('en-US', {
+                month: 'short',
                 day: 'numeric',
                 year: 'numeric'
             });
@@ -5029,20 +5029,20 @@ function checkForChatDataToLoad() {
         console.log('=== CHECKING FOR CHAT DATA TO LOAD ===');
         const storedChatData = sessionStorage.getItem('loadChatData');
         console.log('Stored chat data:', storedChatData);
-        
+
         if (storedChatData) {
             const chatData = JSON.parse(storedChatData);
             console.log('Parsed chat data:', chatData);
             console.log('Chat data messages count:', chatData.messages ? chatData.messages.length : 'No messages');
-            
+
             // Set flag to indicate we're loading from history
             window.loadingFromHistory = true;
             console.log('🔄 [HISTORY] Set loadingFromHistory flag to true');
-            
+
             // Clear the stored data
             sessionStorage.removeItem('loadChatData');
             console.log('Cleared loadChatData from sessionStorage');
-            
+
             // Load the chat data
             console.log('Calling loadChatData...');
             loadChatData(chatData);
@@ -5136,7 +5136,7 @@ function addSampleChatData() {
             duration: '1h 0m 0s'
         }
     };
-    
+
     saveChatToHistory(sampleChatData);
     console.log('Sample chat data added to history!');
-} 
+}
