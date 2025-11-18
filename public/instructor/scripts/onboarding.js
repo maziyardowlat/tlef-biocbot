@@ -1673,7 +1673,8 @@ async function saveAssessment(week) {
             console.log(`Saving question ${i + 1}/${questions.length}:`, question);
             
             try {
-                const result = await saveUnit1AssessmentQuestion(courseId, 'Unit 1', question.question, instructorId);
+                // Pass the full question object instead of just the question text
+                const result = await saveUnit1AssessmentQuestion(courseId, 'Unit 1', question, instructorId);
                 savedQuestions.push(result);
                 console.log(`Question ${i + 1} saved successfully:`, result);
             } catch (error) {
@@ -2686,38 +2687,100 @@ async function removeExistingDocumentType(courseId, lectureName, documentType, i
 }
 
 /**
- * Save a probing question as an assessment question using the questions API
+ * Save an assessment question using the questions API
  * @param {string} courseId - Course identifier
  * @param {string} lectureName - Unit name
- * @param {string} questionText - The question text
+ * @param {Object|string} questionObjOrText - The full question object with question, options, correctAnswer, type, etc., OR just a question text string (for probing questions)
  * @param {string} instructorId - Instructor ID
  * @returns {Promise<Object>} API response
  */
-async function saveUnit1AssessmentQuestion(courseId, lectureName, questionText, instructorId) {
+async function saveUnit1AssessmentQuestion(courseId, lectureName, questionObjOrText, instructorId) {
     try {
         console.log(`❓ [ASSESSMENT] Starting assessment question creation process...`);
         console.log(`❓ [ASSESSMENT] Course ID: ${courseId}`);
         console.log(`❓ [ASSESSMENT] Lecture/Unit: ${lectureName}`);
-        console.log(`❓ [ASSESSMENT] Question text: ${questionText}`);
+        console.log(`❓ [ASSESSMENT] Question data (type: ${typeof questionObjOrText}):`, questionObjOrText);
         console.log(`❓ [ASSESSMENT] Instructor ID: ${instructorId}`);
+        
+        // Handle case where only question text is provided (probing questions)
+        // Convert string to question object format
+        let questionObj;
+        if (typeof questionObjOrText === 'string') {
+            // This is a probing question - just text, no options
+            questionObj = {
+                question: questionObjOrText,
+                type: 'multiple-choice',
+                options: [],
+                correctAnswer: 0
+            };
+        } else {
+            // This is a full question object
+            questionObj = questionObjOrText;
+        }
+        
+        // Determine question type - use from question object or default to multiple-choice
+        const questionType = questionObj.type || questionObj.questionType || 'multiple-choice';
+        
+        // Convert options from array format to object format if needed
+        // In onboarding, options are stored as an array: ['Option 1', 'Option 2', ...]
+        // Backend expects object format: {A: 'Option 1', B: 'Option 2', ...}
+        let options = {};
+        let correctAnswer = questionObj.correctAnswer;
+        
+        if (questionType === 'multiple-choice') {
+            // Check if options is an array (onboarding format) or object (instructor.js format)
+            if (Array.isArray(questionObj.options)) {
+                // Convert array to object format: ['text1', 'text2', ...] -> {A: 'text1', B: 'text2', ...}
+                const optionLetters = ['A', 'B', 'C', 'D', 'E', 'F'];
+                questionObj.options.forEach((optionText, index) => {
+                    if (optionText && optionText.trim()) {
+                        options[optionLetters[index]] = optionText.trim();
+                    }
+                });
+                
+                // Convert index-based correctAnswer (0, 1, 2, 3) to letter format ('A', 'B', 'C', 'D')
+                if (typeof correctAnswer === 'number' && correctAnswer >= 0 && correctAnswer < questionObj.options.length) {
+                    correctAnswer = optionLetters[correctAnswer];
+                }
+            } else if (questionObj.options && typeof questionObj.options === 'object') {
+                // Already in object format, use as is
+                options = questionObj.options;
+                // correctAnswer should already be in letter format ('A', 'B', etc.)
+            } else {
+                // Fallback: create default options if none provided
+                options = {
+                    A: 'Option A',
+                    B: 'Option B',
+                    C: 'Option C',
+                    D: 'Option D'
+                };
+                correctAnswer = 'A';
+            }
+        } else if (questionType === 'true-false') {
+            // True/false questions don't need options object
+            options = {};
+            // correctAnswer should be 'true' or 'false' as a string
+            if (typeof correctAnswer === 'boolean') {
+                correctAnswer = correctAnswer.toString();
+            }
+        } else if (questionType === 'short-answer') {
+            // Short answer questions don't need options object
+            options = {};
+            // correctAnswer should be the expected answer text
+        }
         
         const requestBody = {
             courseId,
             lectureName,
             instructorId,
-            questionType: 'multiple-choice', // Default type for probing questions
-            question: questionText,
-            options: {
-                A: 'Option A',
-                B: 'Option B', 
-                C: 'Option C',
-                D: 'Option D'
-            },
-            correctAnswer: 'A', // Default answer
-            explanation: 'This is a probing question to assess student understanding.',
-            difficulty: 'medium',
-            tags: ['probing', 'understanding-check'],
-            points: 1
+            questionType: questionType,
+            question: questionObj.question || questionObj.questionText || '',
+            options: options,
+            correctAnswer: correctAnswer || 'A',
+            explanation: questionObj.explanation || '',
+            difficulty: questionObj.difficulty || 'medium',
+            tags: questionObj.tags || [],
+            points: questionObj.points || 1
         };
         
         console.log(`📡 [MONGODB] Making API request to /api/questions (POST)`);
