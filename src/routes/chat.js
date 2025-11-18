@@ -664,7 +664,7 @@ Example Interactions:
             const contPrompt = `Continue the previous answer. Do not repeat earlier content. Pick up seamlessly from here: "${tailSnippet}"`;
             const contResp = await llmService.sendMessage(contPrompt, {
                 temperature: mode === 'protege' ? 0.8 : 0.6,
-                maxTokens: mode === 'protege' ? 800 : 800,
+                maxTokens: mode === 'protege' ? 32768 : 32768,
                 systemPrompt: llmService.getSystemPrompt() +
                     (mode === 'protege' ? protegePrompt : tutorPrompt)
             });
