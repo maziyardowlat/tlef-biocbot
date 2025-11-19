@@ -719,6 +719,9 @@ function createFlagElement(flag) {
     // Create flag reason display text
     const flagReasonDisplay = getFlagReasonDisplay(flag.flagReason);
     
+    // Get bot mode display text
+    const botModeDisplay = getBotModeDisplay(flag.botMode);
+    
     // Get question content for display
     const questionContent = flag.questionContent || {};
     
@@ -728,6 +731,7 @@ function createFlagElement(flag) {
                 <div class="flag-reason ${flag.flagReason}">${flagReasonDisplay}</div>
                 <div class="flag-student-info">Flagged by: ${flag.studentName || `Student ${flag.studentId}`}</div>
                 <div class="flag-timestamp">${timestamp}</div>
+                <div class="flag-bot-mode">Bot Mode: ${botModeDisplay}</div>
                 <div class="flag-priority">Priority: ${flag.priority || 'medium'}</div>
             </div>
             <div class="flag-status">
@@ -742,6 +746,7 @@ function createFlagElement(flag) {
                 <div class="question-details">
                     <span class="question-type">Type: ${questionContent.questionType || 'Unknown'}</span>
                     <span class="unit-name">Unit: ${flag.unitName || 'Unknown'}</span>
+                    <span class="bot-mode">Mode: ${botModeDisplay}</span>
                 </div>
             </div>
             
@@ -1184,6 +1189,24 @@ function getFlagReasonDisplay(flagReason) {
     };
     
     return reasonMap[flagReason] || flagReason;
+}
+
+/**
+ * Get display text for bot mode
+ * @param {string} botMode - The bot mode (protege or tutor)
+ * @returns {string} Display text for the bot mode
+ */
+function getBotModeDisplay(botMode) {
+    if (!botMode) {
+        return 'Unknown';
+    }
+    
+    const modeMap = {
+        'protege': 'Protégé',
+        'tutor': 'Tutor'
+    };
+    
+    return modeMap[botMode.toLowerCase()] || botMode;
 }
 
 /**

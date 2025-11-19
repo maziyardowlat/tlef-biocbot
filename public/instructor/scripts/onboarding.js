@@ -2026,6 +2026,14 @@ function openUploadModal(week, contentType = '') {
  * Close upload modal
  */
 function closeUploadModal() {
+    // Check if upload is in progress
+    const loadingIndicator = document.getElementById('upload-loading-indicator');
+    if (loadingIndicator && loadingIndicator.style.display === 'block') {
+        // Upload in progress, prevent closing
+        showNotification('Please wait for the upload to complete before closing.', 'warning');
+        return;
+    }
+    
     const modal = document.getElementById('upload-modal');
     modal.classList.remove('show');
     modal.style.display = 'none';
@@ -2061,6 +2069,12 @@ function resetModal() {
         uploadBtn.textContent = 'Upload';
         uploadBtn.disabled = false;
     }
+    
+    // Hide loading indicator and show upload section
+    const loadingIndicator = document.getElementById('upload-loading-indicator');
+    const uploadSection = document.getElementById('upload-section');
+    if (loadingIndicator) loadingIndicator.style.display = 'none';
+    if (uploadSection) uploadSection.style.display = 'block';
 }
 
 /**
@@ -2093,9 +2107,20 @@ async function handleUpload() {
         return;
     }
     
+    // Show loading indicator and hide upload section
+    const loadingIndicator = document.getElementById('upload-loading-indicator');
+    const uploadSection = document.getElementById('upload-section');
+    if (loadingIndicator) loadingIndicator.style.display = 'block';
+    if (uploadSection) uploadSection.style.display = 'none';
+    
     // Disable upload button and show loading state
     uploadBtn.textContent = 'Uploading...';
     uploadBtn.disabled = true;
+    
+    // Disable modal close button during upload
+    const modalCloseBtn = document.querySelector('#upload-modal .modal-close');
+    if (modalCloseBtn) modalCloseBtn.style.pointerEvents = 'none';
+    if (modalCloseBtn) modalCloseBtn.style.opacity = '0.5';
     
     try {
         // Get the current course ID and instructor ID
@@ -2185,6 +2210,14 @@ async function handleUpload() {
             statusBadge.style.color = '#28a745';
         }
         
+        // Hide loading indicator before closing modal
+        if (loadingIndicator) loadingIndicator.style.display = 'none';
+        if (uploadSection) uploadSection.style.display = 'block';
+        
+        // Re-enable modal close button
+        if (modalCloseBtn) modalCloseBtn.style.pointerEvents = 'auto';
+        if (modalCloseBtn) modalCloseBtn.style.opacity = '1';
+        
         // Close modal and show success
         closeUploadModal();
         showNotification('Content uploaded and processed successfully!', 'success');
@@ -2192,6 +2225,14 @@ async function handleUpload() {
     } catch (error) {
         console.error('Error uploading content:', error);
         showNotification(`Error uploading content: ${error.message}. Please try again.`, 'error');
+        
+        // Hide loading indicator and show upload section on error
+        if (loadingIndicator) loadingIndicator.style.display = 'none';
+        if (uploadSection) uploadSection.style.display = 'block';
+        
+        // Re-enable modal close button
+        if (modalCloseBtn) modalCloseBtn.style.pointerEvents = 'auto';
+        if (modalCloseBtn) modalCloseBtn.style.opacity = '1';
         
         // Re-enable upload button
         uploadBtn.textContent = 'Upload';

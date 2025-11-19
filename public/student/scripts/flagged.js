@@ -96,11 +96,13 @@ function renderStudentFlagItem(flag) {
     const div = document.createElement('div');
     div.className = 'flagged-item';
     const ts = formatStudentTimestamp(flag.createdAt);
+    const botModeDisplay = getBotModeDisplay(flag.botMode);
     div.innerHTML = `
         <div class="flag-header">
             <div class="flag-meta">
                 <div class="flag-reason ${flag.flagReason}">${mapReason(flag.flagReason)}</div>
                 <div class="flag-timestamp">${ts}</div>
+                <div class="flag-bot-mode">Bot Mode: ${botModeDisplay}</div>
                 <div class="flag-status"><span class="status-badge ${flag.flagStatus}">${mapStatus(flag.flagStatus)}</span></div>
             </div>
         </div>
@@ -111,6 +113,7 @@ function renderStudentFlagItem(flag) {
                 <div class="question-details">
                     <span class="question-type">${flag.questionContent && flag.questionContent.questionType ? `Type: ${escapeHtml(flag.questionContent.questionType)}` : ''}</span>
                     <span class="unit-name">Unit: ${flag.unitName || 'Unknown'}</span>
+                    <span class="bot-mode">Mode: ${botModeDisplay}</span>
                 </div>
             </div>
             <div class="question-content">
@@ -163,6 +166,24 @@ function mapReason(r) {
 function mapStatus(s) {
     const m = { pending: 'Pending Review', reviewed: 'Reviewed', resolved: 'Resolved', dismissed: 'Dismissed' };
     return m[s] || s;
+}
+
+/**
+ * Get display text for bot mode
+ * @param {string} botMode - The bot mode (protege or tutor)
+ * @returns {string} Display text for the bot mode
+ */
+function getBotModeDisplay(botMode) {
+    if (!botMode) {
+        return 'Unknown';
+    }
+    
+    const modeMap = {
+        'protege': 'Protégé',
+        'tutor': 'Tutor'
+    };
+    
+    return modeMap[botMode.toLowerCase()] || botMode;
 }
 
 function escapeHtml(text) {
