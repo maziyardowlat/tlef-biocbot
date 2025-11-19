@@ -2075,7 +2075,7 @@ async function submitFlag(messageText, flagType) {
         
         // Get current bot mode (protege or tutor)
         const botMode = localStorage.getItem('studentMode') || 'tutor';
-        
+        // fixed the resolved.
         // Create flag data for the new flagged questions API
         const flagData = {
             questionId: generateQuestionId(messageText), // Generate a unique ID for this "question"
