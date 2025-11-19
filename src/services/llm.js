@@ -13,10 +13,10 @@ class LLMService {
         this.llm = null;
         this.isInitialized = false;
         this.llmConfig = null;
-        
+
         console.log(`🔧 Creating LLM service...`);
     }
-    
+
     /**
      * Initialize the LLM service instance
      * @returns {Promise<LLMService>} The initialized service
@@ -26,7 +26,7 @@ class LLMService {
         await service._performInitialization();
         return service;
     }
-    
+
     /**
      * Perform LLM initialization
      * @returns {Promise<void>}
@@ -36,15 +36,15 @@ class LLMService {
         try {
             // Get configuration for current environment
             this.llmConfig = config.getLLMConfig();
-            
+
             console.log(`🚀 Initializing LLM service with provider: ${this.llmConfig.provider}`);
-            
+
             // Initialize UBC GenAI Toolkit with the configured provider
             this.llm = new LLMModule(this.llmConfig);
             this.isInitialized = true;
-            
+
             console.log(`✅ LLM service initialized successfully`);
-            
+
         } catch (error) {
             console.error('❌ Failed to initialize LLM service:', error.message);
             this.isInitialized = false;
@@ -52,7 +52,7 @@ class LLMService {
             throw error;
         }
     }
-    
+
     /**
      * Send a single message to the LLM
      * @param {string} message - The message to send
@@ -66,9 +66,9 @@ class LLMService {
                 console.log(`🔄 Initializing LLM service for first use...`);
                 await this._performInitialization();
             }
-            
+
             console.log(`📤 Sending message to LLM: "${message.substring(0, 50)}..."`);
-            
+
             // Set default options for BiocBot context - provider-aware
             const defaultOptions = {
                 systemPrompt: this.getSystemPrompt(),
@@ -77,18 +77,18 @@ class LLMService {
                 ...options
             };
             console.log('🔍 [LLM_OPTIONS] Default options:', defaultOptions);
-            
+
             const response = await this.llm.sendMessage(message, defaultOptions);
-            
+
             console.log(`✅ LLM response received (${response.content.length} characters)`);
             return response;
-            
+
         } catch (error) {
             console.error('❌ Error sending message to LLM:', error.message);
             throw error;
         }
     }
-    
+
     /**
      * Get provider-specific options based on the current LLM provider
      * @returns {Object} Provider-specific options
@@ -96,7 +96,7 @@ class LLMService {
      */
     _getProviderSpecificOptions() {
         const provider = this.llmConfig?.provider;
-        
+
         switch (provider) {
             case 'ollama':
                 return {
@@ -105,7 +105,7 @@ class LLMService {
             case 'openai':
                 return {
                     // OpenAI doesn't use num_ctx, uses max_tokens instead
-                    max_tokens: 2000
+                    max_tokens: 32768
                 };
             case 'ubc-llm-sandbox':
                 return {
@@ -116,7 +116,7 @@ class LLMService {
                 return {};
         }
     }
-    
+
     /**
      * Create a conversation for multi-turn chat
      * @returns {Object} Conversation object
@@ -128,21 +128,21 @@ class LLMService {
                 console.log(`🔄 Initializing LLM service for first use...`);
                 await this._performInitialization();
             }
-            
+
             const conversation = this.llm.createConversation();
-            
+
             // Set initial system prompt for BiocBot
             conversation.addMessage('system', this.getSystemPrompt());
-            
+
             console.log('💬 Conversation created successfully');
             return conversation;
-            
+
         } catch (error) {
             console.error('❌ Error creating conversation:', error.message);
             throw error;
         }
     }
-    
+
     /**
      * Send a message in conversation context
      * @param {Object} conversation - The conversation object
@@ -157,29 +157,29 @@ class LLMService {
                 console.log(`🔄 Initializing LLM service for first use...`);
                 await this._performInitialization();
             }
-            
+
             // Add user message to conversation
             conversation.addMessage('user', message);
-            
+
             // Set default options for BiocBot - provider-aware
             const defaultOptions = {
                 temperature: 0.1,
                 ...this._getProviderSpecificOptions(),
                 ...options
             };
-            
+
             // Send message and get response
             const response = await conversation.send(defaultOptions);
-            
+
             console.log(`💬 Conversation response received (${response.content.length} characters)`);
             return response;
-            
+
         } catch (error) {
             console.error('❌ Error in conversation:', error.message);
             throw error;
         }
     }
-    
+
     /**
      * Get available models from the current provider
      * @returns {Promise<Array>} List of available models
@@ -191,7 +191,7 @@ class LLMService {
                 console.log(`🔄 Initializing LLM service for first use...`);
                 await this._performInitialization();
             }
-            
+
             const models = await this.llm.getAvailableModels();
             console.log(`📋 Available models: ${models.length} found`);
             return models;
@@ -200,7 +200,7 @@ class LLMService {
             throw error;
         }
     }
-    
+
     /**
      * Get the current provider name
      * @returns {string} Provider name
@@ -211,7 +211,7 @@ class LLMService {
         }
         return this.llm.getProviderName();
     }
-    
+
     /**
      * Get system prompt for BiocBot
      * @returns {string} System prompt
@@ -219,7 +219,7 @@ class LLMService {
     getSystemPrompt() {
         return prompts.BASE_SYSTEM_PROMPT;
     }
-    
+
     /**
      * Test the LLM connection
      * @returns {Promise<boolean>} True if connection is working
@@ -227,9 +227,9 @@ class LLMService {
     async testConnection() {
         try {
             console.log('🔍 Testing LLM connection...');
-            
+
             const response = await this.sendMessage('Hello, this is a connection test.');
-            
+
             if (response && response.content) {
                 console.log('✅ LLM connection test successful');
                 return true;
@@ -237,13 +237,13 @@ class LLMService {
                 console.log('❌ LLM connection test failed - no response content');
                 return false;
             }
-            
+
         } catch (error) {
             console.error('❌ LLM connection test failed:', error.message);
             return false;
         }
     }
-    
+
     /**
      * Check if the LLM service is ready to use
      * @returns {boolean} True if service is initialized and ready
@@ -251,7 +251,7 @@ class LLMService {
     isReady() {
         return this.isInitialized && !!this.llm;
     }
-    
+
     /**
      * Get service status information
      * @returns {Object} Service status
@@ -280,18 +280,18 @@ class LLMService {
                 console.log(`🔄 Initializing LLM service for question generation...`);
                 await this._performInitialization();
             }
-            
+
             console.log(`🤖 Generating ${questionType} question for ${unitName}...`);
-            
+
             // Create specific prompt based on question type
             const prompt = this.createQuestionGenerationPrompt(questionType, courseMaterialContent, unitName, learningObjectives);
-            
+
             // Create system prompt using template function
             const systemPrompt = prompts.createQuestionGenerationSystemPrompt(
-                questionType, 
+                questionType,
                 this.getJsonSchemaForQuestionType(questionType)
             );
-            
+
             // Set specific options for question generation - provider-aware
             // Use higher temperature (0.7) for more creative question generation
             // Note: timeout is handled via Promise.race() below, not as an LLM option
@@ -300,11 +300,11 @@ class LLMService {
                 systemPrompt: systemPrompt,
                 ...this._getProviderSpecificOptions()
             };
-            
+
             // Log prompt length and content for debugging
             console.log(`🤖 [LLM_REQUEST] Sending prompt to LLM (${prompt.length} chars)`);
             console.log('🤖 [LLM_PROMPT] Full prompt being sent:', prompt);
-            
+
             // Create a promise that rejects after the timeout
             const timeoutPromise = new Promise((_, reject) => {
                 setTimeout(() => reject(new Error('LLM request timed out after 2 minutes')), 120000);
@@ -313,27 +313,27 @@ class LLMService {
             // Race between the LLM response and the timeout
             console.log('📝 Generating question...');
             console.log('⏳ This may take up to 2 minutes for complex questions...');
-            
+
             const response = await Promise.race([
                 this.llm.sendMessage(prompt, generationOptions),
                 timeoutPromise
             ]);
 
             console.log('🤖 [LLM_RESPONSE] Raw response from LLM:', response);
-            
+
             if (!response || !response.content) {
                 throw new Error('No response content received from LLM');
             }
-            
+
             console.log('🤖 [LLM_CONTENT] Response content:', response.content);
-            
+
             // Parse the response to extract question components
             const parsedQuestion = this.parseGeneratedQuestion(response.content, questionType);
             console.log('🤖 [LLM_PARSED] Parsed question:', parsedQuestion);
-            
+
             console.log(`✅ Question generated successfully for ${unitName}`);
             return parsedQuestion;
-            
+
         } catch (error) {
             console.error('❌ Error generating assessment question:', error.message);
             throw error;
@@ -357,25 +357,25 @@ class LLMService {
                 console.log(`🔄 Initializing LLM service for question regeneration...`);
                 await this._performInitialization();
             }
-            
+
             console.log(`🔄 Regenerating ${questionType} question for ${unitName} based on feedback...`);
-            
+
             // Create regeneration prompt with feedback
             const prompt = this.createQuestionRegenerationPrompt(
-                questionType, 
-                courseMaterialContent, 
-                unitName, 
-                learningObjectives, 
-                previousQuestion, 
+                questionType,
+                courseMaterialContent,
+                unitName,
+                learningObjectives,
+                previousQuestion,
                 feedback
             );
-            
+
             // Create system prompt using template function
             const systemPrompt = prompts.createQuestionGenerationSystemPrompt(
-                questionType, 
+                questionType,
                 this.getJsonSchemaForQuestionType(questionType)
             );
-            
+
             // Set specific options for question regeneration - provider-aware
             // Use lower temperature (0.5) for more focused improvements based on feedback
             // Note: timeout is handled via Promise.race() below, not as an LLM option
@@ -384,11 +384,11 @@ class LLMService {
                 systemPrompt: systemPrompt,
                 ...this._getProviderSpecificOptions()
             };
-            
+
             // Log prompt length and content for debugging
             console.log(`🔄 [LLM_REGENERATE] Sending regeneration prompt to LLM (${prompt.length} chars)`);
             console.log('🔄 [LLM_REGENERATE_PROMPT] Full prompt being sent:', prompt);
-            
+
             // Create a promise that rejects after the timeout
             const timeoutPromise = new Promise((_, reject) => {
                 setTimeout(() => reject(new Error('LLM regeneration request timed out after 2 minutes')), 120000);
@@ -397,33 +397,33 @@ class LLMService {
             // Race between the LLM response and the timeout
             console.log('🔄 Regenerating question based on feedback...');
             console.log('⏳ This may take up to 2 minutes...');
-            
+
             const response = await Promise.race([
                 this.llm.sendMessage(prompt, generationOptions),
                 timeoutPromise
             ]);
 
             console.log('🔄 [LLM_REGENERATE_RESPONSE] Raw response from LLM:', response);
-            
+
             if (!response || !response.content) {
                 throw new Error('No response content received from LLM during regeneration');
             }
-            
+
             console.log('🔄 [LLM_REGENERATE_CONTENT] Response content:', response.content);
-            
+
             // Parse the response to extract question components
             const parsedQuestion = this.parseGeneratedQuestion(response.content, questionType);
             console.log('🔄 [LLM_REGENERATE_PARSED] Parsed regenerated question:', parsedQuestion);
-            
+
             console.log(`✅ Question regenerated successfully for ${unitName}`);
             return parsedQuestion;
-            
+
         } catch (error) {
             console.error('❌ Error regenerating assessment question:', error.message);
             throw error;
         }
     }
-    
+
     /**
      * Create a specific prompt for question generation based on type
      * @param {string} questionType - Type of question to generate
@@ -511,8 +511,8 @@ Generate a completely new question that addresses the feedback, don't just modif
 
         return regenerationPrompt;
     }
-    
-    
+
+
     /**
      * Get JSON schema for specific question type
      * @param {string} questionType - Type of question
@@ -533,7 +533,7 @@ Generate a completely new question that addresses the feedback, don't just modif
     "question": "string - the question text",
     "options": {
         "A": "string - option A",
-        "B": "string - option B", 
+        "B": "string - option B",
         "C": "string - option C",
         "D": "string - option D"
     },
@@ -552,7 +552,7 @@ Generate a completely new question that addresses the feedback, don't just modif
                 return '{}';
         }
     }
-    
+
     /**
      * Parse the LLM response to extract question components
      * @param {string} responseContent - Raw response from LLM
@@ -562,7 +562,7 @@ Generate a completely new question that addresses the feedback, don't just modif
     parseGeneratedQuestion(responseContent, questionType) {
         try {
             console.log('🔍 [PARSE] Starting to parse response content:', responseContent);
-            
+
             // Try to parse the response as JSON
             let jsonResponse;
             try {
@@ -578,25 +578,25 @@ Generate a completely new question that addresses the feedback, don't just modif
                 console.error('❌ [PARSE] Failed to parse JSON:', jsonError);
                 throw new Error('Invalid JSON format in response');
             }
-            
+
             console.log('🔍 [PARSE] Parsed JSON response:', jsonResponse);
-            
+
             // Validate the parsed response based on question type
             if (!jsonResponse.type || !jsonResponse.question || !jsonResponse.explanation) {
                 throw new Error('Missing required fields in response');
             }
-            
+
             // Ensure the response type matches the expected type
             if (jsonResponse.type !== questionType) {
                 console.warn(`⚠️ [PARSE] Question type mismatch. Expected: ${questionType}, Got: ${jsonResponse.type}`);
             }
-            
+
             const parsed = {
                 type: questionType,
                 question: jsonResponse.question,
                 explanation: jsonResponse.explanation
             };
-            
+
             // Handle type-specific fields
             switch (questionType) {
                 case 'true-false':
@@ -605,7 +605,7 @@ Generate a completely new question that addresses the feedback, don't just modif
                     }
                     parsed.answer = jsonResponse.correctAnswer.toString();
                     break;
-                    
+
                 case 'multiple-choice':
                     if (!jsonResponse.options || !jsonResponse.correctAnswer) {
                         throw new Error('Multiple choice question must have options and correctAnswer');
@@ -619,7 +619,7 @@ Generate a completely new question that addresses the feedback, don't just modif
                     parsed.options = options;
                     parsed.answer = jsonResponse.correctAnswer.toUpperCase();
                     break;
-                    
+
                 case 'short-answer':
                     if (!jsonResponse.expectedAnswer) {
                         throw new Error('Short answer question must have an expectedAnswer');
@@ -630,14 +630,14 @@ Generate a completely new question that addresses the feedback, don't just modif
                         parsed.keyPoints = jsonResponse.keyPoints;
                     }
                     break;
-                    
+
                 default:
                     console.warn(`⚠️ [PARSE] Unknown question type: ${questionType}`);
             }
-            
+
             console.log('✅ [PARSE] Successfully parsed question:', parsed);
             return parsed;
-            
+
         } catch (error) {
             console.error('❌ Error parsing generated question:', error);
             // Return a fallback structure
@@ -653,4 +653,4 @@ Generate a completely new question that addresses the feedback, don't just modif
 }
 
 // Export the class instead of an instance
-module.exports = LLMService; 
+module.exports = LLMService;
