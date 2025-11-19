@@ -2072,6 +2072,10 @@ async function submitFlag(messageText, flagType) {
         const studentId = getCurrentStudentId();
         const studentName = getCurrentStudentName();
         const unitName = getCurrentUnitName();
+        
+        // Get current bot mode (protege or tutor)
+        const botMode = localStorage.getItem('studentMode') || 'tutor';
+        // fixed the resolved.
 
         // Create flag data for the new flagged questions API
         const flagData = {
@@ -2082,6 +2086,7 @@ async function submitFlag(messageText, flagType) {
             studentName: studentName,
             flagReason: flagType,
             flagDescription: `Student flagged bot response as ${flagType}`,
+            botMode: botMode, // Include the bot mode (protege or tutor) when the flag was submitted
             questionContent: {
                 question: messageText,
                 questionType: 'bot-response',

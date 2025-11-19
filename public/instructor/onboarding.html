@@ -357,7 +357,16 @@
             </div>
             
             <div class="modal-body">
-                <div class="upload-section">
+                <!-- Loading Indicator (shown during upload) -->
+                <div id="upload-loading-indicator" class="upload-loading-indicator" style="display: none;">
+                    <div class="loading-spinner"></div>
+                    <div class="loading-message">
+                        <p><strong>Uploading and processing document...</strong></p>
+                        <p class="loading-note">This may take more than 30 seconds per document. Please do not close this window.</p>
+                    </div>
+                </div>
+
+                <div class="upload-section" id="upload-section">
                     <!-- File Upload Button -->
                     <div class="file-upload-container">
                         <button class="upload-file-btn" onclick="triggerFileInput()">

@@ -17,6 +17,7 @@ const { MongoClient } = require('mongodb');
  *   studentName: String,         // Name of the student (for display)
  *   flagReason: String,          // Reason for flagging (e.g., "unclear", "incorrect", "inappropriate")
  *   flagDescription: String,     // Detailed description of the issue
+ *   botMode: String,             // Bot mode when flag was submitted ("protege" or "tutor")
  *   flagStatus: String,          // "pending", "reviewed", "resolved", "dismissed"
  *   instructorResponse: String,  // Instructor's response/explanation
  *   instructorId: String,        // ID of instructor who responded

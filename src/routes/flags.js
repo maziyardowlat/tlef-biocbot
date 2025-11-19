@@ -50,6 +50,7 @@ router.post('/', async (req, res) => {
             unitName,
             flagReason,
             flagDescription,
+            botMode,
             questionContent
         } = req.body;
         
@@ -78,6 +79,14 @@ router.post('/', async (req, res) => {
             });
         }
         
+        // Validate botMode if provided (should be "protege" or "tutor")
+        if (botMode && botMode !== 'protege' && botMode !== 'tutor') {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid botMode. Must be "protege" or "tutor"'
+            });
+        }
+        
         // Get database instance from app.locals
         const db = req.app.locals.db;
         if (!db) {
@@ -96,6 +105,7 @@ router.post('/', async (req, res) => {
             studentName: user.displayName || user.username,
             flagReason,
             flagDescription,
+            botMode: botMode || 'tutor', // Default to 'tutor' if not provided for backward compatibility
             questionContent
         });
         
