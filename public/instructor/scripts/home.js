@@ -53,19 +53,14 @@ async function initializeHomePage() {
         // Onboarding is complete, hide prompt and show normal content
         hideOnboardingPrompt();
         
-        // Initialize course selection functionality (this will load current course and data)
-        await initializeCourseSelection();
+        // Load statistics
+        await loadStatistics();
         
-        // Statistics, flagged content, and missing content are loaded 
-        // inside setSelectedCourse() after course is set
-        // Only load them here if no course was selected (fallback)
-        const selectedCourseId = getSelectedCourseId();
-        if (!selectedCourseId) {
-            // No course selected, try to load data for all courses
-            await loadStatistics();
-            await loadFlaggedContent();
-            await checkMissingContent();
-        }
+        // Load flagged content count
+        await loadFlaggedContent();
+        
+        // Check for missing course content
+        await checkMissingContent();
     } catch (error) {
         console.error('Error initializing home page:', error);
         showErrorMessage('Failed to load home page data');
@@ -166,15 +161,7 @@ function hideOnboardingPrompt() {
  */
 async function loadStatistics() {
     try {
-        const courseId = getSelectedCourseId();
-        let url = '/api/courses/statistics';
-        
-        // If a course is selected, filter by course ID
-        if (courseId) {
-            url += `?courseId=${encodeURIComponent(courseId)}`;
-        }
-        
-        const response = await fetch(url, {
+        const response = await fetch('/api/courses/statistics', {
             credentials: 'include'
         });
         
@@ -260,32 +247,8 @@ function updateStatisticsDisplay(stats) {
  */
 async function loadFlaggedContent() {
     try {
-        const courseId = getSelectedCourseId();
-        
-        // If a course is selected, only get flags for that course
-        if (courseId) {
-            try {
-                const flagsResponse = await fetch(`/api/flags/course/${courseId}?status=pending`, {
-                    credentials: 'include'
-                });
-                if (flagsResponse.ok) {
-                    const flagsData = await flagsResponse.json();
-                    if (flagsData.success && flagsData.data && flagsData.data.flags) {
-                        updateFlaggedCount(flagsData.data.flags.length);
-                        return;
-                    }
-                }
-            } catch (error) {
-                console.error(`Error fetching flags for course ${courseId}:`, error);
-            }
-            updateFlaggedCount(0);
-            return;
-        }
-        
-        // Otherwise, get flags for all courses
-        const coursesResponse = await fetch('/api/courses', {
-            credentials: 'include'
-        });
+        // Get all courses for the instructor
+        const coursesResponse = await fetch('/api/courses');
         if (!coursesResponse.ok) {
             throw new Error('Failed to fetch courses');
         }
@@ -303,9 +266,7 @@ async function loadFlaggedContent() {
         // Get flags for each course
         for (const course of courses) {
             try {
-                const flagsResponse = await fetch(`/api/flags/course/${course.id}?status=pending`, {
-                    credentials: 'include'
-                });
+                const flagsResponse = await fetch(`/api/flags/course/${course.id}?status=pending`);
                 if (flagsResponse.ok) {
                     const flagsData = await flagsResponse.json();
                     if (flagsData.success && flagsData.data && flagsData.data.flags) {
@@ -349,55 +310,8 @@ function updateFlaggedCount(count) {
  */
 async function checkMissingContent() {
     try {
-        const courseId = getSelectedCourseId();
-        
-        // If a course is selected, only check that course
-        if (courseId) {
-            try {
-                const courseDetailResponse = await fetch(`/api/courses/${courseId}`, {
-                    credentials: 'include'
-                });
-                if (!courseDetailResponse.ok) {
-                    // Course not found or not accessible
-                    document.getElementById('missing-items-section')?.setAttribute('style', 'display: none;');
-                    document.getElementById('complete-section')?.setAttribute('style', 'display: none;');
-                    return;
-                }
-                
-                const courseDetailData = await courseDetailResponse.json();
-                if (!courseDetailData.success || !courseDetailData.data || !courseDetailData.data.lectures) {
-                    document.getElementById('missing-items-section')?.setAttribute('style', 'display: none;');
-                    document.getElementById('complete-section')?.setAttribute('style', 'display: none;');
-                    return;
-                }
-                
-                const course = courseDetailData.data;
-                const lectures = course.lectures;
-                const missingItems = [];
-                
-                // Check each unit/lecture for missing items
-                for (const lecture of lectures) {
-                    const unitMissingItems = checkUnitMissingItems(courseId, course.courseName || courseId, lecture);
-                    if (unitMissingItems.length > 0) {
-                        missingItems.push(...unitMissingItems);
-                    }
-                }
-                
-                // Display results
-                displayMissingItems(missingItems);
-                return;
-            } catch (error) {
-                console.error(`Error checking course ${courseId}:`, error);
-                document.getElementById('missing-items-section')?.setAttribute('style', 'display: none;');
-                document.getElementById('complete-section')?.setAttribute('style', 'display: none;');
-                return;
-            }
-        }
-        
-        // Otherwise, check all courses
-        const coursesResponse = await fetch('/api/courses', {
-            credentials: 'include'
-        });
+        // Get all courses for the instructor
+        const coursesResponse = await fetch('/api/courses');
         if (!coursesResponse.ok) {
             throw new Error('Failed to fetch courses');
         }
@@ -417,9 +331,7 @@ async function checkMissingContent() {
         for (const course of courses) {
             try {
                 // Get detailed course data with lectures
-                const courseDetailResponse = await fetch(`/api/courses/${course.id}`, {
-                    credentials: 'include'
-                });
+                const courseDetailResponse = await fetch(`/api/courses/${course.id}`);
                 if (!courseDetailResponse.ok) {
                     continue; // Skip this course if we can't get details
                 }
@@ -643,450 +555,4 @@ function showSuccessMessage(message) {
             notification.remove();
         }
     }, 5000);
-}
-
-/**
- * Initialize course selection functionality
- */
-async function initializeCourseSelection() {
-    // Set up event listeners
-    const changeCourseBtn = document.getElementById('change-course-btn');
-    const cancelCourseSelectBtn = document.getElementById('cancel-course-select-btn');
-    const joinCourseBtn = document.getElementById('join-course-btn');
-    const courseSelectDropdown = document.getElementById('course-select-dropdown');
-    
-    if (changeCourseBtn) {
-        changeCourseBtn.addEventListener('click', showCourseSelector);
-    }
-    
-    if (cancelCourseSelectBtn) {
-        cancelCourseSelectBtn.addEventListener('click', hideCourseSelector);
-    }
-    
-    if (joinCourseBtn) {
-        joinCourseBtn.addEventListener('click', handleJoinCourse);
-    }
-    
-    if (courseSelectDropdown) {
-        courseSelectDropdown.addEventListener('change', handleCourseSelectionChange);
-    }
-    
-    // Load available courses
-    await loadAvailableCourses();
-    
-    // Load and display current course
-    await loadCurrentCourse();
-    
-    // Update navigation links to include course ID
-    updateNavigationLinks();
-}
-
-/**
- * Load available courses for selection
- */
-async function loadAvailableCourses() {
-    try {
-        const courseSelectDropdown = document.getElementById('course-select-dropdown');
-        if (!courseSelectDropdown) return;
-        
-        // Fetch courses from the API
-        const response = await fetch('/api/courses/available/all', {
-            credentials: 'include'
-        });
-        
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        
-        const result = await response.json();
-        
-        if (!result.success) {
-            throw new Error(result.message || 'Failed to fetch courses');
-        }
-        
-        const courses = result.data || [];
-        
-        // Filter out duplicate courses by courseId
-        const uniqueCourses = courses.filter((course, index, self) => 
-            index === self.findIndex(c => c.courseId === course.courseId)
-        );
-        
-        // Clear existing options except the first placeholder
-        courseSelectDropdown.innerHTML = '<option value="">Choose a course...</option>';
-        
-        // Add course options
-        uniqueCourses.forEach(course => {
-            const option = document.createElement('option');
-            option.value = course.courseId;
-            option.textContent = course.courseName;
-            courseSelectDropdown.appendChild(option);
-        });
-        
-        console.log('Available courses loaded:', uniqueCourses.length);
-        
-    } catch (error) {
-        console.error('Error loading available courses:', error);
-        // Keep the placeholder option if API fails
-        const courseSelectDropdown = document.getElementById('course-select-dropdown');
-        if (courseSelectDropdown) {
-            courseSelectDropdown.innerHTML = '<option value="">Error loading courses</option>';
-        }
-    }
-}
-
-/**
- * Load and display the current selected course
- */
-async function loadCurrentCourse() {
-    try {
-        // Get course ID from localStorage or URL params
-        const urlParams = new URLSearchParams(window.location.search);
-        const courseIdFromUrl = urlParams.get('courseId');
-        const courseIdFromStorage = localStorage.getItem('selectedCourseId');
-        const courseId = courseIdFromUrl || courseIdFromStorage;
-        
-        if (!courseId) {
-            // Try to get the first course from instructor's courses
-            const instructorId = getCurrentInstructorId();
-            if (instructorId) {
-                const response = await authenticatedFetch(`/api/onboarding/instructor/${instructorId}`);
-                if (response.ok) {
-                    const result = await response.json();
-                    if (result.data && result.data.courses && result.data.courses.length > 0) {
-                        const firstCourse = result.data.courses[0];
-                        await setSelectedCourse(firstCourse.courseId, firstCourse.courseName);
-                        return;
-                    }
-                }
-            }
-            
-            // No course found, show course selector
-            showCourseSelector();
-            return;
-        }
-        
-        // Fetch course details
-        const response = await authenticatedFetch(`/api/courses/${courseId}`);
-        if (response.ok) {
-            const result = await response.json();
-            if (result.success && result.data) {
-                await setSelectedCourse(courseId, result.data.courseName || courseId);
-            } else {
-                // Course not found, clear selection
-                clearSelectedCourse();
-                showCourseSelector();
-            }
-        } else {
-            // Course not accessible, clear selection
-            clearSelectedCourse();
-            showCourseSelector();
-        }
-        
-    } catch (error) {
-        console.error('Error loading current course:', error);
-        showCourseSelector();
-    }
-}
-
-/**
- * Set the selected course and update UI
- * @param {string} courseId - Course ID to set
- * @param {string} courseName - Course name to display
- */
-async function setSelectedCourse(courseId, courseName) {
-    // Store in localStorage
-    localStorage.setItem('selectedCourseId', courseId);
-    
-    // Update URL if not already set
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('courseId') !== courseId) {
-        urlParams.set('courseId', courseId);
-        window.history.replaceState({}, '', `${window.location.pathname}?${urlParams.toString()}`);
-    }
-    
-    // Update UI
-    const courseNameDisplay = document.getElementById('course-name-display');
-    if (courseNameDisplay) {
-        courseNameDisplay.textContent = courseName || courseId;
-    }
-    
-    // Show course selection container
-    const courseSelectionContainer = document.getElementById('course-selection-container');
-    if (courseSelectionContainer) {
-        courseSelectionContainer.style.display = 'block';
-    }
-    
-    // Hide course selector, show current course display
-    hideCourseSelector();
-    
-    // Update course context in auth system
-    if (typeof setCurrentCourseId === 'function') {
-        await setCurrentCourseId(courseId);
-    }
-    
-    // Update navigation links
-    updateNavigationLinks();
-    
-    // Clear any cached course data
-    if (typeof courseIdCache !== 'undefined') {
-        courseIdCache = null;
-    }
-    
-    // Reload page data with new course
-    await loadStatistics();
-    await loadFlaggedContent();
-    await checkMissingContent();
-}
-
-/**
- * Clear the selected course
- */
-function clearSelectedCourse() {
-    localStorage.removeItem('selectedCourseId');
-    const urlParams = new URLSearchParams(window.location.search);
-    urlParams.delete('courseId');
-    window.history.replaceState({}, '', window.location.pathname);
-}
-
-/**
- * Show the course selector UI
- */
-function showCourseSelector() {
-    const currentCourseDisplay = document.querySelector('.current-course-display');
-    const courseSelector = document.getElementById('course-selector');
-    const selectedCourseDetails = document.getElementById('selected-course-details');
-    const joinCourseBtn = document.getElementById('join-course-btn');
-    
-    if (currentCourseDisplay) {
-        currentCourseDisplay.style.display = 'none';
-    }
-    
-    if (courseSelector) {
-        courseSelector.style.display = 'flex';
-    }
-    
-    if (selectedCourseDetails) {
-        selectedCourseDetails.style.display = 'none';
-    }
-    
-    if (joinCourseBtn) {
-        joinCourseBtn.style.display = 'none';
-    }
-}
-
-/**
- * Hide the course selector UI
- */
-function hideCourseSelector() {
-    const currentCourseDisplay = document.querySelector('.current-course-display');
-    const courseSelector = document.getElementById('course-selector');
-    const selectedCourseDetails = document.getElementById('selected-course-details');
-    const joinCourseBtn = document.getElementById('join-course-btn');
-    const courseSelectDropdown = document.getElementById('course-select-dropdown');
-    
-    if (currentCourseDisplay) {
-        currentCourseDisplay.style.display = 'flex';
-    }
-    
-    if (courseSelector) {
-        courseSelector.style.display = 'none';
-    }
-    
-    if (selectedCourseDetails) {
-        selectedCourseDetails.style.display = 'none';
-    }
-    
-    if (joinCourseBtn) {
-        joinCourseBtn.style.display = 'none';
-    }
-    
-    if (courseSelectDropdown) {
-        courseSelectDropdown.value = '';
-    }
-}
-
-/**
- * Handle course selection dropdown change
- */
-function handleCourseSelectionChange(event) {
-    const courseId = event.target.value;
-    const selectedCourseDetails = document.getElementById('selected-course-details');
-    const joinCourseBtn = document.getElementById('join-course-btn');
-    const selectedCourseName = document.getElementById('selected-course-name');
-    const selectedCourseId = document.getElementById('selected-course-id');
-    
-    if (!courseId) {
-        if (selectedCourseDetails) {
-            selectedCourseDetails.style.display = 'none';
-        }
-        if (joinCourseBtn) {
-            joinCourseBtn.style.display = 'none';
-        }
-        return;
-    }
-    
-    // Get course name from dropdown
-    const selectedOption = event.target.options[event.target.selectedIndex];
-    const courseName = selectedOption.textContent;
-    
-    // Show course details
-    if (selectedCourseDetails) {
-        selectedCourseDetails.style.display = 'block';
-    }
-    
-    if (selectedCourseName) {
-        selectedCourseName.textContent = courseName;
-    }
-    
-    if (selectedCourseId) {
-        selectedCourseId.textContent = courseId;
-    }
-    
-    if (joinCourseBtn) {
-        joinCourseBtn.style.display = 'inline-block';
-    }
-    
-    // Store selected course ID for joining
-    joinCourseBtn.dataset.courseId = courseId;
-    joinCourseBtn.dataset.courseName = courseName;
-}
-
-/**
- * Handle joining a course
- */
-async function handleJoinCourse() {
-    const joinCourseBtn = document.getElementById('join-course-btn');
-    if (!joinCourseBtn) return;
-    
-    const courseId = joinCourseBtn.dataset.courseId;
-    const courseName = joinCourseBtn.dataset.courseName;
-    
-    if (!courseId) {
-        showErrorMessage('No course selected');
-        return;
-    }
-    
-    try {
-        // Show loading state
-        const originalText = joinCourseBtn.textContent;
-        joinCourseBtn.textContent = 'Joining Course...';
-        joinCourseBtn.disabled = true;
-        
-        const instructorId = getCurrentInstructorId();
-        if (!instructorId) {
-            throw new Error('No instructor ID found. User not authenticated.');
-        }
-        
-        // Call the join course API
-        const response = await fetch(`/api/courses/${courseId}/instructors`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            credentials: 'include',
-            body: JSON.stringify({
-                instructorId: instructorId
-            })
-        });
-        
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.message || 'Failed to join course');
-        }
-        
-        const result = await response.json();
-        console.log('Successfully joined course:', result);
-        
-        // Mark instructor's onboarding as complete since they joined an existing course
-        if (typeof markInstructorOnboardingComplete === 'function') {
-            await markInstructorOnboardingComplete(courseId);
-        } else {
-            // Fallback: call the API directly
-            try {
-                await authenticatedFetch('/api/onboarding/complete', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        courseId: courseId,
-                        instructorId: instructorId
-                    })
-                });
-            } catch (error) {
-                console.warn('Failed to mark onboarding as complete:', error);
-            }
-        }
-        
-        // Set the selected course
-        await setSelectedCourse(courseId, courseName);
-        
-        // Show success message
-        showSuccessMessage('Successfully joined the course!');
-        
-        // Reload page data
-        await loadStatistics();
-        await loadFlaggedContent();
-        await checkMissingContent();
-        
-    } catch (error) {
-        console.error('Error joining course:', error);
-        showErrorMessage(`Error joining course: ${error.message}`);
-        
-        // Reset button state
-        if (joinCourseBtn) {
-            joinCourseBtn.textContent = 'Join Course';
-            joinCourseBtn.disabled = false;
-        }
-    }
-}
-
-/**
- * Get the currently selected course ID
- * @returns {string|null} Current course ID or null
- */
-function getSelectedCourseId() {
-    const urlParams = new URLSearchParams(window.location.search);
-    const courseIdFromUrl = urlParams.get('courseId');
-    const courseIdFromStorage = localStorage.getItem('selectedCourseId');
-    return courseIdFromUrl || courseIdFromStorage || null;
-}
-
-/**
- * Update navigation links to include course ID
- */
-function updateNavigationLinks() {
-    const courseId = getSelectedCourseId();
-    if (!courseId) return;
-    
-    // List of navigation link IDs and their base paths
-    const navLinks = {
-        'nav-home': '/instructor/home',
-        'nav-documents': '/instructor/documents',
-        'nav-onboarding': '/instructor/onboarding',
-        'nav-flagged': '/instructor/flagged',
-        'nav-student-hub': '/instructor/student-hub',
-        'nav-downloads': '/instructor/downloads',
-        'nav-ta-hub': '/instructor/ta-hub',
-        'nav-settings': '/instructor/settings'
-    };
-    
-    // Update each navigation link
-    Object.keys(navLinks).forEach(linkId => {
-        const link = document.getElementById(linkId);
-        if (link) {
-            const basePath = navLinks[linkId];
-            const url = new URL(basePath, window.location.origin);
-            url.searchParams.set('courseId', courseId);
-            link.href = url.pathname + url.search;
-        }
-    });
-    
-    // Also update the "View Flagged Questions" button
-    const viewFlagsBtn = document.getElementById('view-flags-btn');
-    if (viewFlagsBtn) {
-        const url = new URL('/instructor/flagged', window.location.origin);
-        url.searchParams.set('courseId', courseId);
-        viewFlagsBtn.href = url.pathname + url.search;
-    }
 } 

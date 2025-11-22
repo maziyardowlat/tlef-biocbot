@@ -335,24 +335,11 @@ router.get('/statistics', async (req, res) => {
             });
         }
         
-        // Get courseId from query params if provided
-        const { courseId: requestedCourseId } = req.query;
-        
         // Get all courses for this instructor
         const coursesCollection = db.collection('courses');
-        let coursesQuery = {
-            $or: [
-                { instructorId: user.userId },
-                { instructors: user.userId }
-            ]
-        };
-        
-        // If a specific courseId is requested, filter to that course
-        if (requestedCourseId) {
-            coursesQuery.courseId = requestedCourseId;
-        }
-        
-        const courses = await coursesCollection.find(coursesQuery).toArray();
+        const courses = await coursesCollection.find({ 
+            instructorId: user.userId 
+        }).toArray();
         
         if (courses.length === 0) {
             return res.json({
@@ -790,28 +777,10 @@ router.put('/:courseId/retrieval-mode', async (req, res) => {
             return res.status(503).json({ success: false, message: 'Database connection not available' });
         }
         
-        // Check if user has access to this course (either as main instructor or in instructors array)
+        // Update course owned by instructor
         const collection = db.collection('courses');
-        const course = await collection.findOne({ courseId });
-        
-        if (!course) {
-            return res.status(404).json({ success: false, message: 'Course not found' });
-        }
-        
-        // Check if user is the main instructor or in the instructors array
-        const hasAccess = course.instructorId === user.userId || 
-                         (Array.isArray(course.instructors) && course.instructors.includes(user.userId));
-        
-        if (!hasAccess) {
-            return res.status(403).json({ 
-                success: false, 
-                message: 'You do not have access to update this course' 
-            });
-        }
-        
-        // Update course
         const result = await collection.updateOne(
-            { courseId },
+            { courseId, instructorId: user.userId },
             { $set: { isAdditiveRetrieval, updatedAt: new Date() } }
         );
         
