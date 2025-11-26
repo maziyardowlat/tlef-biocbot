@@ -534,7 +534,7 @@ router.delete('/:documentId', async (req, res) => {
             });
         }
         
-        // Verify the document exists and belongs to the instructor
+        // Verify the document exists
         const document = await DocumentModel.getDocumentById(db, documentId);
         if (!document) {
             return res.status(404).json({
@@ -543,7 +543,10 @@ router.delete('/:documentId', async (req, res) => {
             });
         }
         
-        if (document.instructorId !== instructorId) {
+        // Check if instructor has access to the course (not just document ownership)
+        // This allows any instructor with course access to delete documents
+        const hasAccess = await CourseModel.userHasCourseAccess(db, document.courseId, instructorId, 'instructor');
+        if (!hasAccess) {
             return res.status(403).json({
                 success: false,
                 message: 'You do not have permission to delete this document'
@@ -554,7 +557,7 @@ router.delete('/:documentId', async (req, res) => {
         const result = await DocumentModel.deleteDocument(db, documentId);
         
         // DELETE FROM BOTH DATABASES - SIMPLE AND DIRECT
-        if (result.success) {
+        if (result.deletedCount > 0) {
             console.log(`Document deleted from documents collection, now deleting from course structure...`);
             
             // Get the course collection directly
@@ -582,7 +585,7 @@ router.delete('/:documentId', async (req, res) => {
             data: {
                 documentId,
                 deletedCount: result.deletedCount,
-                removedFromCourse: result.success
+                removedFromCourse: result.deletedCount > 0
             }
         });
         

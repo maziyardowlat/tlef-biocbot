@@ -693,13 +693,14 @@ async function getCourseForStudent(req, res, courseId) {
 router.put('/:courseId', async (req, res) => {
     try {
         const { courseId } = req.params;
-        const { name, weeks, lecturesPerWeek, status, isAdditiveRetrieval } = req.body;
-        const instructorId = req.query.instructorId;
+        const { name, weeks, lecturesPerWeek, status, isAdditiveRetrieval, lectures, instructorId: bodyInstructorId } = req.body;
+        // Accept instructorId from query param or body (for compatibility)
+        const instructorId = req.query.instructorId || bodyInstructorId;
         
         if (!instructorId) {
             return res.status(400).json({
                 success: false,
-                message: 'instructorId is required'
+                message: 'instructorId is required (as query parameter or in body)'
             });
         }
         
@@ -709,6 +710,15 @@ router.put('/:courseId', async (req, res) => {
             return res.status(503).json({
                 success: false,
                 message: 'Database connection not available'
+            });
+        }
+        
+        // Check if instructor has access to the course
+        const hasAccess = await CourseModel.userHasCourseAccess(db, courseId, instructorId, 'instructor');
+        if (!hasAccess) {
+            return res.status(403).json({
+                success: false,
+                message: 'You do not have permission to update this course'
             });
         }
         
@@ -729,15 +739,27 @@ router.put('/:courseId', async (req, res) => {
             };
         }
         
+        // Allow updating lectures array if provided (for document removal fallback)
+        if (lectures && Array.isArray(lectures)) {
+            updateData.lectures = lectures;
+        }
+        
+        // Use $or query to match course by instructorId or instructors array
         const result = await collection.updateOne(
-            { courseId, instructorId },
+            { 
+                courseId,
+                $or: [
+                    { instructorId: instructorId },
+                    { instructors: instructorId }
+                ]
+            },
             { $set: updateData }
         );
         
         if (result.matchedCount === 0) {
             return res.status(404).json({
                 success: false,
-                message: 'Course not found'
+                message: 'Course not found or you do not have access'
             });
         }
         
@@ -883,6 +905,71 @@ router.delete('/:courseId', async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Internal server error'
+        });
+    }
+});
+
+/**
+ * POST /api/courses/:courseId/remove-document
+ * Remove a specific document from the course structure
+ */
+router.post('/:courseId/remove-document', async (req, res) => {
+    try {
+        const { courseId } = req.params;
+        const { documentId, instructorId } = req.body;
+        
+        if (!documentId || !instructorId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Missing required fields: documentId, instructorId'
+            });
+        }
+        
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
+        
+        // Check if instructor has access to the course
+        const hasAccess = await CourseModel.userHasCourseAccess(db, courseId, instructorId, 'instructor');
+        if (!hasAccess) {
+            return res.status(403).json({
+                success: false,
+                message: 'You do not have permission to remove documents from this course'
+            });
+        }
+        
+        // Remove document from any unit in the course using Course model
+        const result = await CourseModel.removeDocumentFromAnyUnit(db, courseId, documentId, instructorId);
+        
+        if (!result.success) {
+            return res.status(404).json({
+                success: false,
+                message: result.error || 'Document not found in course structure'
+            });
+        }
+        
+        console.log(`Document ${documentId} removed from course ${courseId} structure`);
+        
+        res.json({
+            success: true,
+            message: 'Document removed from course structure successfully!',
+            data: {
+                documentId,
+                courseId,
+                removedCount: result.removedCount
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error removing document from course:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while removing document from course'
         });
     }
 });
