@@ -809,6 +809,33 @@ async function setSelectedCourse(courseId, courseName) {
     if (courseNameDisplay) {
         courseNameDisplay.textContent = courseName || courseId;
     }
+
+    // Update Course Code display
+    const courseCodeLabel = document.querySelector('.course-code-label');
+    const courseCodeDisplay = document.getElementById('course-code-display');
+    
+    if (courseCodeDisplay && courseCodeLabel) {
+        // We need to fetch the course details to get the code if we don't have it
+        // Usually setSelectedCourse is called after fetching details, but let's be safe
+        try {
+            const response = await authenticatedFetch(`/api/courses/${courseId}`);
+            if (response.ok) {
+                const result = await response.json();
+                if (result.success && result.data && result.data.courseCode) {
+                    courseCodeDisplay.textContent = result.data.courseCode;
+                    courseCodeDisplay.style.display = 'inline-block';
+                    courseCodeLabel.style.display = 'inline-block';
+                } else {
+                    courseCodeDisplay.style.display = 'none';
+                    courseCodeLabel.style.display = 'none';
+                }
+            }
+        } catch (e) {
+            console.error('Error fetching course code:', e);
+            courseCodeDisplay.style.display = 'none';
+            courseCodeLabel.style.display = 'none';
+        }
+    }
     
     // Show course selection container
     const courseSelectionContainer = document.getElementById('course-selection-container');

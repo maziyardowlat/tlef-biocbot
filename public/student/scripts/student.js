@@ -5,7 +5,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             const resp = await fetch(`/api/courses/${courseId}/student-enrollment`, { credentials: 'include' });
             if (resp.ok) {
                 const data = await resp.json();
-                if (data && data.success && data.data && data.data.enrolled === false) {
+                // Only show revoked UI if explicitly banned
+                if (data && data.success && data.data && data.data.status === 'banned') {
                     renderRevokedAccessUI();
                     return; // stop further chat init
                 }
@@ -1837,9 +1838,35 @@ async function handleNewSession() {
         // Clear any existing session data
         clearCurrentChatData();
 
+        const courseId = localStorage.getItem('selectedCourseId');
+
+        // If no course is selected, reload available courses to show dropdown
+        if (!courseId) {
+            console.log('🔄 [NEW-SESSION] No course selected, reloading available courses...');
+            
+            const chatMessages = document.getElementById('chat-messages');
+            if (chatMessages) {
+                chatMessages.innerHTML = `
+                    <div class="message bot-message">
+                        <div class="message-avatar">B</div>
+                        <div class="message-content">
+                            <p>Hello! Please select a course to get started.</p>
+                            <div class="message-footer">
+                                <div class="message-footer-right">
+                                    <span class="timestamp">Just now</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            await loadAvailableCourses();
+            return;
+        }
+
         // Generate a new session ID for the new session
         const studentId = getCurrentStudentId();
-        const courseId = localStorage.getItem('selectedCourseId');
         const unitName = localStorage.getItem('selectedUnitName') || 'this unit';
 
         if (studentId && courseId) {
@@ -2376,6 +2403,16 @@ async function loadAvailableCourses() {
 function showCourseSelection(courses) {
     console.log('Showing course selection for courses:', courses);
 
+    // Update header to show "Select Course"
+    const courseNameElement = document.querySelector('.course-name');
+    if (courseNameElement) {
+        courseNameElement.textContent = 'Select Course';
+    }
+    const userRoleElement = document.querySelector('.user-role');
+    if (userRoleElement) {
+        userRoleElement.textContent = 'Student';
+    }
+
     // Create course selection dropdown
     const courseSelectionHTML = `
         <div class="course-selection-container" style="margin: 20px 0; padding: 15px; background-color: #f8f9fa; border-radius: 8px; border-left: 4px solid var(--primary-color);">
@@ -2383,24 +2420,22 @@ function showCourseSelection(courses) {
             <p style="margin: 0 0 15px 0; color: #666;">Choose the course you want to access:</p>
             <select id="course-select" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
                 <option value="">Choose a course...</option>
-                ${courses.map(course => `<option value="${course.courseId}">${course.courseName}</option>`).join('')}
+                ${courses.map(course => `<option value="${course.courseId}" data-enrolled="${course.isEnrolled}">${course.courseName}</option>`).join('')}
             </select>
         </div>
     `;
 
-    // Insert course selection before the chat messages
     const chatMessages = document.getElementById('chat-messages');
-    const existingWelcome = chatMessages.querySelector('.message.bot-message');
-
-    // Create a container for the course selection
-    const courseSelectionDiv = document.createElement('div');
-    courseSelectionDiv.innerHTML = courseSelectionHTML;
-    courseSelectionDiv.id = 'course-selection-wrapper';
-
-    // Insert before the existing welcome message
-    if (existingWelcome) {
-        chatMessages.insertBefore(courseSelectionDiv, existingWelcome);
-    } else {
+    
+    // Clear any existing messages (including default welcome message) to prevents showing content from other courses
+    if (chatMessages) {
+        chatMessages.innerHTML = '';
+        
+        // Create a container for the course selection
+        const courseSelectionDiv = document.createElement('div');
+        courseSelectionDiv.innerHTML = courseSelectionHTML;
+        courseSelectionDiv.id = 'course-selection-wrapper';
+        
         chatMessages.appendChild(courseSelectionDiv);
     }
 
@@ -2408,16 +2443,52 @@ function showCourseSelection(courses) {
     const courseSelect = document.getElementById('course-select');
     if (courseSelect) {
         courseSelect.addEventListener('change', async function() {
+            const selectedOption = this.options[this.selectedIndex];
             const selectedCourseId = this.value;
-            if (selectedCourseId) {
-                console.log('Course selected:', selectedCourseId);
-                // This is a course change (user selected from dropdown)
-                await loadCourseData(selectedCourseId, true);
+            const isEnrolled = selectedOption.getAttribute('data-enrolled') === 'true';
 
-                // Hide the course selection after selection
-                const courseSelectionWrapper = document.getElementById('course-selection-wrapper');
-                if (courseSelectionWrapper) {
-                    courseSelectionWrapper.style.display = 'none';
+            if (selectedCourseId) {
+                console.log('Course selected:', selectedCourseId, 'Enrolled:', isEnrolled);
+                
+                if (isEnrolled) {
+                    // Already enrolled, load normally
+                    await loadCourseData(selectedCourseId, true);
+                    // Hide the course selection after selection
+                    const courseSelectionWrapper = document.getElementById('course-selection-wrapper');
+                    if (courseSelectionWrapper) {
+                        courseSelectionWrapper.style.display = 'none';
+                    }
+                } else {
+                    // Not enrolled, prompt for code
+                    const code = prompt("Please enter the Course Code provided by your instructor:");
+                    if (code) {
+                        try {
+                            const response = await fetch(`/api/courses/${selectedCourseId}/join`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ code })
+                            });
+                            
+                            const result = await response.json();
+                            if (result.success) {
+                                alert('Successfully joined the course!');
+                                await loadCourseData(selectedCourseId, true);
+                                const courseSelectionWrapper = document.getElementById('course-selection-wrapper');
+                                if (courseSelectionWrapper) {
+                                    courseSelectionWrapper.style.display = 'none';
+                                }
+                            } else {
+                                alert(result.message || 'Failed to join course. Please check the code.');
+                                this.value = ""; // Reset dropdown
+                            }
+                        } catch (err) {
+                            console.error('Error joining course:', err);
+                            alert('Error joining course. Please try again.');
+                            this.value = ""; // Reset dropdown
+                        }
+                    } else {
+                        this.value = ""; // Reset dropdown if cancelled
+                    }
                 }
             }
         });
