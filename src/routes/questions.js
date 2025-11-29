@@ -684,6 +684,50 @@ router.get('/course-material', async (req, res) => {
 });
 
 /**
+ * POST /api/questions/check-answer
+ * Check a student's answer using LLM
+ */
+router.post('/check-answer', async (req, res) => {
+    try {
+        const { question, studentAnswer, expectedAnswer, questionType } = req.body;
+
+        if (!question || !studentAnswer || !expectedAnswer) {
+            return res.status(400).json({
+                success: false,
+                message: 'Missing required fields: question, studentAnswer, expectedAnswer'
+            });
+        }
+
+        const llmService = req.app.locals.llm;
+        if (!llmService) {
+            return res.status(503).json({
+                success: false,
+                message: 'LLM service not available'
+            });
+        }
+
+        const result = await llmService.evaluateStudentAnswer(
+            question,
+            studentAnswer,
+            expectedAnswer,
+            questionType
+        );
+
+        res.json({
+            success: true,
+            data: result
+        });
+
+    } catch (error) {
+        console.error('Error checking answer:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while checking answer'
+        });
+    }
+});
+
+/**
  * POST /api/questions/generate-ai
  * Generate an assessment question using AI based on course material
  */

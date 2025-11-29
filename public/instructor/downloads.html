@@ -80,8 +80,13 @@
             <div id="students-container" class="students-container" style="display: none;">
                 <div class="students-header">
                     <h2>Students with Saved Chats</h2>
-                    <div class="students-stats">
-                        <span id="total-students">0</span> students with saved chats
+                    <div class="students-header-actions" style="display: flex; align-items: center; gap: 15px;">
+                        <div class="students-stats">
+                            <span id="total-students">0</span> students with saved chats
+                        </div>
+                        <button class="btn-primary" id="download-course-btn" onclick="downloadAllCourseSessions()">
+                            Download All Course Data
+                        </button>
                     </div>
                 </div>
 
