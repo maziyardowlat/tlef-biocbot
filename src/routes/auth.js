@@ -754,4 +754,81 @@ router.get('/methods', (req, res) => {
 //     }
 // );
 
+/**
+ * POST /api/auth/promote-to-ta
+ * Promote a student to TA role (instructor only)
+ */
+router.post('/promote-to-ta', async (req, res) => {
+    try {
+        const { userId } = req.body;
+        
+        // Get authenticated user information
+        const user = req.user;
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                message: 'Authentication required'
+            });
+        }
+        
+        // Only instructors can promote students
+        if (user.role !== 'instructor') {
+            return res.status(403).json({
+                success: false,
+                message: 'Only instructors can promote students to TAs'
+            });
+        }
+        
+        if (!userId) {
+            return res.status(400).json({
+                success: false,
+                message: 'User ID is required'
+            });
+        }
+        
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
+        
+        // Update user role
+        const usersCollection = db.collection('users');
+        const result = await usersCollection.updateOne(
+            { userId: userId },
+            { 
+                $set: { 
+                    role: 'ta',
+                    updatedAt: new Date()
+                } 
+            }
+        );
+        
+        if (result.matchedCount === 0) {
+            return res.status(404).json({
+                success: false,
+                message: 'User not found'
+            });
+        }
+        
+        console.log(`Promoted user ${userId} to TA`);
+        
+        res.json({
+            success: true,
+            message: 'User promoted to TA successfully',
+            userId: userId
+        });
+        
+    } catch (error) {
+        console.error('Error promoting user to TA:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while promoting user'
+        });
+    }
+});
+
 module.exports = router;

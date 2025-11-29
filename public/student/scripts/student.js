@@ -4188,6 +4188,13 @@ async function submitShortAnswer(answer, questionIndex) {
         // Determine expected answer field
         const expectedAnswer = question.expectedAnswer || question.correctAnswer || question.answer;
 
+        // Get student name for personalized feedback
+        let studentName = 'Student';
+        const currentUser = getCurrentUser();
+        if (currentUser && currentUser.displayName) {
+            studentName = currentUser.displayName;
+        }
+
         const response = await fetch('/api/questions/check-answer', {
             method: 'POST',
             headers: {
@@ -4197,7 +4204,8 @@ async function submitShortAnswer(answer, questionIndex) {
                 question: question.question,
                 studentAnswer: answer,
                 expectedAnswer: expectedAnswer,
-                questionType: 'short-answer'
+                questionType: 'short-answer',
+                studentName: studentName
             })
         });
 

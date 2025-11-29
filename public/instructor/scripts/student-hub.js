@@ -105,11 +105,48 @@ function renderStudents(courseId) {
                     </label>
                     <button class="btn-small btn-secondary" id="save-${s.userId}" disabled
                             onclick="saveEnrollment('${courseId}','${s.userId}')">Save</button>
+                    <button class="btn-small btn-primary" onclick="promoteToTA('${s.userId}', '${escapeHTML(s.displayName || s.username)}')">
+                        Give TA Perms
+                    </button>
                 </div>
             </div>
         `;
     }).join('');
 }
+
+window.promoteToTA = async function(studentId, studentName) {
+    if (!confirm(`Are you sure you want to promote ${studentName} to a Teaching Assistant? This will give them TA permissions.`)) {
+        return;
+    }
+
+    try {
+        const resp = await authenticatedFetch('/api/auth/promote-to-ta', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: studentId })
+        });
+
+        if (!resp.ok) {
+            const errorData = await resp.json();
+            throw new Error(errorData.message || `HTTP ${resp.status}`);
+        }
+
+        showNotification(`Successfully promoted ${studentName} to TA`, 'success');
+        
+        // Reload students list to reflect changes (promoted student should ideally disappear or be marked)
+        // Since this view shows "students", a TA might not show up here anymore depending on backend logic, 
+        // or will show up but now have role='ta'. 
+        // For now, we reload the list.
+        const selectedCourseId = localStorage.getItem('selectedCourseId');
+        if (selectedCourseId) {
+            await loadStudents(selectedCourseId);
+        }
+
+    } catch (err) {
+        console.error('Error promoting to TA:', err);
+        showNotification(`Failed to promote to TA: ${err.message}`, 'error');
+    }
+};
 
 window.toggleEnrollment = function(courseId, studentId, value) {
     dirtyEnrollment.set(studentId, !!value);
