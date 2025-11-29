@@ -373,6 +373,12 @@ function displayStudents(students) {
     emptyState.style.display = 'none';
     studentsContainer.style.display = 'block';
     
+    // Show download course button if there are students
+    const downloadCourseBtn = document.getElementById('download-course-btn');
+    if (downloadCourseBtn) {
+        downloadCourseBtn.style.display = students.length > 0 ? 'block' : 'none';
+    }
+    
     // Create student cards
     students.forEach(student => {
         const studentCard = createStudentCard(student);
@@ -380,6 +386,116 @@ function displayStudents(students) {
     });
     
     console.log(`Displayed ${students.length} students`);
+}
+
+/**
+ * Download all chat sessions for all students in the course
+ */
+async function downloadAllCourseSessions() {
+    try {
+        console.log('Downloading all course sessions...');
+        
+        if (currentStudents.length === 0) {
+            alert('No students found to download.');
+            return;
+        }
+        
+        // Show progress modal
+        showDownloadProgress();
+        const downloadStatus = document.getElementById('download-status');
+        
+        const allCourseData = {
+            courseId: currentCourseId,
+            exportDate: new Date().toISOString(),
+            totalStudents: currentStudents.length,
+            students: []
+        };
+        
+        let processedStudents = 0;
+        let totalSessionsCount = 0;
+        
+        // Iterate through all students
+        for (const student of currentStudents) {
+            if (downloadStatus) {
+                downloadStatus.textContent = `Processing student ${processedStudents + 1} of ${currentStudents.length}: ${getStudentDisplayName(student)}`;
+            }
+            
+            try {
+                // Fetch sessions list for this student
+                const sessionsResponse = await fetch(`/api/students/${currentCourseId}/${student.studentId}/sessions`, {
+                    method: 'GET',
+                    credentials: 'include'
+                });
+                
+                if (sessionsResponse.ok) {
+                    const sessionsResult = await sessionsResponse.json();
+                    if (sessionsResult.success && sessionsResult.data && sessionsResult.data.sessions) {
+                        const studentSessions = sessionsResult.data.sessions;
+                        const studentData = {
+                            studentId: student.studentId,
+                            studentName: getStudentDisplayName(student),
+                            sessions: []
+                        };
+                        
+                        // Fetch full content for each session
+                        for (let i = 0; i < studentSessions.length; i++) {
+                            const session = studentSessions[i];
+                            if (downloadStatus) {
+                                downloadStatus.textContent = `Fetching session ${i + 1}/${studentSessions.length} for ${getStudentDisplayName(student)}`;
+                            }
+                            
+                            try {
+                                const sessionResponse = await fetch(`/api/students/${currentCourseId}/${student.studentId}/sessions/${session.sessionId}`, {
+                                    method: 'GET',
+                                    credentials: 'include'
+                                });
+                                
+                                if (sessionResponse.ok) {
+                                    const sessionResult = await sessionResponse.json();
+                                    if (sessionResult.success) {
+                                        studentData.sessions.push(sessionResult.data);
+                                        totalSessionsCount++;
+                                    }
+                                }
+                            } catch (err) {
+                                console.error(`Error fetching session ${session.sessionId}:`, err);
+                            }
+                        }
+                        
+                        allCourseData.students.push(studentData);
+                    }
+                }
+            } catch (err) {
+                console.error(`Error processing student ${student.studentId}:`, err);
+            }
+            
+            processedStudents++;
+            updateDownloadProgress(processedStudents, currentStudents.length);
+        }
+        
+        // Download combined JSON
+        const fileName = `BiocBot_Course_${currentCourseId}_AllSessions_${new Date().toISOString().split('T')[0]}.json`;
+        downloadJSON(allCourseData, fileName);
+        
+        // Hide progress modal
+        hideDownloadProgress();
+        
+        console.log(`Downloaded all course data: ${totalSessionsCount} sessions from ${processedStudents} students`);
+        
+    } catch (error) {
+        console.error('Error downloading all course sessions:', error);
+        hideDownloadProgress();
+        alert('Failed to download course sessions. Please try again.');
+    }
+}
+
+/**
+ * Helper to get display name from student object safely
+ */
+function getStudentDisplayName(student) {
+    if (!student || !student.studentName) return 'Unknown Student';
+    if (typeof student.studentName === 'string') return student.studentName;
+    return student.studentName.displayName || student.studentName.name || 'Unknown Student';
 }
 
 /**
@@ -807,4 +923,5 @@ function handleLogout() {
 window.viewStudentSessions = viewStudentSessions;
 window.downloadSession = downloadSession;
 window.downloadAllSessions = downloadAllSessions;
+window.downloadAllCourseSessions = downloadAllCourseSessions;
 window.closeStudentModal = closeStudentModal;

@@ -341,6 +341,73 @@ class LLMService {
     }
 
     /**
+     * Evaluate a student's answer to a question
+     * @param {string} question - The question text
+     * @param {string} studentAnswer - The student's answer
+     * @param {string} expectedAnswer - The expected/correct answer
+     * @param {string} questionType - Type of question (short-answer, etc.)
+     * @returns {Promise<Object>} Evaluation result { correct: boolean, feedback: string }
+     */
+    async evaluateStudentAnswer(question, studentAnswer, expectedAnswer, questionType) {
+        try {
+            if (!this.isInitialized) {
+                await this._performInitialization();
+            }
+
+            console.log('📝 Evaluating student answer...');
+
+            const prompt = `You are an automated grader for a biology course.
+Question: ${question}
+Expected Answer: ${expectedAnswer}
+Student Answer: ${studentAnswer}
+
+Evaluate the student's answer based on the expected answer.
+For short answer questions, the answer doesn't need to be identical, but must capture the key concepts.
+Be lenient with spelling if the meaning is clear.
+
+Return ONLY a JSON object with the following structure:
+{
+    "correct": boolean,
+    "feedback": "Brief explanation of why it is correct or incorrect"
+}`;
+
+            const response = await this.sendMessage(prompt, {
+                temperature: 0.1,
+                response_format: { type: "json_object" } // For providers that support it
+            });
+
+            console.log('🤖 [EVALUATION] Raw response:', response.content);
+
+            // Parse JSON response
+            let result;
+            try {
+                const jsonStart = response.content.indexOf('{');
+                const jsonEnd = response.content.lastIndexOf('}') + 1;
+                if (jsonStart !== -1 && jsonEnd !== 0) {
+                    const jsonStr = response.content.substring(jsonStart, jsonEnd);
+                    result = JSON.parse(jsonStr);
+                } else {
+                    throw new Error('No JSON found');
+                }
+            } catch (e) {
+                console.error('Failed to parse evaluation JSON:', e);
+                // Fallback parsing
+                const isCorrect = response.content.toLowerCase().includes('correct": true');
+                result = {
+                    correct: isCorrect,
+                    feedback: response.content
+                };
+            }
+
+            return result;
+
+        } catch (error) {
+            console.error('❌ Error evaluating answer:', error);
+            throw error;
+        }
+    }
+
+    /**
      * Regenerate an assessment question with instructor feedback
      * @param {string} questionType - Type of question to regenerate
      * @param {string} courseMaterialContent - Course material content

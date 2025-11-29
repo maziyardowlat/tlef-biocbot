@@ -556,14 +556,15 @@ router.delete('/:documentId', async (req, res) => {
         // Delete the document from the documents collection
         const result = await DocumentModel.deleteDocument(db, documentId);
         
-        // DELETE FROM BOTH DATABASES - SIMPLE AND DIRECT
+        // DELETE FROM ALL THREE STORAGE SYSTEMS: MongoDB documents, course structure, and Qdrant
+        let qdrantDeleted = false;
+        let qdrantDeletedCount = 0;
+        
         if (result.deletedCount > 0) {
-            console.log(`Document deleted from documents collection, now deleting from course structure...`);
+            console.log(`Document deleted from documents collection, now cleaning up course structure and Qdrant...`);
             
-            // Get the course collection directly
+            // Step 1: Delete from course structure
             const coursesCollection = db.collection('courses');
-            
-            // DELETE FROM COURSE STRUCTURE - NO FANCY LOGIC
             const courseDeleteResult = await coursesCollection.updateOne(
                 { courseId: document.courseId },
                 { 
@@ -574,7 +575,28 @@ router.delete('/:documentId', async (req, res) => {
             );
             
             console.log(`Course delete result:`, courseDeleteResult);
-            console.log(`Document ${documentId} deleted from BOTH databases`);
+            
+            // Step 2: Delete from Qdrant vector database
+            try {
+                // Ensure Qdrant service is initialized
+                if (!qdrantService.client) {
+                    await qdrantService.initialize();
+                }
+                
+                const qdrantResult = await qdrantService.deleteDocumentChunks(documentId);
+                if (qdrantResult.success) {
+                    qdrantDeleted = true;
+                    qdrantDeletedCount = qdrantResult.deletedCount;
+                    console.log(`✅ Deleted ${qdrantDeletedCount} chunks from Qdrant for document ${documentId}`);
+                } else {
+                    console.warn(`⚠️ Failed to delete chunks from Qdrant: ${qdrantResult.error}`);
+                }
+            } catch (qdrantError) {
+                console.warn(`⚠️ Error deleting from Qdrant (non-fatal):`, qdrantError.message);
+                // Don't fail the entire deletion if Qdrant cleanup fails
+            }
+            
+            console.log(`Document ${documentId} deleted from MongoDB documents, course structure, and Qdrant`);
         }
         
         console.log(`Document deleted: ${documentId} by instructor ${instructorId}`);
@@ -585,7 +607,9 @@ router.delete('/:documentId', async (req, res) => {
             data: {
                 documentId,
                 deletedCount: result.deletedCount,
-                removedFromCourse: result.deletedCount > 0
+                removedFromCourse: result.deletedCount > 0,
+                removedFromQdrant: qdrantDeleted,
+                qdrantChunksDeleted: qdrantDeletedCount
             }
         });
         

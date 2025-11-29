@@ -50,12 +50,46 @@ const { MongoClient } = require('mongodb');
  */
 
 /**
+ * Generate a random 6-character alphanumeric course code
+ * @returns {string} Course code
+ */
+function generateCourseCode() {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Excludes I, O, 1, 0 to avoid confusion
+    let code = '';
+    for (let i = 0; i < 6; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return code;
+}
+
+/**
  * Get the courses collection from the database
  * @param {Object} db - MongoDB database instance
  * @returns {Collection} Courses collection
  */
 function getCoursesCollection(db) {
     return db.collection('courses');
+}
+
+/**
+ * Ensure all courses have a course code (Migration)
+ * @param {Object} db - MongoDB database instance
+ */
+async function ensureCourseCodes(db) {
+    const collection = getCoursesCollection(db);
+    const courses = await collection.find({ courseCode: { $exists: false } }).toArray();
+    
+    if (courses.length > 0) {
+        console.log(`Migrating ${courses.length} courses to have course codes...`);
+        for (const course of courses) {
+            const code = generateCourseCode();
+            await collection.updateOne(
+                { _id: course._id },
+                { $set: { courseCode: code } }
+            );
+            console.log(`Assigned code ${code} to course ${course.courseId}`);
+        }
+    }
 }
 
 /**
@@ -75,6 +109,11 @@ async function upsertCourse(db, courseData) {
     
     if (!course.createdAt) {
         course.createdAt = now;
+    }
+
+    // Ensure course code exists
+    if (!course.courseCode) {
+        course.courseCode = generateCourseCode();
     }
     
     const result = await collection.updateOne(
@@ -579,6 +618,7 @@ async function createCourseFromOnboarding(db, onboardingData) {
         const course = {
             courseId,
             courseName,
+            courseCode: generateCourseCode(), // Generate course code
             instructorId,
             instructors: [instructorId], // Initialize with primary instructor
             tas: [], // Initialize empty TA array
@@ -1294,11 +1334,11 @@ async function updateStudentEnrollment(db, courseId, studentId, enrolled) {
 }
 
 /**
- * Get student enrollment override for a course (defaults to enrolled=true)
+ * Get student enrollment override for a course (defaults to enrolled=false)
  * @param {Object} db - MongoDB database instance
  * @param {string} courseId - Course identifier
  * @param {string} studentId - Student identifier
- * @returns {Promise<{ success: boolean, enrolled?: boolean, error?: string }>} Result
+ * @returns {Promise<{ success: boolean, enrolled?: boolean, status?: string, error?: string }>} Result
  */
 async function getStudentEnrollment(db, courseId, studentId) {
     const collection = getCoursesCollection(db);
@@ -1313,13 +1353,72 @@ async function getStudentEnrollment(db, courseId, studentId) {
     }
 
     const enrollment = course.studentEnrollment && course.studentEnrollment[studentId];
-    // Default: enrolled when no override exists
-    const enrolled = enrollment ? !!enrollment.enrolled : true;
-    return { success: true, enrolled };
+    
+    let status = 'none'; // Default: Not Joined
+    let enrolled = false;
+
+    if (enrollment) {
+        if (enrollment.enrolled) {
+            status = 'enrolled';
+            enrolled = true;
+        } else {
+            status = 'banned'; // Explicitly false means banned
+            enrolled = false;
+        }
+    }
+
+    return { success: true, enrolled, status };
+}
+
+/**
+ * Join a course using a course code
+ * @param {Object} db - MongoDB database instance
+ * @param {string} courseId - Course identifier
+ * @param {string} studentId - Student identifier
+ * @param {string} code - Course code provided by student
+ * @returns {Promise<{ success: boolean, enrolled?: boolean, error?: string, message?: string }>} Result
+ */
+async function joinCourse(db, courseId, studentId, code) {
+    const collection = getCoursesCollection(db);
+    const now = new Date();
+
+    const course = await collection.findOne({ courseId });
+    if (!course) {
+        return { success: false, error: 'Course not found' };
+    }
+
+    // Check if currently blocked
+    const currentEnrollment = course.studentEnrollment && course.studentEnrollment[studentId];
+    if (currentEnrollment && currentEnrollment.enrolled === false) {
+        return { success: false, error: 'Access revoked by instructor' };
+    }
+
+    // Verify code (case-insensitive)
+    if (!course.courseCode || course.courseCode.toUpperCase() !== code.toUpperCase()) {
+        return { success: false, error: 'Invalid course code' };
+    }
+
+    // Enroll the student
+    await collection.updateOne(
+        { courseId },
+        {
+            $set: {
+                [`studentEnrollment.${studentId}`]: {
+                    enrolled: true,
+                    joinedAt: now,
+                    updatedAt: now
+                },
+                updatedAt: now
+            }
+        }
+    );
+
+    return { success: true, enrolled: true, message: 'Successfully joined course' };
 }
 
 module.exports = {
     getCoursesCollection,
+    ensureCourseCodes,
     upsertCourse,
     updateLecturePublishStatus,
     getLecturePublishStatus,
@@ -1350,5 +1449,6 @@ module.exports = {
     getTAPermissions,
     checkTAPermission,
     updateStudentEnrollment,
-    getStudentEnrollment
+    getStudentEnrollment,
+    joinCourse
 };

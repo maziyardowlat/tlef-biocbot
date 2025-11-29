@@ -16,7 +16,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             const resp = await fetch(`/api/courses/${courseId}/student-enrollment`, { credentials: 'include' });
             if (resp.ok) {
                 const data = await resp.json();
-                if (data && data.success && data.data && data.data.enrolled === false) {
+                if (data && data.success && data.data && data.data.status === 'banned') {
                     // Keep header/subtitle, hide controls and list
                     const controls = document.querySelector('.filter-controls');
                     const container = document.querySelector('.flagged-content-container');
@@ -59,7 +59,13 @@ document.addEventListener('DOMContentLoaded', async function() {
 async function loadStudentFlags() {
     showStudentFlagsLoading();
     try {
-        const response = await fetch('/api/flags/my', { credentials: 'include' });
+        const courseId = localStorage.getItem('selectedCourseId');
+        let url = '/api/flags/my';
+        if (courseId) {
+            url += `?courseId=${encodeURIComponent(courseId)}`;
+        }
+        
+        const response = await fetch(url, { credentials: 'include' });
         if (!response.ok) throw new Error('Failed to load flags');
         const result = await response.json();
         if (!result.success) throw new Error(result.message || 'Failed to load flags');

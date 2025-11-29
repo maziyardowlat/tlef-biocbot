@@ -5,7 +5,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             const resp = await fetch(`/api/courses/${courseId}/student-enrollment`, { credentials: 'include' });
             if (resp.ok) {
                 const data = await resp.json();
-                if (data && data.success && data.data && data.data.enrolled === false) {
+                // Only show revoked UI if explicitly banned
+                if (data && data.success && data.data && data.data.status === 'banned') {
                     renderRevokedAccessUI();
                     return; // stop further chat init
                 }
@@ -1837,9 +1838,35 @@ async function handleNewSession() {
         // Clear any existing session data
         clearCurrentChatData();
 
+        const courseId = localStorage.getItem('selectedCourseId');
+
+        // If no course is selected, reload available courses to show dropdown
+        if (!courseId) {
+            console.log('🔄 [NEW-SESSION] No course selected, reloading available courses...');
+            
+            const chatMessages = document.getElementById('chat-messages');
+            if (chatMessages) {
+                chatMessages.innerHTML = `
+                    <div class="message bot-message">
+                        <div class="message-avatar">B</div>
+                        <div class="message-content">
+                            <p>Hello! Please select a course to get started.</p>
+                            <div class="message-footer">
+                                <div class="message-footer-right">
+                                    <span class="timestamp">Just now</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            await loadAvailableCourses();
+            return;
+        }
+
         // Generate a new session ID for the new session
         const studentId = getCurrentStudentId();
-        const courseId = localStorage.getItem('selectedCourseId');
         const unitName = localStorage.getItem('selectedUnitName') || 'this unit';
 
         if (studentId && courseId) {
@@ -2376,6 +2403,16 @@ async function loadAvailableCourses() {
 function showCourseSelection(courses) {
     console.log('Showing course selection for courses:', courses);
 
+    // Update header to show "Select Course"
+    const courseNameElement = document.querySelector('.course-name');
+    if (courseNameElement) {
+        courseNameElement.textContent = 'Select Course';
+    }
+    const userRoleElement = document.querySelector('.user-role');
+    if (userRoleElement) {
+        userRoleElement.textContent = 'Student';
+    }
+
     // Create course selection dropdown
     const courseSelectionHTML = `
         <div class="course-selection-container" style="margin: 20px 0; padding: 15px; background-color: #f8f9fa; border-radius: 8px; border-left: 4px solid var(--primary-color);">
@@ -2383,24 +2420,22 @@ function showCourseSelection(courses) {
             <p style="margin: 0 0 15px 0; color: #666;">Choose the course you want to access:</p>
             <select id="course-select" style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 14px;">
                 <option value="">Choose a course...</option>
-                ${courses.map(course => `<option value="${course.courseId}">${course.courseName}</option>`).join('')}
+                ${courses.map(course => `<option value="${course.courseId}" data-enrolled="${course.isEnrolled}">${course.courseName}</option>`).join('')}
             </select>
         </div>
     `;
 
-    // Insert course selection before the chat messages
     const chatMessages = document.getElementById('chat-messages');
-    const existingWelcome = chatMessages.querySelector('.message.bot-message');
-
-    // Create a container for the course selection
-    const courseSelectionDiv = document.createElement('div');
-    courseSelectionDiv.innerHTML = courseSelectionHTML;
-    courseSelectionDiv.id = 'course-selection-wrapper';
-
-    // Insert before the existing welcome message
-    if (existingWelcome) {
-        chatMessages.insertBefore(courseSelectionDiv, existingWelcome);
-    } else {
+    
+    // Clear any existing messages (including default welcome message) to prevents showing content from other courses
+    if (chatMessages) {
+        chatMessages.innerHTML = '';
+        
+        // Create a container for the course selection
+        const courseSelectionDiv = document.createElement('div');
+        courseSelectionDiv.innerHTML = courseSelectionHTML;
+        courseSelectionDiv.id = 'course-selection-wrapper';
+        
         chatMessages.appendChild(courseSelectionDiv);
     }
 
@@ -2408,16 +2443,52 @@ function showCourseSelection(courses) {
     const courseSelect = document.getElementById('course-select');
     if (courseSelect) {
         courseSelect.addEventListener('change', async function() {
+            const selectedOption = this.options[this.selectedIndex];
             const selectedCourseId = this.value;
-            if (selectedCourseId) {
-                console.log('Course selected:', selectedCourseId);
-                // This is a course change (user selected from dropdown)
-                await loadCourseData(selectedCourseId, true);
+            const isEnrolled = selectedOption.getAttribute('data-enrolled') === 'true';
 
-                // Hide the course selection after selection
-                const courseSelectionWrapper = document.getElementById('course-selection-wrapper');
-                if (courseSelectionWrapper) {
-                    courseSelectionWrapper.style.display = 'none';
+            if (selectedCourseId) {
+                console.log('Course selected:', selectedCourseId, 'Enrolled:', isEnrolled);
+                
+                if (isEnrolled) {
+                    // Already enrolled, load normally
+                    await loadCourseData(selectedCourseId, true);
+                    // Hide the course selection after selection
+                    const courseSelectionWrapper = document.getElementById('course-selection-wrapper');
+                    if (courseSelectionWrapper) {
+                        courseSelectionWrapper.style.display = 'none';
+                    }
+                } else {
+                    // Not enrolled, prompt for code
+                    const code = prompt("Please enter the Course Code provided by your instructor:");
+                    if (code) {
+                        try {
+                            const response = await fetch(`/api/courses/${selectedCourseId}/join`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ code })
+                            });
+                            
+                            const result = await response.json();
+                            if (result.success) {
+                                alert('Successfully joined the course!');
+                                await loadCourseData(selectedCourseId, true);
+                                const courseSelectionWrapper = document.getElementById('course-selection-wrapper');
+                                if (courseSelectionWrapper) {
+                                    courseSelectionWrapper.style.display = 'none';
+                                }
+                            } else {
+                                alert(result.message || 'Failed to join course. Please check the code.');
+                                this.value = ""; // Reset dropdown
+                            }
+                        } catch (err) {
+                            console.error('Error joining course:', err);
+                            alert('Error joining course. Please try again.');
+                            this.value = ""; // Reset dropdown
+                        }
+                    } else {
+                        this.value = ""; // Reset dropdown if cancelled
+                    }
                 }
             }
         });
@@ -3001,6 +3072,7 @@ let currentCalibrationQuestions = [];
 let currentPassThreshold = 2; // Default pass threshold
 let currentQuestionIndex = 0;
 let studentAnswers = [];
+window.studentEvaluations = []; // Store AI evaluations for written answers
 
 // Make variables globally accessible for auto-save
 window.currentCalibrationQuestions = currentCalibrationQuestions;
@@ -3374,13 +3446,29 @@ function showUnitSelectionDropdown(publishedUnits) {
     showUnitSelectionWelcomeMessage();
 
     // Hide chat input and mode toggle until assessment is completed
-    const chatInputContainer = document.querySelector('.chat-input-container');
-    if (chatInputContainer) {
-        chatInputContainer.style.display = 'none';
-    }
-    const modeToggleContainer = document.querySelector('.mode-toggle-container');
-    if (modeToggleContainer) {
-        modeToggleContainer.style.display = 'none';
+    // BUT ONLY if we are NOT loading from history or auto-continuing a chat
+    // If we are loading history, the chat is already established so we need the input
+    const isHistoryLoad = window.loadingFromHistory || sessionStorage.getItem('isContinuingChat') === 'true';
+    
+    if (!isHistoryLoad) {
+        const chatInputContainer = document.querySelector('.chat-input-container');
+        if (chatInputContainer) {
+            chatInputContainer.style.display = 'none';
+        }
+        const modeToggleContainer = document.querySelector('.mode-toggle-container');
+        if (modeToggleContainer) {
+            modeToggleContainer.style.display = 'none';
+        }
+    } else {
+        // Explicitly ensure they are visible for history loads
+        const chatInputContainer = document.querySelector('.chat-input-container');
+        if (chatInputContainer) {
+            chatInputContainer.style.display = 'block';
+        }
+        const modeToggleContainer = document.querySelector('.mode-toggle-container');
+        if (modeToggleContainer) {
+            modeToggleContainer.style.display = 'flex';
+        }
     }
 }
 
@@ -3450,11 +3538,12 @@ async function loadQuestionsForSelectedUnit(unitName) {
 
         // Hide chat input and mode toggle when starting new assessment
         const chatInputContainer = document.querySelector('.chat-input-container');
-        if (chatInputContainer) {
+        // Do not hide input if we are loading from history and just checking units
+        if (chatInputContainer && !window.loadingFromHistory && !sessionStorage.getItem('isContinuingChat')) {
             chatInputContainer.style.display = 'none';
         }
         const modeToggleContainer = document.querySelector('.mode-toggle-container');
-        if (modeToggleContainer) {
+        if (modeToggleContainer && !window.loadingFromHistory && !sessionStorage.getItem('isContinuingChat')) {
             modeToggleContainer.style.display = 'none';
         }
 
@@ -4025,7 +4114,7 @@ function selectCalibrationAnswer(answerIndex, questionIndex) {
         } else {
             calculateStudentMode();
         }
-    }, 1000); // 1 second delay to show the selected answer
+    }, 500); // 0.5 second delay
 }
 
 /**
@@ -4033,7 +4122,7 @@ function selectCalibrationAnswer(answerIndex, questionIndex) {
  * @param {string} answer - Student's short answer
  * @param {number} questionIndex - The question index this answer belongs to
  */
-function submitShortAnswer(answer, questionIndex) {
+async function submitShortAnswer(answer, questionIndex) {
     if (!answer.trim()) {
         alert('Please enter an answer before submitting.');
         return;
@@ -4042,6 +4131,118 @@ function submitShortAnswer(answer, questionIndex) {
     // Store the answer
     studentAnswers[questionIndex] = answer;
     window.studentAnswers = studentAnswers; // Update global reference
+
+    // UI Elements
+    const questionMessage = document.getElementById(`calibration-question-${questionIndex}`);
+    let answerInput, submitButton, feedbackDiv;
+
+    if (questionMessage) {
+        answerInput = questionMessage.querySelector('.calibration-answer-input');
+        submitButton = questionMessage.querySelector('.calibration-submit-btn');
+        
+        // Create or get feedback div
+        let existingFeedback = questionMessage.querySelector('.calibration-feedback');
+        if (existingFeedback) {
+            feedbackDiv = existingFeedback;
+        } else {
+            feedbackDiv = document.createElement('div');
+            feedbackDiv.className = 'calibration-feedback';
+            feedbackDiv.style.marginTop = '10px';
+            feedbackDiv.style.padding = '12px';
+            feedbackDiv.style.borderRadius = '6px';
+            feedbackDiv.style.fontSize = '0.9em';
+            feedbackDiv.style.lineHeight = '1.4';
+            
+            if (submitButton) {
+                submitButton.parentNode.insertBefore(feedbackDiv, submitButton.nextSibling);
+            } else if (answerInput) {
+                answerInput.parentNode.appendChild(feedbackDiv);
+            }
+        }
+
+        // Disable inputs
+        if (answerInput) {
+            answerInput.disabled = true;
+            answerInput.style.backgroundColor = '#f8f9fa';
+            answerInput.style.borderColor = 'var(--primary-color)';
+        }
+
+        if (submitButton) {
+            submitButton.disabled = true;
+            submitButton.textContent = 'Checking...';
+            submitButton.style.backgroundColor = 'var(--primary-color)';
+            submitButton.style.opacity = '0.7';
+        }
+    }
+
+    // Check answer with AI
+    try {
+        // Show loading
+        if (feedbackDiv) {
+            feedbackDiv.innerHTML = '<div style="display:flex; align-items:center; gap:8px;"><div class="loading-dots"><span>.</span><span>.</span><span>.</span></div> Checking your answer with AI...</div>';
+            feedbackDiv.style.backgroundColor = '#e9ecef';
+            feedbackDiv.style.color = '#495057';
+        }
+
+        const question = currentCalibrationQuestions[questionIndex];
+        // Determine expected answer field
+        const expectedAnswer = question.expectedAnswer || question.correctAnswer || question.answer;
+
+        const response = await fetch('/api/questions/check-answer', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                question: question.question,
+                studentAnswer: answer,
+                expectedAnswer: expectedAnswer,
+                questionType: 'short-answer'
+            })
+        });
+
+        const result = await response.json();
+
+        if (result.success && result.data) {
+            const evaluation = result.data;
+            
+            // Store evaluation
+            if (!window.studentEvaluations) window.studentEvaluations = [];
+            window.studentEvaluations[questionIndex] = evaluation;
+            
+            // Show feedback
+            if (feedbackDiv) {
+                const isCorrect = evaluation.correct;
+                feedbackDiv.style.backgroundColor = isCorrect ? '#d4edda' : '#f8d7da';
+                feedbackDiv.style.color = isCorrect ? '#155724' : '#721c24';
+                feedbackDiv.style.border = isCorrect ? '1px solid #c3e6cb' : '1px solid #f5c6cb';
+                
+                feedbackDiv.innerHTML = `
+                    <div style="font-weight:600; margin-bottom:4px;">${isCorrect ? '✅ Correct' : '❌ Needs Improvement'}</div>
+                    <div>${evaluation.feedback}</div>
+                `;
+            }
+            
+            if (submitButton) {
+                submitButton.textContent = 'Answer Submitted';
+            }
+        } else {
+            throw new Error(result.message || 'Failed to check answer');
+        }
+
+    } catch (error) {
+        console.error('Error checking answer:', error);
+        if (feedbackDiv) {
+            feedbackDiv.innerHTML = '<em>Unable to verify with AI. Proceeding...</em>';
+        }
+        
+        // Fallback evaluation
+        if (!window.studentEvaluations) window.studentEvaluations = [];
+        window.studentEvaluations[questionIndex] = {
+            correct: answer.length > 10,
+            feedback: "Could not verify with AI. Marked based on length."
+        };
+    }
 
     // Update auto-save with assessment data
     const studentId = getCurrentStudentId();
@@ -4053,27 +4254,7 @@ function submitShortAnswer(answer, questionIndex) {
         console.log('🔄 [AUTO-SAVE] Updated assessment data after text answer submission');
     }
 
-    // Disable the input and submit button to show it's been answered
-    const questionMessage = document.getElementById(`calibration-question-${questionIndex}`);
-    if (questionMessage) {
-        const answerInput = questionMessage.querySelector('.calibration-answer-input');
-        const submitButton = questionMessage.querySelector('.calibration-submit-btn');
-
-        if (answerInput) {
-            answerInput.disabled = true;
-            answerInput.style.backgroundColor = '#f8f9fa';
-            answerInput.style.borderColor = 'var(--primary-color)';
-        }
-
-        if (submitButton) {
-            submitButton.disabled = true;
-            submitButton.textContent = 'Answer Submitted';
-            submitButton.style.backgroundColor = 'var(--primary-color)';
-            submitButton.style.opacity = '0.7';
-        }
-    }
-
-    // Automatically proceed to next question after a short delay
+    // Automatically proceed to next question after a short delay to read feedback
     setTimeout(() => {
         currentQuestionIndex++;
 
@@ -4083,7 +4264,7 @@ function submitShortAnswer(answer, questionIndex) {
         } else {
             calculateStudentMode();
         }
-    }, 1000); // 1 second delay to show the submitted answer
+    }, 2500); // 2.5 second delay to read feedback
 }
 
 /**
@@ -4159,8 +4340,15 @@ async function calculateStudentMode() {
                 isCorrect = (studentAnswerIndex === expectedIndex);
                 console.log(`Multiple choice check: student answered index ${studentAnswerIndex}, expected index ${expectedIndex}, correct: ${isCorrect}`);
             } else if (question.type === 'short-answer') {
-                // For short answer, consider it correct if they provided any meaningful answer
-                isCorrect = (studentAnswerIndex && studentAnswerIndex.trim().length > 10);
+                // Use AI evaluation if available
+                if (window.studentEvaluations && window.studentEvaluations[i]) {
+                    isCorrect = window.studentEvaluations[i].correct;
+                    console.log(`Short answer check (AI): correct: ${isCorrect}`);
+                } else {
+                    // Fallback: consider it correct if they provided any meaningful answer
+                    isCorrect = (studentAnswerIndex && studentAnswerIndex.trim().length > 10);
+                    console.log(`Short answer check (Fallback): length > 10, correct: ${isCorrect}`);
+                }
             } else {
                 // For unknown types, default to checking if answer matches
                 isCorrect = (studentAnswerIndex === question.correctAnswer);
@@ -4257,6 +4445,87 @@ function showModeResult(mode, score) {
     }
 
     contentDiv.appendChild(modeExplanation);
+
+    // Add Assessment Summary
+    if (window.currentCalibrationQuestions && window.currentCalibrationQuestions.length > 0) {
+        const summaryDiv = document.createElement('div');
+        summaryDiv.className = 'assessment-summary';
+        summaryDiv.style.marginTop = '20px';
+        summaryDiv.style.borderTop = '1px solid #eee';
+        summaryDiv.style.paddingTop = '15px';
+
+        const summaryTitle = document.createElement('h4');
+        summaryTitle.textContent = 'Assessment Summary';
+        summaryTitle.style.marginBottom = '10px';
+        summaryDiv.appendChild(summaryTitle);
+
+        window.currentCalibrationQuestions.forEach((q, index) => {
+            const questionDiv = document.createElement('div');
+            questionDiv.style.marginBottom = '15px';
+            questionDiv.style.padding = '10px';
+            questionDiv.style.backgroundColor = '#f9f9f9';
+            questionDiv.style.borderRadius = '5px';
+
+            const qText = document.createElement('div');
+            qText.style.fontWeight = 'bold';
+            qText.style.marginBottom = '5px';
+            qText.textContent = `${index + 1}. ${q.question}`;
+            questionDiv.appendChild(qText);
+
+            const studentAnsIndex = window.studentAnswers[index];
+            let displayStudentAns = studentAnsIndex;
+            let displayCorrectAns = q.correctAnswer || q.expectedAnswer || q.answer;
+            let feedback = '';
+            let isCorrect = false;
+
+            // Format answers based on type
+            if (q.type === 'true-false') {
+                displayStudentAns = studentAnsIndex === 0 ? 'True' : (studentAnsIndex === 1 ? 'False' : studentAnsIndex);
+                // Ensure correct answer is displayed as True/False string
+                if (typeof displayCorrectAns === 'boolean') {
+                    displayCorrectAns = displayCorrectAns ? 'True' : 'False';
+                } else if (typeof displayCorrectAns === 'string') {
+                    // Capitalize first letter if needed
+                    displayCorrectAns = displayCorrectAns.charAt(0).toUpperCase() + displayCorrectAns.slice(1);
+                }
+            } else if (q.type === 'multiple-choice' && q.options) {
+                // Student answer (index) to text
+                const optionKeys = Object.keys(q.options);
+                if (optionKeys[studentAnsIndex]) {
+                    displayStudentAns = `${optionKeys[studentAnsIndex]}) ${q.options[optionKeys[studentAnsIndex]]}`;
+                }
+                
+                // Correct answer (key) to text
+                if (q.options[displayCorrectAns]) {
+                    displayCorrectAns = `${displayCorrectAns}) ${q.options[displayCorrectAns]}`;
+                }
+            } else if (q.type === 'short-answer') {
+                if (window.studentEvaluations && window.studentEvaluations[index]) {
+                    feedback = window.studentEvaluations[index].feedback;
+                    isCorrect = window.studentEvaluations[index].correct;
+                }
+            }
+
+            const ansDiv = document.createElement('div');
+            ansDiv.style.fontSize = '0.9em';
+            
+            // Build HTML for answers
+            let html = `<div><span style="color: #666;">Your Answer:</span> ${displayStudentAns}</div>`;
+            html += `<div style="margin-top: 2px;"><span style="color: #666;">Expected Answer:</span> ${displayCorrectAns}</div>`;
+            
+            if (feedback) {
+                html += `<div style="margin-top: 8px; padding: 8px; background-color: ${isCorrect ? '#d4edda' : '#f8d7da'}; border-radius: 4px; color: ${isCorrect ? '#155724' : '#721c24'};">
+                    <strong>Feedback:</strong> ${feedback}
+                </div>`;
+            }
+
+            ansDiv.innerHTML = html;
+            questionDiv.appendChild(ansDiv);
+            summaryDiv.appendChild(questionDiv);
+        });
+
+        contentDiv.appendChild(summaryDiv);
+    }
 
     // Add unit selection option after assessment completion
     // const unitSelectionOption = document.createElement('div');
@@ -5146,8 +5415,54 @@ function loadChatData(chatData) {
                 }
             }
 
+            // Restore course selection if present
+            if (chatData.metadata.courseId) {
+                console.log('Restoring course:', chatData.metadata.courseId);
+                const currentCourseId = localStorage.getItem('selectedCourseId');
+                
+                // Only update if different
+                if (currentCourseId !== chatData.metadata.courseId) {
+                    console.log('Course mismatch detected. Updating to:', chatData.metadata.courseId);
+                    localStorage.setItem('selectedCourseId', chatData.metadata.courseId);
+                    
+                    if (chatData.metadata.courseName) {
+                        localStorage.setItem('selectedCourseName', chatData.metadata.courseName);
+                    }
+
+                    // Update course display (loadCourseData handles UI updates)
+                    loadCourseData(chatData.metadata.courseId, false);
+                }
+            } else {
+                // Ensure chat input is visible if no course context to restore
+                const chatInputContainer = document.querySelector('.chat-input-container');
+                if (chatInputContainer) {
+                    chatInputContainer.style.display = 'block';
+                }
+            }
+
             // Ensure chat input and mode toggle are visible (enable chat)
             enableChatInput();
+            
+            // Force show input container regardless of enableChatInput logic
+            const chatInputContainer = document.querySelector('.chat-input-container');
+            if (chatInputContainer) {
+                chatInputContainer.style.display = 'block';
+                // Ensure input itself is enabled
+                const chatInput = document.getElementById('chat-input');
+                if (chatInput) {
+                    chatInput.disabled = false;
+                    chatInput.style.cursor = 'text';
+                    chatInput.classList.remove('disabled-input');
+                    chatInput.placeholder = 'Type your message here...';
+                }
+                const sendButton = document.getElementById('send-button');
+                if (sendButton) {
+                    sendButton.disabled = false;
+                    sendButton.style.cursor = 'pointer';
+                    sendButton.classList.remove('disabled-button');
+                    sendButton.style.opacity = '1';
+                }
+            }
 
             // Show success message (skip auto-save for system messages)
             addMessage('✅ Chat history loaded successfully! You can continue where you left off.', 'bot', false, true, null);

@@ -548,6 +548,7 @@ router.get('/:courseId', async (req, res) => {
         const transformedCourse = {
             id: course.courseId,
             name: course.courseName,
+            courseCode: course.courseCode, // Include course code for instructors
             weeks: course.courseStructure?.weeks || 0,
             lecturesPerWeek: course.courseStructure?.lecturesPerWeek || 0,
             isAdditiveRetrieval: !!course.isAdditiveRetrieval,
@@ -1146,19 +1147,33 @@ router.get('/available/all', async (req, res) => {
             });
         }
         
+        const user = req.user;
+        
         // Query database for all active courses
         const collection = db.collection('courses');
         const courses = await collection.find({ status: { $ne: 'deleted' } }).toArray();
         
         // Transform the data to match expected format for both sides
-        const transformedCourses = courses.map(course => ({
-            courseId: course.courseId,
-            courseName: course.courseName || course.courseId,
-            instructorId: course.instructorId,
-            instructors: course.instructors || [course.instructorId],
-            tas: course.tas || [],
-            status: course.status || 'active',
-            createdAt: course.createdAt?.toISOString() || new Date().toISOString()
+        // For students, check enrollment status
+        const transformedCourses = await Promise.all(courses.map(async (course) => {
+            let isEnrolled = false;
+            
+            // If user is student, check explicit enrollment
+            if (user && user.role === 'student') {
+                const result = await CourseModel.getStudentEnrollment(db, course.courseId, user.userId);
+                isEnrolled = result.success && result.enrolled === true;
+            }
+            
+            return {
+                courseId: course.courseId,
+                courseName: course.courseName || course.courseId,
+                instructorId: course.instructorId,
+                instructors: course.instructors || [course.instructorId],
+                tas: course.tas || [],
+                status: course.status || 'active',
+                createdAt: course.createdAt?.toISOString() || new Date().toISOString(),
+                isEnrolled: isEnrolled
+            };
         }));
         
         console.log(`Retrieved ${transformedCourses.length} available courses`);
@@ -1173,6 +1188,78 @@ router.get('/available/all', async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Internal server error while fetching available courses'
+        });
+    }
+});
+
+/**
+ * POST /api/courses/:courseId/join
+ * Join a course using a course code
+ */
+router.post('/:courseId/join', async (req, res) => {
+    try {
+        const { courseId } = req.params;
+        const { code } = req.body;
+        
+        // Get authenticated user information
+        const user = req.user;
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                message: 'Authentication required'
+            });
+        }
+        
+        // Only students need to join via code (instructors/TAs are added)
+        if (user.role !== 'student') {
+            return res.status(403).json({
+                success: false,
+                message: 'Only students can join courses via code'
+            });
+        }
+        
+        if (!code) {
+            return res.status(400).json({
+                success: false,
+                message: 'Course code is required'
+            });
+        }
+        
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
+        
+        const result = await CourseModel.joinCourse(db, courseId, user.userId, code);
+        
+        if (!result.success) {
+            // Return 403 for revoked access or invalid code
+            return res.status(403).json({
+                success: false,
+                message: result.error || 'Failed to join course'
+            });
+        }
+        
+        console.log(`Student ${user.userId} joined course ${courseId}`);
+        
+        res.json({
+            success: true,
+            message: 'Successfully joined course',
+            data: {
+                courseId,
+                enrolled: true
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error joining course:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while joining course'
         });
     }
 });
@@ -1883,7 +1970,14 @@ router.get('/:courseId/student-enrollment', async (req, res) => {
             return res.status(404).json({ success: false, message: 'Course not found' });
         }
 
-        return res.json({ success: true, data: { courseId, enrolled: result.enrolled } });
+        return res.json({ 
+            success: true, 
+            data: { 
+                courseId, 
+                enrolled: result.enrolled,
+                status: result.status 
+            } 
+        });
     } catch (error) {
         console.error('Error getting student enrollment:', error);
         return res.status(500).json({ success: false, message: 'Internal server error while getting enrollment' });

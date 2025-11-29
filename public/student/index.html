@@ -53,7 +53,7 @@
                 <h1>Chat with BiocBot</h1>
                 <div class="current-course">
                     <span class="course-label">Course:</span>
-                    <span class="course-name">BIOC 202</span>
+                    <span class="course-name">Select Course</span>
                 </div>
                 <!-- Unit Selection Dropdown -->
                 <div class="unit-selection-container" id="unit-selection-container" style="display: none;">
@@ -67,32 +67,7 @@
             <!-- Chat Messages Container -->
             <div class="chat-container">
                 <div class="messages" id="chat-messages">
-                    <!-- Welcome Message -->
-                    <div class="message bot-message">
-                        <div class="message-avatar">B</div>
-                        <div class="message-content">
-                            <p>Hello! I'm BiocBot, your AI study assistant for BIOC 202. How can I help you today?</p>
-                            <div class="message-footer">
-                                <div class="message-footer-right">
-                                    <span class="timestamp">Just now</span>
-                                    <div class="message-flag-container">
-                                        <button class="flag-button" onclick="toggleFlagMenu(this)">
-                                            <span class="three-dots">⋯</span>
-                                        </button>
-                                        <div class="flag-menu">
-                                            <button class="flag-option" onclick="flagMessage(this, 'incorrect')">Incorrect</button>
-                                            <button class="flag-option" onclick="flagMessage(this, 'inappropriate')">Inappropriate</button>
-                                            <button class="flag-option" onclick="flagMessage(this, 'unclear')">Unclear</button>
-                                            <button class="flag-option" onclick="flagMessage(this, 'confusing')">Confusing</button>
-                                            <button class="flag-option" onclick="flagMessage(this, 'typo')">Typo/Error</button>
-                                            <button class="flag-option" onclick="flagMessage(this, 'offensive')">Offensive</button>
-                                            <button class="flag-option" onclick="flagMessage(this, 'irrelevant')">Irrelevant</button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                    <!-- Initial State - Will be replaced by JS -->
                 </div>
 
                 <!-- Chat Input Area -->

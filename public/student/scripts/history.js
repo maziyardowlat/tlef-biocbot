@@ -165,7 +165,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const resp = await fetch(`/api/courses/${courseId}/student-enrollment`, { credentials: 'include' });
                 if (resp.ok) {
                     const data = await resp.json();
-                    if (data && data.success && data.data && data.data.enrolled === false) {
+                    if (data && data.success && data.data && data.data.status === 'banned') {
                         renderRevokedAccessUIForHistory();
                         return; // Stop initialization
                     }
