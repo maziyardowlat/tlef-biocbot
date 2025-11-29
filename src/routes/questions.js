@@ -689,7 +689,7 @@ router.get('/course-material', async (req, res) => {
  */
 router.post('/check-answer', async (req, res) => {
     try {
-        const { question, studentAnswer, expectedAnswer, questionType } = req.body;
+        const { question, studentAnswer, expectedAnswer, questionType, studentName } = req.body;
 
         if (!question || !studentAnswer || !expectedAnswer) {
             return res.status(400).json({
@@ -710,7 +710,8 @@ router.post('/check-answer', async (req, res) => {
             question,
             studentAnswer,
             expectedAnswer,
-            questionType
+            questionType,
+            studentName || 'Student'
         );
 
         res.json({

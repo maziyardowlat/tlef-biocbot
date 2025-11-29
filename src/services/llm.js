@@ -346,9 +346,10 @@ class LLMService {
      * @param {string} studentAnswer - The student's answer
      * @param {string} expectedAnswer - The expected/correct answer
      * @param {string} questionType - Type of question (short-answer, etc.)
+     * @param {string} studentName - The name of the student (optional, defaults to 'Student')
      * @returns {Promise<Object>} Evaluation result { correct: boolean, feedback: string }
      */
-    async evaluateStudentAnswer(question, studentAnswer, expectedAnswer, questionType) {
+    async evaluateStudentAnswer(question, studentAnswer, expectedAnswer, questionType, studentName = 'Student') {
         try {
             if (!this.isInitialized) {
                 await this._performInitialization();
@@ -361,14 +362,15 @@ Question: ${question}
 Expected Answer: ${expectedAnswer}
 Student Answer: ${studentAnswer}
 
-Evaluate the student's answer based on the expected answer.
+Evaluate the answer from ${studentName} based on the expected answer.
+Address the student directly by name (e.g. "${studentName}, your answer is...").
 For short answer questions, the answer doesn't need to be identical, but must capture the key concepts.
 Be lenient with spelling if the meaning is clear.
 
 Return ONLY a JSON object with the following structure:
 {
     "correct": boolean,
-    "feedback": "Brief explanation of why it is correct or incorrect"
+    "feedback": "Brief explanation addressed to ${studentName} of why it is correct or incorrect"
 }`;
 
             const response = await this.sendMessage(prompt, {

@@ -1194,7 +1194,7 @@ router.get('/available/all', async (req, res) => {
 
 /**
  * POST /api/courses/:courseId/join
- * Join a course using a course code
+ * Join a course (Student via code, TA direct join)
  */
 router.post('/:courseId/join', async (req, res) => {
     try {
@@ -1210,21 +1210,6 @@ router.post('/:courseId/join', async (req, res) => {
             });
         }
         
-        // Only students need to join via code (instructors/TAs are added)
-        if (user.role !== 'student') {
-            return res.status(403).json({
-                success: false,
-                message: 'Only students can join courses via code'
-            });
-        }
-        
-        if (!code) {
-            return res.status(400).json({
-                success: false,
-                message: 'Course code is required'
-            });
-        }
-        
         // Get database instance from app.locals
         const db = req.app.locals.db;
         if (!db) {
@@ -1234,26 +1219,77 @@ router.post('/:courseId/join', async (req, res) => {
             });
         }
         
-        const result = await CourseModel.joinCourse(db, courseId, user.userId, code);
-        
-        if (!result.success) {
-            // Return 403 for revoked access or invalid code
-            return res.status(403).json({
-                success: false,
-                message: result.error || 'Failed to join course'
+        // Handle Student Join
+        if (user.role === 'student') {
+            if (!code) {
+                return res.status(400).json({
+                    success: false,
+                    message: 'Course code is required'
+                });
+            }
+            
+            const result = await CourseModel.joinCourse(db, courseId, user.userId, code);
+            
+            if (!result.success) {
+                // Return 403 for revoked access or invalid code
+                return res.status(403).json({
+                    success: false,
+                    message: result.error || 'Failed to join course'
+                });
+            }
+            
+            console.log(`Student ${user.userId} joined course ${courseId}`);
+            
+            return res.json({
+                success: true,
+                message: 'Successfully joined course',
+                data: {
+                    courseId,
+                    enrolled: true
+                }
             });
         }
-        
-        console.log(`Student ${user.userId} joined course ${courseId}`);
-        
-        res.json({
-            success: true,
-            message: 'Successfully joined course',
-            data: {
-                courseId,
-                enrolled: true
+        // Handle TA Join
+        else if (user.role === 'ta') {
+            // Check if course exists first to provide better error message
+            const course = await CourseModel.getCourseById(db, courseId);
+            if (!course) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Course not found'
+                });
             }
-        });
+
+            // Add TA to course using Course model
+            const result = await CourseModel.addTAToCourse(db, courseId, user.userId);
+            
+            if (!result.success) {
+                return res.status(400).json({
+                    success: false,
+                    message: result.error || 'Failed to join course'
+                });
+            }
+            
+            console.log(`TA ${user.userId} joined course ${courseId}`);
+            
+            return res.json({
+                success: true,
+                message: 'Successfully joined course',
+                data: {
+                    courseId,
+                    taId: user.userId,
+                    courseName: course.courseName,
+                    modifiedCount: result.modifiedCount
+                }
+            });
+        }
+        // Invalid Role
+        else {
+            return res.status(403).json({
+                success: false,
+                message: 'Only students and TAs can join courses'
+            });
+        }
         
     } catch (error) {
         console.error('Error joining course:', error);
@@ -1410,80 +1446,6 @@ router.post('/:courseId/tas', async (req, res) => {
     }
 });
 
-/**
- * POST /api/courses/:courseId/join
- * Allow TAs to join courses themselves
- */
-router.post('/:courseId/join', async (req, res) => {
-    try {
-        const { courseId } = req.params;
-        
-        // Get authenticated user information
-        const user = req.user;
-        if (!user) {
-            return res.status(401).json({
-                success: false,
-                message: 'Authentication required'
-            });
-        }
-        
-        // Only TAs can join courses themselves
-        if (user.role !== 'ta') {
-            return res.status(403).json({
-                success: false,
-                message: 'Only TAs can join courses'
-            });
-        }
-        
-        // Get database instance from app.locals
-        const db = req.app.locals.db;
-        if (!db) {
-            return res.status(503).json({
-                success: false,
-                message: 'Database connection not available'
-            });
-        }
-        
-        // Check if course exists
-        const course = await CourseModel.getCourseById(db, courseId);
-        if (!course) {
-            return res.status(404).json({
-                success: false,
-                message: 'Course not found'
-            });
-        }
-        
-        // Add TA to course using Course model
-        const result = await CourseModel.addTAToCourse(db, courseId, user.userId);
-        
-        if (!result.success) {
-            return res.status(400).json({
-                success: false,
-                message: result.error || 'Failed to join course'
-            });
-        }
-        
-        console.log(`TA ${user.userId} joined course ${courseId}`);
-        
-        res.json({
-            success: true,
-            message: 'Successfully joined course',
-            data: {
-                courseId,
-                taId: user.userId,
-                courseName: course.courseName,
-                modifiedCount: result.modifiedCount
-            }
-        });
-        
-    } catch (error) {
-        console.error('Error joining course:', error);
-        res.status(500).json({
-            success: false,
-            message: 'Internal server error while joining course'
-        });
-    }
-});
 
 /**
  * GET /api/courses/ta/:taId
