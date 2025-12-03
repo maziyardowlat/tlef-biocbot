@@ -30,15 +30,15 @@
                     <li id="instructor-onboarding-nav" style="display: none;"><a href="/instructor/onboarding">Onboarding</a></li>
                     <li id="instructor-flagged-nav"><a href="/instructor/flagged">Flagged Content</a></li>
                     <li id="instructor-student-hub-nav"><a href="/instructor/student-hub">Student Hub</a></li>
-                    <li id="instructor-downloads-nav"><a href="/instructor/downloads">Student Downloads</a></li>
+                    <li id="instructor-downloads-nav"><a href="/instructor/downloads">Download Chats</a></li>
                     <li id="instructor-ta-hub-nav"><a href="/instructor/ta-hub">TA Hub</a></li>
-                    <li id="instructor-settings-nav"><a href="/instructor/settings">Settings</a></li>
+
                     
                     <!-- TA Navigation -->
                     <li id="ta-dashboard-nav" style="display: none;"><a href="/ta">Dashboard</a></li>
-                    <li id="ta-courses-nav" style="display: none;" class="active"><a href="#" id="ta-my-courses-link">My Courses</a></li>
-                    <li id="ta-support-nav" style="display: none;"><a href="#" id="ta-student-support-link">Student Support</a></li>
-                    <li id="ta-settings-nav" style="display: none;"><a href="/ta/settings">Settings</a></li>
+                    <li id="ta-courses-nav" style="display: none;" class="active"><a href="#" id="ta-my-courses-link">Course Upload</a></li>
+                    <li id="ta-support-nav" style="display: none;"><a href="#" id="ta-student-support-link">Student Flag</a></li>
+
                 </ul>
             </nav>
             <div class="user-info">
@@ -58,9 +58,12 @@
                 <h1 id="course-title">Loading Course...</h1>
             </header>
 
-            <div class="course-subtitle">
-                <p>Course Material</p>
+            <div class="course-subtitle" style="display: flex; align-items: baseline; gap: 15px;">
+                <p style="margin: 0;">Course Material</p>
+                <span id="published-units-summary" style="font-size: 0.9em; color: #6c757d;">Loading published status...</span>
             </div>
+
+
 
             
 
@@ -172,6 +175,7 @@
                     <!-- Short Answer Expected -->
                     <div class="form-section" id="sa-answer-section" style="display: none;">
                         <label for="sa-answer">Expected Answer/Key Points</label>
+                        <p style="font-size: 0.85em; color: #666; margin-top: 4px; margin-bottom: 8px;">The student's response will be read and assessed by AI based on the answer/points you enter here</p>
                         <textarea id="sa-answer" rows="3" placeholder="Describe the expected answer or key points..."></textarea>
                     </div>
 
@@ -247,30 +251,51 @@
                 </div>
 
                 <div class="upload-section" id="upload-section">
-                    <!-- File Upload Button -->
-                    <div class="file-upload-container">
-                        <button class="upload-file-btn" onclick="triggerFileInput()">
-                            <span class="upload-icon">📁</span>
-                            <span>Upload Summarized/Expert notes</span>
-                        </button>
-                        <input type="file" id="file-input" accept=".pdf,.docx,.txt,.ppt,.pptx" style="display: none;">
-                        <div class="file-info" id="file-info" style="display: none;">
-                            <span class="file-name" id="file-name"></span>
-                            <span class="file-size" id="file-size"></span>
-                        </div>
-                    </div>
-
-                    <!-- Name Input (only for additional material) -->
-                    <div class="input-section" id="name-input-section" style="display: none;">
+                    <!-- Name Input (Moved to top) -->
+                    <div class="input-section" id="name-input-section" style="display: none; margin-bottom: 20px;">
                         <label for="material-name">Material Name</label>
                         <input type="text" id="material-name" placeholder="Enter a name for this additional material..." />
                     </div>
 
+                    <!-- Method Selection -->
+                    <div id="upload-method-selection" class="method-selection" style="display: flex; gap: 20px; justify-content: center; margin: 30px 0;">
+                        <button class="method-btn" onclick="showFileUpload()" style="display: flex; flex-direction: column; align-items: center; padding: 20px; border: 2px dashed #ccc; border-radius: 8px; background: none; cursor: pointer; width: 150px; transition: all 0.2s;">
+                            <span class="method-icon" style="font-size: 24px; margin-bottom: 10px;">📁</span>
+                            <span>Upload a file</span>
+                        </button>
+                        <button class="method-btn" onclick="showTextInput()" style="display: flex; flex-direction: column; align-items: center; padding: 20px; border: 2px dashed #ccc; border-radius: 8px; background: none; cursor: pointer; width: 150px; transition: all 0.2s;">
+                            <span class="method-icon" style="font-size: 24px; margin-bottom: 10px;">📝</span>
+                            <span>Paste content directly</span>
+                        </button>
+                    </div>
 
-                    <!-- Text Area -->
-                    <div class="input-section">
-                        <label for="text-input">Text area</label>
-                        <textarea id="text-input" rows="8" placeholder="Enter or paste your content directly here..."></textarea>
+                    <!-- File Upload Section (Hidden by default) -->
+                    <div id="file-upload-section" style="display: none;">
+                        <button class="btn-text-only" onclick="resetToSelection()" style="background: none; border: none; color: #666; cursor: pointer; margin-bottom: 15px; display: flex; align-items: center; padding: 0;">
+                            <span style="margin-right: 5px;">←</span> Back
+                        </button>
+                        <div class="file-upload-container">
+                            <button class="upload-file-btn" onclick="triggerFileInput()">
+                                <span class="upload-icon">📁</span>
+                                <span>Upload Document</span>
+                            </button>
+                            <input type="file" id="file-input" accept=".pdf,.docx,.txt,.ppt,.pptx" style="display: none;">
+                            <div class="file-info" id="file-info" style="display: none;">
+                                <span class="file-name" id="file-name"></span>
+                                <span class="file-size" id="file-size"></span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Text Input Section (Hidden by default) -->
+                    <div id="text-input-section" style="display: none;">
+                        <button class="btn-text-only" onclick="resetToSelection()" style="background: none; border: none; color: #666; cursor: pointer; margin-bottom: 15px; display: flex; align-items: center; padding: 0;">
+                            <span style="margin-right: 5px;">←</span> Back
+                        </button>
+                        <div class="input-section">
+                            <label for="text-input">Content</label>
+                            <textarea id="text-input" rows="8" placeholder="Enter or paste your content directly here..."></textarea>
+                        </div>
                     </div>
                 </div>
             </div>

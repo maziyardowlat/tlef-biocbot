@@ -5,6 +5,7 @@
 
 let instructorCourses = [];
 let currentStudents = [];
+let currentTAs = []; // Store TAs for the current course
 const dirtyEnrollment = new Map(); // studentId -> boolean (enrolled)
 
 document.addEventListener('DOMContentLoaded', async function() {
@@ -64,10 +65,56 @@ async function loadInstructorCourses() {
 
 async function loadStudents(courseId) {
     try {
-        const response = await authenticatedFetch(`/api/courses/${courseId}/students`);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const result = await response.json();
-        currentStudents = result.data?.students || [];
+        // 1. Fetch Students
+        const studentsResponse = await authenticatedFetch(`/api/courses/${courseId}/students`);
+        if (!studentsResponse.ok) throw new Error(`HTTP ${studentsResponse.status}`);
+        const studentsResult = await studentsResponse.json();
+        const students = studentsResult.data?.students || [];
+        console.log('🔍 [STUDENT_HUB] Loaded students:', students);
+
+        // 2. Fetch TAs for this course
+        // We need to get the course details to see the TA list, then fetch TA details
+        // Or we can fetch all TAs and filter. Let's try to be efficient.
+        // Since we don't have a direct "get TAs for course" endpoint that returns full details,
+        // we'll use the same approach as ta-hub.js: fetch all TAs and filter.
+        
+        let courseTAs = [];
+        try {
+            // Get course details to find assigned TA IDs
+            const courseResponse = await authenticatedFetch(`/api/onboarding/${courseId}`);
+            if (courseResponse.ok) {
+                const courseResult = await courseResponse.json();
+                const taIds = courseResult.data?.tas || [];
+                
+                if (taIds.length > 0) {
+                    // Fetch all TAs to get details
+                    const allTAsResponse = await authenticatedFetch('/api/auth/tas');
+                    if (allTAsResponse.ok) {
+                        const allTAsResult = await allTAsResponse.json();
+                        const allTAs = allTAsResult.data || [];
+                        courseTAs = allTAs.filter(ta => taIds.includes(ta.userId));
+                    }
+                }
+            }
+        } catch (taErr) {
+            console.error('Error loading TAs:', taErr);
+            // Continue with just students if TA load fails
+        }
+
+        // 3. Merge lists
+        // Mark TAs with isTA property
+        currentTAs = courseTAs.map(ta => ({ ...ta, isTA: true }));
+        
+        // Filter out students who are also TAs (to avoid duplicates if backend returns them in both)
+        // or if we want to show them as TAs.
+        const taIds = new Set(currentTAs.map(ta => ta.userId));
+        const uniqueStudents = students.filter(s => !taIds.has(s.userId));
+        
+        // Combine: TAs first or mixed? User said "keep the student box from the TA in there".
+        // Let's put TAs at the top for visibility, or sort alphabetically.
+        // Let's just combine them.
+        currentStudents = [...currentTAs, ...uniqueStudents];
+        
         renderStudents(courseId);
     } catch (err) {
         console.error('Error loading students:', err);
@@ -86,11 +133,15 @@ function renderStudents(courseId) {
 
     container.innerHTML = currentStudents.map(s => {
         const enrolled = dirtyEnrollment.has(s.userId) ? dirtyEnrollment.get(s.userId) : !!s.enrolled;
+        const isTA = !!s.isTA;
+        
         return `
-            <div class="student-card">
+            <div class="student-card ${isTA ? 'ta-card' : ''}" style="${isTA ? 'border-left: 4px solid #17a2b8;' : ''}">
                 <div class="student-header">
-                    <h3 class="student-name">${escapeHTML(s.displayName || s.username || s.userId)}</h3>
-                    <span class="student-id">${escapeHTML(s.userId)}</span>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <h3 class="student-name">${escapeHTML(s.displayName || s.username || s.userId)}</h3>
+                        ${isTA ? '<span class="badge badge-info" style="background: #17a2b8; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.8em;">TA</span>' : ''}
+                    </div>
                 </div>
                 <div class="student-info">
                     <p><strong>Username:</strong> ${escapeHTML(s.username || '—')}</p>
@@ -101,13 +152,24 @@ function renderStudents(courseId) {
                     <label class="enroll-toggle">
                         <input type="checkbox" ${enrolled ? 'checked' : ''} 
                                onchange="toggleEnrollment('${courseId}','${s.userId}', this.checked)">
-                        <span>Enrolled in</span>
+                        <span>Enrolled</span>
                     </label>
                     <button class="btn-small btn-secondary" id="save-${s.userId}" disabled
                             onclick="saveEnrollment('${courseId}','${s.userId}')">Save</button>
-                    <button class="btn-small btn-primary" onclick="promoteToTA('${s.userId}', '${escapeHTML(s.displayName || s.username)}')">
-                        Give TA Perms
-                    </button>
+                    
+                    ${isTA ? `
+                        <button class="btn-small btn-danger" onclick="demoteFromTA('${s.userId}', '${escapeHTML(s.displayName || s.username)}')">
+                            Demote from TA
+                        </button>
+                    ` : s.role === 'ta' ? `
+                         <button class="btn-small btn-secondary" disabled style="opacity: 0.7; cursor: default;">
+                            Pending TA joining course
+                        </button>
+                    ` : `
+                        <button class="btn-small btn-primary" onclick="promoteToTA('${s.userId}', '${escapeHTML(s.displayName || s.username)}')">
+                            Promote to TA
+                        </button>
+                    `}
                 </div>
             </div>
         `;
@@ -145,6 +207,36 @@ window.promoteToTA = async function(studentId, studentName) {
     } catch (err) {
         console.error('Error promoting to TA:', err);
         showNotification(`Failed to promote to TA: ${err.message}`, 'error');
+    }
+};
+
+window.demoteFromTA = async function(studentId, studentName) {
+    if (!confirm(`Are you sure you want to demote ${studentName} from Teaching Assistant? They will lose TA permissions.`)) {
+        return;
+    }
+
+    try {
+        // Using the same endpoint as TA Hub to remove TA
+        const resp = await authenticatedFetch(`/api/auth/tas/${studentId}`, {
+            method: 'DELETE'
+        });
+
+        if (!resp.ok) {
+            const errorData = await resp.json();
+            throw new Error(errorData.message || `HTTP ${resp.status}`);
+        }
+
+        showNotification(`Successfully demoted ${studentName} from TA`, 'success');
+        
+        // Reload students list
+        const selectedCourseId = localStorage.getItem('selectedCourseId');
+        if (selectedCourseId) {
+            await loadStudents(selectedCourseId);
+        }
+
+    } catch (err) {
+        console.error('Error demoting from TA:', err);
+        showNotification(`Failed to demote from TA: ${err.message}`, 'error');
     }
 };
 

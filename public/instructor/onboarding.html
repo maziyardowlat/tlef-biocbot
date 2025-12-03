@@ -30,8 +30,8 @@
                     <li><a href="/instructor/documents">Course Upload</a></li>
                     <li><a href="/instructor/flagged">Flagged Content</a></li>
                     <li><a href="/instructor/student-hub">Student Hub</a></li>
-                    <li><a href="/instructor/downloads">Student Downloads</a></li>
-                    <li><a href="/instructor/settings">Settings</a></li>
+                    <li id="instructor-downloads-nav"><a href="/instructor/downloads">Download Chats</a></li>
+
                 </ul>
             </nav>
             <div class="user-info">
@@ -307,12 +307,12 @@
                         
                         <div class="substep-content">
                             <div class="assessment-info">
-                                <p><strong>Assessment Settings:</strong> Create questions to determine student readiness for tutor/protégé mode</p>
+                                <p><strong>Assessment Settings:</strong> Assessment questions help BIOCBOT to determine whether to be in protégé or tutor mode. We recommend creating at least 3 questions.</p>
                             </div>
                             
                             <!-- Pass Threshold Setting -->
                             <div class="threshold-setting">
-                                <label for="pass-threshold-onboarding">Questions required to pass:</label>
+                                <label for="pass-threshold-onboarding">Number of correct answers required for BIOCBOT to be in protégé mode:</label>
                                 <input type="number" id="pass-threshold-onboarding" min="0" max="10" value="0" class="threshold-input">
                                 <span class="threshold-help">out of total questions</span>
                             </div>
