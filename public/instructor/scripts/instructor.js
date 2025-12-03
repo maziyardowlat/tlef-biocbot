@@ -4989,6 +4989,7 @@ function createUnitElement(unitName, unitData, isExpanded = false) {
                     <button class="toggle-section">▼</button>
                 </div>
                 <div class="section-content">
+                    <p style="margin-bottom: 10px; color: #666; font-size: 0.9em;">Please provide 3 - 8 learning objectives that are covered by this unit</p>
                     <div class="objectives-list" id="objectives-list-${unitId}">
                         <!-- Objectives will be added here -->
                     </div>
@@ -5828,6 +5829,7 @@ function renderCourseUnits(units) {
                         <button class="toggle-section">▼</button>
                     </div>
                     <div class="section-content">
+                        <p style="margin-bottom: 10px; color: #666; font-size: 0.9em;">Please provide 3 - 8 learning objectives that are covered by this unit</p>
                         <div class="objectives-list" id="objectives-list-${weekId}">
                             <!-- Objectives will be added here -->
                         </div>
