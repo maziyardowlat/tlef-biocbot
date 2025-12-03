@@ -1793,7 +1793,7 @@ router.get('/:courseId/students', async (req, res) => {
 
         const [prefStudents, chatStudents, courseDoc] = await Promise.all([
             usersCol.find({ role: 'student', 'preferences.courseId': courseId, isActive: true })
-                .project({ userId: 1, username: 1, email: 1, displayName: 1, createdAt: 1, lastLogin: 1 })
+                .project({ userId: 1, username: 1, email: 1, displayName: 1, role: 1, createdAt: 1, lastLogin: 1 })
                 .toArray(),
             chatCol.distinct('studentId', { courseId }),
             coursesCol.findOne({ courseId }, { projection: { studentEnrollment: 1, courseName: 1 } })
@@ -1803,7 +1803,7 @@ router.get('/:courseId/students', async (req, res) => {
 
         const chatStudentUsers = chatStudents.length > 0
             ? await usersCol.find({ userId: { $in: chatStudents }, role: 'student', isActive: true })
-                .project({ userId: 1, username: 1, email: 1, displayName: 1, createdAt: 1, lastLogin: 1 })
+                .project({ userId: 1, username: 1, email: 1, displayName: 1, role: 1, createdAt: 1, lastLogin: 1 })
                 .toArray()
             : [];
 
@@ -1814,6 +1814,20 @@ router.get('/:courseId/students', async (req, res) => {
         });
 
         // Also include any students present only in enrollmentMap (no profile fetched yet)
+        const missingIds = Object.keys(enrollmentMap).filter(id => !byId.has(id));
+        
+        if (missingIds.length > 0) {
+            // Fetch details for these users regardless of role
+            const additionalUsers = await usersCol.find({ userId: { $in: missingIds } })
+                .project({ userId: 1, username: 1, email: 1, displayName: 1, role: 1, createdAt: 1, lastLogin: 1 })
+                .toArray();
+                
+            additionalUsers.forEach(s => {
+                byId.set(s.userId, s);
+            });
+        }
+
+        // Fallback for truly missing users (still not found in DB)
         for (const studentId of Object.keys(enrollmentMap)) {
             if (!byId.has(studentId)) {
                 byId.set(studentId, {
@@ -1832,6 +1846,7 @@ router.get('/:courseId/students', async (req, res) => {
             username: s.username,
             email: s.email,
             displayName: s.displayName,
+            role: s.role,
             lastLogin: s.lastLogin,
             createdAt: s.createdAt,
             // Default enrolled=true if no override exists

@@ -72,6 +72,12 @@ function updateUserDisplay() {
         const firstLetter = (currentUser.displayName || currentUser.username).charAt(0).toUpperCase();
         avatarElement.textContent = firstLetter;
     }
+
+    // Update settings link based on role
+    const settingsLink = document.querySelector('a[href="/instructor/settings"]');
+    if (settingsLink && currentUser.role === 'ta') {
+        settingsLink.href = '/ta/settings';
+    }
 }
 
 /**

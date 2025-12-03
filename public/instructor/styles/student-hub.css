@@ -1,7 +1,7 @@
 .students-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-    gap: 20px;
+    grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+    gap: 24px;
     align-items: stretch;
 }
 
@@ -9,11 +9,11 @@
     background: #fff;
     border: 1px solid #e5e7eb;
     border-radius: 10px;
-    padding: 16px;
+    padding: 24px;
     display: flex;
     flex-direction: column;
     min-height: 160px;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.04);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
 }
 
 .student-header {
@@ -25,10 +25,11 @@
 
 .student-name {
     margin: 0;
-    max-width: 70%;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    /* Removed max-width restriction to allow full name */
+    white-space: normal;
+    /* Allow wrapping if needed */
+    overflow: visible;
+    word-break: break-word;
 }
 
 .student-actions {
@@ -80,5 +81,3 @@
         grid-template-columns: 1fr;
     }
 }
-
-

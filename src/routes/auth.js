@@ -552,6 +552,18 @@ router.delete('/tas/:taId', async (req, res) => {
             });
         }
 
+        // Update user role back to 'student'
+        const usersCollection = db.collection('users');
+        await usersCollection.updateOne(
+            { userId: taId },
+            { 
+                $set: { 
+                    role: 'student',
+                    updatedAt: new Date()
+                } 
+            }
+        );
+
         // Remove TA from all courses
         const coursesCollection = db.collection('courses');
         const result = await coursesCollection.updateMany(

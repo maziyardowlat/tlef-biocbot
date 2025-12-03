@@ -275,7 +275,7 @@ async function loadCurrentCourse() {
         // Update course title
         const courseTitle = document.getElementById('course-title');
         if (courseTitle) {
-            courseTitle.textContent = `${course.name} - Student Downloads`;
+            courseTitle.textContent = `${course.name} - Download Chats`;
         }
         
         // Load student data for the current course

@@ -156,7 +156,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     loadLearningObjectives();
     
     // Load the saved documents from the database
-    loadDocuments();
+    loadDocuments().then(() => {
+        updatePublishedSummary();
+    });
     
     // Load the saved assessment questions from the database first
     loadAssessmentQuestions().then(() => {
@@ -547,6 +549,36 @@ function resetModal() {
     const uploadSection = document.getElementById('upload-section');
     if (loadingIndicator) loadingIndicator.style.display = 'none';
     if (uploadSection) uploadSection.style.display = 'block';
+    
+    // Reset to selection view
+    resetToSelection();
+}
+
+/**
+ * Show file upload section
+ */
+function showFileUpload() {
+    document.getElementById('upload-method-selection').style.display = 'none';
+    document.getElementById('file-upload-section').style.display = 'block';
+    document.getElementById('text-input-section').style.display = 'none';
+}
+
+/**
+ * Show text input section
+ */
+function showTextInput() {
+    document.getElementById('upload-method-selection').style.display = 'none';
+    document.getElementById('file-upload-section').style.display = 'none';
+    document.getElementById('text-input-section').style.display = 'block';
+}
+
+/**
+ * Reset to selection view
+ */
+function resetToSelection() {
+    document.getElementById('upload-method-selection').style.display = 'flex';
+    document.getElementById('file-upload-section').style.display = 'none';
+    document.getElementById('text-input-section').style.display = 'none';
 }
 
 /**
@@ -4938,6 +4970,9 @@ function generateUnitsFromOnboarding(onboardingData) {
                 console.log('🔄 [DELAYED_LOAD] Loading thresholds after documents rendered...');
                 loadPassThresholds();
             }, 300);
+            
+            // Update published units summary
+            updatePublishedSummary();
         });
     }, 100);
     
@@ -4989,6 +5024,7 @@ function createUnitElement(unitName, unitData, isExpanded = false) {
                     <button class="toggle-section">▼</button>
                 </div>
                 <div class="section-content">
+                    <p style="margin-bottom: 10px; color: #666; font-size: 0.9em;">Please provide 3 - 8 learning objectives that are covered by this unit</p>
                     <div class="objectives-list" id="objectives-list-${unitId}">
                         <!-- Objectives will be added here -->
                     </div>
@@ -5046,12 +5082,12 @@ function createUnitElement(unitName, unitData, isExpanded = false) {
                 </div>
                 <div class="section-content">
                     <div class="assessment-info">
-                        <p><strong>Assessment Settings:</strong> Create questions to determine student readiness for tutor/protégé mode</p>
+                        <p><strong>Assessment Settings:</strong> Assessment questions help BIOCBOT to determine whether to be in protégé or tutor mode. We recommend creating at least 3 questions.</p>
                     </div>
                     
                     <!-- Pass Threshold Setting -->
                     <div class="threshold-setting">
-                        <label for="pass-threshold-${unitId}">Questions required to pass:</label>
+                        <label for="pass-threshold-${unitId}">Number of correct answers required for BIOCBOT to be in protégé mode:</label>
                         <input type="number" id="pass-threshold-${unitId}" min="0" max="10" value="0" class="threshold-input">
                         <span class="threshold-help">out of total questions</span>
                     </div>
@@ -5828,6 +5864,7 @@ function renderCourseUnits(units) {
                         <button class="toggle-section">▼</button>
                     </div>
                     <div class="section-content">
+                        <p style="margin-bottom: 10px; color: #666; font-size: 0.9em;">Please provide 3 - 8 learning objectives that are covered by this unit</p>
                         <div class="objectives-list" id="objectives-list-${weekId}">
                             <!-- Objectives will be added here -->
                         </div>
@@ -5885,12 +5922,12 @@ function renderCourseUnits(units) {
                     </div>
                     <div class="section-content">
                         <div class="assessment-info">
-                            <p><strong>Assessment Settings:</strong> Create questions to determine student readiness for tutor/protégé mode</p>
+                            <p><strong>Assessment Settings:</strong> Assessment questions help BIOCBOT to determine whether to be in protégé or tutor mode. We recommend creating at least 3 questions.</p>
                         </div>
                         
                         <!-- Pass Threshold Setting -->
                         <div class="threshold-setting">
-                            <label for="pass-threshold-${weekId}">Questions required to pass:</label>
+                            <label for="pass-threshold-${weekId}">Number of correct answers required for BIOCBOT to be in protégé mode:</label>
                             <input type="number" id="pass-threshold-${weekId}" min="0" max="10" value="0" class="threshold-input">
                             <span class="threshold-help">out of total questions</span>
                         </div>
@@ -6170,3 +6207,33 @@ async function waitForAuth() {
     console.warn('⚠️ [AUTH] Authentication not ready after 5 seconds, proceeding anyway');
 }
 
+/**
+ * Update the published units summary text
+ */
+function updatePublishedSummary() {
+    const summaryContainer = document.getElementById('published-units-summary');
+    if (!summaryContainer) return;
+    
+    // Count total units and published units
+    const unitSections = document.querySelectorAll('.accordion-item');
+    const totalUnits = unitSections.length;
+    
+    let publishedCount = 0;
+    unitSections.forEach(section => {
+        const toggle = section.querySelector('.publish-toggle input');
+        if (toggle && toggle.checked) {
+            publishedCount++;
+        }
+    });
+    
+    // Update the text
+    summaryContainer.textContent = `Currently, ${publishedCount} of the ${totalUnits} Units are Published.`;
+}
+
+// Also update summary when a toggle is changed
+document.addEventListener('change', (e) => {
+    if (e.target.matches('.publish-toggle input')) {
+        // Small delay to allow state to update
+        setTimeout(updatePublishedSummary, 100);
+    }
+});
