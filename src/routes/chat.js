@@ -421,6 +421,35 @@ router.post('/', async (req, res) => {
                 }
             });
         }
+        
+        // Safety/Wellness Check
+        const safetyKeywords = ['suicide', 'kill myself', 'want to die', 'end my life', 'ending it all'];
+        const lowerMessage = message.toLowerCase();
+        if (safetyKeywords.some(keyword => lowerMessage.includes(keyword))) {
+            console.log('⚠️ [CHAT_API] Safety keyword detected. Returning wellness resource.');
+            return res.json({
+                success: true,
+                message: "I'm very sorry you're feeling this way. I'm an AI study assistant and not equipped to provide the support you need, but please reach out for help. The UBC Wellness Centre is available for you: http://students.ubc.ca/health/wellness-centre/",
+                model: 'system',
+                usage: { tokens: 0 },
+                timestamp: new Date().toISOString(),
+                mode: mode || 'default',
+                citations: [],
+                sourceAttribution: {
+                    source: 'system',
+                    description: 'Wellness Resource',
+                    unitName: null,
+                    documentType: null
+                },
+                debug: {
+                    safetyTriggered: true
+                },
+                retrieval: {
+                    mode: 'n/a',
+                    lectureNames: []
+                }
+            });
+        }
 
         // Initialize Qdrant and DB
         let qdrant;
@@ -598,9 +627,12 @@ RULES FOR INTERACTION:
    - BAD: "No, actually the mitochondria is the powerhouse."
    - GOOD: "Wait, I thought the lecture said the mitochondria was involved in energy? Why did you say it was for protein?"
 4. **Brevity:** Keep your responses short (1-3 sentences). Real students don't write paragraphs.
+5. **Formatting:** If you must explain multiple points, use bullet points. Avoid large blocks of text.
 
 CONTEXT USAGE:
 The "Course Context" provided below is the TRUTH. Use it to judge if the user is right or wrong. Do NOT output the text from the context directly. Use it only to generate follow-up questions.
+
+6. **SAFETY PROTOCOL:** If the student expresses severe distress, depression, or thoughts of self-harm, respond with compassion and provide this link: http://students.ubc.ca/health/wellness-centre/
 
 TONE:
 Casual, inquisitive, slightly unsure, but eager to learn.
@@ -626,6 +658,8 @@ What to Avoid:
 - Don't use overly technical language without explanation
 - Don't move on without checking they're following along
 - Don't make them feel bad for not knowing - everyone learns at their own pace
+- **Format your responses:** Use short paragraphs (max 3-4 sentences). Use bullet points for lists. Avoid massive walls of text.
+- **SAFETY PROTOCOL:** If the student expresses severe distress, depression, or thoughts of self-harm, respond with compassion and provide this link: http://students.ubc.ca/health/wellness-centre/
 
 Example Interactions:
 - Student: "I don't understand enzyme inhibition"
