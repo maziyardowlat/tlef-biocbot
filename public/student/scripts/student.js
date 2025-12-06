@@ -771,7 +771,10 @@ function addMessage(content, sender, withSource = false, skipAutoSave = false, s
     contentDiv.classList.add('message-content');
 
     const paragraph = document.createElement('p');
-    paragraph.textContent = content;
+    // Use innerText to respect newlines from the source
+    paragraph.innerText = content;
+    // Ensure formatting is preserved
+    paragraph.style.whiteSpace = 'pre-wrap';
 
     contentDiv.appendChild(paragraph);
 

@@ -4553,8 +4553,14 @@ async function generateAIQuestionContent() {
         
     } finally {
         // Restore button state
-        aiButton.innerHTML = originalText;
         aiButton.disabled = false;
+        
+        // If we have generated content, show regenerate button
+        if (aiGenerationCount > 0) {
+            aiButton.innerHTML = '<span class="ai-icon">🔄</span> Regenerate with AI';
+        } else {
+            aiButton.innerHTML = originalText;
+        }
     }
 }
 
