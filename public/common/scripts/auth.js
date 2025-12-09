@@ -84,13 +84,17 @@ function updateUserDisplay() {
  * Setup logout button handler
  */
 function setupLogoutHandler() {
-    const logoutBtn = document.getElementById('logout-btn');
-    if (logoutBtn) {
-        logoutBtn.addEventListener('click', async (e) => {
-            e.preventDefault();
-            await logout();
-        });
-    }
+    const logoutBtns = ['logout-btn', 'mobile-logout-btn'];
+    
+    logoutBtns.forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) {
+            btn.addEventListener('click', async (e) => {
+                e.preventDefault();
+                await logout();
+            });
+        }
+    });
 }
 
 /**

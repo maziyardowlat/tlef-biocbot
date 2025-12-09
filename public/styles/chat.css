@@ -288,9 +288,13 @@
 }
 
 @keyframes typing-animation {
-    0%, 60%, 100% {
+
+    0%,
+    60%,
+    100% {
         transform: translateY(0);
     }
+
     30% {
         transform: translateY(-5px);
     }
@@ -470,6 +474,14 @@
         height: calc(100vh - 180px);
     }
 
+    .chat-input-container {
+        padding: 10px;
+    }
+
+    #chat-input {
+        padding: 8px 12px;
+    }
+
     .message-content {
         max-width: 90%;
     }
@@ -601,7 +613,8 @@
 
 /* Mode Toggle */
 .mode-toggle-container {
-    display: none; /* Initially hidden, shown when chat input is available */
+    display: none;
+    /* Initially hidden, shown when chat input is available */
     flex-shrink: 0;
 }
 
@@ -665,11 +678,11 @@
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
-input:checked + .toggle-slider {
+input:checked+.toggle-slider {
     background-color: var(--primary-color);
 }
 
-input:checked + .toggle-slider:before {
+input:checked+.toggle-slider:before {
     transform: translateX(24px);
 }
 
@@ -801,7 +814,7 @@ input:checked + .toggle-slider:before {
         bottom: 3px;
     }
 
-    input:checked + .toggle-slider:before {
+    input:checked+.toggle-slider:before {
         transform: translateX(20px);
     }
 }
@@ -1212,31 +1225,91 @@ input:checked + .toggle-slider:before {
 }
 
 /* Responsive design for history page */
+/* Mobile Back Button */
+.mobile-back-btn {
+    display: none;
+    background: none;
+    border: none;
+    font-size: 16px;
+    color: var(--primary-color);
+    cursor: pointer;
+    padding: 0 10px 0 0;
+    font-weight: 500;
+}
+
+/* Mobile Actions Container */
+.mobile-actions-container {
+    display: none;
+    gap: 8px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color);
+}
+
+.mobile-action-btn {
+    flex: 1;
+    padding: 8px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.mobile-action-btn.primary {
+    background-color: var(--primary-color);
+    color: white;
+    border: none;
+}
+
+.mobile-action-btn.secondary {
+    background-color: white;
+    color: var(--text-color);
+    border: 1px solid var(--border-color);
+}
+
+/* Responsive design for history page */
 @media (max-width: 768px) {
     .history-container {
-        flex-direction: column;
         height: auto;
+        display: block;
+        box-shadow: none;
+        background: transparent;
     }
 
     .chat-history-list {
         width: 100%;
-        border-right: none;
-        border-bottom: 1px solid var(--border-color);
-        max-height: 300px;
+        height: auto;
+        border: none;
+        max-height: none;
+        background: transparent;
     }
 
+    /* Card style for history items on mobile */
+    .chat-history-item {
+        background: white;
+        margin-bottom: 10px;
+        border: 1px solid var(--border-color);
+        border-radius: 8px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    }
+
+    .chat-history-item.mobile-expanded {
+        border-color: var(--primary-color);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    }
+
+    .chat-history-item.mobile-expanded .mobile-actions-container {
+        display: flex;
+    }
+
+    /* Hide the desktop preview panel completely */
     .chat-preview-panel {
-        height: calc(100vh - 420px);
+        display: none !important;
     }
 
-    .preview-actions {
-        flex-direction: column;
-        gap: 8px;
-    }
-
-    .preview-actions .primary-button,
-    .preview-actions .secondary-button {
-        width: 100%;
-        text-align: center;
+    /* Hide the back button we added previously */
+    .mobile-back-btn {
+        display: none;
     }
 }
