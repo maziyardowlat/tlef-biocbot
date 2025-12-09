@@ -43,7 +43,8 @@ ul {
     list-style: none;
 }
 
-button, .button {
+button,
+.button {
     cursor: pointer;
     border: none;
     border-radius: 4px;
@@ -104,7 +105,9 @@ button, .button {
     font-size: 16px;
 }
 
-input, select, textarea {
+input,
+select,
+textarea {
     padding: 8px 12px;
     border: 1px solid var(--border-color);
     border-radius: 4px;
@@ -159,6 +162,11 @@ input, select, textarea {
 
 .main-nav .icon {
     margin-right: 10px;
+}
+
+/* Mobile only nav */
+.mobile-only-nav {
+    display: none;
 }
 
 /* New Session Button */
@@ -371,6 +379,7 @@ header h1 {
         transform: translateX(100%);
         opacity: 0;
     }
+
     to {
         transform: translateX(0);
         opacity: 1;
@@ -378,6 +387,11 @@ header h1 {
 }
 
 /* Responsive */
+/* Mobile Header Toggle - Default Hidden */
+.mobile-header-toggle {
+    display: none;
+}
+
 @media (max-width: 768px) {
     .app-container {
         flex-direction: column;
@@ -397,9 +411,84 @@ header h1 {
     .user-info {
         display: none;
     }
-    
+
     .notification-container {
         width: calc(100% - 40px);
         max-width: none;
+    }
+
+    .mobile-only-nav {
+        display: block;
+    }
+
+    /* Optimize header space on mobile */
+    .new-session-container {
+        margin-top: 10px;
+        padding-top: 10px;
+    }
+
+    .new-session-button {
+        padding: 8px 12px;
+        font-size: 13px;
+    }
+
+    /* Compact header on mobile */
+    header {
+        margin-bottom: 10px;
+        padding-bottom: 10px;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+
+    header h1 {
+        font-size: 20px;
+    }
+
+    /* Mobile Header Toggle Styles */
+    .logo-container {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding-bottom: 15px;
+        /* adjust padding */
+    }
+
+    .mobile-header-toggle {
+        background: rgba(255, 255, 255, 0.2);
+        border: none;
+        color: white;
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        font-size: 14px;
+        transition: background 0.3s;
+    }
+
+    .mobile-header-toggle:hover {
+        background: rgba(255, 255, 255, 0.3);
+    }
+
+    /* Collapsed State */
+    .mobile-collapsed .sidebar .main-nav,
+    .mobile-collapsed .sidebar .user-info,
+    .mobile-collapsed header,
+    .mobile-collapsed .history-header,
+    .mobile-collapsed .flagged-header {
+        display: none !important;
+    }
+
+    .mobile-collapsed .sidebar {
+        padding-bottom: 0;
+        /* Minimal padding */
+    }
+
+    .mobile-collapsed .logo-container {
+        margin-bottom: 10px;
+        border-bottom: none;
     }
 }

@@ -458,11 +458,33 @@ function createHistoryItem(chat, index) {
         <span class="message-count">${chat.messageCount} messages</span>
         <span class="duration">${chat.duration}</span>
     `;
+
+    // Add Mobile Controls (Hidden on desktop)
+    const mobileActions = document.createElement('div');
+    mobileActions.classList.add('mobile-actions-container');
+    mobileActions.innerHTML = `
+        <button class="mobile-action-btn primary" data-action="continue">Continue Chat</button>
+        <button class="mobile-action-btn secondary" data-action="download">Download</button>
+        <button class="mobile-action-btn secondary" data-action="delete">Delete</button>
+    `;
+
+    // Mobile Action Listeners
+    mobileActions.querySelectorAll('.mobile-action-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation(); // Prevent toggling the item
+            currentSelectedChat = chat; // Ensure correct context
+            const action = e.target.dataset.action;
+            if (action === 'continue') handleContinueChat();
+            if (action === 'download') handleDownloadChat();
+            if (action === 'delete') handleDeleteChat();
+        });
+    });
     
     item.appendChild(title);
     item.appendChild(preview);
     item.appendChild(date);
     item.appendChild(metadata);
+    item.appendChild(mobileActions);
     
     return item;
 }
@@ -525,9 +547,22 @@ function handleHistoryItemClick(chatId) {
         // Update current selection
         currentSelectedChat = chat;
         
-        // Update UI
+        // Update visual selection (Desktop)
         updateSelectedItem(chatId);
+        
+        // Show preview in right panel (Desktop)
         displayChatPreview(chat);
+        
+        // Mobile: Toggle expanded state
+        const clickedItem = document.querySelector(`.chat-history-item[data-chat-id="${chatId}"]`);
+        if (clickedItem) {
+            // Close other items
+            document.querySelectorAll('.chat-history-item').forEach(item => {
+                if (item !== clickedItem) item.classList.remove('mobile-expanded');
+            });
+            // Toggle this item
+            clickedItem.classList.toggle('mobile-expanded');
+        }
         
     } catch (error) {
         console.error('Error handling history item click:', error);
