@@ -183,7 +183,8 @@ async function authenticateUser(db, username, password) {
             role: user.role,
             displayName: user.displayName,
             authProvider: user.authProvider,
-            preferences: user.preferences
+            preferences: user.preferences,
+            invitedCourses: user.invitedCourses || []
         }
     };
 }
@@ -213,8 +214,10 @@ async function getUserById(db, userId) {
         role: user.role,
         displayName: user.displayName,
         authProvider: user.authProvider,
+        authProvider: user.authProvider,
         preferences: user.preferences,
-        lastLogin: user.lastLogin
+        lastLogin: user.lastLogin,
+        invitedCourses: user.invitedCourses || []
     };
 }
 

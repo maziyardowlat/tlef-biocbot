@@ -1152,10 +1152,26 @@ router.get('/available/all', async (req, res) => {
         // Query database for all active courses
         const collection = db.collection('courses');
         const courses = await collection.find({ status: { $ne: 'deleted' } }).toArray();
+
+        let availableCourses = courses;
+
+        // Restriction for TAs: Only show courses they are invited to or already assigned to
+        if (user && user.role === 'ta') {
+            console.log(`Filtering courses for TA ${user.userId}`);
+            
+            const invitedCourses = user.invitedCourses || [];
+            
+            availableCourses = courses.filter(course => {
+                const isInvited = invitedCourses.includes(course.courseId);
+                const isAssigned = course.tas && course.tas.includes(user.userId);
+                return isInvited || isAssigned;
+            });
+            console.log(`TA ${user.userId} sees ${availableCourses.length} courses (from total ${courses.length})`);
+        }
         
         // Transform the data to match expected format for both sides
         // For students, check enrollment status
-        const transformedCourses = await Promise.all(courses.map(async (course) => {
+        const transformedCourses = await Promise.all(availableCourses.map(async (course) => {
             let isEnrolled = false;
             
             // If user is student, check explicit enrollment

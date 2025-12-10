@@ -772,7 +772,7 @@ router.get('/methods', (req, res) => {
  */
 router.post('/promote-to-ta', async (req, res) => {
     try {
-        const { userId } = req.body;
+        const { userId, courseId } = req.body;
         
         // Get authenticated user information
         const user = req.user;
@@ -807,16 +807,24 @@ router.post('/promote-to-ta', async (req, res) => {
             });
         }
         
-        // Update user role
+        // Prepare update operations
+        const updateOps = {
+            $set: { 
+                role: 'ta',
+                updatedAt: new Date()
+            }
+        };
+
+        // If courseId is provided, add it to invitedCourses
+        if (courseId) {
+            updateOps.$addToSet = { invitedCourses: courseId };
+        }
+        
+        // Update user role to 'ta'
         const usersCollection = db.collection('users');
         const result = await usersCollection.updateOne(
             { userId: userId },
-            { 
-                $set: { 
-                    role: 'ta',
-                    updatedAt: new Date()
-                } 
-            }
+            updateOps
         );
         
         if (result.matchedCount === 0) {
@@ -826,12 +834,17 @@ router.post('/promote-to-ta', async (req, res) => {
             });
         }
         
-        console.log(`Promoted user ${userId} to TA`);
+        
+        console.log(`Promoted user ${userId} to TA${courseId ? ` for course ${courseId}` : ''}`);
         
         res.json({
             success: true,
             message: 'User promoted to TA successfully',
-            userId: userId
+            data: {
+                userId,
+                role: 'ta',
+                invitedToCourse: courseId || null
+            }
         });
         
     } catch (error) {
