@@ -166,7 +166,7 @@ function renderStudents(courseId) {
                             Pending TA joining course
                         </button>
                     ` : `
-                        <button class="btn-small btn-primary" onclick="promoteToTA('${s.userId}', '${escapeHTML(s.displayName || s.username)}')">
+                        <button class="btn-small btn-primary" onclick="promoteToTA('${s.userId}', '${escapeHTML(s.displayName || s.username)}', '${courseId}')">
                             Promote to TA
                         </button>
                     `}
@@ -176,7 +176,11 @@ function renderStudents(courseId) {
     }).join('');
 }
 
-window.promoteToTA = async function(studentId, studentName) {
+window.promoteToTA = async function(studentId, studentName, courseId) {
+    if (!courseId) {
+        courseId = localStorage.getItem('selectedCourseId');
+    }
+
     if (!confirm(`Are you sure you want to promote ${studentName} to a Teaching Assistant? This will give them TA permissions.`)) {
         return;
     }
@@ -185,7 +189,7 @@ window.promoteToTA = async function(studentId, studentName) {
         const resp = await authenticatedFetch('/api/auth/promote-to-ta', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId: studentId })
+            body: JSON.stringify({ userId: studentId, courseId: courseId })
         });
 
         if (!resp.ok) {

@@ -112,11 +112,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Check if we're loading from history first
     const isLoadingFromHistory = sessionStorage.getItem('loadChatData');
 
-    if (!isLoadingFromHistory) {
-        // Check for published units and load real assessment questions
-        // If no units are published, allow direct chat
-        checkPublishedUnitsAndLoadQuestions();
-    } else {
+    if (isLoadingFromHistory) {
         console.log('Loading from history, skipping assessment questions');
     }
 
@@ -840,9 +836,13 @@ function addMessage(content, sender, withSource = false, skipAutoSave = false, s
         const flagMenu = document.createElement('div');
         flagMenu.classList.add('flag-menu');
         flagMenu.innerHTML = `
-            <div class="flag-option" onclick="flagMessage(this, 'inappropriate')">Inappropriate</div>
             <div class="flag-option" onclick="flagMessage(this, 'incorrect')">Incorrect</div>
+            <div class="flag-option" onclick="flagMessage(this, 'inappropriate')">Inappropriate</div>
             <div class="flag-option" onclick="flagMessage(this, 'unclear')">Unclear</div>
+            <div class="flag-option" onclick="flagMessage(this, 'confusing')">Confusing</div>
+            <div class="flag-option" onclick="flagMessage(this, 'typo')">Typo/Error</div>
+            <div class="flag-option" onclick="flagMessage(this, 'offensive')">Offensive</div>
+            <div class="flag-option" onclick="flagMessage(this, 'irrelevant')">Irrelevant</div>
         `;
 
         flagContainer.appendChild(flagButton);
@@ -1911,19 +1911,7 @@ async function handleNewSession() {
                         <div class="message-footer">
                             <div class="message-footer-right">
                                 <span class="timestamp">Just now</span>
-                                <div class="message-flag-container">
-                                    <button class="flag-button" onclick="toggleFlagMenu(this)">
-                                        <span class="three-dots">⋯</span>
-                                    </button>
-                                    <div class="flag-menu">
-                                        <button class="flag-option" onclick="flagMessage(this, 'incorrect')">Incorrect</button>
-                                        <button class="flag-option" onclick="flagMessage(this, 'inappropriate')">Inappropriate</button>
-                                        <button class="flag-option" onclick="flagMessage(this, 'unclear')">Unclear</button>
-                                        <button class="flag-option" onclick="flagMessage(this, 'confusing')">Confusing</button>
-                                        <button class="flag-option" onclick="flagMessage(this, 'typo')">Typo/Error</button>
-                                        <button class="flag-option" onclick="flagMessage(this, 'offensive')">Offensive</button>
-                                        <button class="flag-option" onclick="flagMessage(this, 'irrelevant')">Irrelevant</button>
-                                    </div>
+                                <div class="message-flag-container" style="display: none;">
                                 </div>
                             </div>
                         </div>
@@ -2586,19 +2574,7 @@ async function loadCourseData(courseId, isCourseChange = false) {
                             <div class="message-footer">
                                 <div class="message-footer-right">
                                     <span class="timestamp">Just now</span>
-                                    <div class="message-flag-container">
-                                        <button class="flag-button" onclick="toggleFlagMenu(this)">
-                                            <span class="three-dots">⋯</span>
-                                        </button>
-                                        <div class="flag-menu">
-                                            <button class="flag-option" onclick="flagMessage(this, 'incorrect')">Incorrect</button>
-                                            <button class="flag-option" onclick="flagMessage(this, 'inappropriate')">Inappropriate</button>
-                                            <button class="flag-option" onclick="flagMessage(this, 'unclear')">Unclear</button>
-                                            <button class="flag-option" onclick="flagMessage(this, 'confusing')">Confusing</button>
-                                            <button class="flag-option" onclick="flagMessage(this, 'typo')">Typo/Error</button>
-                                            <button class="flag-option" onclick="flagMessage(this, 'offensive')">Offensive</button>
-                                            <button class="flag-option" onclick="flagMessage(this, 'irrelevant')">Irrelevant</button>
-                                        </div>
+                                    <div class="message-flag-container" style="display: none;">
                                     </div>
                                 </div>
                             </div>
@@ -3762,10 +3738,10 @@ function showNoQuestionsForUnitMessage(unitName) {
     // Scroll to bottom
     chatMessages.scrollTop = chatMessages.scrollHeight;
 
-    // Reset unit selection to allow choosing another unit
+    // Set unit selection to the current unit to show what was selected
     const unitSelect = document.getElementById('unit-select');
     if (unitSelect) {
-        unitSelect.value = '';
+        unitSelect.value = unitName;
     }
 }
 
