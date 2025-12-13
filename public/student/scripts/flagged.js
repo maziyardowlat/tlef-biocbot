@@ -10,6 +10,15 @@ const studentFlagsState = {
 };
 
 document.addEventListener('DOMContentLoaded', async function() {
+    // Dynamic User Role Update for Footer
+    const storedCourseName = localStorage.getItem('selectedCourseName');
+    if (storedCourseName) {
+        const userRoleElement = document.querySelector('.user-role');
+        if (userRoleElement) {
+            userRoleElement.textContent = `Student - ${storedCourseName}`;
+        }
+    }
+
     try {
         const courseId = localStorage.getItem('selectedCourseId');
         if (courseId) {

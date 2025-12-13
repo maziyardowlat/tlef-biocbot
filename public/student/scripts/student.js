@@ -297,6 +297,30 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     /**
+     * Check if the Protege Effect prompt has already been shown
+     * @returns {boolean} True if prompt was already shown
+     */
+    function hasProtegePromptShown() {
+        try {
+            const chatData = getCurrentChatData();
+            if (!chatData || !chatData.messages || chatData.messages.length === 0) {
+                return false;
+            }
+
+            // Check if any bot message contains the prompt text
+            const promptText = 'Do you want to try and explain our chat above to me?';
+            return chatData.messages.some(msg =>
+                msg.type === 'bot' &&
+                msg.content &&
+                msg.content.includes(promptText)
+            );
+        } catch (error) {
+            console.error('Error checking if protege prompt was shown:', error);
+            return false;
+        }
+    }
+
+    /**
      * Count messages starting from the first student message
      * Only counts regular-chat messages (user and bot)
      * @returns {number} Count of messages from first student message
@@ -616,6 +640,24 @@ document.addEventListener('DOMContentLoaded', async () => {
                     console.log('🔍 [SOURCE_DEBUG] Max score:', response.debug.maxScore);
                     console.log('🔍 [SOURCE_DEBUG] Document types:', response.debug.documentTypes);
                     console.log('🔍 [SOURCE_DEBUG] Source attribution:', response.sourceAttribution);
+                }
+
+                // Check if we should append the Protege prompt
+                const currentMode = localStorage.getItem('studentMode') || 'tutor';
+                const isTutorMode = currentMode === 'tutor';
+                const promptAlreadyShown = hasProtegePromptShown();
+                
+                // We initially check messageCountBefore (e.g. 12).
+                // User adds message -> Total messages = 13 (assuming 1-based index or however countMessagesFromFirstStudent works).
+                // If countMessagesFromFirstStudent returns the count of HISTORY, and we just added a user message:
+                // If history was 12. New count is 13.
+                // The bot response will be the 14th message.
+                // So we want to trigger when `messageCountBefore` is 12 (or 13 to be safe).
+                const shouldShowProtegePrompt = !promptAlreadyShown && isTutorMode && (messageCountBefore === 12 || messageCountBefore === 13);
+                
+                if (shouldShowProtegePrompt) {
+                     console.log('💡 [PROTEGE] Appending Protege prompt to bot response');
+                     response.message += '\n\n----------------\nDo you want to try and explain our chat above to me?';
                 }
 
                 addMessage(response.message, 'bot', true, false, response.sourceAttribution);
@@ -3074,9 +3116,9 @@ async function checkPublishedUnitsAndLoadQuestions() {
 
         // Check if chat was auto-continued
         if (window.autoContinued) {
-            console.log('🔄 [AUTO-CONTINUE] Chat was auto-continued, skipping assessment questions');
-            window.isCheckingPublishedUnits = false;
-            return;
+            console.log('🔄 [AUTO-CONTINUE] Chat was auto-continued, verifying unit dropdown...');
+            // We DO NOT return here anymore - we need to fetch units to show the dropdown
+            // The loading of questions will be handled safely in loadQuestionsForSelectedUnit
         }
 
         // Get current course ID from localStorage
@@ -5451,8 +5493,7 @@ function loadChatData(chatData) {
                 }
             }
 
-            // Show success message (skip auto-save for system messages)
-            addMessage('✅ Chat history loaded successfully! You can continue where you left off.', 'bot', false, true, null);
+
 
             // Set flags for continuing chat
             sessionStorage.setItem('isContinuingChat', 'true');
