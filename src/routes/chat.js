@@ -693,7 +693,7 @@ Example Interactions:
             if (fr.includes('length') || fr.includes('token')) return true;
             if (!content) return false;
             const tail = content.slice(-60);
-            const endsClean = /[\.\!\?]\s*$/.test(tail);
+            const endsClean = /([\.\!\?]|\(Unit\s+[^)]+\))\s*$/i.test(tail);
             return !endsClean && content.length > 300;
         }
 

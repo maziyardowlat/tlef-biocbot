@@ -157,6 +157,15 @@ function getCurrentStudentId() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    // Dynamic User Role Update for Footer
+    const storedCourseName = localStorage.getItem('selectedCourseName');
+    if (storedCourseName) {
+        const userRoleElement = document.querySelector('.user-role');
+        if (userRoleElement) {
+            userRoleElement.textContent = `Student - ${storedCourseName}`;
+        }
+    }
+
     // Enrollment gate: hide page if access revoked
     (async () => {
         try {

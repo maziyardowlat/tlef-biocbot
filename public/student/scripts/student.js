@@ -297,6 +297,30 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     /**
+     * Check if the Protege Effect prompt has already been shown
+     * @returns {boolean} True if prompt was already shown
+     */
+    function hasProtegePromptShown() {
+        try {
+            const chatData = getCurrentChatData();
+            if (!chatData || !chatData.messages || chatData.messages.length === 0) {
+                return false;
+            }
+
+            // Check if any bot message contains the prompt text
+            const promptText = 'Do you want to try and explain our chat above to me?';
+            return chatData.messages.some(msg =>
+                msg.type === 'bot' &&
+                msg.content &&
+                msg.content.includes(promptText)
+            );
+        } catch (error) {
+            console.error('Error checking if protege prompt was shown:', error);
+            return false;
+        }
+    }
+
+    /**
      * Count messages starting from the first student message
      * Only counts regular-chat messages (user and bot)
      * @returns {number} Count of messages from first student message
@@ -616,6 +640,24 @@ document.addEventListener('DOMContentLoaded', async () => {
                     console.log('🔍 [SOURCE_DEBUG] Max score:', response.debug.maxScore);
                     console.log('🔍 [SOURCE_DEBUG] Document types:', response.debug.documentTypes);
                     console.log('🔍 [SOURCE_DEBUG] Source attribution:', response.sourceAttribution);
+                }
+
+                // Check if we should append the Protege prompt
+                const currentMode = localStorage.getItem('studentMode') || 'tutor';
+                const isTutorMode = currentMode === 'tutor';
+                const promptAlreadyShown = hasProtegePromptShown();
+                
+                // We initially check messageCountBefore (e.g. 12).
+                // User adds message -> Total messages = 13 (assuming 1-based index or however countMessagesFromFirstStudent works).
+                // If countMessagesFromFirstStudent returns the count of HISTORY, and we just added a user message:
+                // If history was 12. New count is 13.
+                // The bot response will be the 14th message.
+                // So we want to trigger when `messageCountBefore` is 12 (or 13 to be safe).
+                const shouldShowProtegePrompt = !promptAlreadyShown && isTutorMode && (messageCountBefore === 12 || messageCountBefore === 13);
+                
+                if (shouldShowProtegePrompt) {
+                     console.log('💡 [PROTEGE] Appending Protege prompt to bot response');
+                     response.message += '\n\n----------------\nDo you want to try and explain our chat above to me?';
                 }
 
                 addMessage(response.message, 'bot', true, false, response.sourceAttribution);
@@ -3074,9 +3116,9 @@ async function checkPublishedUnitsAndLoadQuestions() {
 
         // Check if chat was auto-continued
         if (window.autoContinued) {
-            console.log('🔄 [AUTO-CONTINUE] Chat was auto-continued, skipping assessment questions');
-            window.isCheckingPublishedUnits = false;
-            return;
+            console.log('🔄 [AUTO-CONTINUE] Chat was auto-continued, verifying unit dropdown...');
+            // We DO NOT return here anymore - we need to fetch units to show the dropdown
+            // The loading of questions will be handled safely in loadQuestionsForSelectedUnit
         }
 
         // Get current course ID from localStorage
@@ -4044,22 +4086,12 @@ function showCalibrationQuestion() {
  * @param {number} answerIndex - Selected answer index
  * @param {number} questionIndex - The question index this answer belongs to
  */
-function selectCalibrationAnswer(answerIndex, questionIndex) {
+async function selectCalibrationAnswer(answerIndex, questionIndex) {
     // Store the answer
     studentAnswers[questionIndex] = answerIndex;
     window.studentAnswers = studentAnswers; // Update global reference
 
-    // Update auto-save with assessment data
-    const studentId = getCurrentStudentId();
-    const autoSaveKey = `biocbot_current_chat_${studentId}`;
-    const currentChatData = JSON.parse(localStorage.getItem(autoSaveKey) || '{}');
-    if (currentChatData.messages) {
-        updateAssessmentDataInAutoSave(currentChatData);
-        localStorage.setItem(autoSaveKey, JSON.stringify(currentChatData));
-        console.log('🔄 [AUTO-SAVE] Updated assessment data after answer submission');
-    }
-
-    // Disable all options to prevent changing answers
+    // Disable all options to prevent changing answers AND update UI immediately so it's captured in save
     const questionMessage = document.getElementById(`calibration-question-${questionIndex}`);
     if (questionMessage) {
         const options = questionMessage.querySelectorAll('.calibration-option');
@@ -4081,6 +4113,21 @@ function selectCalibrationAnswer(answerIndex, questionIndex) {
                 option.style.borderColor = '#ddd';
             }
         });
+    }
+
+    // Update auto-save with FRESH assessment data (capturing the UI state above)
+    // We use collectAllChatData to ensure the messages array includes the question we just answered
+    try {
+        const studentId = getCurrentStudentId();
+        const autoSaveKey = `biocbot_current_chat_${studentId}`;
+        const currentChatData = await collectAllChatData();
+        
+        if (currentChatData) {
+            localStorage.setItem(autoSaveKey, JSON.stringify(currentChatData));
+            console.log('🔄 [AUTO-SAVE] Updated assessment data after answer submission (fresh scan)');
+        }
+    } catch (e) {
+        console.error('Error auto-saving assessment answer:', e);
     }
 
     // Automatically proceed to next question after a short delay
@@ -4231,14 +4278,18 @@ async function submitShortAnswer(answer, questionIndex) {
         };
     }
 
-    // Update auto-save with assessment data
-    const studentId = getCurrentStudentId();
-    const autoSaveKey = `biocbot_current_chat_${studentId}`;
-    const currentChatData = JSON.parse(localStorage.getItem(autoSaveKey) || '{}');
-    if (currentChatData.messages) {
-        updateAssessmentDataInAutoSave(currentChatData);
-        localStorage.setItem(autoSaveKey, JSON.stringify(currentChatData));
-        console.log('🔄 [AUTO-SAVE] Updated assessment data after text answer submission');
+    // Update auto-save with FRESH assessment data (capturing the UI feedback state)
+    try {
+        const studentId = getCurrentStudentId();
+        const autoSaveKey = `biocbot_current_chat_${studentId}`;
+        const currentChatData = await collectAllChatData();
+        
+        if (currentChatData) {
+            localStorage.setItem(autoSaveKey, JSON.stringify(currentChatData));
+            console.log('🔄 [AUTO-SAVE] Updated assessment data after text answer submission (fresh scan)');
+        }
+    } catch (e) {
+        console.error('Error auto-saving assessment answer:', e);
     }
 
     // Automatically proceed to next question after a short delay to read feedback
@@ -4736,9 +4787,9 @@ async function collectAllChatData() {
         practiceTests: practiceTestData,
         studentAnswers: studentAnswersData,
         sessionInfo: {
-            startTime: getSessionStartTime(),
+            startTime: getSessionStartTime(messages),
             endTime: new Date().toISOString(),
-            duration: calculateSessionDuration(chatData)
+            duration: calculateSessionDuration({ metadata: { totalMessages: messages.length }, messages: messages })
         }
     };
 
@@ -4870,9 +4921,25 @@ function extractQuestionData(messageElement) {
             });
         }
 
+        // Check for short answer input
+        const answerInput = contentElement.querySelector('.calibration-answer-input');
+        let studentAnswer = null;
+        if (answerInput) {
+            studentAnswer = answerInput.value;
+        }
+
+        // Check for feedback
+        const feedbackElement = contentElement.querySelector('.calibration-feedback');
+        let feedback = null;
+        if (feedbackElement) {
+            feedback = feedbackElement.innerHTML;
+        }
+
         return {
             questionText: questionText,
             options: options,
+            studentAnswer: studentAnswer,
+            feedback: feedback,
             questionIndex: currentQuestionIndex
         };
 
@@ -4956,19 +5023,20 @@ function collectStudentAnswersData() {
 
 /**
  * Get session start time (approximate)
+ * @param {Array} messages - Optional messages array
  * @returns {string} Session start time ISO string
  */
-function getSessionStartTime() {
-    // Try to get the timestamp from the current chat data
-    if (currentChatData && currentChatData.messages && currentChatData.messages.length > 0) {
+function getSessionStartTime(messages) {
+    // Try to get the timestamp from the provided messages
+    if (messages && messages.length > 0) {
         // Find the first user message (student message)
-        const firstUserMessage = currentChatData.messages.find(msg => msg.type === 'user');
+        const firstUserMessage = messages.find(msg => msg.type === 'user');
         if (firstUserMessage && firstUserMessage.timestamp) {
             return firstUserMessage.timestamp;
         }
 
         // If no user message found, use the first message
-        const firstMessage = currentChatData.messages[0];
+        const firstMessage = messages[0];
         if (firstMessage && firstMessage.timestamp) {
             return firstMessage.timestamp;
         }
@@ -5344,8 +5412,8 @@ function loadChatData(chatData) {
                         // This is the assessment start message - add it as a regular bot message
                         addMessage(messageData.content, 'bot', messageData.hasFlagButton, true, messageData.sourceAttribution); // Skip auto-save
                     } else if (messageData.messageType === 'practice-test-question') {
-                        // This is a practice test question - add it as a regular bot message
-                        addMessage(messageData.content, 'bot', messageData.hasFlagButton, true, messageData.sourceAttribution); // Skip auto-save
+                        // This is a practice test question - restore its UI
+                        renderRestoredPracticeQuestion(messageData); // Skip auto-save implicit
                     } else if (messageData.messageType === 'mode-result') {
                         // This is a mode result message - add it as a regular bot message
                         addMessage(messageData.content, 'bot', messageData.hasFlagButton, true, messageData.sourceAttribution); // Skip auto-save
@@ -5360,10 +5428,12 @@ function loadChatData(chatData) {
             if (chatData.practiceTests && chatData.practiceTests.questions.length > 0) {
                 console.log('Restoring practice test data:', chatData.practiceTests);
                 currentCalibrationQuestions = chatData.practiceTests.questions;
+                window.currentCalibrationQuestions = currentCalibrationQuestions; // Sync global
                 currentPassThreshold = chatData.practiceTests.passThreshold;
                 window.currentPassThreshold = currentPassThreshold; // Update global reference
                 currentQuestionIndex = chatData.practiceTests.currentQuestionIndex;
                 studentAnswers = chatData.studentAnswers.answers.map(answer => answer.answer);
+                window.studentAnswers = studentAnswers; // Sync global
             }
 
             // Restore mode if present, but only if no recent mode change has occurred
@@ -5451,8 +5521,7 @@ function loadChatData(chatData) {
                 }
             }
 
-            // Show success message (skip auto-save for system messages)
-            addMessage('✅ Chat history loaded successfully! You can continue where you left off.', 'bot', false, true, null);
+
 
             // Set flags for continuing chat
             sessionStorage.setItem('isContinuingChat', 'true');
@@ -5666,4 +5735,133 @@ function addSampleChatData() {
 
     saveChatToHistory(sampleChatData);
     console.log('Sample chat data added to history!');
+}
+
+/**
+ * Render a restored practice test question from reading history
+ * @param {Object} messageData - The message data object
+ */
+function renderRestoredPracticeQuestion(messageData) {
+    const questionData = messageData.questionData;
+    if (!questionData) {
+        // Fallback to text if data missing
+        addMessage(messageData.content, 'bot', false, true);
+        return;
+    }
+
+    const chatMessages = document.getElementById('chat-messages');
+    if (!chatMessages) return;
+
+    const questionMessage = document.createElement('div');
+    questionMessage.classList.add('message', 'bot-message', 'calibration-question');
+    if (questionData.questionIndex !== undefined) {
+        questionMessage.id = `calibration-question-${questionData.questionIndex}`;
+    }
+
+    // Avatar
+    const avatarDiv = document.createElement('div');
+    avatarDiv.classList.add('message-avatar');
+    avatarDiv.textContent = 'B';
+
+    // Content
+    const contentDiv = document.createElement('div');
+    contentDiv.classList.add('message-content');
+
+    // Question Text
+    const questionTextParams = document.createElement('p');
+    questionTextParams.textContent = questionData.questionText;
+    questionTextParams.style.marginBottom = '15px';
+    questionTextParams.style.fontWeight = '500';
+    contentDiv.appendChild(questionTextParams);
+
+    // Options Container
+    const optionsDiv = document.createElement('div');
+    optionsDiv.classList.add('calibration-options');
+
+    if (questionData.options && questionData.options.length > 0) {
+        questionData.options.forEach((opt) => {
+            const optionContainer = document.createElement('div');
+            optionContainer.classList.add('calibration-option-container');
+
+            const optionButton = document.createElement('button');
+            optionButton.classList.add('calibration-option');
+            optionButton.textContent = opt.text;
+            
+            // Apply frozen state
+            optionButton.disabled = true;
+            optionButton.style.cursor = 'default';
+
+            if (opt.isSelected) {
+                optionButton.classList.add('selected');
+                optionButton.style.backgroundColor = 'var(--primary-color)';
+                optionButton.style.color = 'white';
+                optionButton.style.borderColor = 'var(--primary-color)';
+            } else {
+                optionButton.style.backgroundColor = '#f8f9fa';
+                optionButton.style.color = '#999';
+                optionButton.style.borderColor = '#ddd';
+            }
+
+            optionContainer.appendChild(optionButton);
+            optionsDiv.appendChild(optionContainer);
+        });
+    }
+
+    contentDiv.appendChild(optionsDiv);
+
+    // Short Answer Display
+    if (questionData.studentAnswer) {
+        const answerDisplay = document.createElement('div');
+        answerDisplay.style.marginTop = '10px';
+        answerDisplay.style.padding = '10px';
+        answerDisplay.style.backgroundColor = '#f8f9fa';
+        answerDisplay.style.border = '1px solid #ddd';
+        answerDisplay.style.borderRadius = '5px';
+        answerDisplay.style.color = '#555';
+        answerDisplay.innerHTML = `<strong>Your Answer:</strong> ${questionData.studentAnswer}`;
+        contentDiv.appendChild(answerDisplay);
+    }
+
+    // Feedback Display
+    if (questionData.feedback) {
+        const feedbackDiv = document.createElement('div');
+        feedbackDiv.className = 'calibration-feedback';
+        feedbackDiv.style.marginTop = '10px';
+        feedbackDiv.style.padding = '12px';
+        feedbackDiv.style.borderRadius = '6px';
+        feedbackDiv.style.fontSize = '0.9em';
+        feedbackDiv.style.lineHeight = '1.4';
+        // We know feedback HTML is safe as it comes from our own generator
+        feedbackDiv.innerHTML = questionData.feedback;
+        contentDiv.appendChild(feedbackDiv);
+    }
+
+    // Timestamp
+    const footerDiv = document.createElement('div');
+    footerDiv.classList.add('message-footer');
+    const rightContainer = document.createElement('div');
+    rightContainer.classList.add('message-footer-right');
+    const timestamp = document.createElement('span');
+    timestamp.classList.add('timestamp');
+    timestamp.textContent = messageData.displayTimestamp || 'Just now';
+    if (messageData.timestamp) {
+        try {
+            const date = new Date(messageData.timestamp);
+            messageData.datasetTimestamp = date.getTime();
+            timestamp.title = date.toLocaleString();
+        } catch(e) {}
+    }
+    
+    rightContainer.appendChild(timestamp);
+    footerDiv.appendChild(rightContainer);
+    contentDiv.appendChild(footerDiv);
+
+    questionMessage.appendChild(avatarDiv);
+    questionMessage.appendChild(contentDiv);
+    
+    if (messageData.datasetTimestamp) {
+        questionMessage.dataset.timestamp = messageData.datasetTimestamp;
+    }
+
+    chatMessages.appendChild(questionMessage);
 }
