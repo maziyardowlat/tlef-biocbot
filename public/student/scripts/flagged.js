@@ -66,9 +66,15 @@ document.addEventListener('DOMContentLoaded', async function() {
 });
 
 async function loadStudentFlags() {
+    const courseId = localStorage.getItem('selectedCourseId');
+    
+    if (!courseId) {
+        showStudentFlagsError('Please select a course to view your flags.');
+        return;
+    }
+
     showStudentFlagsLoading();
     try {
-        const courseId = localStorage.getItem('selectedCourseId');
         let url = '/api/flags/my';
         if (courseId) {
             url += `?courseId=${encodeURIComponent(courseId)}`;

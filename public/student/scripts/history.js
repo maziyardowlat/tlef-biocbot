@@ -648,7 +648,12 @@ function createPreviewMessage(messageData) {
     contentDiv.classList.add('message-content');
     
     const paragraph = document.createElement('p');
-    paragraph.textContent = messageData.content;
+    // Use innerHTML if content is HTML, otherwise textContent
+    if (messageData.isHtml) {
+        paragraph.innerHTML = messageData.content;
+    } else {
+        paragraph.textContent = messageData.content;
+    }
     
     const timestamp = document.createElement('span');
     timestamp.classList.add('timestamp');
@@ -900,16 +905,25 @@ function generateChatPreview(chatData) {
         return 'Chat session with BiocBot';
     }
     
+    // Helper to strip HTML
+    const stripHtml = (html) => {
+        const tmp = document.createElement("DIV");
+        tmp.innerHTML = html;
+        return tmp.textContent || tmp.innerText || "";
+    };
+
     // Find the first user message
     const firstUserMessage = chatData.messages.find(msg => msg.type === 'user');
     if (firstUserMessage) {
-        return firstUserMessage.content.substring(0, 100) + (firstUserMessage.content.length > 100 ? '...' : '');
+        const content = firstUserMessage.isHtml ? stripHtml(firstUserMessage.content) : firstUserMessage.content;
+        return content.substring(0, 100) + (content.length > 100 ? '...' : '');
     }
     
     // Find the first bot message
     const firstBotMessage = chatData.messages.find(msg => msg.type === 'bot');
     if (firstBotMessage) {
-        return firstBotMessage.content.substring(0, 100) + (firstBotMessage.content.length > 100 ? '...' : '');
+        const content = firstBotMessage.isHtml ? stripHtml(firstBotMessage.content) : firstBotMessage.content;
+        return content.substring(0, 100) + (content.length > 100 ? '...' : '');
     }
     
     return 'Chat session with BiocBot';

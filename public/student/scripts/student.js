@@ -143,6 +143,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Initialize new session button
     initializeNewSessionButton();
 
+    // Initialize "View General Rules" link
+    const viewRulesLink = document.getElementById('view-rules-link');
+    if (viewRulesLink) {
+        viewRulesLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (window.agreementModal) {
+                window.agreementModal.show(true); // true = read-only mode
+            }
+        });
+    }
+
     /**
      * Format timestamp for display
      * @param {Date} timestamp - The timestamp to format
@@ -789,7 +800,7 @@ async function renderStandaloneCourseSelectorBelowHeader(container) {
  * @param {boolean} skipAutoSave - Whether to skip auto-save for this message
  * @param {Object} sourceAttribution - Source attribution information
  */
-function addMessage(content, sender, withSource = false, skipAutoSave = false, sourceAttribution = null) {
+function addMessage(content, sender, withSource = false, skipAutoSave = false, sourceAttribution = null, isHtml = false) {
     console.log('🔧 [ADD_MESSAGE] Function called with:', { content: content.substring(0, 50) + '...', sender, withSource });
 
     const chatMessages = document.getElementById('chat-messages');
@@ -809,10 +820,15 @@ function addMessage(content, sender, withSource = false, skipAutoSave = false, s
     contentDiv.classList.add('message-content');
 
     const paragraph = document.createElement('p');
-    // Use innerText to respect newlines from the source
-    paragraph.innerText = content;
-    // Ensure formatting is preserved
-    paragraph.style.whiteSpace = 'pre-wrap';
+    // Use innerHTML if content is HTML, otherwise innerText
+    if (isHtml) {
+        paragraph.innerHTML = content;
+    } else {
+        // Use innerText to respect newlines from the source
+        paragraph.innerText = content;
+        // Ensure formatting is preserved
+        paragraph.style.whiteSpace = 'pre-wrap';
+    }
 
     contentDiv.appendChild(paragraph);
 
@@ -908,7 +924,7 @@ function addMessage(content, sender, withSource = false, skipAutoSave = false, s
     if (!skipAutoSave) {
         console.log('🔧 [ADD_MESSAGE] About to trigger auto-save...');
         console.log('🔄 [AUTO-SAVE] Triggering auto-save for message:', { content: content.substring(0, 50) + '...', sender, withSource, sourceAttribution });
-        autoSaveMessage(content, sender, withSource, sourceAttribution);
+        autoSaveMessage(content, sender, withSource, sourceAttribution, isHtml);
         console.log('🔧 [ADD_MESSAGE] Auto-save call completed');
     } else {
         console.log('🔧 [ADD_MESSAGE] Skipping auto-save for system message');
@@ -941,8 +957,12 @@ async function initializeAutoSave() {
 
         if (existingChatData) {
             const parsedData = JSON.parse(existingChatData);
-            if (parsedData.messages && parsedData.messages.length > 0) {
-                console.log('🔄 [AUTO-SAVE] Existing chat data found with', parsedData.messages.length, 'messages, not overwriting');
+            const hasMessages = parsedData.messages && parsedData.messages.length > 0;
+            const hasAssessment = (parsedData.practiceTests && parsedData.practiceTests.questions && parsedData.practiceTests.questions.length > 0) || 
+                                 (parsedData.studentAnswers && parsedData.studentAnswers.answers && parsedData.studentAnswers.answers.length > 0);
+
+            if (hasMessages || hasAssessment) {
+                console.log('🔄 [AUTO-SAVE] Existing chat/assessment data found, not overwriting');
 
                 // Ensure the session ID is properly restored if it exists in localStorage
                 const sessionKey = `biocbot_session_${studentId}_${courseId}_${unitName}`;
@@ -1010,7 +1030,7 @@ async function initializeAutoSave() {
  * @param {boolean} withSource - Whether the message has source citation
  * @param {Object} sourceAttribution - Source attribution information
  */
-function autoSaveMessage(content, sender, withSource = false, sourceAttribution = null) {
+function autoSaveMessage(content, sender, withSource = false, sourceAttribution = null, isHtml = false) {
     try {
         console.log('=== AUTO-SAVING MESSAGE ===');
         console.log('Message:', { content: content.substring(0, 50) + '...', sender, withSource });
@@ -1090,7 +1110,9 @@ function autoSaveMessage(content, sender, withSource = false, sourceAttribution 
             timestamp: new Date().toISOString(),
             hasFlagButton: sender === 'bot' && withSource,
             messageType: 'regular-chat',
-            sourceAttribution: sourceAttribution || null  // Save source attribution for restoration
+            messageType: 'regular-chat',
+            sourceAttribution: sourceAttribution || null,  // Save source attribution for restoration
+            isHtml: isHtml // Save whether message was rendered as HTML
         };
 
         // Add message to messages array
@@ -1103,15 +1125,14 @@ function autoSaveMessage(content, sender, withSource = false, sourceAttribution 
         currentChatData.sessionInfo.endTime = new Date().toISOString();
         currentChatData.sessionInfo.duration = calculateSessionDuration(currentChatData);
 
-        // Update last activity timestamp for auto-continue feature
+        // Update last activity timestamp to ensure auto-continue works
         currentChatData.lastActivityTimestamp = new Date().toISOString();
 
         // Update assessment data if available
         updateAssessmentDataInAutoSave(currentChatData);
 
-        // Save back to localStorage
+        // Save to localStorage
         localStorage.setItem(autoSaveKey, JSON.stringify(currentChatData));
-
         console.log(`🔄 [AUTO-SAVE] ✅ Successfully auto-saved message. Total messages: ${currentChatData.messages.length}`);
 
         // Debug: Log the current auto-save data structure
@@ -1557,8 +1578,9 @@ function checkForAutoContinue() {
             console.log('🔄 [AUTO-CONTINUE] Last activity timestamp:', chatData.lastActivityTimestamp);
         }
 
-        if (!chatData || !chatData.messages || chatData.messages.length === 0) {
-            console.log('🔄 [AUTO-CONTINUE] No chat data or empty chat, skipping auto-continue');
+        if (!chatData || ((!chatData.messages || chatData.messages.length === 0) && 
+            (!chatData.practiceTests || !chatData.practiceTests.questions || chatData.practiceTests.questions.length === 0))) {
+            console.log('🔄 [AUTO-CONTINUE] No chat/assessment data, skipping auto-continue');
             return false;
         }
 
@@ -2292,17 +2314,27 @@ async function loadAvailableCourses() {
                 if (chatDataStr) {
                     try {
                         const chatData = JSON.parse(chatDataStr);
-                        // Check if chat data exists, has messages, and matches the stored courseId
+                        const hasMessages = chatData.messages && chatData.messages.length > 0;
+                        const hasAssessment = (chatData.practiceTests && chatData.practiceTests.questions && chatData.practiceTests.questions.length > 0) || 
+                                             (chatData.studentAnswers && chatData.studentAnswers.answers && chatData.studentAnswers.answers.length > 0);
+                        
+                        // Also check if metadata alone is valid (course/unit selected) to allow resuming "empty" sessions
+                        // This fixes the issue where refreshing on a "no questions available" screen kicks the user out
+                        const hasValidMetadata = chatData.metadata && 
+                                               chatData.metadata.courseId === storedCourseId &&
+                                               chatData.metadata.studentId === studentId &&
+                                               chatData.metadata.unitName;
+
+                        // Check if chat data exists and matches the stored courseId
                         if (chatData && 
                             chatData.metadata && 
                             chatData.metadata.courseId === storedCourseId &&
                             chatData.metadata.studentId === studentId &&
-                            chatData.messages && 
-                            chatData.messages.length > 0) {
+                            (hasMessages || hasAssessment || hasValidMetadata)) {
                             hasUserChatData = true;
-                            console.log('Found actual chat messages for current user with stored course');
+                            console.log('Found actual chat/assessment/metadata for current user with stored course');
                         } else {
-                            console.log('Chat data exists but no messages or wrong course - treating as first-time user');
+                            console.log('Chat data exists but no valid session data found');
                         }
                     } catch (e) {
                         console.log('Error parsing chat data:', e);
@@ -3411,21 +3443,27 @@ function showUnitSelectionDropdown(publishedUnits) {
         let shouldRestoreSavedUnit = false;
         let savedUnitName = null;
 
-        if (savedChatData && savedChatData.messages && savedChatData.messages.length > 0 && savedChatData.lastActivityTimestamp) {
-            const lastActivity = new Date(savedChatData.lastActivityTimestamp);
-            const now = new Date();
-            const diffMs = now - lastActivity;
-            const diffMinutes = Math.floor(diffMs / (1000 * 60));
+        if (savedChatData && savedChatData.lastActivityTimestamp) {
+            const hasMessages = savedChatData.messages && savedChatData.messages.length > 0;
+            const hasAssessment = (savedChatData.practiceTests && savedChatData.practiceTests.questions && savedChatData.practiceTests.questions.length > 0) || 
+                                 (savedChatData.studentAnswers && savedChatData.studentAnswers.answers && savedChatData.studentAnswers.answers.length > 0);
 
-            if (diffMinutes <= 30 && savedChatData.metadata && savedChatData.metadata.unitName) {
-                savedUnitName = savedChatData.metadata.unitName;
-                // Check if the saved unit is in the published units list
-                const savedUnitExists = publishedUnits.some(u => u.name === savedUnitName);
-                if (savedUnitExists) {
-                    shouldRestoreSavedUnit = true;
-                    console.log(`🔄 [AUTO-CONTINUE] Found saved chat for unit: ${savedUnitName}, will restore instead of auto-selecting`);
-                } else {
-                    console.log(`🔄 [AUTO-CONTINUE] Saved unit ${savedUnitName} is not published, will auto-select most recent`);
+            if (hasMessages || hasAssessment) {
+                const lastActivity = new Date(savedChatData.lastActivityTimestamp);
+                const now = new Date();
+                const diffMs = now - lastActivity;
+                const diffMinutes = Math.floor(diffMs / (1000 * 60));
+
+                if (diffMinutes <= 30 && savedChatData.metadata && savedChatData.metadata.unitName) {
+                    savedUnitName = savedChatData.metadata.unitName;
+                    // Check if the saved unit is in the published units list
+                    const savedUnitExists = publishedUnits.some(u => u.name === savedUnitName);
+                    if (savedUnitExists) {
+                        shouldRestoreSavedUnit = true;
+                        console.log(`🔄 [AUTO-CONTINUE] Found saved chat/assessment for unit: ${savedUnitName}, will restore instead of auto-selecting`);
+                    } else {
+                        console.log(`🔄 [AUTO-CONTINUE] Saved unit ${savedUnitName} is not published, will auto-select most recent`);
+                    }
                 }
             }
         }
@@ -3496,41 +3534,20 @@ function showUnitSelectionDropdown(publishedUnits) {
 /**
  * Show welcome message with unit selection instructions
  */
+/**
+ * Show welcome message with unit selection instructions
+ */
 function showUnitSelectionWelcomeMessage() {
     console.log('Showing unit selection welcome message');
 
-    // Add message to chat
-    const welcomeMessage = document.createElement('div');
-    welcomeMessage.classList.add('message', 'bot-message', 'unit-selection-welcome');
-
-    const avatarDiv = document.createElement('div');
-    avatarDiv.classList.add('message-avatar');
-    avatarDiv.textContent = 'B';
-
-    const contentDiv = document.createElement('div');
-    contentDiv.classList.add('message-content');
-
-    const messageText = document.createElement('p');
-    messageText.innerHTML = `<strong>Welcome to BiocBot!</strong><br>
+    const messageContent = `<strong>Welcome to BiocBot!</strong><br>
     I can see you have access to published units. Please select a unit from the dropdown above to start your assessment, or feel free to chat with me about any topics you'd like to discuss.`;
 
-    contentDiv.appendChild(messageText);
-
-    // Add timestamp
-    const timestamp = document.createElement('span');
-    timestamp.classList.add('timestamp');
-    timestamp.textContent = 'Just now';
-    contentDiv.appendChild(timestamp);
-
-    welcomeMessage.appendChild(avatarDiv);
-    welcomeMessage.appendChild(contentDiv);
-
-    // Add to chat
-    const chatMessages = document.getElementById('chat-messages');
-    chatMessages.appendChild(welcomeMessage);
-
-    // Scroll to bottom
-    chatMessages.scrollTop = chatMessages.scrollHeight;
+    // Use addMessage to ensure it's properly handled and auto-saved
+    // sender='bot', hasFlagButton=false, skipAutoSave=false
+    // Use addMessage to ensure it's properly handled and auto-saved
+    // sender='bot', hasFlagButton=false, skipAutoSave=false, sourceAttribution=null, isHtml=true
+    addMessage(messageContent, 'bot', false, false, null, true);
 }
 
 /**
@@ -4123,6 +4140,9 @@ async function selectCalibrationAnswer(answerIndex, questionIndex) {
         const currentChatData = await collectAllChatData();
         
         if (currentChatData) {
+            // Explicitly update the last activity timestamp
+            currentChatData.lastActivityTimestamp = new Date().toISOString();
+            
             localStorage.setItem(autoSaveKey, JSON.stringify(currentChatData));
             console.log('🔄 [AUTO-SAVE] Updated assessment data after answer submission (fresh scan)');
         }
@@ -4285,6 +4305,9 @@ async function submitShortAnswer(answer, questionIndex) {
         const currentChatData = await collectAllChatData();
         
         if (currentChatData) {
+            // Explicitly update the last activity timestamp
+            currentChatData.lastActivityTimestamp = new Date().toISOString();
+            
             localStorage.setItem(autoSaveKey, JSON.stringify(currentChatData));
             console.log('🔄 [AUTO-SAVE] Updated assessment data after text answer submission (fresh scan)');
         }
@@ -5405,21 +5428,21 @@ function loadChatData(chatData) {
                 console.log(`Loading message ${index}:`, messageData);
 
                 if (messageData.type === 'user') {
-                    addMessage(messageData.content, 'user', false, true); // Skip auto-save
+                    addMessage(messageData.content, 'user', false, true, null, messageData.isHtml); // Skip auto-save
                 } else if (messageData.type === 'bot') {
                     // Check if this is a special message type that needs special handling
                     if (messageData.messageType === 'assessment-start') {
                         // This is the assessment start message - add it as a regular bot message
-                        addMessage(messageData.content, 'bot', messageData.hasFlagButton, true, messageData.sourceAttribution); // Skip auto-save
+                        addMessage(messageData.content, 'bot', messageData.hasFlagButton, true, messageData.sourceAttribution, true); // Skip auto-save, force HTML for assessment start
                     } else if (messageData.messageType === 'practice-test-question') {
                         // This is a practice test question - restore its UI
                         renderRestoredPracticeQuestion(messageData); // Skip auto-save implicit
                     } else if (messageData.messageType === 'mode-result') {
                         // This is a mode result message - add it as a regular bot message
-                        addMessage(messageData.content, 'bot', messageData.hasFlagButton, true, messageData.sourceAttribution); // Skip auto-save
+                        addMessage(messageData.content, 'bot', messageData.hasFlagButton, true, messageData.sourceAttribution, true); // Skip auto-save, force HTML for result
                     } else {
                         // Regular bot message
-                        addMessage(messageData.content, 'bot', messageData.hasFlagButton, true, messageData.sourceAttribution); // Skip auto-save
+                        addMessage(messageData.content, 'bot', messageData.hasFlagButton, true, messageData.sourceAttribution, messageData.isHtml); // Skip auto-save
                     }
                 }
             });
@@ -5427,13 +5450,40 @@ function loadChatData(chatData) {
             // Restore practice test data if present
             if (chatData.practiceTests && chatData.practiceTests.questions.length > 0) {
                 console.log('Restoring practice test data:', chatData.practiceTests);
-                currentCalibrationQuestions = chatData.practiceTests.questions;
+                // Map back questionType to type for compatibility with showCalibrationQuestion
+                currentCalibrationQuestions = chatData.practiceTests.questions.map(q => ({
+                    ...q,
+                    type: q.questionType || q.type // Ensure type property exists
+                }));
                 window.currentCalibrationQuestions = currentCalibrationQuestions; // Sync global
                 currentPassThreshold = chatData.practiceTests.passThreshold;
                 window.currentPassThreshold = currentPassThreshold; // Update global reference
-                currentQuestionIndex = chatData.practiceTests.currentQuestionIndex;
+                
                 studentAnswers = chatData.studentAnswers.answers.map(answer => answer.answer);
                 window.studentAnswers = studentAnswers; // Sync global
+
+                // Calculate the correct current question index based on answers provided
+                // This is more reliable than the saved index which might be stale
+                const answersProvidedCount = studentAnswers.filter(a => a !== undefined && a !== null).length;
+                currentQuestionIndex = answersProvidedCount;
+                console.log(`Updated currentQuestionIndex to ${currentQuestionIndex} based on ${answersProvidedCount} answers`);
+
+                // Resume assessment if incomplete
+                if (currentQuestionIndex < currentCalibrationQuestions.length) {
+                    console.log('Resuming incomplete assessment...');
+                    
+                    // Disable chat input during assessment
+                    const chatInputContainer = document.querySelector('.chat-input-container');
+                    if (chatInputContainer) {
+                        chatInputContainer.style.display = 'none';
+                    }
+
+                    // Show the next question
+                    // Use a small delay to ensure DOM is ready
+                    setTimeout(() => {
+                        showCalibrationQuestion();
+                    }, 500);
+                }
             }
 
             // Restore mode if present, but only if no recent mode change has occurred
@@ -5497,27 +5547,53 @@ function loadChatData(chatData) {
                 }
             }
 
-            // Ensure chat input and mode toggle are visible (enable chat)
-            enableChatInput();
+            // Ensure chat input and mode toggle are visible (enable chat) IF we are not in an assessment
+            // Check if assessment is in progress (defined in the block above)
+            const isAssessmentInProgress = window.currentCalibrationQuestions && 
+                                          window.currentCalibrationQuestions.length > 0 && 
+                                          window.studentAnswers && 
+                                          window.studentAnswers.length < window.currentCalibrationQuestions.length;
             
-            // Force show input container regardless of enableChatInput logic
-            const chatInputContainer = document.querySelector('.chat-input-container');
-            if (chatInputContainer) {
-                chatInputContainer.style.display = 'block';
-                // Ensure input itself is enabled
-                const chatInput = document.getElementById('chat-input');
-                if (chatInput) {
-                    chatInput.disabled = false;
-                    chatInput.style.cursor = 'text';
-                    chatInput.classList.remove('disabled-input');
-                    chatInput.placeholder = 'Type your message here...';
+            if (!isAssessmentInProgress) {
+                console.log('No active assessment detected, enabling chat input');
+                enableChatInput();
+                
+                // Force show input container regardless of enableChatInput logic
+                const chatInputContainer = document.querySelector('.chat-input-container');
+                if (chatInputContainer) {
+                    chatInputContainer.style.display = 'block';
+                    // Ensure input itself is enabled
+                    const chatInput = document.getElementById('chat-input');
+                    if (chatInput) {
+                        chatInput.disabled = false;
+                        chatInput.style.cursor = 'text';
+                        chatInput.classList.remove('disabled-input');
+                        chatInput.placeholder = 'Type your message here...';
+                    }
+                    const sendButton = document.getElementById('send-button');
+                    if (sendButton) {
+                        sendButton.disabled = false;
+                        sendButton.style.cursor = 'pointer';
+                        sendButton.classList.remove('disabled-button');
+                        sendButton.style.opacity = '1';
+                    }
                 }
-                const sendButton = document.getElementById('send-button');
-                if (sendButton) {
-                    sendButton.disabled = false;
-                    sendButton.style.cursor = 'pointer';
-                    sendButton.classList.remove('disabled-button');
-                    sendButton.style.opacity = '1';
+                
+                // Also ensure mode toggle is visible if not in assessment
+                const modeToggleContainer = document.querySelector('.mode-toggle-container');
+                if (modeToggleContainer) {
+                    modeToggleContainer.style.display = 'flex';
+                }
+            } else {
+                console.log('Active assessment detected, keeping chat input hidden');
+                // Explicitly hide them just in case
+                const chatInputContainer = document.querySelector('.chat-input-container');
+                if (chatInputContainer) {
+                    chatInputContainer.style.display = 'none';
+                }
+                const modeToggleContainer = document.querySelector('.mode-toggle-container');
+                if (modeToggleContainer) {
+                    modeToggleContainer.style.display = 'none';
                 }
             }
 
