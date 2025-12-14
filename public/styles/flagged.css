@@ -141,258 +141,217 @@
 .flagged-list {
     display: flex;
     flex-direction: column;
+    gap: 1.5rem;
 }
 
-.flagged-item {
-    border-bottom: 1px solid #e5e7eb;
-    padding: 1.5rem;
-    transition: background-color 0.2s;
+/* New Card Layout */
+.flag-card {
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    overflow: hidden;
+    transition: transform 0.2s, box-shadow 0.2s;
 }
 
-.flagged-item:hover {
-    background: #f9fafb;
+.flag-card:hover {
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    transform: translateY(-1px);
 }
 
-.flagged-item:last-child {
-    border-bottom: none;
-}
-
-/* Flag Item Header */
-.flag-header {
+/* Card Header */
+.flag-card-header {
+    background: #f8fafc;
+    padding: 1rem 1.5rem;
+    border-bottom: 1px solid #e2e8f0;
     display: flex;
-    justify-content: between;
-    align-items: start;
-    margin-bottom: 1rem;
-    gap: 1rem;
+    justify-content: space-between;
+    align-items: center;
 }
 
-.flag-meta {
-    flex: 1;
-}
-
-.flag-type {
+.flag-type-badge {
     display: inline-block;
     padding: 0.25rem 0.75rem;
-    border-radius: 20px;
+    border-radius: 9999px;
     font-size: 0.75rem;
     font-weight: 600;
     text-transform: uppercase;
-    letter-spacing: 0.025em;
-    margin-bottom: 0.5rem;
+    letter-spacing: 0.05em;
 }
 
-.flag-type.incorrectness {
+/* Badge Colors */
+.flag-type-badge.incorrect {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+/* Red */
+.flag-type-badge.inappropriate {
     background: #fef3c7;
     color: #92400e;
 }
 
-.flag-type.inappropriate {
+/* Amber */
+.flag-type-badge.unclear {
+    background: #e0e7ff;
+    color: #3730a3;
+}
+
+/* Indigo */
+.flag-type-badge.confusing {
+    background: #ffedd5;
+    color: #9a3412;
+}
+
+/* Orange */
+.flag-type-badge.typo {
+    background: #dcfce7;
+    color: #166534;
+}
+
+/* Green */
+.flag-type-badge.offensive {
     background: #fecaca;
-    color: #991b1b;
+    color: #7f1d1d;
 }
 
-.flag-type.irrelevant {
-    background: #ddd6fe;
-    color: #5b21b6;
-}
-
-.flag-student-info {
-    font-size: 0.875rem;
+/* Dark Red */
+.flag-type-badge.irrelevant {
+    background: #f3f4f6;
     color: #374151;
-    margin-bottom: 0.25rem;
 }
 
-.flag-timestamp {
-    font-size: 0.75rem;
-    color: #9ca3af;
-}
+/* Gray */
 
-.flag-status {
+.flag-meta-info {
     display: flex;
+    gap: 1rem;
     align-items: center;
-    gap: 0.5rem;
+    font-size: 0.875rem;
+    color: #64748b;
 }
 
-.status-badge {
-    padding: 0.25rem 0.75rem;
-    border-radius: 20px;
+.flag-date {
+    font-variant-numeric: tabular-nums;
+}
+
+.flag-status-badge {
+    padding: 0.125rem 0.5rem;
+    border-radius: 4px;
     font-size: 0.75rem;
     font-weight: 500;
     text-transform: uppercase;
 }
 
-.status-badge.pending {
-    background: #fef3c7;
-    color: #92400e;
+.flag-status-badge.pending {
+    background: #fef9c3;
+    color: #854d0e;
 }
 
-.status-badge.approved {
-    background: #d1fae5;
-    color: #065f46;
+.flag-status-badge.reviewed {
+    background: #dbeafe;
+    color: #1e40af;
 }
 
-.status-badge.rejected {
-    background: #fecaca;
-    color: #991b1b;
+.flag-status-badge.resolved {
+    background: #dcfce7;
+    color: #15803d;
 }
 
-/* Flag Content */
-.flag-content {
-    margin-bottom: 1rem;
+.flag-status-badge.dismissed {
+    background: #f1f5f9;
+    color: #475569;
 }
 
-.flag-content-label {
-    font-size: 0.875rem;
-    font-weight: 500;
-    color: #374151;
-    margin-bottom: 0.5rem;
-}
-
-.flag-message {
-    background: #f8fafc;
-    padding: 1rem;
-    border-radius: 6px;
-    border-left: 4px solid #e5e7eb;
-    font-size: 0.875rem;
-    line-height: 1.5;
-    color: #1f2937;
-}
-
-/* Action Buttons */
-.flag-actions {
+/* Card Body */
+.flag-card-body {
+    padding: 1.5rem;
     display: flex;
-    gap: 0.75rem;
+    flex-direction: column;
+    gap: 1.5rem;
 }
 
-.action-btn {
-    padding: 0.5rem 1rem;
-    border: none;
-    border-radius: 6px;
-    font-size: 0.875rem;
+.flag-section {
+    position: relative;
+}
+
+.flag-section-title {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    color: #94a3b8;
+    letter-spacing: 0.05em;
+    margin: 0 0 0.5rem 0;
+    font-weight: 600;
+}
+
+/* Context Section */
+.context-section .flag-context-meta {
+    margin-bottom: 0.75rem;
+    display: flex;
+    gap: 0.5rem;
+}
+
+.context-tag {
+    background: #f1f5f9;
+    color: #475569;
+    padding: 0.125rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.75rem;
     font-weight: 500;
-    cursor: pointer;
-    transition: all 0.2s;
-    min-width: 80px;
 }
 
-.approve-btn {
-    background: #10b981;
-    color: white;
+.flag-quote {
+    background: #f8fafc;
+    border-left: 3px solid #cbd5e1;
+    padding: 1rem;
+    font-size: 0.95rem;
+    line-height: 1.6;
+    color: #334155;
+    font-style: italic;
+    border-radius: 0 4px 4px 0;
 }
 
-.approve-btn:hover {
-    background: #059669;
+/* User Note Section */
+.flag-note {
+    font-size: 1rem;
+    color: #1e293b;
+    line-height: 1.5;
 }
 
-.dismiss-btn {
-    background: #ef4444;
-    color: white;
+/* Response Section */
+.flag-section.response-section {
+    margin-top: 0.5rem;
+    background: #f0fdf4;
+    /* Light green tint */
+    border: 1px solid #bbf7d0;
+    padding: 1rem;
+    border-radius: 8px;
 }
 
-.dismiss-btn:hover {
-    background: #dc2626;
+.response-content {
+    color: #14532d;
+    font-size: 0.95rem;
+    line-height: 1.5;
+    margin-bottom: 0.75rem;
 }
 
-.send-approve-btn {
-    background: #10b981;
-    color: white;
+.response-footer {
+    display: flex;
+    justify-content: flex-end;
+    font-size: 0.75rem;
+    color: #15803d;
+    font-weight: 500;
 }
 
-.send-approve-btn:hover {
-    background: #059669;
+.flag-section.pending-section {
+    padding: 1rem 0;
+    text-align: center;
+    color: #94a3b8;
+    font-size: 0.875rem;
+    border-top: 1px dashed #e2e8f0;
 }
 
-.cancel-btn {
-    background: #6b7280;
-    color: white;
-}
-
-.cancel-btn:hover {
-    background: #4b5563;
-}
-
-.view-btn {
-    background: #6b7280;
-    color: white;
-}
-
-.view-btn:hover {
-    background: #4b5563;
-}
-
-.action-btn:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-}
-
-.action-btn:disabled:hover {
-    transform: none;
-}
-
-/* Responsive Design */
-@media (max-width: 768px) {
-    .filter-controls {
-        flex-direction: column;
-        align-items: stretch;
-    }
-    
-    .filter-group {
-        flex-direction: row;
-        align-items: center;
-        justify-content: space-between;
-    }
-    
-    .filter-group select {
-        min-width: auto;
-        flex: 1;
-        margin-left: 1rem;
-    }
-    
-    .flag-header {
-        flex-direction: column;
-        gap: 0.75rem;
-    }
-    
-    .flag-actions {
-        flex-wrap: wrap;
-    }
-    
-    .action-btn {
-        flex: 1;
-        min-width: 120px;
-    }
-    
-    .form-actions {
-        flex-direction: column;
-    }
-    
-    .form-actions .action-btn {
-        width: 100%;
-        margin-bottom: 0.5rem;
-    }
-    
-    .form-actions .action-btn:last-child {
-        margin-bottom: 0;
-    }
-}
-
-/* Animation for loading states */
-@keyframes fadeIn {
-    from {
-        opacity: 0;
-        transform: translateY(10px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
-}
-
-.flagged-item {
-    animation: fadeIn 0.3s ease-out;
-}
-
-/* Approval Form */
+/* Approval Form - Not strictly part of Student View but kept if shared */
 .approval-form {
     margin-top: 1rem;
     padding: 1.5rem;
@@ -432,8 +391,6 @@
     font-size: 0.875rem;
 }
 
-
-
 .message-textarea {
     width: 100%;
     padding: 0.75rem;
@@ -462,11 +419,151 @@
     border-top: 1px solid #e5e7eb;
 }
 
-/* Focus states for accessibility */
-.action-btn:focus,
-.refresh-btn:focus,
-.filter-group select:focus,
-.message-textarea:focus {
-    outline: 2px solid #3b82f6;
-    outline-offset: 2px;
+/* Action Buttons (if used here) */
+.action-btn {
+    padding: 0.5rem 1rem;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.cancel-btn {
+    background: #6b7280;
+    color: white;
+}
+
+.cancel-btn:hover {
+    background: #4b5563;
+}
+
+.send-approve-btn {
+    background: #10b981;
+    color: white;
+}
+
+.send-approve-btn:hover {
+    background: #059669;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .filter-controls {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .flag-card-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.75rem;
+    }
+
+    .flag-meta-info {
+        width: 100%;
+        justify-content: space-between;
+    }
+}
+
+/* Animations */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.flag-card {
+    animation: fadeIn 0.3s ease-out;
+}
+
+/* Instructor Specific Styles */
+
+/* Card Header Updates */
+.flag-header-left {
+    display: flex;
+    gap: 0.75rem;
+    align-items: center;
+}
+
+.flag-priority-badge {
+    padding: 0.125rem 0.6rem;
+    border-radius: 9999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.flag-priority-badge.high {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+
+.flag-priority-badge.medium {
+    background: #ffedd5;
+    color: #c2410c;
+}
+
+.flag-priority-badge.low {
+    background: #f1f5f9;
+    color: #64748b;
+}
+
+.flag-student {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    color: #1e293b;
+    font-weight: 500;
+}
+
+.meta-icon {
+    font-size: 1rem;
+    opacity: 0.6;
+}
+
+/* Card Footer */
+.flag-card-footer {
+    background: #f8fafc;
+    padding: 1rem 1.5rem;
+    border-top: 1px solid #e2e8f0;
+}
+
+/* Action Buttons inside Footer */
+.flag-actions {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+/* Form Styles Override within Card */
+.approval-form {
+    width: 100%;
+    margin-top: 1rem;
+    background: white;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}
+
+.form-actions-row {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid #f1f5f9;
+}
+
+.action-status-msg {
+    color: #64748b;
+    font-size: 0.875rem;
 }

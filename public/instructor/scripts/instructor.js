@@ -1123,6 +1123,12 @@ async function updateSidebarForTA() {
         await updateTANavigationBasedOnPermissions();
         
         console.log('✅ [SIDEBAR] Sidebar updated for TA');
+    } else {
+        // Explicitly set role for regular Instructors
+        const userRole = document.querySelector('.user-role');
+        if (userRole) {
+            userRole.textContent = 'Instructor';
+        }
     }
 }
 
@@ -1961,7 +1967,7 @@ function createDocumentItem(doc) {
         <span class="file-icon">${fileIcon}</span>
         <div class="file-info">
             <h3>${doc.originalName}</h3>
-            <p>${doc.metadata?.description || 'No description'}</p>
+            ${doc.metadata?.description ? `<p>${doc.metadata.description}</p>` : ''}
             <span class="status-text">${statusText}</span>
         </div>
         <div class="file-actions">
@@ -3230,7 +3236,7 @@ function removeObjective(button) {
     const objectiveItem = button.closest('.objective-display-item');
     if (objectiveItem) {
         objectiveItem.remove();
-        showNotification('Learning objective removed.', 'info');
+        showNotification('Learning objective removed.', 'error');
     } else {
         console.error('Could not find objective item to remove');
     }
