@@ -77,6 +77,9 @@ class AgreementModal {
                 </div>
 
                 <div class="agreement-modal-footer">
+                    <button type="button" class="agreement-btn agreement-btn-secondary" id="close-modal-btn" style="display: none;">
+                        Close
+                    </button>
                     <button type="button" class="agreement-btn agreement-btn-primary" id="agree-btn" disabled>
                         I Agree - Continue
                     </button>
@@ -95,6 +98,7 @@ class AgreementModal {
     setupEventListeners() {
         const checkbox = this.modal.querySelector('#agreement-checkbox');
         const agreeBtn = this.modal.querySelector('#agree-btn');
+        const closeBtn = this.modal.querySelector('#close-modal-btn');
 
         // Handle checkbox change
         checkbox.addEventListener('change', (e) => {
@@ -107,30 +111,47 @@ class AgreementModal {
             this.handleAgreement();
         });
 
-        // Prevent modal from being closed by clicking outside
+        // Handle close button click
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => {
+                this.hide();
+            });
+        }
+
+        // Prevent modal from being closed by clicking outside (unless read-only)
         this.modal.addEventListener('click', (e) => {
             if (e.target === this.modal) {
-                e.preventDefault();
-                e.stopPropagation();
+                if (this.isReadOnly) {
+                    this.hide();
+                } else {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
             }
         });
 
-        // Prevent modal from being closed by escape key
+        // Prevent modal from being closed by escape key (unless read-only)
         document.addEventListener('keydown', (e) => {
             if (this.isVisible && e.key === 'Escape') {
-                e.preventDefault();
-                e.stopPropagation();
+                if (this.isReadOnly) {
+                    this.hide();
+                } else {
+                    e.preventDefault();
+                    e.stopPropagation();
+                }
             }
         });
     }
 
     /**
      * Show the agreement modal
+     * @param {boolean} readOnly - If true, show in read-only mode (no checkbox, closeable)
      */
-    show() {
+    show(readOnly = false) {
         if (this.isVisible) return;
 
         this.isVisible = true;
+        this.isReadOnly = readOnly;
         this.modal.style.display = 'flex';
         document.body.style.overflow = 'hidden'; // Prevent background scrolling
         
@@ -140,10 +161,25 @@ class AgreementModal {
         
         // Reset state
         this.agreementChecked = false;
+        const checkboxContainer = this.modal.querySelector('.agreement-checkbox-container');
         const checkbox = this.modal.querySelector('#agreement-checkbox');
         const agreeBtn = this.modal.querySelector('#agree-btn');
+        const closeBtn = this.modal.querySelector('#close-modal-btn');
+        
         checkbox.checked = false;
         agreeBtn.disabled = true;
+
+        if (readOnly) {
+            // Read-only mode: hide agreement controls, show close button
+            if (checkboxContainer) checkboxContainer.style.display = 'none';
+            if (agreeBtn) agreeBtn.style.display = 'none';
+            if (closeBtn) closeBtn.style.display = 'block';
+        } else {
+            // Normal mode: show agreement controls, hide close button
+            if (checkboxContainer) checkboxContainer.style.display = 'block';
+            if (agreeBtn) agreeBtn.style.display = 'block';
+            if (closeBtn) closeBtn.style.display = 'none';
+        }
     }
 
     /**
