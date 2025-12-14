@@ -115,40 +115,81 @@ function renderStudentFlags() {
 
 function renderStudentFlagItem(flag) {
     const div = document.createElement('div');
-    div.className = 'flagged-item';
+    div.className = 'flag-card';
     const ts = formatStudentTimestamp(flag.createdAt);
-    const botModeDisplay = getBotModeDisplay(flag.botMode);
-    div.innerHTML = `
-        <div class="flag-header">
-            <div class="flag-meta">
-                <div class="flag-reason ${flag.flagReason}">${mapReason(flag.flagReason)}</div>
-                <div class="flag-timestamp">${ts}</div>
-                <div class="flag-bot-mode">Bot Mode: ${botModeDisplay}</div>
-                <div class="flag-status"><span class="status-badge ${flag.flagStatus}">${mapStatus(flag.flagStatus)}</span></div>
+    
+    // Determine card status class for styling
+    const statusClass = flag.flagStatus || 'pending';
+    
+    // Header Section
+    let headerHtml = `
+        <div class="flag-card-header">
+            <div class="flag-type-badge ${flag.flagReason}">${mapReason(flag.flagReason)}</div>
+            <div class="flag-meta-info">
+                <span class="flag-date">${ts}</span>
+                <span class="flag-status-badge ${statusClass}">${mapStatus(flag.flagStatus)}</span>
             </div>
-        </div>
-        <div class="flag-content">
-            <div class="question-content">
-                <div class="content-label">Flagged Question:</div>
-                <div class="question-text">${escapeHtml((flag.questionContent && flag.questionContent.question) || 'Question content not available')}</div>
-                <div class="question-details">
-                    <span class="question-type">${flag.questionContent && flag.questionContent.questionType ? `Type: ${escapeHtml(flag.questionContent.questionType)}` : ''}</span>
-                    <span class="unit-name">Unit: ${flag.unitName || 'Unknown'}</span>
-                    <span class="bot-mode">Mode: ${botModeDisplay}</span>
-                </div>
-            </div>
-            <div class="question-content">
-                <div class="content-label">Your Note:</div>
-                <div class="question-text">${escapeHtml(flag.flagDescription)}</div>
-            </div>
-            ${flag.instructorResponse ? `
-            <div class="instructor-response">
-                <div class="content-label">Instructor Response:</div>
-                <div class="response-text">${escapeHtml(flag.instructorResponse)}</div>
-                <div class="response-meta">${flag.instructorName ? `Responded by: ${escapeHtml(flag.instructorName)} · ` : ''}${formatStudentTimestamp(flag.updatedAt)}</div>
-            </div>` : ''}
         </div>
     `;
+
+    // Content Body
+    let bodyHtml = `<div class="flag-card-body">`;
+    
+    // 1. Question Context
+    const questionText = flag.questionContent && flag.questionContent.question ? flag.questionContent.question : 'Question content not available';
+    const unitName = flag.unitName || 'Unknown Unit';
+    const botMode = getBotModeDisplay(flag.botMode);
+    
+    bodyHtml += `
+        <div class="flag-section context-section">
+            <h4 class="flag-section-title">Flagged Content</h4>
+            <div class="flag-context-meta">
+                <span class="context-tag">${unitName}</span>
+                <span class="context-tag">${botMode} mode</span>
+            </div>
+            <div class="flag-quote">
+                "${escapeHtml(questionText)}"
+            </div>
+        </div>
+    `;
+    
+    // 2. Student Note
+    bodyHtml += `
+        <div class="flag-section note-section">
+            <h4 class="flag-section-title">Your Report</h4>
+            <div class="flag-note">
+                ${escapeHtml(flag.flagDescription)}
+            </div>
+        </div>
+    `;
+    
+    // 3. Instructor Response (if exists)
+    if (flag.instructorResponse) {
+        const responseTs = formatStudentTimestamp(flag.updatedAt);
+        const instructorName = flag.instructorName ? flag.instructorName : 'Instructor';
+        
+        bodyHtml += `
+            <div class="flag-section response-section">
+                <h4 class="flag-section-title">Instructor Response</h4>
+                <div class="response-content">
+                    ${escapeHtml(flag.instructorResponse)}
+                </div>
+                <div class="response-footer">
+                    Responded by ${escapeHtml(instructorName)} • ${responseTs}
+                </div>
+            </div>
+        `;
+    } else {
+        bodyHtml += `
+            <div class="flag-section pending-section">
+                <p><em>No response from instructor yet.</em></p>
+            </div>
+        `;
+    }
+
+    bodyHtml += `</div>`; // End card body
+
+    div.innerHTML = headerHtml + bodyHtml;
     return div;
 }
 

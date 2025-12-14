@@ -724,64 +724,95 @@ function renderFlaggedContent() {
  */
 function createFlagElement(flag) {
     const flagDiv = document.createElement('div');
-    flagDiv.className = 'flagged-item';
+    flagDiv.className = 'flag-card';
     flagDiv.setAttribute('data-flag-id', flag.flagId);
     
-    // Format timestamp for display
+    // Format timestamp
     const timestamp = formatTimestamp(flag.createdAt);
     
-    // Create flag reason display text
+    // Display texts
     const flagReasonDisplay = getFlagReasonDisplay(flag.flagReason);
-    
-    // Get bot mode display text
     const botModeDisplay = getBotModeDisplay(flag.botMode);
+    const statusDisplayText = getStatusDisplayText(flag.flagStatus);
+    const statusClass = flag.flagStatus || 'pending';
     
-    // Get question content for display
+    // Question content
     const questionContent = flag.questionContent || {};
+    const questionText = questionContent.question || 'Question content not available';
+    const unitName = flag.unitName || 'Unknown Unit';
     
-    flagDiv.innerHTML = `
-        <div class="flag-header">
-            <div class="flag-meta">
-                <div class="flag-reason ${flag.flagReason}">${flagReasonDisplay}</div>
-                <div class="flag-student-info">Flagged by: ${flag.studentName || `Student ${flag.studentId}`}</div>
-                <div class="flag-timestamp">${timestamp}</div>
-                <div class="flag-bot-mode">Bot Mode: ${botModeDisplay}</div>
-                <div class="flag-priority">Priority: ${flag.priority || 'medium'}</div>
+    // Header Section
+    let headerHtml = `
+        <div class="flag-card-header">
+            <div class="flag-header-left">
+                <span class="flag-type-badge ${flag.flagReason}">${flagReasonDisplay}</span>
+                <span class="flag-priority-badge ${flag.priority || 'medium'}">priority: ${flag.priority || 'medium'}</span>
             </div>
-            <div class="flag-status">
-                <span class="status-badge ${flag.flagStatus}">${getStatusDisplayText(flag.flagStatus)}</span>
+            <div class="flag-meta-info">
+                <span class="flag-student">
+                    <span class="meta-icon">👤</span> ${escapeHtml(flag.studentName || `Student ${flag.studentId}`)}
+                </span>
+                <span class="flag-date">${timestamp}</span>
+                <span class="flag-status-badge ${statusClass}">${statusDisplayText}</span>
             </div>
-        </div>
-        
-        <div class="flag-content">
-            <div class="question-content">
-                <div class="content-label">Flagged Question:</div>
-                <div class="question-text">${escapeHtml(questionContent.question || 'Question content not available')}</div>
-                <div class="question-details">
-                    <span class="question-type">Type: ${questionContent.questionType || 'Unknown'}</span>
-                    <span class="unit-name">Unit: ${flag.unitName || 'Unknown'}</span>
-                    <span class="bot-mode">Mode: ${botModeDisplay}</span>
-                </div>
-            </div>
-            
-            <div class="flag-description">
-                <div class="content-label">Student's Concern:</div>
-                <div class="flag-message">${escapeHtml(flag.flagDescription)}</div>
-            </div>
-            
-            ${flag.instructorResponse ? `
-                <div class="instructor-response">
-                    <div class="content-label">Instructor Response:</div>
-                    <div class="response-text">${escapeHtml(flag.instructorResponse)}</div>
-                    <div class="response-meta">Responded by: ${flag.instructorName || 'Instructor'} on ${formatTimestamp(flag.updatedAt)}</div>
-                </div>
-            ` : ''}
-        </div>
-        
-        <div class="flag-actions">
-            ${createActionButtons(flag)}
         </div>
     `;
+
+    // Content Body
+    let bodyHtml = `<div class="flag-card-body">`;
+    
+    // 1. Question Context
+    bodyHtml += `
+        <div class="flag-section context-section">
+            <h4 class="flag-section-title">Flagged Content</h4>
+            <div class="flag-context-meta">
+                <span class="context-tag">${escapeHtml(unitName)}</span>
+                <span class="context-tag">${botModeDisplay} mode</span>
+                <span class="context-tag">Type: ${escapeHtml(questionContent.questionType || 'Unknown')}</span>
+            </div>
+            <div class="flag-quote">
+                "${escapeHtml(questionText)}"
+            </div>
+        </div>
+    `;
+    
+    // 2. Student Concern
+    bodyHtml += `
+        <div class="flag-section note-section">
+            <h4 class="flag-section-title">Student's Concern</h4>
+            <div class="flag-note">
+                ${escapeHtml(flag.flagDescription)}
+            </div>
+        </div>
+    `;
+    
+    // 3. Instructor Response (if exists)
+    if (flag.instructorResponse) {
+        bodyHtml += `
+            <div class="flag-section response-section">
+                <h4 class="flag-section-title">Instructor Response</h4>
+                <div class="response-content">
+                    ${escapeHtml(flag.instructorResponse)}
+                </div>
+                <div class="response-footer">
+                    Responded by ${escapeHtml(flag.instructorName || 'Instructor')} • ${formatTimestamp(flag.updatedAt)}
+                </div>
+            </div>
+        `;
+    }
+    
+    bodyHtml += `</div>`; // End body
+    
+    // Footer / Actions
+    bodyHtml += `
+        <div class="flag-card-footer">
+            <div class="flag-actions">
+                ${createActionButtons(flag)}
+            </div>
+        </div>
+    `;
+    
+    flagDiv.innerHTML = headerHtml + bodyHtml;
     
     return flagDiv;
 }
@@ -795,11 +826,12 @@ function createActionButtons(flag) {
     if (flag.flagStatus === 'pending') {
         return `
             <button class="action-btn approve-btn" onclick="showApprovalForm('${flag.flagId}')">
-                Approve
+                Approve & Reply
             </button>
             <button class="action-btn dismiss-btn" onclick="handleFlagAction('${flag.flagId}', 'rejected')">
                 Dismiss
             </button>
+            
             <div id="approval-form-${flag.flagId}" class="approval-form" style="display: none;">
                 <div class="form-header">
                     <h4>Send Follow-up to Student</h4>
@@ -809,7 +841,7 @@ function createActionButtons(flag) {
                     <label for="message-content-${flag.flagId}">Message:</label>
                     <textarea id="message-content-${flag.flagId}" class="message-textarea" rows="4">Thanks for flagging this, please follow up on this email or come to my office hours if you are still working on this topic</textarea>
                 </div>
-                <div class="form-actions">
+                <div class="form-actions-row">
                     <button class="action-btn send-approve-btn" onclick="sendApprovalMessage('${flag.flagId}')">
                         Send & Approve
                     </button>
@@ -823,9 +855,10 @@ function createActionButtons(flag) {
         `;
     } else {
         return `
-            <button class="action-btn view-btn" onclick="viewFlagDetails('${flag.flagId}')">
-                View Details
-            </button>
+             <div class="action-status-msg">
+                Item is <strong>${flag.flagStatus}</strong>.
+            </div>
+            <!-- Future: View Details or Re-open buttons could go here -->
         `;
     }
 }
