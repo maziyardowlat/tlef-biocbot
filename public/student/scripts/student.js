@@ -5547,27 +5547,53 @@ function loadChatData(chatData) {
                 }
             }
 
-            // Ensure chat input and mode toggle are visible (enable chat)
-            enableChatInput();
+            // Ensure chat input and mode toggle are visible (enable chat) IF we are not in an assessment
+            // Check if assessment is in progress (defined in the block above)
+            const isAssessmentInProgress = window.currentCalibrationQuestions && 
+                                          window.currentCalibrationQuestions.length > 0 && 
+                                          window.studentAnswers && 
+                                          window.studentAnswers.length < window.currentCalibrationQuestions.length;
             
-            // Force show input container regardless of enableChatInput logic
-            const chatInputContainer = document.querySelector('.chat-input-container');
-            if (chatInputContainer) {
-                chatInputContainer.style.display = 'block';
-                // Ensure input itself is enabled
-                const chatInput = document.getElementById('chat-input');
-                if (chatInput) {
-                    chatInput.disabled = false;
-                    chatInput.style.cursor = 'text';
-                    chatInput.classList.remove('disabled-input');
-                    chatInput.placeholder = 'Type your message here...';
+            if (!isAssessmentInProgress) {
+                console.log('No active assessment detected, enabling chat input');
+                enableChatInput();
+                
+                // Force show input container regardless of enableChatInput logic
+                const chatInputContainer = document.querySelector('.chat-input-container');
+                if (chatInputContainer) {
+                    chatInputContainer.style.display = 'block';
+                    // Ensure input itself is enabled
+                    const chatInput = document.getElementById('chat-input');
+                    if (chatInput) {
+                        chatInput.disabled = false;
+                        chatInput.style.cursor = 'text';
+                        chatInput.classList.remove('disabled-input');
+                        chatInput.placeholder = 'Type your message here...';
+                    }
+                    const sendButton = document.getElementById('send-button');
+                    if (sendButton) {
+                        sendButton.disabled = false;
+                        sendButton.style.cursor = 'pointer';
+                        sendButton.classList.remove('disabled-button');
+                        sendButton.style.opacity = '1';
+                    }
                 }
-                const sendButton = document.getElementById('send-button');
-                if (sendButton) {
-                    sendButton.disabled = false;
-                    sendButton.style.cursor = 'pointer';
-                    sendButton.classList.remove('disabled-button');
-                    sendButton.style.opacity = '1';
+                
+                // Also ensure mode toggle is visible if not in assessment
+                const modeToggleContainer = document.querySelector('.mode-toggle-container');
+                if (modeToggleContainer) {
+                    modeToggleContainer.style.display = 'flex';
+                }
+            } else {
+                console.log('Active assessment detected, keeping chat input hidden');
+                // Explicitly hide them just in case
+                const chatInputContainer = document.querySelector('.chat-input-container');
+                if (chatInputContainer) {
+                    chatInputContainer.style.display = 'none';
+                }
+                const modeToggleContainer = document.querySelector('.mode-toggle-container');
+                if (modeToggleContainer) {
+                    modeToggleContainer.style.display = 'none';
                 }
             }
 
