@@ -151,41 +151,49 @@ async function determineSourceAttribution(searchResults, courseId, unitName, db)
             };
         }
 
+        // Find the specific chunk/file that contributed most to this highest score
+        const topChunk = searchResults
+            .filter(r => (r.type || r.documentType || 'unknown') === highestScoringType)
+            .sort((a, b) => (b.score || 0) - (a.score || 0))[0];
+        
+        const sourceUnit = topChunk ? topChunk.lectureName : unitName;
+        console.log('🔍 [SOURCE_DEBUG] Source Unit identified as:', sourceUnit);
+
         // Return source attribution based on the highest scoring document type
         switch (highestScoringType) {
             case 'lecture_notes':
                 return {
                     source: 'lecture-notes',
-                    description: `From lecture notes, ${unitName}`,
-                    unitName: unitName,
+                    description: `From lecture notes, ${sourceUnit}`,
+                    unitName: sourceUnit,
                     documentType: 'lecture_notes'
                 };
             case 'practice_q_tutorials':
                 return {
                     source: 'practice-quiz',
-                    description: 'From practice questions',
-                    unitName: unitName,
+                    description: `From practice questions (${sourceUnit})`,
+                    unitName: sourceUnit,
                     documentType: 'practice_q_tutorials'
                 };
             case 'additional':
                 return {
                     source: 'additional-materials',
-                    description: 'From additional materials',
-                    unitName: unitName,
+                    description: `From additional materials (${sourceUnit})`,
+                    unitName: sourceUnit,
                     documentType: 'additional'
                 };
             case 'readings':
                 return {
                     source: 'readings',
-                    description: 'From readings',
-                    unitName: unitName,
+                    description: `From readings (${sourceUnit})`,
+                    unitName: sourceUnit,
                     documentType: 'readings'
                 };
             case 'syllabus':
                 return {
                     source: 'syllabus',
                     description: 'From syllabus',
-                    unitName: unitName,
+                    unitName: sourceUnit,
                     documentType: 'syllabus'
                 };
             default:
@@ -487,7 +495,19 @@ router.post('/', async (req, res) => {
             return res.status(404).json({ success: false, message: 'Course not found' });
         }
 
-        const isAdditive = !!course.isAdditiveRetrieval;
+        // Fetch global settings (prompts and config)
+        let globalSettings = null;
+        try {
+            const settingsCol = db.collection('settings');
+            globalSettings = await settingsCol.findOne({ _id: 'global_prompts' });
+        } catch (err) {
+            console.error('⚠️ [CHAT_API] Error fetching global settings:', err);
+        }
+
+        // Determine retrieval mode: Course override ? Global Default : False (default)
+        const isAdditive = course.isAdditiveRetrieval !== undefined && course.isAdditiveRetrieval !== null
+            ? !!course.isAdditiveRetrieval 
+            : (globalSettings && globalSettings.additiveRetrieval === true);
 
         // Build lectureNames filter using published units only, ordered by lectures array
         const publishedLectures = (course.lectures || []).filter(l => l.isPublished).map(l => l.name);
@@ -614,59 +634,19 @@ Previous conversation:
 ${conversationHistory}`;
         }
 
-        let protegePrompt = `
-PROTÉGÉ MODE: You are a curious but slightly confused student. The User is your Tutor.
+        // Retrieve custom prompts from database or use defaults
+        let basePrompt = prompts.DEFAULT_PROMPTS.base;
+        let protegePrompt = prompts.DEFAULT_PROMPTS.protege;
+        let tutorPrompt = prompts.DEFAULT_PROMPTS.tutor;
 
-YOUR GOAL:
-Your goal is to extract the explanation from the User. You must NEVER explain the concept yourself. You must NEVER provide the full answer.
-
-RULES FOR INTERACTION:
-1. **Simulate Partial Knowledge:** You have read the course notes (provided in the Context), but you are struggling to connect the dots.
-2. **The "Columbo" Method:** If the user explains something correctly, ask a "dumb" follow-up question to test the depth of their knowledge. (e.g., "Oh okay, but does that mean [implication]?")
-3. **Handling Mistakes:** If the user provides incorrect information (based on the Context provided), do NOT correct them like a teacher. Instead, express confusion based on the notes.
-   - BAD: "No, actually the mitochondria is the powerhouse."
-   - GOOD: "Wait, I thought the lecture said the mitochondria was involved in energy? Why did you say it was for protein?"
-4. **Brevity:** Keep your responses short (1-3 sentences). Real students don't write paragraphs.
-5. **Formatting:** If you must explain multiple points, use bullet points. Avoid large blocks of text.
-
-CONTEXT USAGE:
-The "Course Context" provided below is the TRUTH. Use it to judge if the user is right or wrong. Do NOT output the text from the context directly. Use it only to generate follow-up questions.
-
-6. **SAFETY PROTOCOL:** If the student expresses severe distress, depression, or thoughts of self-harm, respond with compassion and provide this link: http://students.ubc.ca/health/wellness-centre/
-
-TONE:
-Casual, inquisitive, slightly unsure, but eager to learn.
-`;
-
-        let tutorPrompt = `INSTRUCTOR MODE: You are the guide, and the student is learning.
-
-Your Role:
-The student needs support understanding the material. Your job is to provide clear explanations, guide their thinking, and help build their understanding step by step. You're a knowledgeable peer tutor, not a lecturer.
-
-How to Engage:
-- Start by understanding what they already know: "What's your current understanding of this?" or "What parts make sense so far?"
-- Provide clear, structured explanations that build on what they know
-- Use concrete examples from cellular biology: "Think about how a muscle cell needs quick ATP during exercise..."
-- Break complex processes into steps: "Let's take this one step at a time. First..."
-- Check for understanding along the way: "Does that part make sense?" or "Can you explain back to me how that step works?"
-- Connect new concepts to things they've already learned: "Remember how we talked about enzyme regulation? This is similar because..."
-- Encourage them to think through problems: "What do you think would happen if... ?" instead of just giving answers
-
-What to Avoid:
-- Don't dump information - keep explanations digestible and interactive
-- Don't just give direct answers to homework questions - guide them to the answer
-- Don't use overly technical language without explanation
-- Don't move on without checking they're following along
-- Don't make them feel bad for not knowing - everyone learns at their own pace
-- **Format your responses:** Use short paragraphs (max 3-4 sentences). Use bullet points for lists. Avoid massive walls of text.
-- **SAFETY PROTOCOL:** If the student expresses severe distress, depression, or thoughts of self-harm, respond with compassion and provide this link: http://students.ubc.ca/health/wellness-centre/
-
-Example Interactions:
-- Student: "I don't understand enzyme inhibition"
-- You: "Okay, let's start with what you do know. Can you explain what an enzyme does in general? Then we'll build from there to talk about how inhibition works."
-
-- Student: "Why does the cell need so many steps in glycolysis?"
-- You: "Great question! Let's think about this together. What would happen if the cell tried to break down glucose in just one big reaction? Think about energy release..."`;
+        if (globalSettings) {
+            console.log('📝 [CHAT_API] Using custom prompts from settings');
+            if (globalSettings.base) basePrompt = globalSettings.base;
+            if (globalSettings.protege) protegePrompt = globalSettings.protege;
+            if (globalSettings.tutor) tutorPrompt = globalSettings.tutor;
+        } else {
+            console.log('📝 [CHAT_API] Using default prompts');
+        }
 
         // For now, we'll use single message approach
         // In the future, we can implement conversation persistence
@@ -676,7 +656,7 @@ Example Interactions:
             // Adjust response based on student mode
             temperature: mode === 'protege' ? 0.5 : 0.5,
             maxTokens: mode === 'protege' ? 32768 : 32768,
-            systemPrompt: llmService.getSystemPrompt() +
+            systemPrompt: basePrompt +
                 (mode === 'protege' ? protegePrompt : tutorPrompt)
         });
 
@@ -707,7 +687,7 @@ Example Interactions:
             const contResp = await llmService.sendMessage(contPrompt, {
                 temperature: mode === 'protege' ? 0.8 : 0.6,
                 maxTokens: mode === 'protege' ? 32768 : 32768,
-                systemPrompt: llmService.getSystemPrompt() +
+                systemPrompt: basePrompt +
                     (mode === 'protege' ? protegePrompt : tutorPrompt)
             });
             const chunk = contResp && contResp.content ? contResp.content : '';
