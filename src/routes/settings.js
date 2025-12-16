@@ -57,7 +57,7 @@ router.get('/can-delete-all', async (req, res) => {
 
 /**
  * GET /api/settings/prompts
- * Get current system prompts (merged with defaults)
+ * Get current system prompts (merged with defaults) for a specific course
  */
 router.get('/prompts', async (req, res) => {
     try {
@@ -66,20 +66,37 @@ router.get('/prompts', async (req, res) => {
             return res.status(503).json({ success: false, message: 'Database connection not available' });
         }
 
-        const settingsCol = db.collection('settings');
-        const globalPrompts = await settingsCol.findOne({ _id: 'global_prompts' });
+        const courseId = req.query.courseId;
+        
+        // If no courseId provided, return defaults (or could return global default if we kept it)
+        if (!courseId) {
+            return res.json({
+                success: true,
+                prompts: { ...prompts.DEFAULT_PROMPTS, additiveRetrieval: false },
+                isCourseSpecific: false,
+                courseId: null
+            });
+        }
 
-        // Merge saved prompts with defaults
+        // Query the course document
+        const course = await db.collection('courses').findOne({ courseId });
+
+        // Retrieve prompts from course or use defaults
+        const coursePrompts = course ? (course.prompts || {}) : {};
+        
         const result = {
-            base: (globalPrompts && globalPrompts.base) || prompts.DEFAULT_PROMPTS.base,
-            protege: (globalPrompts && globalPrompts.protege) || prompts.DEFAULT_PROMPTS.protege,
-            tutor: (globalPrompts && globalPrompts.tutor) || prompts.DEFAULT_PROMPTS.tutor,
-            additiveRetrieval: (globalPrompts && globalPrompts.additiveRetrieval) || false
+            base: coursePrompts.base || prompts.DEFAULT_PROMPTS.base,
+            protege: coursePrompts.protege || prompts.DEFAULT_PROMPTS.protege,
+            tutor: coursePrompts.tutor || prompts.DEFAULT_PROMPTS.tutor,
+            // Course-level additive retrieval setting
+            additiveRetrieval: course ? !!course.isAdditiveRetrieval : false
         };
 
         res.json({
             success: true,
-            prompts: result
+            prompts: result,
+            isCourseSpecific: true,
+            courseId: courseId
         });
     } catch (error) {
         console.error('Error fetching prompts:', error);
@@ -92,7 +109,7 @@ router.get('/prompts', async (req, res) => {
 
 /**
  * POST /api/settings/prompts
- * Save custom system prompts
+ * Save custom system prompts for a specific course
  */
 router.post('/prompts', async (req, res) => {
     try {
@@ -101,33 +118,35 @@ router.post('/prompts', async (req, res) => {
             return res.status(503).json({ success: false, message: 'Database connection not available' });
         }
 
-        const { base, protege, tutor, additiveRetrieval } = req.body;
+        const { base, protege, tutor, additiveRetrieval, courseId } = req.body;
+
+        if (!courseId) {
+            return res.status(400).json({ success: false, message: 'courseId is required to save settings' });
+        }
 
         // Validation - ensure they are strings (prompts) and boolean (additiveRetrieval)
         if (typeof base !== 'string' || typeof protege !== 'string' || typeof tutor !== 'string') {
             return res.status(400).json({ success: false, message: 'Invalid prompt format' });
         }
 
-        const settingsCol = db.collection('settings');
-        
-        await settingsCol.updateOne(
-            { _id: 'global_prompts' },
+        // Update the course document directly
+        await db.collection('courses').updateOne(
+            { courseId: courseId },
             { 
                 $set: { 
-                    base, 
-                    protege, 
-                    tutor,
-                    additiveRetrieval: !!additiveRetrieval,
-                    updatedAt: new Date(),
-                    updatedBy: req.user.email
+                    'prompts.base': base, 
+                    'prompts.protege': protege, 
+                    'prompts.tutor': tutor,
+                    isAdditiveRetrieval: !!additiveRetrieval,
+                    updatedAt: new Date()
                 } 
-            },
-            { upsert: true }
+            }
         );
 
         res.json({
             success: true,
-            message: 'Prompts saved successfully'
+            message: 'Course settings saved successfully',
+            courseId: courseId
         });
     } catch (error) {
         console.error('Error saving prompts:', error);
@@ -140,7 +159,7 @@ router.post('/prompts', async (req, res) => {
 
 /**
  * POST /api/settings/prompts/reset
- * Reset system prompts to defaults
+ * Reset system prompts to defaults for a specific course
  */
 router.post('/prompts/reset', async (req, res) => {
     try {
@@ -149,16 +168,26 @@ router.post('/prompts/reset', async (req, res) => {
             return res.status(503).json({ success: false, message: 'Database connection not available' });
         }
 
-        const settingsCol = db.collection('settings');
+        const { courseId } = req.body;
         
-        // deleteOne/deleteMany would remove the document
-        // We can just remove the document entirely since it only stores prompts for now
-        await settingsCol.deleteOne({ _id: 'global_prompts' });
+        if (!courseId) {
+            return res.status(400).json({ success: false, message: 'courseId is required to reset settings' });
+        }
+
+        // Unset the prompts field and isAdditiveRetrieval in the course document
+        await db.collection('courses').updateOne(
+            { courseId: courseId },
+            { 
+                $unset: { prompts: "" },
+                $set: { isAdditiveRetrieval: false } // Default to false
+            }
+        );
 
         res.json({
             success: true,
-            message: 'Prompts reset to defaults',
-            prompts: prompts.DEFAULT_PROMPTS
+            message: 'Course settings reset to user defaults',
+            prompts: prompts.DEFAULT_PROMPTS,
+            courseId: courseId
         });
     } catch (error) {
         console.error('Error resetting prompts:', error);

@@ -4,6 +4,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const deleteCollectionBtn = document.getElementById('delete-collection');
     
     // Check if user can see the delete all button
+    await waitForAuth();
     await checkDeleteAllPermission();
     
     
@@ -24,7 +25,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function loadGlobalConfig() {
         try {
-            const response = await fetch('/api/settings/prompts');
+            const courseId = await getCurrentCourseId();
+            const response = await fetch(`/api/settings/prompts?courseId=${courseId}`);
             const result = await response.json();
             
             if (result.success && result.prompts) {
@@ -55,6 +57,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const protege = document.getElementById('protege-prompt')?.value;
                 const tutor = document.getElementById('tutor-prompt')?.value;
                 const additiveRetrieval = document.getElementById('additive-retrieval-toggle')?.checked;
+                const courseId = await getCurrentCourseId();
                 
                 if (base && protege && tutor) {
                     const response = await fetch('/api/settings/prompts', {
@@ -62,7 +65,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         headers: {
                             'Content-Type': 'application/json'
                         },
-                        body: JSON.stringify({ base, protege, tutor, additiveRetrieval })
+                        body: JSON.stringify({ base, protege, tutor, additiveRetrieval, courseId })
                     });
                     
                     const result = await response.json();
@@ -98,9 +101,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             resetSettingsBtn.textContent = 'Resetting...';
             
             try {
+                const courseId = await getCurrentCourseId();
+
                 // Reset prompts
                 const response = await fetch('/api/settings/prompts/reset', {
-                    method: 'POST'
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ courseId })
                 });
                 
                 const result = await response.json();

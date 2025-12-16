@@ -495,19 +495,12 @@ router.post('/', async (req, res) => {
             return res.status(404).json({ success: false, message: 'Course not found' });
         }
 
-        // Fetch global settings (prompts and config)
-        let globalSettings = null;
-        try {
-            const settingsCol = db.collection('settings');
-            globalSettings = await settingsCol.findOne({ _id: 'global_prompts' });
-        } catch (err) {
-            console.error('⚠️ [CHAT_API] Error fetching global settings:', err);
-        }
+        // (Global settings fetch removed - prompts now come from course document)
 
-        // Determine retrieval mode: Course override ? Global Default : False (default)
+        // Determine retrieval mode: Course override ? Default : False (default)
         const isAdditive = course.isAdditiveRetrieval !== undefined && course.isAdditiveRetrieval !== null
             ? !!course.isAdditiveRetrieval 
-            : (globalSettings && globalSettings.additiveRetrieval === true);
+            : false;
 
         // Build lectureNames filter using published units only, ordered by lectures array
         const publishedLectures = (course.lectures || []).filter(l => l.isPublished).map(l => l.name);
@@ -634,16 +627,17 @@ Previous conversation:
 ${conversationHistory}`;
         }
 
-        // Retrieve custom prompts from database or use defaults
+        // Retrieve custom prompts from course object or use defaults
         let basePrompt = prompts.DEFAULT_PROMPTS.base;
         let protegePrompt = prompts.DEFAULT_PROMPTS.protege;
         let tutorPrompt = prompts.DEFAULT_PROMPTS.tutor;
 
-        if (globalSettings) {
-            console.log('📝 [CHAT_API] Using custom prompts from settings');
-            if (globalSettings.base) basePrompt = globalSettings.base;
-            if (globalSettings.protege) protegePrompt = globalSettings.protege;
-            if (globalSettings.tutor) tutorPrompt = globalSettings.tutor;
+        // Check if course has custom prompts
+        if (course.prompts) {
+            console.log('📝 [CHAT_API] Using course-specific prompts');
+            if (course.prompts.base) basePrompt = course.prompts.base;
+            if (course.prompts.protege) protegePrompt = course.prompts.protege;
+            if (course.prompts.tutor) tutorPrompt = course.prompts.tutor;
         } else {
             console.log('📝 [CHAT_API] Using default prompts');
         }
