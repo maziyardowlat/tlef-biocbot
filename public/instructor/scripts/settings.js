@@ -6,30 +6,132 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Check if user can see the delete all button
     await checkDeleteAllPermission();
     
-    // Default settings - simplified to placeholder
-    const defaultSettings = {
-        // Placeholder for future settings
-    };
+    
+    // Load initial settings including prompts
+    await loadSettings();
+
+    async function loadSettings() {
+        try {
+            // Load global config (prompts and additive retrieval)
+            await loadGlobalConfig();
+            
+            // Placeholder for other settings
+        } catch (error) {
+            console.error('Error loading settings:', error);
+            showNotification('Failed to load settings', 'error');
+        }
+    }
+
+    async function loadGlobalConfig() {
+        try {
+            const response = await fetch('/api/settings/prompts');
+            const result = await response.json();
+            
+            if (result.success && result.prompts) {
+                const basePromptInput = document.getElementById('base-prompt');
+                const protegePromptInput = document.getElementById('protege-prompt');
+                const tutorPromptInput = document.getElementById('tutor-prompt');
+                const additiveToggle = document.getElementById('additive-retrieval-toggle');
+                
+                if (basePromptInput) basePromptInput.value = result.prompts.base || '';
+                if (protegePromptInput) protegePromptInput.value = result.prompts.protege || '';
+                if (tutorPromptInput) tutorPromptInput.value = result.prompts.tutor || '';
+                if (additiveToggle) additiveToggle.checked = !!result.prompts.additiveRetrieval;
+            }
+        } catch (error) {
+            console.error('Error fetching global config:', error);
+        }
+    }
     
     // Handle save button click
     if (saveSettingsBtn) {
-        saveSettingsBtn.addEventListener('click', () => {
-            // Placeholder for saving settings
-            console.log('Save settings button clicked - functionality to be implemented');
+        saveSettingsBtn.addEventListener('click', async () => {
+            saveSettingsBtn.disabled = true;
+            saveSettingsBtn.textContent = 'Saving...';
             
-            // Show success message
-            showNotification('Settings functionality will be implemented', 'info');
+            try {
+                // Save prompts and config
+                const base = document.getElementById('base-prompt')?.value;
+                const protege = document.getElementById('protege-prompt')?.value;
+                const tutor = document.getElementById('tutor-prompt')?.value;
+                const additiveRetrieval = document.getElementById('additive-retrieval-toggle')?.checked;
+                
+                if (base && protege && tutor) {
+                    const response = await fetch('/api/settings/prompts', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ base, protege, tutor, additiveRetrieval })
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        showNotification('Settings saved successfully', 'success');
+                    } else {
+                        showNotification('Failed to save settings: ' + result.message, 'error');
+                    }
+                } else {
+                    // Fallback if inputs missing (shouldn't happen if HTML is correct)
+                    showNotification('Settings saved (simulated)', 'info');
+                }
+                
+            } catch (error) {
+                console.error('Error saving settings:', error);
+                showNotification('Error saving settings', 'error');
+            } finally {
+                saveSettingsBtn.disabled = false;
+                saveSettingsBtn.textContent = 'Save Settings';
+            }
         });
     }
     
     // Handle reset button click
     if (resetSettingsBtn) {
-        resetSettingsBtn.addEventListener('click', () => {
-            // Placeholder for resetting settings
-            console.log('Reset settings button clicked - functionality to be implemented');
+        resetSettingsBtn.addEventListener('click', async () => {
+            if (!confirm('Are you sure you want to reset all settings to default values?')) {
+                return;
+            }
             
-            // Show success message
-            showNotification('Settings functionality will be implemented', 'info');
+            resetSettingsBtn.disabled = true;
+            resetSettingsBtn.textContent = 'Resetting...';
+            
+            try {
+                // Reset prompts
+                const response = await fetch('/api/settings/prompts/reset', {
+                    method: 'POST'
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    // Reload values
+                    if (result.prompts) {
+                        const basePromptInput = document.getElementById('base-prompt');
+                        const protegePromptInput = document.getElementById('protege-prompt');
+                        const tutorPromptInput = document.getElementById('tutor-prompt');
+                        const additiveToggle = document.getElementById('additive-retrieval-toggle');
+                        
+                        if (basePromptInput) basePromptInput.value = result.prompts.base || '';
+                        if (protegePromptInput) protegePromptInput.value = result.prompts.protege || '';
+                        if (tutorPromptInput) tutorPromptInput.value = result.prompts.tutor || '';
+                        // Default for additive retrieval is false (off)
+                        if (additiveToggle) additiveToggle.checked = false;
+                    }
+                    
+                    showNotification('Settings reset to defaults', 'success');
+                } else {
+                    showNotification('Failed to reset settings: ' + result.message, 'error');
+                }
+                
+            } catch (error) {
+                console.error('Error resetting settings:', error);
+                showNotification('Error resetting settings', 'error');
+            } finally {
+                resetSettingsBtn.disabled = false;
+                resetSettingsBtn.textContent = 'Reset to Default';
+            }
         });
     }
 

@@ -96,11 +96,39 @@
                     </div>
                 </section>
 
-                <!-- Placeholder Section -->
+                <!-- AI Persona Settings -->
                 <section class="settings-section">
-                    <h2>Placeholder Section</h2>
-                    <div class="placeholder-content">
-                        <p>TBD - Settings content will be implemented as needed</p>
+                    <h2>AI Persona Settings</h2>
+                    <div class="settings-content">
+                        <div class="setting-item vertical">
+                            <div class="setting-info">
+                                <h3>Base System Prompt</h3>
+                                <p>Core instructions defining BiocBot's general personality and behavior.</p>
+                            </div>
+                            <div class="setting-controls full-width-control">
+                                <textarea id="base-prompt" rows="10" placeholder="Enter base system prompt..."></textarea>
+                            </div>
+                        </div>
+
+                        <div class="setting-item vertical">
+                            <div class="setting-info">
+                                <h3>Protege Mode Prompt</h3>
+                                <p>Instructions for when the AI acts as a student (Protege mode).</p>
+                            </div>
+                            <div class="setting-controls full-width-control">
+                                <textarea id="protege-prompt" rows="10" placeholder="Enter protege mode prompt..."></textarea>
+                            </div>
+                        </div>
+
+                        <div class="setting-item vertical">
+                            <div class="setting-info">
+                                <h3>Tutor Mode Prompt</h3>
+                                <p>Instructions for when the AI acts as an instructor/tutor (Default mode).</p>
+                            </div>
+                            <div class="setting-controls full-width-control">
+                                <textarea id="tutor-prompt" rows="10" placeholder="Enter tutor mode prompt..."></textarea>
+                            </div>
+                        </div>
                     </div>
                 </section>
 
