@@ -1333,9 +1333,21 @@ async function fetchCourseId() {
     if (courseIdFromUrl) {
         return courseIdFromUrl;
     }
+
+    // Check localStorage for the last selected course
+    const storedCourseId = localStorage.getItem('selectedCourseId');
+    if (storedCourseId) {
+        console.log(`🔍 [GET_COURSE_ID] Found course in localStorage: ${storedCourseId}`);
+        return storedCourseId;
+    }
     
-    // If no course ID in URL, try to get it from the user's courses
+    // If no course ID in URL or storage, try to get it from the user's courses
     try {
+        // Wait for auth to be ready if needed
+        if (!getCurrentInstructorId()) {
+             await waitForAuth();
+        }
+
         const userId = getCurrentInstructorId(); // This works for both instructors and TAs
         if (!userId) {
             console.error('No user ID available');

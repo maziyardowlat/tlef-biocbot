@@ -739,6 +739,22 @@ router.put('/:courseId', async (req, res) => {
                 totalUnits: (weeks || 0) * (lecturesPerWeek || 0)
             };
         }
+
+        // Handle prompts update
+        if (req.body.prompts) {
+            updateData.prompts = req.body.prompts;
+        } else if (req.body.base || req.body.protege || req.body.tutor) {
+            // Backward compatibility / flatten structure if sent individually
+            const currentCourse = await collection.findOne({ courseId });
+            const currentPrompts = currentCourse.prompts || {};
+            
+            updateData.prompts = {
+                ...currentPrompts,
+                ...(req.body.base && { base: req.body.base }),
+                ...(req.body.protege && { protege: req.body.protege }),
+                ...(req.body.tutor && { tutor: req.body.tutor })
+            };
+        }
         
         // Allow updating lectures array if provided (for document removal fallback)
         if (lectures && Array.isArray(lectures)) {
