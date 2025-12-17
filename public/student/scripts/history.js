@@ -614,21 +614,14 @@ function displayChatPreview(chat) {
     // Clear and populate messages
     previewMessages.innerHTML = '';
     
-    // Show first few messages (up to 5)
-    const messagesToShow = chat.chatData.messages.slice(0, 5);
+    // Show ALL messages (removed slice limit)
+    const messagesToShow = chat.chatData.messages;
     
     messagesToShow.forEach(messageData => {
         const messageElement = createPreviewMessage(messageData);
         previewMessages.appendChild(messageElement);
     });
-    
-    // Add "..." if there are more messages
-    if (chat.chatData.messages.length > 5) {
-        const moreElement = document.createElement('div');
-        moreElement.classList.add('more-messages');
-        moreElement.innerHTML = `<p>... and ${chat.chatData.messages.length - 5} more messages</p>`;
-        previewMessages.appendChild(moreElement);
-    }
+
 }
 
 /**

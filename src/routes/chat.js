@@ -642,7 +642,36 @@ ${conversationHistory}`;
             console.log('📝 [CHAT_API] Using default prompts');
         }
 
-        // For now, we'll use single message approach
+        // Check for summary attempt via LLM if requested
+        let shouldAppendReprompt = false;
+        if (req.body.checkSummaryAttempt) {
+            try {
+                console.log('🔍 [SUMMARY_CHECK] Analyzing student message for summary attempt...');
+                const summaryCheckPrompt = `Analyze the following student message. Does it attempt to summarize, recap, or explain the previous conversation? Respond with only YES or NO. Message: "${message}"`;
+                
+                // Use a separate, cheap LLM call (low temp, system prompt irrelevant but using base for safety)
+                const summaryCheckResponse = await llmService.sendMessage(summaryCheckPrompt, {
+                    temperature: 0.1,
+                    maxTokens: 10,
+                    systemPrompt: "You are a classifier. Respond only with YES or NO."
+                });
+
+                const isSummary = summaryCheckResponse && summaryCheckResponse.content && summaryCheckResponse.content.trim().toUpperCase().includes('YES');
+                console.log(`🔍 [SUMMARY_CHECK] Result: ${isSummary ? 'YES' : 'NO'} (Raw: ${summaryCheckResponse?.content})`);
+
+                if (!isSummary) {
+                    shouldAppendReprompt = true;
+                    console.log('🔍 [SUMMARY_CHECK] Student did NOT summarize -> Appending re-prompt');
+                } else {
+                    console.log('🔍 [SUMMARY_CHECK] Student provided summary -> No re-prompt');
+                }
+            } catch (err) {
+                console.error('❌ [SUMMARY_CHECK] Error during check:', err);
+                // Fail safe: don't annoy the user if check fails. Or default to true? 
+                // Let's default to false (no re-prompt) to be safe.
+            }
+        }
+
         // In the future, we can implement conversation persistence
         let response = await llmService.sendMessage(
             messageToSend,
@@ -690,6 +719,11 @@ ${conversationHistory}`;
                 fullContent += (fullContent.endsWith('\n') ? '' : '\n') + chunk;
             }
             response = contResp;
+        }
+
+        // Append the re-prompt if the summary check determined it was needed
+        if (shouldAppendReprompt) {
+            fullContent += '\n\n----------------\nHey, I know you asked another question, would you like to summarize our chat again?';
         }
 
         // Format response for frontend
