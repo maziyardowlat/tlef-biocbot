@@ -207,7 +207,7 @@ document.addEventListener('DOMContentLoaded', async () => {
      * @param {string} message - The message to send
      * @returns {Promise<Object>} Response from LLM service
      */
-    async function sendMessageToLLM(message) {
+    async function sendMessageToLLM(message, checkSummaryAttempt = false) {
         try {
             // Get current student mode for context
             const currentMode = localStorage.getItem('studentMode') || 'tutor';
@@ -238,7 +238,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 mode: currentMode,
                 courseId: courseId,
                 unitName: unitName,
-                conversationContext: conversationContext
+                conversationContext: conversationContext,
+                checkSummaryAttempt: checkSummaryAttempt
             };
 
 
@@ -611,6 +612,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                 console.log('⚠️ [CHAT] Warning already shown, skipping (current count:', messageCountBefore, ')');
             }
 
+            // Check if this is the 15th message (count=14) to trigger summary check on backend
+            // The student is reacting to the warning shown at the end of message 14 (count=13)
+            const shouldCheckSummaryAttempt = !warningAlreadyShown && messageCountBefore === 14;
+            if (shouldCheckSummaryAttempt) {
+                console.log('⚠️ [CHAT] This is likely the 15th message - flagging for backend summary check');
+            }
+
             // Add user message to chat
             console.log('💬 [CHAT] Adding user message to chat:', message.substring(0, 50) + '...');
             addMessage(message, 'user');
@@ -636,7 +644,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             // Send message to real LLM service
             try {
-                const response = await sendMessageToLLM(message);
+                // If we need to check for summary attempt, pass that flag to the backend
+                if (shouldCheckSummaryAttempt) {
+                    console.log('🔍 [CHAT] Adding checkSummaryAttempt flag to request');
+                }
+                
+                const response = await sendMessageToLLM(message, shouldCheckSummaryAttempt);
 
                 // Remove typing indicator
                 removeTypingIndicator();
