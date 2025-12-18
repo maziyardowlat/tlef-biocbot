@@ -631,12 +631,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (shouldShowWarning) {
                 console.log('⚠️ [CHAT] Showing 15-message warning');
                 // Add the warning message just like a normal bot response, with source attribution
-                addMessage('Please be aware that after 15 messages, the quality of the responses might be degraded.', 'bot', true, false, {
+                addMessage('Please be aware that after 15 messages, the quality of the responses might be degraded. <a href="#" class="chat-limit-link">See why?</a>', 'bot', true, false, {
                     source: 'System',
                     description: 'System notification',
                     unitName: null,
                     documentType: null
-                });
+                }, true);
             }
 
             // Show typing indicator
@@ -735,7 +735,102 @@ document.addEventListener('DOMContentLoaded', async () => {
             typingIndicator.remove();
         }
     }
+
+    // Initialize Chat Limit Modal
+    initializeChatLimitModal();
 });
+
+/**
+ * Initialize Chat Limit Modal functionality
+ */
+function initializeChatLimitModal() {
+    // Event delegation for the "See why?" link
+    document.addEventListener('click', (e) => {
+        if (e.target && e.target.classList.contains('chat-limit-link')) {
+            e.preventDefault();
+            showChatLimitModal();
+        }
+    });
+
+    // Event delegation for closing the modal
+    document.addEventListener('click', (e) => {
+        if (e.target) {
+             // Close button
+            if (e.target.id === 'close-info-modal-btn' || e.target.closest('#close-info-modal-btn')) {
+                hideChatLimitModal();
+            }
+            // Overlay click (background)
+            if (e.target.id === 'chat-limit-modal-overlay') {
+                hideChatLimitModal();
+            }
+        }
+    });
+}
+
+/**
+ * Show the chat limit info modal
+ * Creates it if it doesn't exist
+ */
+function showChatLimitModal() {
+    let overlay = document.getElementById('chat-limit-modal-overlay');
+    
+    if (!overlay) {
+        // Create modal structure
+        overlay = document.createElement('div');
+        overlay.id = 'chat-limit-modal-overlay';
+        overlay.className = 'info-modal-overlay';
+        
+        overlay.innerHTML = `
+            <div class="info-modal" role="dialog" aria-modal="true" aria-labelledby="limit-modal-title">
+                <div class="info-modal-header">
+                    <h2 id="limit-modal-title">Why the message limit?</h2>
+                </div>
+                
+                <div class="info-modal-body">
+                    <div class="info-section">
+                        <p>We recommend starting a new session after about 15 messages for a few key reasons:</p>
+                        
+                        <h3>1. Response Quality</h3>
+                        <p>As conversations get longer, the AI has to process much more information for every answer. This can sometimes cause it to "lose focus" or provide less accurate responses to your specific questions.</p>
+                        
+                        <h3>2. Staying on Topic</h3>
+                        <p>Starting a fresh session helps keep the conversation focused on your current learning objectives. It's often cleaner to separate different topics into different sessions.</p>
+                        
+                        <h3>3. Best Practices</h3>
+                        <ul>
+                            <li><strong>New Topic = New Session:</strong> If you're switching to a completely different concept, start a new chat.</li>
+                            <li><strong>Summarize First:</strong> Before leaving a long chat, ask BiocBot to "summarize what we discussed" so you can copy the key points to your notes!</li>
+                            <li><strong>Check Your Understanding:</strong> Use the "Protégé Mode" to explain concepts back to BiocBot to solidify your learning.</li>
+                        </ul>
+                    </div>
+                </div>
+                
+                <div class="info-modal-footer">
+                    <button type="button" class="info-modal-btn" id="close-info-modal-btn">
+                        Got it
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(overlay);
+    }
+    
+    // Show modal
+    overlay.classList.add('show');
+    document.body.style.overflow = 'hidden'; // Prevent background scrolling
+}
+
+/**
+ * Hide the chat limit info modal
+ */
+function hideChatLimitModal() {
+    const overlay = document.getElementById('chat-limit-modal-overlay');
+    if (overlay) {
+        overlay.classList.remove('show');
+        document.body.style.overflow = ''; // Restore scrolling
+    }
+}
 
 function renderRevokedAccessUI() {
     try {
