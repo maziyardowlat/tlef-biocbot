@@ -23,7 +23,20 @@ router.use((req, res, next) => {
  * POST /api/auth/login
  * Authenticate user with username and password using Passport Local Strategy
  */
-router.post('/login', (req, res, next) => {
+router.post('/login', async (req, res, next) => {
+    // Check if local login is allowed
+    const db = req.app.locals.db;
+    if (db) {
+        const settings = await db.collection('settings').findOne({ _id: 'global' });
+        // If settings exist and allowLocalLogin is false (explicitly disabled)
+        if (settings && settings.allowLocalLogin === false) {
+             return res.status(403).json({
+                success: false,
+                error: 'Local login is currently disabled by the administrator.'
+            });
+        }
+    }
+
     // Validate required fields before Passport authentication
     const { username, password } = req.body;
 
@@ -105,6 +118,18 @@ router.post('/login', (req, res, next) => {
  */
 router.post('/register', async (req, res) => {
     try {
+        // Check if local registration is allowed (same setting as login)
+        const db = req.app.locals.db;
+        if (db) {
+            const settings = await db.collection('settings').findOne({ _id: 'global' });
+            if (settings && settings.allowLocalLogin === false) {
+                 return res.status(403).json({
+                    success: false,
+                    error: 'Account creation is currently disabled by the administrator.'
+                });
+            }
+        }
+
         const { username, password, email, role, displayName } = req.body;
 
         // Validate required fields
@@ -647,13 +672,27 @@ router.post('/saml/callback',
  * Get available authentication methods
  * Returns which auth methods are configured and available
  */
-router.get('/methods', (req, res) => {
+router.get('/methods', async (req, res) => {
     try {
         const methods = {
-            local: true, // Local auth is always available
+            local: true,
             saml: false,
-            ubcshib: false
+            ubcshib: false,
+            allowLocalLogin: true // Default to true
         };
+
+        // Check global setting for local login
+        const db = req.app.locals.db;
+        if (db) {
+            const settings = await db.collection('settings').findOne({ _id: 'global' });
+            if (settings && settings.allowLocalLogin !== undefined) {
+                methods.allowLocalLogin = settings.allowLocalLogin;
+                // If local login explicitly disabled, update local flag
+                if (settings.allowLocalLogin === false) {
+                    methods.local = false;
+                }
+            }
+        }
 
         // Check if SAML is configured
         if (process.env.SAML_ENTRY_POINT &&

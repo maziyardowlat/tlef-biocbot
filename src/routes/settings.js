@@ -198,4 +198,97 @@ router.post('/prompts/reset', async (req, res) => {
     }
 });
 
+/**
+ * GET /api/settings/global
+ * Get global settings (e.g. login restrictions)
+ * Requires can-delete-all permission to view
+ */
+router.get('/global', async (req, res) => {
+    try {
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({ success: false, message: 'Database connection not available' });
+        }
+
+        // Check authentication
+        if (!req.user) {
+            return res.status(401).json({ success: false, error: 'Not authenticated' });
+        }
+
+        // Check permission
+        const userEmail = req.user.email;
+        const allowedEmails = configService.getAllowedDeleteButtonEmails();
+        const hasPermission = userEmail && allowedEmails.includes(userEmail);
+
+        if (!hasPermission) {
+            return res.status(403).json({ success: false, error: 'Access denied' });
+        }
+
+        // Get global settings
+        const settings = await db.collection('settings').findOne({ _id: 'global' });
+
+        res.json({
+            success: true,
+            settings: settings || { allowLocalLogin: true } // Default to true
+        });
+
+    } catch (error) {
+        console.error('Error fetching global settings:', error);
+        res.status(500).json({ success: false, error: 'Failed to fetch global settings' });
+    }
+});
+
+/**
+ * POST /api/settings/global
+ * Update global settings
+ * Requires can-delete-all permission
+ */
+router.post('/global', async (req, res) => {
+    try {
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({ success: false, message: 'Database connection not available' });
+        }
+
+        // Check authentication
+        if (!req.user) {
+            return res.status(401).json({ success: false, error: 'Not authenticated' });
+        }
+
+        // Check permission
+        const userEmail = req.user.email;
+        const allowedEmails = configService.getAllowedDeleteButtonEmails();
+        const hasPermission = userEmail && allowedEmails.includes(userEmail);
+
+        if (!hasPermission) {
+            return res.status(403).json({ success: false, error: 'Access denied' });
+        }
+
+        const { allowLocalLogin } = req.body;
+
+        // Update settings
+        await db.collection('settings').updateOne(
+            { _id: 'global' },
+            { 
+                $set: { 
+                    allowLocalLogin: !!allowLocalLogin,
+                    updatedAt: new Date(),
+                    updatedBy: userEmail
+                } 
+            },
+            { upsert: true }
+        );
+
+        res.json({
+            success: true,
+            message: 'Global settings updated',
+            settings: { allowLocalLogin: !!allowLocalLogin }
+        });
+
+    } catch (error) {
+        console.error('Error updating global settings:', error);
+        res.status(500).json({ success: false, error: 'Failed to update global settings' });
+    }
+});
+
 module.exports = router;
