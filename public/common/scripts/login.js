@@ -247,6 +247,7 @@ function checkAuthErrors() {
 /**
  * Check available authentication methods
  * Shows CWL/SAML login button if UBC Shibboleth is configured
+ * Hides local login if disabled by admin
  */
 async function checkAvailableAuthMethods() {
     try {
@@ -257,18 +258,44 @@ async function checkAvailableAuthMethods() {
             // Get button and divider elements
             const cwlLoginBtn = document.getElementById('cwl-login-btn');
             const loginDivider = document.getElementById('login-divider');
+            const loginForm = document.getElementById('login-form');
+            const loginFormElement = document.getElementById('auth-form'); // The actual form inside the container
+            const registerSection = document.getElementById('register-form');
+            const formFooter = document.querySelector('.form-footer');
+            
+            // Check if local login is allowed
+            // Default to allowed if not specified
+            const allowLocalLogin = result.methods.allowLocalLogin !== false;
+            
+            if (!allowLocalLogin) {
+                // Hide local login form elements but keep container for CWL button
+                if (loginFormElement) loginFormElement.style.display = 'none';
+                
+                // Hide "Sign In" header if local login is disabled
+                const signInHeader = loginForm.querySelector('h2');
+                if (signInHeader) signInHeader.style.display = 'none';
+                
+                // Hide registration option
+                if (formFooter) formFooter.style.display = 'none';
+                
+                // Hide divider since there's no "alternative" anymore
+                if (loginDivider) loginDivider.style.display = 'none';
+                
+                // Show a message if you want, or just rely on the CWL button being the only option
+            }
 
             // Show CWL button if UBC Shibboleth is available
-            if (result.methods.ubcshib && cwlLoginBtn && loginDivider) {
+            if (result.methods.ubcshib && cwlLoginBtn) {
                 cwlLoginBtn.style.display = 'block';
-                loginDivider.style.display = 'flex';
+                
+                // Show divider only if both methods are available
+                if (loginDivider && allowLocalLogin) {
+                    loginDivider.style.display = 'flex';
+                }
             }
-            // Could also show SAML button if generic SAML is configured
-            // For now, we're focusing on UBC Shibboleth (CWL)
         }
     } catch (error) {
-        // If endpoint fails, don't show CWL button
-        // This is expected in local development where SAML may not be configured
+        // If endpoint fails, default behavior (show local, hide CWL)
         console.log('Auth methods check failed (this is normal in local dev):', error);
     }
 }

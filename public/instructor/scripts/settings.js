@@ -5,21 +5,39 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Check if user can see the delete all button
     await waitForAuth();
-    await checkDeleteAllPermission();
-    
+    const canManageDB = await checkDeleteAllPermission();
     
     // Load initial settings including prompts
-    await loadSettings();
+    await loadSettings(canManageDB);
 
-    async function loadSettings() {
+    async function loadSettings(canManageDB) {
         try {
             // Load global config (prompts and additive retrieval)
             await loadGlobalConfig();
             
-            // Placeholder for other settings
+            // If user has permission, load global settings (login restriction)
+            if (canManageDB) {
+                await loadAdminSettings();
+            }
         } catch (error) {
             console.error('Error loading settings:', error);
             showNotification('Failed to load settings', 'error');
+        }
+    }
+
+    async function loadAdminSettings() {
+        try {
+            const response = await fetch('/api/settings/global');
+            const result = await response.json();
+            
+            if (result.success && result.settings) {
+                const allowLocalLoginToggle = document.getElementById('allow-local-login-toggle');
+                if (allowLocalLoginToggle) {
+                    allowLocalLoginToggle.checked =  result.settings.allowLocalLogin !== false; // Default true
+                }
+            }
+        } catch (error) {
+            console.error('Error loading admin settings:', error);
         }
     }
 
@@ -58,6 +76,18 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const tutor = document.getElementById('tutor-prompt')?.value;
                 const additiveRetrieval = document.getElementById('additive-retrieval-toggle')?.checked;
                 const courseId = await getCurrentCourseId();
+                
+                // Save login restriction setting if visible
+                const loginRestrictionSection = document.getElementById('login-restriction-section');
+                if (loginRestrictionSection && loginRestrictionSection.style.display !== 'none') {
+                    const allowLocalLogin = document.getElementById('allow-local-login-toggle')?.checked;
+                    
+                    await fetch('/api/settings/global', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ allowLocalLogin })
+                    });
+                }
                 
                 if (base && protege && tutor) {
                     const response = await fetch('/api/settings/prompts', {
@@ -208,6 +238,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     /**
      * Check if the current user has permission to see the delete all button
      * Hides the entire Database Management section if user doesn't have permission
+     * Returns true if user has permission
      */
     async function checkDeleteAllPermission() {
         try {
@@ -219,25 +250,27 @@ document.addEventListener('DOMContentLoaded', async () => {
             
             // Get the Database Management section by ID
             const databaseSection = document.getElementById('database-management-section');
+            const loginRestrictionSection = document.getElementById('login-restriction-section');
             
             if (result.success && result.canDeleteAll) {
-                // User has permission, ensure the section is visible (it's visible by default)
-                if (databaseSection) {
-                    databaseSection.style.display = '';
-                }
+                // User has permission, ensure the sections are visible
+                if (databaseSection) databaseSection.style.display = '';
+                if (loginRestrictionSection) loginRestrictionSection.style.display = '';
+                return true;
             } else {
-                // User doesn't have permission, hide the Database Management section
-                if (databaseSection) {
-                    databaseSection.style.display = 'none';
-                }
+                // User doesn't have permission, hide the sections
+                if (databaseSection) databaseSection.style.display = 'none';
+                if (loginRestrictionSection) loginRestrictionSection.style.display = 'none';
+                return false;
             }
         } catch (error) {
             console.error('Error checking delete all permission:', error);
-            // On error, hide the section for security
+            // On error, hide the sections for security
             const databaseSection = document.getElementById('database-management-section');
-            if (databaseSection) {
-                databaseSection.style.display = 'none';
-            }
+            const loginRestrictionSection = document.getElementById('login-restriction-section');
+            if (databaseSection) databaseSection.style.display = 'none';
+            if (loginRestrictionSection) loginRestrictionSection.style.display = 'none';
+            return false;
         }
     }
     
