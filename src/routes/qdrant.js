@@ -368,6 +368,139 @@ router.delete('/delete-all-collections', async (req, res) => {
     }
 });
 
+/**
+ * POST /api/qdrant/cleanup-vectors
+ * Clean up orphaned vectors in Qdrant that don't satisfy MongoDB document existence
+ */
+router.post('/cleanup-vectors', async (req, res) => {
+    try {
+        const { courseId } = req.body;
+        
+        if (!courseId) {
+            return res.status(400).json({
+                success: false,
+                message: 'Course ID is required to scope the cleanup operation'
+            });
+        }
+        
+        // Ensure service is initialized
+        if (!qdrantService.client) {
+            await qdrantService.initialize();
+        }
+        
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
+        
+        console.log(`🧹 Starting vector cleanup for course: ${courseId}`);
+        
+        // Step 1: Get all document IDs from MongoDB for this course
+        const documentsCollection = db.collection('documents');
+        const mongoDocs = await documentsCollection.find(
+            { courseId: courseId },
+            { projection: { _id: 1, documentId: 1 } } // Fetch actual ID field
+        ).toArray();
+        
+        // Create a Set of valid document IDs for O(1) lookup
+        // Check both _id (if string) and documentId field just to be safe
+        const validDocIds = new Set();
+        mongoDocs.forEach(doc => {
+            if (doc.documentId) validDocIds.add(doc.documentId.toString());
+            if (doc._id) validDocIds.add(doc._id.toString());
+        });
+        
+        console.log(`Found ${validDocIds.size} valid documents in MongoDB for course ${courseId}`);
+        
+        // Step 2: Scroll through Qdrant to find all vectors for this course
+        // We need to find unique document IDs in Qdrant
+        const qdrantDocIds = new Set();
+        let nextOffset = null;
+        let loopCount = 0;
+        const MAX_LOOPS = 500; // Safety break
+        
+        do {
+            loopCount++;
+            
+            const scrollResult = await qdrantService.client.scroll(qdrantService.collectionName, {
+                filter: {
+                    must: [
+                        { key: 'courseId', match: { value: courseId } }
+                    ]
+                },
+                limit: 1000,
+                with_payload: true, // Need payload to get documentId
+                with_vector: false,
+                offset: nextOffset
+            });
+            
+            const points = scrollResult.points || [];
+            nextOffset = scrollResult.next_page_offset;
+            
+            // Extract document IDs from payload
+            points.forEach(point => {
+                if (point.payload && point.payload.documentId) {
+                    qdrantDocIds.add(point.payload.documentId);
+                }
+            });
+            
+            if (loopCount >= MAX_LOOPS) break;
+            
+        } while (nextOffset);
+        
+        console.log(`Found ${qdrantDocIds.size} unique documents in Qdrant for course ${courseId}`);
+        
+        // Step 3: Identify orphans
+        const orphanedDocIds = [];
+        qdrantDocIds.forEach(qDocId => {
+            if (!validDocIds.has(qDocId)) {
+                orphanedDocIds.push(qDocId);
+            }
+        });
+        
+        console.log(`Found ${orphanedDocIds.length} orphaned documents in Qdrant`);
+        
+        // Step 4: Delete orphans
+        let deletedCount = 0;
+        const deletedDocs = [];
+        
+        for (const orphanId of orphanedDocIds) {
+            console.log(`Deleting chunks for orphaned document: ${orphanId}`);
+            // Pass courseId to ensure scoped deletion (though implicit by doc ID usually)
+            const deleteResult = await qdrantService.deleteDocumentChunks(orphanId, courseId);
+            if (deleteResult.success) {
+                deletedCount += deleteResult.deletedCount;
+                deletedDocs.push(orphanId);
+            }
+        }
+        
+        res.json({
+            success: true,
+            message: `Cleanup completed. Removed ${orphanedDocIds.length} orphaned documents (${deletedCount} chunks).`,
+            data: {
+                courseId,
+                validMongoDocs: validDocIds.size,
+                qdrantDocs: qdrantDocIds.size,
+                orphanedDocs: orphanedDocIds.length,
+                deletedChunks: deletedCount,
+                deletedDocIds: deletedDocs
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error cleaning up vectors:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while cleaning up vectors',
+            error: error.message
+        });
+    }
+});
+
 module.exports = router;
 
 

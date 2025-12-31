@@ -583,7 +583,7 @@ router.delete('/:documentId', async (req, res) => {
                     await qdrantService.initialize();
                 }
                 
-                const qdrantResult = await qdrantService.deleteDocumentChunks(documentId);
+                const qdrantResult = await qdrantService.deleteDocumentChunks(documentId, document.courseId);
                 if (qdrantResult.success) {
                     qdrantDeleted = true;
                     qdrantDeletedCount = qdrantResult.deletedCount;
