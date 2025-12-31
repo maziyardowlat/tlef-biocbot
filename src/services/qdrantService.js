@@ -597,46 +597,84 @@ class QdrantService {
     /**
      * Delete all chunks for a specific document
      * @param {string} documentId - Document ID to delete
+     * @param {string} [courseId] - Optional course ID to scope the deletion
      * @returns {Promise<Object>} Result of deletion
      */
-    async deleteDocumentChunks(documentId) {
+    async deleteDocumentChunks(documentId, courseId = null) {
         try {
-            console.log(`Deleting chunks for document: ${documentId}`);
+            console.log(`Deleting chunks for document: ${documentId}${courseId ? ` in course: ${courseId}` : ''}`);
 
-            // Find all chunks for this document
-            const chunks = await this.client.scroll(this.collectionName, {
-                filter: {
-                    must: [
-                        {
-                            key: 'documentId',
-                            match: { value: documentId }
-                        }
-                    ]
-                },
-                limit: 1000,
-                with_payload: false
-            });
+            const filter = {
+                must: [
+                    {
+                        key: 'documentId',
+                        match: { value: documentId }
+                    }
+                ]
+            };
 
-            if (chunks.points.length === 0) {
-                return {
-                    success: true,
-                    message: 'No chunks found for document',
-                    deletedCount: 0
-                };
+            // Add courseId scope if provided
+            if (courseId) {
+                filter.must.push({
+                    key: 'courseId',
+                    match: { value: courseId }
+                });
             }
 
-            // Delete the chunks
-            const chunkIds = chunks.points.map(point => point.id);
-            await this.client.delete(this.collectionName, {
-                points: chunkIds
-            });
+            let totalDeleted = 0;
+            let nextOffset = null;
+            let loopCount = 0;
+            const MAX_LOOPS = 100; // Safety break
 
-            console.log(`Deleted ${chunkIds.length} chunks for document: ${documentId}`);
+            console.log('Starting deletion loop...');
+
+            do {
+                loopCount++;
+                
+                // Find chunks for this document (page by page)
+                const scrollResult = await this.client.scroll(this.collectionName, {
+                    filter: filter,
+                    limit: 1000, // Processing in batches of 1000
+                    with_payload: false,
+                    offset: nextOffset
+                });
+
+                const points = scrollResult.points || [];
+                nextOffset = scrollResult.next_page_offset;
+
+                if (points.length === 0) {
+                    if (loopCount === 1) {
+                        return {
+                            success: true,
+                            message: 'No chunks found for document',
+                            deletedCount: 0
+                        };
+                    }
+                    break; // No more points
+                }
+
+                // Delete the chunks in this batch
+                const chunkIds = points.map(point => point.id);
+                await this.client.delete(this.collectionName, {
+                    points: chunkIds
+                });
+                
+                totalDeleted += chunkIds.length;
+                console.log(`Batch ${loopCount}: Deleted ${chunkIds.length} chunks. Total so far: ${totalDeleted}`);
+
+                if (loopCount >= MAX_LOOPS) {
+                    console.warn(`Safety break triggered in deletion loop after ${MAX_LOOPS} iterations`);
+                    break;
+                }
+
+            } while (nextOffset);
+
+            console.log(`Successfully deleted total ${totalDeleted} chunks for document: ${documentId}`);
 
             return {
                 success: true,
-                message: `Deleted ${chunkIds.length} chunks successfully`,
-                deletedCount: chunkIds.length
+                message: `Deleted ${totalDeleted} chunks successfully`,
+                deletedCount: totalDeleted
             };
 
         } catch (error) {
