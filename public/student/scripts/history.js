@@ -184,15 +184,30 @@ document.addEventListener('DOMContentLoaded', () => {
     })();
     console.log('Chat history page loaded');
     
+    // Flag to track initialization state
+    let isPageInitialized = false;
+
+    // Helper to run initialization once
+    const runInitialization = () => {
+        if (isPageInitialized) {
+            console.log('Page already initialized, skipping');
+            return;
+        }
+        console.log('Running initialization...');
+        isPageInitialized = true;
+        
+        initializeHistoryPage();
+        loadChatHistory();
+        setupEventListeners();
+    };
+
     // Wait for auth to be ready before initializing
     if (typeof window.getCurrentUser === 'function') {
         const user = window.getCurrentUser();
         console.log('Auth function available, current user:', user);
         if (user && user.userId) {
             console.log('User is authenticated, initializing immediately');
-            initializeHistoryPage();
-            loadChatHistory();
-            setupEventListeners();
+            runInitialization();
         } else {
             console.log('Auth function available but user not authenticated, waiting for auth:ready event');
             document.addEventListener('auth:ready', (event) => {
@@ -203,9 +218,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     window.currentUser = event.detail;
                     console.log('Stored user from event:', window.currentUser);
                 }
-                initializeHistoryPage();
-                loadChatHistory();
-                setupEventListeners();
+                runInitialization();
             });
         }
     } else {
@@ -218,23 +231,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 window.currentUser = event.detail;
                 console.log('Stored user from event:', window.currentUser);
             }
-            initializeHistoryPage();
-            loadChatHistory();
-            setupEventListeners();
+            runInitialization();
         });
     }
     
     // Fallback: try after a delay if still not initialized
     setTimeout(() => {
         console.log('Fallback initialization after delay');
-        if (typeof window.getCurrentUser === 'function') {
+        if (!isPageInitialized && typeof window.getCurrentUser === 'function') {
             const user = window.getCurrentUser();
             console.log('Fallback - current user:', user);
             if (user && user.userId) {
                 console.log('Fallback - user authenticated, initializing');
-                initializeHistoryPage();
-                loadChatHistory();
-                setupEventListeners();
+                runInitialization();
             }
         }
     }, 3000);
