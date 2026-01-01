@@ -39,8 +39,11 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization', 'Cookie']
 }));
 
-// Serve static files from the public directory
-app.use(express.static(path.join(__dirname, '../public')));
+// Serve shared static files publicly
+app.use('/assets', express.static(path.join(__dirname, '../public/assets')));
+app.use('/styles', express.static(path.join(__dirname, '../public/styles')));
+app.use('/common', express.static(path.join(__dirname, '../public/common')));
+
 
 // Shibboleth routes will be mounted after session and Passport are configured
 // This ensures session support is available for Passport authentication
@@ -210,8 +213,7 @@ app.use(session({
     name: 'biocbot.sid'
 }));
 
-// Serve static files from the 'public' directory
-app.use(express.static(path.join(__dirname, '../public')));
+
 
 // Home page route - redirect to login
 app.get('/', (req, res) => {
@@ -254,6 +256,11 @@ app.get('/test-qdrant', async (req, res) => {
  * Set up protected routes after authentication middleware is initialized
  */
 function setupProtectedRoutes() {
+    // Protected static files
+    app.use('/student', authMiddleware.requireStudent, express.static(path.join(__dirname, '../public/student')));
+    app.use('/instructor', authMiddleware.requireInstructorOrTA, express.static(path.join(__dirname, '../public/instructor')));
+    app.use('/ta', authMiddleware.requireTA, express.static(path.join(__dirname, '../public/ta')));
+
     // Qdrant test page (protected)
     app.get('/qdrant-test', authMiddleware.requireAuth, (req, res) => {
         res.sendFile(path.join(__dirname, '../public/qdrant-test.html'));
