@@ -664,6 +664,22 @@ function createPreviewMessage(messageData) {
     contentDiv.appendChild(paragraph);
     contentDiv.appendChild(timestamp);
     
+    // Handle special message types
+    if (messageData.messageType === 'mode-result' || messageData.messageType === 'mode-toggle-result') {
+        if (messageData.htmlContent) {
+            contentDiv.innerHTML = messageData.htmlContent;
+            // Re-add timestamp if it was lost in HTML content replacement
+            if (!contentDiv.querySelector('.timestamp')) {
+                contentDiv.appendChild(timestamp);
+            }
+        }
+        
+        if (messageData.messageType === 'mode-result') {
+            messageDiv.classList.add('standard-mode-result');
+            contentDiv.classList.add('standard-mode-content');
+        }
+    }
+    
     messageDiv.appendChild(avatarDiv);
     messageDiv.appendChild(contentDiv);
     
