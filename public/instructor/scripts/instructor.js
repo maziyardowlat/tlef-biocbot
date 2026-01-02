@@ -279,8 +279,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         let fileIcon = '';
         if (file.name.toLowerCase().includes('quiz')) {
             fileIcon = '';
-        } else if (file.name.toLowerCase().includes('syllabus')) {
-            fileIcon = '';
         }
         
         fileItem.innerHTML = `
@@ -455,14 +453,6 @@ function openUploadModal(week, contentType = '') {
         case 'practice-quiz':
             title = 'Upload Practice Questions/Tutorial';
             buttonText = 'Upload Practice Questions';
-            break;
-        case 'readings':
-            title = 'Upload Readings';
-            buttonText = 'Upload Readings';
-            break;
-        case 'syllabus':
-            title = 'Upload Syllabus';
-            buttonText = 'Upload Syllabus';
             break;
         case 'additional':
             title = 'Upload Additional Material';
@@ -724,12 +714,6 @@ async function handleUpload() {
                 break;
             case 'practice-quiz':
                 fileName = `*Practice Questions/Tutorial - ${currentWeek}`;
-                break;
-            case 'readings':
-                fileName = `Readings - ${currentWeek}`;
-                break;
-            case 'syllabus':
-                fileName = `Syllabus - ${currentWeek}`;
                 break;
             case 'additional':
                 fileName = materialNameInput || `Additional Material - ${currentWeek}`;

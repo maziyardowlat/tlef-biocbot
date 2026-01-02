@@ -152,28 +152,11 @@ function generateCourseStructure(weeks, lecturesPerWeek, contentTypes) {
         });
     }
     
-    // Generate special folders based on content types
-    if (contentTypes.includes('syllabus')) {
-        structure.specialFolders.push({
-            id: 'syllabus',
-            name: 'Syllabus & Schedule',
-            type: 'syllabus'
-        });
-    }
-    
     if (contentTypes.includes('practice-quizzes')) {
         structure.specialFolders.push({
             id: 'quizzes',
             name: 'Practice Quizzes',
             type: 'quiz'
-        });
-    }
-    
-    if (contentTypes.includes('readings')) {
-        structure.specialFolders.push({
-            id: 'readings',
-            name: 'Required Readings',
-            type: 'reading'
         });
     }
     
@@ -576,7 +559,6 @@ router.get('/:courseId', async (req, res) => {
                     documents: lecture.documents?.length || 0
                 })) || [],
                 specialFolders: [
-                    { id: 'syllabus', name: 'Syllabus & Schedule', type: 'syllabus' },
                     { id: 'quizzes', name: 'Practice Quizzes', type: 'quiz' }
                 ]
             }
@@ -658,7 +640,6 @@ async function getCourseForStudent(req, res, courseId) {
                     documents: lecture.documents?.length || 0
                 })) || [],
                 specialFolders: [
-                    { id: 'syllabus', name: 'Syllabus & Schedule', type: 'syllabus' },
                     { id: 'quizzes', name: 'Practice Quizzes', type: 'quiz' }
                 ]
             }
