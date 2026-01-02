@@ -53,10 +53,6 @@ function mapContentTypeToDocumentType(contentType) {
             return 'practice_q_tutorials';
         case 'additional':
             return 'additional';
-        case 'readings':
-            return 'readings';
-        case 'syllabus':
-            return 'syllabus';
         case 'text':
             return 'text';
         default:

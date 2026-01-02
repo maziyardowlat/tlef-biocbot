@@ -93,11 +93,8 @@ async function determineSourceAttribution(searchResults, courseId, unitName, db)
             let readableType = 'Material';
             switch (docType) {
                 case 'lecture_notes': readableType = 'Lecture Notes'; break;
-                case 'practice_q_tutorials': 
                 case 'practice-quiz': readableType = 'Practice Questions'; break;
                 case 'additional': readableType = 'Additional Materials'; break;
-                case 'readings': readableType = 'Readings'; break;
-                case 'syllabus': readableType = 'Syllabus'; break;
                 default: readableType = 'Course Material';
             }
 
@@ -141,8 +138,6 @@ function analyzeChunkSources(searchResults) {
         hasLectureNotes: false,
         hasAdditionalMaterials: false,
         hasPracticeQuiz: false,
-        hasReadings: false,
-        hasSyllabus: false,
         hasUnknownType: false
     };
 
@@ -160,12 +155,6 @@ function analyzeChunkSources(searchResults) {
             case 'practice_q_tutorials':
                 analysis.hasPracticeQuiz = true;
                 break;
-            case 'readings':
-                analysis.hasReadings = true;
-                break;
-            case 'syllabus':
-                analysis.hasSyllabus = true;
-                break;
             case 'unknown':
                 analysis.hasUnknownType = true;
                 // Try to infer type from filename for legacy documents
@@ -177,10 +166,6 @@ function analyzeChunkSources(searchResults) {
                     analysis.hasLectureNotes = true;
                 } else if (fileName.includes('practice') || fileName.includes('quiz') || fileName.includes('tutorial')) {
                     analysis.hasPracticeQuiz = true;
-                } else if (fileName.includes('reading') || fileName.includes('textbook')) {
-                    analysis.hasReadings = true;
-                } else if (fileName.includes('syllabus')) {
-                    analysis.hasSyllabus = true;
                 } else {
                     // Default to additional materials for unknown types
                     analysis.hasAdditionalMaterials = true;
