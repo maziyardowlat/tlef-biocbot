@@ -1539,51 +1539,46 @@ function loadCurrentSessionIntoInterface() {
  */
 function showAutoContinueNotification() {
     try {
-        // Create a simple notification element
-        const notification = document.createElement('div');
-        notification.style.cssText = `
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: #4CAF50;
-            color: white;
-            padding: 12px 20px;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            z-index: 10000;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            font-size: 14px;
-            max-width: 300px;
-            animation: slideIn 0.3s ease-out;
-        `;
+        // Find or create notification container
+        let container = document.querySelector('.notification-container');
+        if (!container) {
+            container = document.createElement('div');
+            container.className = 'notification-container';
+            document.body.appendChild(container); // Append to body to ensure it's visible
+        }
 
+        // Create notification element
+        const notification = document.createElement('div');
+        notification.className = 'notification success'; // Green for success
+        
         notification.innerHTML = `
             <div style="display: flex; align-items: center; gap: 8px;">
                 <span style="font-size: 16px;">🔄</span>
                 <span>Chat continued from where you left off</span>
             </div>
+            <button class="notification-close" aria-label="Close notification">&times;</button>
         `;
 
-        // Add CSS animation
-        const style = document.createElement('style');
-        style.textContent = `
-            @keyframes slideIn {
-                from { transform: translateX(100%); opacity: 0; }
-                to { transform: translateX(0); opacity: 1; }
-            }
-        `;
-        document.head.appendChild(style);
+        // Add close functionality
+        const closeBtn = notification.querySelector('.notification-close');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => {
+                notification.remove();
+            });
+        }
 
-        // Add to page
-        document.body.appendChild(notification);
+        // Add to container
+        container.appendChild(notification);
 
         // Remove after 3 seconds
         setTimeout(() => {
             if (notification.parentNode) {
-                notification.style.animation = 'slideIn 0.3s ease-out reverse';
+                // Add fade out effect if desired, or just remove
+                notification.style.opacity = '0';
+                notification.style.transition = 'opacity 0.3s ease-out';
                 setTimeout(() => {
                     if (notification.parentNode) {
-                        notification.parentNode.removeChild(notification);
+                        notification.remove();
                     }
                 }, 300);
             }
@@ -1865,41 +1860,46 @@ async function handleNewSession() {
  */
 function showNewSessionNotification() {
     try {
-        // Create a simple notification element
-        const notification = document.createElement('div');
-        notification.style.cssText = `
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: #17a2b8;
-            color: white;
-            padding: 12px 20px;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            z-index: 10000;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            font-size: 14px;
-            max-width: 300px;
-            animation: slideIn 0.3s ease-out;
-        `;
+        // Find or create notification container
+        let container = document.querySelector('.notification-container');
+        if (!container) {
+            container = document.createElement('div');
+            container.className = 'notification-container';
+            document.body.appendChild(container); // Append to body to ensure it's visible
+        }
 
+        // Create notification element
+        const notification = document.createElement('div');
+        notification.className = 'notification info'; // Info color (teal)
+        
         notification.innerHTML = `
             <div style="display: flex; align-items: center; gap: 8px;">
                 <span style="font-size: 16px;">✨</span>
                 <span>New chat session started</span>
             </div>
+            <button class="notification-close" aria-label="Close notification">&times;</button>
         `;
 
-        // Add to page
-        document.body.appendChild(notification);
+        // Add close functionality
+        const closeBtn = notification.querySelector('.notification-close');
+        if (closeBtn) {
+            closeBtn.addEventListener('click', () => {
+                notification.remove();
+            });
+        }
+
+        // Add to container
+        container.appendChild(notification);
 
         // Remove after 3 seconds
         setTimeout(() => {
             if (notification.parentNode) {
-                notification.style.animation = 'slideIn 0.3s ease-out reverse';
+                 // Add fade out effect if desired, or just remove
+                notification.style.opacity = '0';
+                notification.style.transition = 'opacity 0.3s ease-out';
                 setTimeout(() => {
                     if (notification.parentNode) {
-                        notification.parentNode.removeChild(notification);
+                        notification.remove();
                     }
                 }, 300);
             }
