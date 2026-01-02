@@ -152,28 +152,31 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Start polling for publish status changes (to detect updates from other users)
     startPublishStatusPolling();
     
-    // Load the saved learning objectives from the database
-    loadLearningObjectives();
-    
-    // Load the saved documents from the database
-    loadDocuments().then(() => {
-        updatePublishedSummary();
-    });
-    
-    // Load the saved assessment questions from the database first
-    loadAssessmentQuestions().then(() => {
-        // Wait a bit for DOM to be ready, then load thresholds
-        setTimeout(() => {
-            loadPassThresholds();
-        }, 500);
-    });
-    
-    // Set up threshold input event listeners
-    setupThresholdInputListeners();
-    
-    
-    // Load course data if available (either from onboarding or existing course)
-    loadCourseData();
+    // Only run dashboard initialization if we're on the dashboard page
+    const dashboardContainer = document.getElementById('dynamic-units-container') || document.getElementById('upload-drop-area');
+    if (dashboardContainer) {
+        // Load the saved learning objectives from the database
+        loadLearningObjectives();
+        
+        // Load the saved documents from the database
+        loadDocuments().then(() => {
+            updatePublishedSummary();
+        });
+        
+        // Load the saved assessment questions from the database first
+        loadAssessmentQuestions().then(() => {
+            // Wait a bit for DOM to be ready, then load thresholds
+            setTimeout(() => {
+                loadPassThresholds();
+            }, 500);
+        });
+        
+        // Set up threshold input event listeners
+        setupThresholdInputListeners();
+        
+        // Load course data if available (either from onboarding or existing course)
+        loadCourseData();
+    }
     
     // Add global cleanup button
     // addGlobalCleanupButton(); // Function not implemented yet
@@ -5988,8 +5991,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // Initialize the main assessment system and load course structure from onboarding data
-    await initializeAssessmentSystem();
-    await loadOnboardingData();
+    // Only if we are on the dashboard
+    const dashboardContainer = document.getElementById('dynamic-units-container') || document.getElementById('upload-drop-area');
+    if (dashboardContainer) {
+        await initializeAssessmentSystem();
+        await loadOnboardingData();
+    }
 
 });
 

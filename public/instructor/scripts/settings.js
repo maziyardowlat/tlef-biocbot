@@ -155,8 +155,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                         if (basePromptInput) basePromptInput.value = result.prompts.base || '';
                         if (protegePromptInput) protegePromptInput.value = result.prompts.protege || '';
                         if (tutorPromptInput) tutorPromptInput.value = result.prompts.tutor || '';
-                        // Default for additive retrieval is false (off)
-                        if (additiveToggle) additiveToggle.checked = false;
+                        // Default for additive retrieval is true (on)
+                        if (additiveToggle) additiveToggle.checked = true;
                     }
                     
                     showNotification('Settings reset to defaults', 'success');

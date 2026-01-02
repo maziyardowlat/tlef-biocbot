@@ -179,7 +179,7 @@ router.post('/prompts/reset', async (req, res) => {
             { courseId: courseId },
             { 
                 $unset: { prompts: "" },
-                $set: { isAdditiveRetrieval: false } // Default to false
+                $set: { isAdditiveRetrieval: true } // Default to true
             }
         );
 
