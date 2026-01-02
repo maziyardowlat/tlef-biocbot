@@ -4263,6 +4263,25 @@ async function calculateStudentMode() {
         // Show mode result message
         showModeResult(mode, score);
 
+        // Autosave the mode result message immediately
+        // This ensures the rich HTML content we just created is saved
+        try {
+            const studentId = getCurrentStudentId();
+            // detailed autosave logic similar to selectCalibrationAnswer
+            const autoSaveKey = `biocbot_current_chat_${studentId}`;
+            
+            // We need to wait a tick for the DOM to update with the new message
+            setTimeout(async () => {
+                const currentChatData = await collectAllChatData();
+                if (currentChatData) {
+                    currentChatData.lastActivityTimestamp = new Date().toISOString();
+                    localStorage.setItem(autoSaveKey, JSON.stringify(currentChatData));
+                }
+            }, 100);
+        } catch (e) {
+            console.error('Error auto-saving mode result:', e);
+        }
+
         // Re-enable chat (clears noPublishedUnits flag and enables inputs)
         enableChatInput();
 
@@ -4502,6 +4521,93 @@ function showModeToggleResult(mode) {
 }
 
 /**
+ * Render a restored mode result message
+ * @param {Object} messageData - The message data object
+ */
+function renderRestoredModeResult(messageData) {
+    const chatMessages = document.getElementById('chat-messages');
+    if (!chatMessages) return;
+
+    const modeMessage = document.createElement('div');
+    modeMessage.classList.add('message', 'bot-message', 'mode-result', 'standard-mode-result');
+    modeMessage.dataset.timestamp = new Date(messageData.timestamp).getTime();
+
+    const avatarDiv = document.createElement('div');
+    avatarDiv.classList.add('message-avatar');
+    avatarDiv.textContent = 'B';
+
+    const contentDiv = document.createElement('div');
+    contentDiv.classList.add('message-content', 'standard-mode-content');
+
+    // Use saved HTML content if available, otherwise fall back to text
+    if (messageData.htmlContent) {
+        contentDiv.innerHTML = messageData.htmlContent;
+    } else {
+        // Fallback for older messages
+        const text = document.createElement('p');
+        text.textContent = messageData.content;
+        contentDiv.appendChild(text);
+    }
+
+    // Add timestamp if not already present in HTML (it shouldn't be as we removed it on save)
+    if (!contentDiv.querySelector('.timestamp')) {
+        const timestamp = document.createElement('span');
+        timestamp.classList.add('timestamp');
+        timestamp.textContent = messageData.displayTimestamp || formatTimestamp(new Date(messageData.timestamp));
+        timestamp.title = new Date(messageData.timestamp).toLocaleString();
+        contentDiv.appendChild(timestamp);
+    }
+
+    modeMessage.appendChild(avatarDiv);
+    modeMessage.appendChild(contentDiv);
+    chatMessages.appendChild(modeMessage);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+/**
+ * Render a restored mode toggle result message
+ * @param {Object} messageData - The message data object
+ */
+function renderRestoredModeToggleResult(messageData) {
+    const chatMessages = document.getElementById('chat-messages');
+    if (!chatMessages) return;
+
+    const modeMessage = document.createElement('div');
+    modeMessage.classList.add('message', 'bot-message', 'mode-toggle-result');
+    modeMessage.dataset.timestamp = new Date(messageData.timestamp).getTime();
+
+    const avatarDiv = document.createElement('div');
+    avatarDiv.classList.add('message-avatar');
+    avatarDiv.textContent = 'B';
+
+    const contentDiv = document.createElement('div');
+    contentDiv.classList.add('message-content');
+
+    // Use saved HTML content if available
+    if (messageData.htmlContent) {
+        contentDiv.innerHTML = messageData.htmlContent;
+    } else {
+        const text = document.createElement('p');
+        text.textContent = messageData.content;
+        contentDiv.appendChild(text);
+    }
+
+    // Add timestamp if needed
+    if (!contentDiv.querySelector('.timestamp')) {
+        const timestamp = document.createElement('span');
+        timestamp.classList.add('timestamp');
+        timestamp.textContent = messageData.displayTimestamp || formatTimestamp(new Date(messageData.timestamp));
+        timestamp.title = new Date(messageData.timestamp).toLocaleString();
+        contentDiv.appendChild(timestamp);
+    }
+
+    modeMessage.appendChild(avatarDiv);
+    modeMessage.appendChild(contentDiv);
+    chatMessages.appendChild(modeMessage);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+/**
  * Initialize mode toggle functionality
  */
 function initializeModeToggle() {
@@ -4533,9 +4639,21 @@ function initializeModeToggle() {
         updateModeToggleUI(newMode);
 
         // Show mode confirmation popup
-
         showModeToggleResult(newMode);
 
+        // Autosave the mode toggle message immediately
+        try {
+            const studentId = getCurrentStudentId();
+            collectAllChatData().then(currentChatData => {
+                if (currentChatData) {
+                    const autoSaveKey = `biocbot_current_chat_${studentId}`;
+                    currentChatData.lastActivityTimestamp = new Date().toISOString();
+                    localStorage.setItem(autoSaveKey, JSON.stringify(currentChatData));
+                }
+            });
+        } catch (e) {
+            console.error('Error auto-saving mode toggle:', e);
+        }
 
     });
 }
@@ -4662,6 +4780,7 @@ function extractMessageData(messageElement, index) {
             messageType: getMessageType(messageElement),
             isCalibrationQuestion: isCalibrationQuestion,
             isModeResult: isModeResult,
+            isModeToggleResult: messageElement.classList.contains('mode-toggle-result'),
             isAssessmentStart: isAssessmentStart
         };
 
@@ -4670,7 +4789,14 @@ function extractMessageData(messageElement, index) {
             messageData.questionData = extractQuestionData(messageElement);
         }
 
-        if (isModeResult) {
+        if (isModeResult || messageData.isModeToggleResult) {
+            // For mode results, we want to save the HTML content to preserve formatting
+            // But we need to be careful not to save the timestamp or avatar which are re-added on restore
+            const contentClone = contentElement.cloneNode(true);
+            const timestamp = contentClone.querySelector('.timestamp');
+            if (timestamp) timestamp.remove();
+            
+            messageData.htmlContent = contentClone.innerHTML;
             messageData.modeData = extractModeData(messageElement);
         }
 
@@ -4717,6 +4843,9 @@ function getMessageType(messageElement) {
     }
     if (messageElement.classList.contains('assessment-start')) {
         return 'assessment-start';
+    }
+    if (messageElement.classList.contains('mode-toggle-result')) {
+        return 'mode-toggle-result';
     }
     if (messageElement.classList.contains('unit-selection-welcome')) {
         return 'unit-selection';
@@ -5229,11 +5358,14 @@ function loadChatData(chatData) {
                         // This is a practice test question - restore its UI
                         renderRestoredPracticeQuestion(messageData); // Skip auto-save implicit
                     } else if (messageData.messageType === 'mode-result') {
-                        // This is a mode result message - add it as a regular bot message
-                        addMessage(messageData.content, 'bot', messageData.hasFlagButton, true, messageData.sourceAttribution, true); // Skip auto-save, force HTML for result
+                        // This is a mode result message - use dedicated restorer
+                        renderRestoredModeResult(messageData); // Skip auto-save
+                    } else if (messageData.messageType === 'mode-toggle-result') {
+                        // This is a mode toggle result message - use dedicated restorer
+                        renderRestoredModeToggleResult(messageData); // Skip auto-save
                     } else {
                         // Regular bot message
-                        addMessage(messageData.content, 'bot', messageData.hasFlagButton, true, messageData.sourceAttribution, messageData.isHtml); // Skip auto-save
+                        addMessage(messageData.content, 'bot', messageData.hasFlagButton, true, messageData.sourceAttribution, messageData.isHtml); // Skip auto-save, force HTML for result
                     }
                 }
             });
