@@ -16,6 +16,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const chatForm = document.getElementById('chat-form');
     const chatInput = document.getElementById('chat-input');
     const chatMessages = document.getElementById('chat-messages');
+    let currentController = null; // Controller for aborting in-flight requests
 
     // Guard: Only allow students on this page; redirect others immediately
     const handleRoleGuard = (user) => {
@@ -203,9 +204,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     /**
      * Send message to LLM service
      * @param {string} message - The message to send
+     * @param {boolean} checkSummaryAttempt - Whether to check for summary attempt
+     * @param {AbortSignal} signal - Optional abort signal
      * @returns {Promise<Object>} Response from LLM service
      */
-    async function sendMessageToLLM(message, checkSummaryAttempt = false) {
+    async function sendMessageToLLM(message, checkSummaryAttempt = false, signal = null) {
         try {
             // Get current student mode for context
             const currentMode = localStorage.getItem('studentMode') || 'tutor';
@@ -236,13 +239,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 
 
-            const response = await fetch('/api/chat', {
+            const fetchOptions = {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
                 body: JSON.stringify(requestBody)
-            });
+            };
+
+            if (signal) {
+                fetchOptions.signal = signal;
+            }
+
+            const response = await fetch('/api/chat', fetchOptions);
 
 
 
@@ -548,6 +557,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         chatForm.addEventListener('submit', async (e) => {
             e.preventDefault();
 
+            // Cancel any previous in-flight request
+            if (currentController) {
+                currentController.abort();
+                currentController = null;
+            }
+
+            // Create new controller for this request
+            currentController = new AbortController();
+            const signal = currentController.signal;
+
             // Prevent chat if no published units are available
             if (window.noPublishedUnits) {
 
@@ -605,7 +624,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 }
                 
-                const response = await sendMessageToLLM(message, shouldCheckSummaryAttempt);
+                const response = await sendMessageToLLM(message, shouldCheckSummaryAttempt, signal);
+
+                // Request completed successfully
+                currentController = null;
 
                 // Remove typing indicator
                 removeTypingIndicator();
@@ -638,6 +660,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             } catch (error) {
                 // Remove typing indicator
                 removeTypingIndicator();
+
+                if (error.name === 'AbortError') {
+                    // Request was aborted by user starting a new message
+                    addMessage('You have stopped this response', 'bot', false, true, null);
+                    // Don't log error or show generic error message
+                    return;
+                }
 
                 // Show error message
                 console.error('Chat error:', error);
