@@ -10,7 +10,7 @@ const { ensureCourseCodes } = require('./models/Course');
 const coursesRoutes = require('./routes/courses');
 const flagsRoutes = require('./routes/flags');
 const lecturesRoutes = require('./routes/lectures');
-const modeQuestionsRoutes = require('./routes/mode-questions');
+
 const chatRoutes = require('./routes/chat');
 const authRoutes = require('./routes/auth');
 const shibbolethRoutes = require('./routes/shibboleth');
@@ -473,7 +473,7 @@ function setupAPIRoutes() {
     app.use('/api/courses', authMiddleware.requireAuth, coursesRoutes);
     app.use('/api/flags', authMiddleware.requireAuth, authMiddleware.populateUser, authMiddleware.requireStudentEnrolled, flagsRoutes);
     app.use('/api/lectures', authMiddleware.requireAuth, lecturesRoutes);
-    app.use('/api/mode-questions', authMiddleware.requireAuth, modeQuestionsRoutes);
+
     app.use('/api/learning-objectives', authMiddleware.requireAuth, learningObjectivesRoutes);
     app.use('/api/documents', authMiddleware.requireAuth, documentsRoutes);
     app.use('/api/questions', authMiddleware.requireAuth, questionsRoutes);
