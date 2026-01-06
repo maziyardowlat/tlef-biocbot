@@ -202,8 +202,13 @@ router.post('/logout', (req, res) => {
         // Check if user is authenticated via CWL (SAML)
         // User model sets authProvider to 'saml' for CWL users
         const isCWL = user && user.authProvider === 'saml';
+        
+        let logoutPerformed = false;
 
         const performLocalLogout = (redirectUrl = '/login') => {
+            if (logoutPerformed) return;
+            logoutPerformed = true;
+
             // Use Passport's logout method
             req.logout((err) => {
                 if (err) {
@@ -239,19 +244,37 @@ router.post('/logout', (req, res) => {
             const passport = req.app.locals.passport;
             
             if (passport && passport.ubcShibHelpers && typeof passport.ubcShibHelpers.logout === 'function') {
-                // Generate SAML logout request
-                return passport.ubcShibHelpers.logout(req, (err, requestUrl) => {
-                    if (err) {
-                        console.error('SAML logout error:', err);
-                        // Fallback to local logout if SAML logout fails
-                        return performLocalLogout('/login');
+                console.log('[AUTH] Calling passport.ubcShibHelpers.logout');
+                
+                // Wrap SAML logout in a promise with timeout to prevent hanging
+                const samlLogoutPromise = new Promise((resolve, reject) => {
+                    try {
+                        passport.ubcShibHelpers.logout(req, (err, requestUrl) => {
+                            if (err) return reject(err);
+                            resolve(requestUrl);
+                        });
+                    } catch (e) {
+                        reject(e);
                     }
-
-                    console.log(`[AUTH] Generated SAML logout URL: ${requestUrl}`);
-                    
-                    // Clear local session and redirect to IdP logout URL
-                    performLocalLogout(requestUrl);
                 });
+
+                // Set a timeout of 5 seconds
+                const timeoutPromise = new Promise((_, reject) => {
+                    setTimeout(() => reject(new Error('SAML logout timeout')), 5000);
+                });
+
+                Promise.race([samlLogoutPromise, timeoutPromise])
+                    .then((requestUrl) => {
+                        console.log(`[AUTH] Generated SAML logout URL: ${requestUrl}`);
+                        performLocalLogout(requestUrl);
+                    })
+                    .catch((err) => {
+                        console.error('[AUTH] SAML logout failed or timed out:', err);
+                        // Fallback to local logout
+                        performLocalLogout('/login');
+                    });
+                    
+                return; // Wait for promise resolution
             } else {
                 console.warn('[AUTH] UBC Shibboleth helpers not available, falling back to local logout');
             }
