@@ -204,8 +204,20 @@ router.post('/logout', (req, res) => {
         const isCWL = user && user.authProvider === 'saml';
         
         let logoutPerformed = false;
+        
+        // Collect debug info to send to client
+        const debugInfo = {
+            userId: userId,
+            isCWL: isCWL,
+            authProvider: user ? user.authProvider : 'unknown',
+            strategyFound: false,
+            helperFound: false,
+            samlLogoutInitiated: false,
+            samlLogoutUrl: null,
+            error: null
+        };
 
-        const performLocalLogout = (redirectUrl = '/login') => {
+        const performLocalLogout = (redirectUrl = '/login', finalDebugInfo = {}) => {
             if (logoutPerformed) return;
             logoutPerformed = true;
 
@@ -213,6 +225,7 @@ router.post('/logout', (req, res) => {
             req.logout((err) => {
                 if (err) {
                     console.error('Passport logout error:', err);
+                    finalDebugInfo.logoutError = err.message;
                 }
 
                 // Destroy session
@@ -221,7 +234,8 @@ router.post('/logout', (req, res) => {
                         console.error('Session destroy error:', destroyErr);
                         return res.status(500).json({
                             success: false,
-                            error: 'Failed to logout'
+                            error: 'Failed to logout',
+                            debug: { ...debugInfo, ...finalDebugInfo, destroyError: destroyErr.message }
                         });
                     }
 
@@ -230,7 +244,8 @@ router.post('/logout', (req, res) => {
                     res.json({
                         success: true,
                         message: 'Logged out successfully',
-                        redirect: redirectUrl
+                        redirect: redirectUrl,
+                        debug: { ...debugInfo, ...finalDebugInfo }
                     });
                 });
             });
@@ -244,16 +259,16 @@ router.post('/logout', (req, res) => {
             const passport = req.app.locals.passport;
             
             // Access the strategy instance directly from passport
-            // This matches the pattern in the example repo where strategy.logout() is used
             const strategy = passport && passport._strategies ? passport._strategies['ubcshib'] : null;
+            debugInfo.strategyFound = !!strategy;
             
             if (strategy && typeof strategy.logout === 'function') {
                 console.log('[AUTH] Calling ubcshib strategy.logout');
+                debugInfo.samlLogoutInitiated = true;
                 
                 // Wrap SAML logout in a promise with timeout to prevent hanging
                 const samlLogoutPromise = new Promise((resolve, reject) => {
                     try {
-                        // The example shows strategy.logout(req, callback)
                         strategy.logout(req, (err, requestUrl) => {
                             if (err) return reject(err);
                             resolve(requestUrl);
@@ -271,26 +286,33 @@ router.post('/logout', (req, res) => {
                 Promise.race([samlLogoutPromise, timeoutPromise])
                     .then((requestUrl) => {
                         console.log(`[AUTH] Generated SAML logout URL: ${requestUrl}`);
-                        performLocalLogout(requestUrl);
+                        debugInfo.samlLogoutUrl = requestUrl;
+                        performLocalLogout(requestUrl, { samlSuccess: true });
                     })
                     .catch((err) => {
                         console.error('[AUTH] SAML logout failed or timed out:', err);
+                        debugInfo.error = err.message;
                         // Fallback to local logout
-                        performLocalLogout('/login');
+                        performLocalLogout('/login', { samlError: true });
                     });
                     
                 return; // Wait for promise resolution
             } else {
                 console.warn('[AUTH] UBC Shibboleth strategy not found or missing logout method');
+                
                 // Check if we can fallback to helpers if strategy access failed
                 if (passport && passport.ubcShibHelpers && typeof passport.ubcShibHelpers.logout === 'function') {
                      console.log('[AUTH] Falling back to passport.ubcShibHelpers.logout');
+                     debugInfo.helperFound = true;
+                     
                      passport.ubcShibHelpers.logout(req, (err, requestUrl) => {
                         if (err) {
                              console.error('SAML logout helper error:', err);
-                             return performLocalLogout('/login');
+                             debugInfo.error = err.message;
+                             return performLocalLogout('/login', { helperError: true });
                         }
-                        performLocalLogout(requestUrl);
+                        debugInfo.samlLogoutUrl = requestUrl;
+                        performLocalLogout(requestUrl, { helperSuccess: true });
                      });
                      return;
                 }
@@ -298,13 +320,14 @@ router.post('/logout', (req, res) => {
         }
 
         // Standard local logout
-        performLocalLogout('/login');
+        performLocalLogout('/login', { localOnly: true });
 
     } catch (error) {
         console.error('Error in logout endpoint:', error);
         res.status(500).json({
             success: false,
-            error: 'Logout failed'
+            error: 'Logout failed',
+            debugError: error.message
         });
     }
 });

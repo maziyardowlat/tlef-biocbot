@@ -112,13 +112,23 @@ async function logout() {
         const result = await response.json();
         
         if (result.success) {
+            // Log debug info for troubleshooting
+            if (result.debug) {
+                console.log('Logout Debug Info:', result.debug);
+                if (result.debug.isCWL) {
+                    console.log('CWL Logout Status:', result.debug.samlLogoutUrl ? 'SUCCESS' : 'FAILED/SKIPPED');
+                }
+            }
+            
             // Clear local user data
             currentUser = null;
             
             // Redirect to login page
-            window.location.href = '/login';
+            // Use redirect URL from server if available (important for SAML logout)
+            window.location.href = result.redirect || '/login';
         } else {
             console.error('Logout failed:', result.error);
+            if (result.debug) console.log('Debug Info:', result.debug);
             // Still redirect to login even if logout failed
             window.location.href = '/login';
         }
