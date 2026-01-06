@@ -1430,3 +1430,114 @@ input:checked+.toggle-slider:before {
 .chat-limit-link:hover {
     color: #357abd;
 }
+/* Chat Renaming Styles */
+
+.chat-history-item .title-container {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    margin-bottom: 4px;
+}
+
+.chat-history-item .title-text {
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
+    margin-right: 8px;
+}
+
+.chat-history-item .title-edit-container {
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+
+.chat-history-item .title-input {
+    flex: 1;
+    border: 1px solid var(--primary-color);
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 14px;
+    font-family: inherit;
+    margin-right: 6px;
+    outline: none;
+    background-color: var(--bg-secondary);
+    color: var(--text-primary);
+}
+
+.chat-history-item .edit-btn,
+.chat-history-item .save-btn,
+.chat-history-item .cancel-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0; 
+    transition: opacity 0.2s, background-color 0.2s;
+    color: var(--text-secondary);
+    width: 24px;
+    height: 24px;
+}
+
+.chat-history-item:hover .edit-btn {
+    opacity: 1;
+}
+
+/* Always show save/cancel buttons when editing */
+.chat-history-item .save-btn,
+.chat-history-item .cancel-btn {
+    opacity: 1;
+}
+
+.chat-history-item .edit-btn:hover,
+.chat-history-item .save-btn:hover,
+.chat-history-item .cancel-btn:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+    color: var(--primary-color);
+}
+
+.chat-history-item .save-btn {
+    color: var(--success-color, #28a745);
+}
+
+.chat-history-item .cancel-btn {
+    color: var(--error-color, #dc3545);
+}
+
+/* Edit icon SVG */
+.edit-icon {
+    width: 14px;
+    height: 14px;
+    fill: currentColor;
+}
+
+/* Save icon SVG */
+.save-icon {
+    width: 14px;
+    height: 14px;
+    fill: currentColor;
+}
+
+/* Cancel icon SVG */
+.cancel-icon {
+    width: 14px;
+    height: 14px;
+    fill: currentColor;
+}
+
+/* Ensure title is hidden when editing */
+.chat-history-item.editing .title-text {
+    display: none;
+}
+
+.chat-history-item.editing .edit-btn {
+    display: none;
+}

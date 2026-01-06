@@ -294,14 +294,14 @@ router.get('/:courseId/:studentId/sessions/own', async (req, res) => {
             }
         }
         
-        // Get all chat sessions for this student in this course (excluding soft deleted)
+        // Get all chat sessions for this student in this course (excluding soft deleted for student)
         const chatSessionsCollection = db.collection('chat_sessions');
         const sessions = await chatSessionsCollection.find({ 
             courseId: courseId,
             studentId: studentId,
-            $or: [
-                { isDeleted: { $exists: false } }, // Legacy sessions without isDeleted field
-                { isDeleted: false } // Non-deleted sessions
+            $and: [
+                { $or: [{ isDeleted: { $exists: false } }, { isDeleted: false }] }, // Not globally deleted
+                { studentDeleted: { $ne: true } } // Not deleted by student
             ]
         }).sort({ savedAt: -1 }).toArray();
         
@@ -384,6 +384,7 @@ router.get('/:courseId/:studentId/sessions', async (req, res) => {
         }
         
         // Get all chat sessions for this student in this course (excluding soft deleted)
+        // Instructors should still see sessions deleted by students (studentDeleted: true)
         const chatSessionsCollection = db.collection('chat_sessions');
         const sessions = await chatSessionsCollection.find({ 
             courseId: courseId,
@@ -575,15 +576,16 @@ router.delete('/:courseId/:studentId/sessions/:sessionId/own', async (req, res) 
             });
         }
 
-        // Soft delete the session by setting isDeleted to true
+        // Soft delete the session for STUDENT ONLY by setting studentDeleted to true
+        // This keeps it visible for instructors (who filter by isDeleted)
         const result = await chatSessionsCollection.updateOne({
             sessionId: sessionId,
             courseId: courseId,
             studentId: studentId
         }, {
             $set: {
-                isDeleted: true,
-                deletedAt: new Date()
+                studentDeleted: true,
+                studentDeletedAt: new Date()
             }
         });
 
@@ -594,7 +596,7 @@ router.delete('/:courseId/:studentId/sessions/:sessionId/own', async (req, res) 
             });
         }
 
-        console.log(`Soft deleted chat session ${sessionId} for student ${studentId} in course ${courseId}`);
+        console.log(`Soft deleted (student-only) chat session ${sessionId} for student ${studentId} in course ${courseId}`);
 
         res.json({
             success: true,
@@ -686,6 +688,114 @@ router.delete('/:courseId/:studentId/sessions/:sessionId', async (req, res) => {
         res.status(500).json({
             success: false,
             error: 'Failed to delete chat session'
+        });
+    }
+});
+
+/**
+ * PUT /api/students/:courseId/:studentId/sessions/:sessionId/title
+ * Update the title of a specific chat session
+ */
+router.put('/:courseId/:studentId/sessions/:sessionId/title', async (req, res) => {
+    try {
+        const { courseId, studentId, sessionId } = req.params;
+        const { title } = req.body;
+
+        if (!courseId || !studentId || !sessionId || !title) {
+            return res.status(400).json({
+                success: false,
+                error: 'Course ID, Student ID, Session ID, and Title are required'
+            });
+        }
+
+        // Get authenticated user information
+        const user = req.user;
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                error: 'Authentication required'
+            });
+        }
+
+        // Students can only update their own chat sessions
+        if (user.role === 'student' && user.userId !== studentId) {
+            return res.status(403).json({
+                success: false,
+                error: 'You can only update your own chat sessions'
+            });
+        }
+
+        // Instructors can update any student's sessions (though UI might not expose this yet)
+        if (user.role !== 'instructor' && user.role !== 'student') {
+            return res.status(403).json({
+                success: false,
+                error: 'Access denied'
+            });
+        }
+
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(500).json({
+                success: false,
+                error: 'Database connection not available'
+            });
+        }
+
+        const chatSessionsCollection = db.collection('chat_sessions');
+
+        // Check if session exists and belongs to the user
+        const session = await chatSessionsCollection.findOne({
+            sessionId: sessionId,
+            courseId: courseId,
+            studentId: studentId,
+            $or: [
+                { isDeleted: { $exists: false } },
+                { isDeleted: false }
+            ]
+        });
+
+        if (!session) {
+            return res.status(404).json({
+                success: false,
+                error: 'Chat session not found'
+            });
+        }
+
+        // Update the title
+        const result = await chatSessionsCollection.updateOne({
+            sessionId: sessionId,
+            courseId: courseId,
+            studentId: studentId
+        }, {
+            $set: {
+                title: title,
+                lastModified: new Date()
+            }
+        });
+
+        if (result.matchedCount === 0) {
+            return res.status(404).json({
+                success: false,
+                error: 'Chat session not found'
+            });
+        }
+
+        console.log(`Updated title for chat session ${sessionId}: "${title}"`);
+
+        res.json({
+            success: true,
+            message: 'Chat session title updated successfully',
+            data: { 
+                sessionId, 
+                title 
+            }
+        });
+
+    } catch (error) {
+        console.error('Error updating chat session title:', error);
+        res.status(500).json({
+            success: false,
+            error: 'Failed to update chat session title'
         });
     }
 });

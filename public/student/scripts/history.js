@@ -102,6 +102,74 @@ async function deleteChatFromHistory(chatId) {
 }
 
 /**
+ * Update chat title (server-side)
+ * @param {string} chatId - The chat ID
+ * @param {string} newTitle - The new title
+ * @returns {Promise<boolean>} True if successful
+ */
+async function updateChatTitle(chatId, newTitle) {
+    try {
+        const studentId = getCurrentStudentId();
+        if (!studentId) {
+            console.error('No student ID found - cannot update title');
+            return false;
+        }
+
+        const courseId = localStorage.getItem('selectedCourseId');
+        
+        const response = await fetch(`/api/students/${courseId}/${studentId}/sessions/${chatId}/title`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ title: newTitle }),
+            credentials: 'include'
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to update title: ${response.status}`);
+        }
+
+        const result = await response.json();
+        if (!result.success) {
+            throw new Error(result.message || 'Failed to update title');
+        }
+
+        console.log('Successfully updated chat title');
+        
+        // Also update in localStorage as backup
+        const history = getChatHistory();
+        const chatIndex = history.findIndex(chat => chat.id === chatId);
+        if (chatIndex !== -1) {
+            history[chatIndex].title = newTitle;
+            const historyKey = `biocbot_chat_history_${studentId}`;
+            localStorage.setItem(historyKey, JSON.stringify(history));
+        }
+        
+        return true;
+    } catch (error) {
+        console.error('Error updating chat title:', error);
+        // Fallback: simple localStorage update for offline/error resilience
+        try {
+            const history = getChatHistory();
+            const chatIndex = history.findIndex(chat => chat.id === chatId);
+            if (chatIndex !== -1) {
+                history[chatIndex].title = newTitle;
+                const studentId = getCurrentStudentId();
+                if (studentId) {
+                    const historyKey = `biocbot_chat_history_${studentId}`;
+                    localStorage.setItem(historyKey, JSON.stringify(history));
+                    return true;
+                }
+            }
+        } catch (fallbackError) {
+            console.error('Error in fallback title update:', fallbackError);
+        }
+        return false;
+    }
+}
+
+/**
  * Get current user information
  * @returns {Object|null} Current user object or null
  */
@@ -498,7 +566,124 @@ function createHistoryItem(chat, index) {
         });
     });
     
-    item.appendChild(title);
+    // Clear item content and rebuild with rename support
+    item.innerHTML = '';
+    
+    // Title Container with Edit Support
+    const titleContainer = document.createElement('div');
+    titleContainer.classList.add('title-container');
+    
+    // Display Title
+    const titleText = document.createElement('div');
+    titleText.classList.add('title-text');
+    titleText.textContent = chat.title;
+    
+    // Edit Input (Hidden by default)
+    const titleInput = document.createElement('input');
+    titleInput.type = 'text';
+    titleInput.classList.add('title-input');
+    titleInput.value = chat.title;
+    titleInput.style.display = 'none';
+    
+    // Button Container
+    const btnContainer = document.createElement('div');
+    btnContainer.classList.add('title-edit-container');
+    
+    // Edit Button
+    const editBtn = document.createElement('button');
+    editBtn.classList.add('edit-btn');
+    editBtn.title = 'Rename Chat';
+    editBtn.innerHTML = '<svg class="edit-icon" viewBox="0 0 24 24"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>';
+    
+    // Save Button
+    const saveBtn = document.createElement('button');
+    saveBtn.classList.add('save-btn');
+    saveBtn.title = 'Save Name';
+    saveBtn.style.display = 'none';
+    saveBtn.innerHTML = '<svg class="save-icon" viewBox="0 0 24 24"><path d="M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z"/></svg>';
+    
+    // Cancel Button
+    const cancelBtn = document.createElement('button');
+    cancelBtn.classList.add('cancel-btn');
+    cancelBtn.title = 'Cancel';
+    cancelBtn.style.display = 'none';
+    cancelBtn.innerHTML = '<svg class="cancel-icon" viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>';
+    
+    // Append elements
+    titleContainer.appendChild(titleText);
+    titleContainer.appendChild(titleInput);
+    
+    // Edit logic
+    editBtn.onclick = (e) => {
+        e.stopPropagation();
+        item.classList.add('editing');
+        titleText.style.display = 'none';
+        titleInput.style.display = 'block';
+        editBtn.style.display = 'none';
+        saveBtn.style.display = 'flex';
+        cancelBtn.style.display = 'flex';
+        titleInput.focus();
+    };
+    
+    const closeEdit = () => {
+        item.classList.remove('editing');
+        titleText.style.display = 'block';
+        titleInput.style.display = 'none';
+        editBtn.style.display = 'flex';
+        saveBtn.style.display = 'none';
+        cancelBtn.style.display = 'none';
+        titleInput.value = chat.title; // Reset value
+    };
+    
+    const saveTitle = async () => {
+        const newTitle = titleInput.value.trim();
+        if (newTitle && newTitle !== chat.title) {
+            const success = await updateChatTitle(chat.id, newTitle);
+            if (success) {
+                chat.title = newTitle;
+                titleText.textContent = newTitle;
+                
+                // Update in allChatHistory
+                const chatIndex = allChatHistory.findIndex(c => c.id === chat.id);
+                if (chatIndex !== -1) {
+                    allChatHistory[chatIndex].title = newTitle;
+                }
+                
+                // Update preview if selected
+                if (currentSelectedChat && currentSelectedChat.id === chat.id) {
+                    const previewTitle = document.getElementById('preview-title');
+                    if (previewTitle) previewTitle.textContent = newTitle;
+                }
+            }
+        }
+        closeEdit();
+    };
+    
+    saveBtn.onclick = (e) => {
+        e.stopPropagation();
+        saveTitle();
+    };
+    
+    cancelBtn.onclick = (e) => {
+        e.stopPropagation();
+        closeEdit();
+    };
+    
+    titleInput.onclick = (e) => e.stopPropagation();
+    
+    titleInput.onkeydown = (e) => {
+        if (e.key === 'Enter') {
+            saveTitle();
+        } else if (e.key === 'Escape') {
+            closeEdit();
+        }
+    };
+    
+    titleContainer.appendChild(editBtn);
+    titleContainer.appendChild(saveBtn);
+    titleContainer.appendChild(cancelBtn);
+    
+    item.appendChild(titleContainer);
     item.appendChild(preview);
     item.appendChild(date);
     item.appendChild(metadata);
