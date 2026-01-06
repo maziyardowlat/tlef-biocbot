@@ -240,16 +240,21 @@ router.post('/logout', (req, res) => {
         if (isCWL) {
             console.log(`[AUTH] Initiating CWL logout for user ${userId}`);
             
-            // Get passport instance from app.locals to access helpers
+            // Get passport instance from app.locals
             const passport = req.app.locals.passport;
             
-            if (passport && passport.ubcShibHelpers && typeof passport.ubcShibHelpers.logout === 'function') {
-                console.log('[AUTH] Calling passport.ubcShibHelpers.logout');
+            // Access the strategy instance directly from passport
+            // This matches the pattern in the example repo where strategy.logout() is used
+            const strategy = passport && passport._strategies ? passport._strategies['ubcshib'] : null;
+            
+            if (strategy && typeof strategy.logout === 'function') {
+                console.log('[AUTH] Calling ubcshib strategy.logout');
                 
                 // Wrap SAML logout in a promise with timeout to prevent hanging
                 const samlLogoutPromise = new Promise((resolve, reject) => {
                     try {
-                        passport.ubcShibHelpers.logout(req, (err, requestUrl) => {
+                        // The example shows strategy.logout(req, callback)
+                        strategy.logout(req, (err, requestUrl) => {
                             if (err) return reject(err);
                             resolve(requestUrl);
                         });
@@ -276,7 +281,19 @@ router.post('/logout', (req, res) => {
                     
                 return; // Wait for promise resolution
             } else {
-                console.warn('[AUTH] UBC Shibboleth helpers not available, falling back to local logout');
+                console.warn('[AUTH] UBC Shibboleth strategy not found or missing logout method');
+                // Check if we can fallback to helpers if strategy access failed
+                if (passport && passport.ubcShibHelpers && typeof passport.ubcShibHelpers.logout === 'function') {
+                     console.log('[AUTH] Falling back to passport.ubcShibHelpers.logout');
+                     passport.ubcShibHelpers.logout(req, (err, requestUrl) => {
+                        if (err) {
+                             console.error('SAML logout helper error:', err);
+                             return performLocalLogout('/login');
+                        }
+                        performLocalLogout(requestUrl);
+                     });
+                     return;
+                }
             }
         }
 

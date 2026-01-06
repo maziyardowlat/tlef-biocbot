@@ -205,7 +205,8 @@ function initializePassport(db) {
                         attributeConfig: ['ubcEduCwlPuid', 'mail', 'eduPersonAffiliation'],
                         enableSLO: process.env.ENABLE_SLO !== 'false',
                         validateInResponseTo: process.env.SAML_VALIDATE_IN_RESPONSE_TO !== 'false',
-                        acceptedClockSkewMs: parseInt(process.env.SAML_CLOCK_SKEW_MS) || 0
+                        acceptedClockSkewMs: parseInt(process.env.SAML_CLOCK_SKEW_MS) || 0,
+                        logoutUrl: process.env.SAML_LOGOUT_URL || process.env.SAML_ENTRY_POINT // Required for logout generation
                     },
                     async (profile, done) => {
 
