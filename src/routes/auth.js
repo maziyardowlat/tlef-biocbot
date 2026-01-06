@@ -196,33 +196,69 @@ router.post('/register', async (req, res) => {
  */
 router.post('/logout', (req, res) => {
     try {
-        const userId = req.user ? req.user.userId : req.session.userId;
+        const user = req.user;
+        const userId = user ? user.userId : req.session.userId;
 
-        // Use Passport's logout method
-        req.logout((err) => {
-            if (err) {
-                console.error('Passport logout error:', err);
-            }
+        // Check if user is authenticated via CWL (SAML)
+        // User model sets authProvider to 'saml' for CWL users
+        const isCWL = user && user.authProvider === 'saml';
 
-            // Destroy session
-            req.session.destroy((destroyErr) => {
-                if (destroyErr) {
-                    console.error('Session destroy error:', destroyErr);
-                    return res.status(500).json({
-                        success: false,
-                        error: 'Failed to logout'
-                    });
+        const performLocalLogout = (redirectUrl = '/login') => {
+            // Use Passport's logout method
+            req.logout((err) => {
+                if (err) {
+                    console.error('Passport logout error:', err);
                 }
 
-                console.log(`User logged out: ${userId}`);
+                // Destroy session
+                req.session.destroy((destroyErr) => {
+                    if (destroyErr) {
+                        console.error('Session destroy error:', destroyErr);
+                        return res.status(500).json({
+                            success: false,
+                            error: 'Failed to logout'
+                        });
+                    }
 
-                res.json({
-                    success: true,
-                    message: 'Logged out successfully',
-                    redirect: '/login'
+                    console.log(`User logged out: ${userId} (${isCWL ? 'CWL' : 'Local'})`);
+
+                    res.json({
+                        success: true,
+                        message: 'Logged out successfully',
+                        redirect: redirectUrl
+                    });
                 });
             });
-        });
+        };
+
+        // If CWL user, try to initiate SAML logout
+        if (isCWL) {
+            console.log(`[AUTH] Initiating CWL logout for user ${userId}`);
+            
+            // Get passport instance from app.locals to access helpers
+            const passport = req.app.locals.passport;
+            
+            if (passport && passport.ubcShibHelpers && typeof passport.ubcShibHelpers.logout === 'function') {
+                // Generate SAML logout request
+                return passport.ubcShibHelpers.logout(req, (err, requestUrl) => {
+                    if (err) {
+                        console.error('SAML logout error:', err);
+                        // Fallback to local logout if SAML logout fails
+                        return performLocalLogout('/login');
+                    }
+
+                    console.log(`[AUTH] Generated SAML logout URL: ${requestUrl}`);
+                    
+                    // Clear local session and redirect to IdP logout URL
+                    performLocalLogout(requestUrl);
+                });
+            } else {
+                console.warn('[AUTH] UBC Shibboleth helpers not available, falling back to local logout');
+            }
+        }
+
+        // Standard local logout
+        performLocalLogout('/login');
 
     } catch (error) {
         console.error('Error in logout endpoint:', error);
