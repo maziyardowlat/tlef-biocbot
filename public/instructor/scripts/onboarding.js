@@ -1231,47 +1231,7 @@ async function removeQuestion(button) {
     showNotification('Probing question removed.', 'info');
 }
 
-/**
- * Generate probing questions
- */
-async function generateProbingQuestions() {
-    showNotification('Generating probing questions based on course materials...', 'info');
-    
-    try {
-        // Simulate AI generation delay
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        // Generate mock probing questions
-        const mockQuestions = [
-            "Can you explain the relationship between water's molecular structure and its role as a biological solvent?",
-            "How do buffer systems maintain pH homeostasis in living organisms?",
-            "What would happen to cellular processes if amino acids couldn't form peptide bonds?"
-        ];
-        
-        const questionsList = document.getElementById('assessment-questions-onboarding');
-        
-        // Add each generated question to the list and save it
-        for (const questionText of mockQuestions) {
-            const questionItem = document.createElement('div');
-            questionItem.className = 'objective-display-item';
-            questionItem.innerHTML = `
-                <span class="objective-text">${questionText}</span>
-                <button class="remove-objective" onclick="removeQuestion(this)">×</button>
-            `;
-            questionsList.appendChild(questionItem);
-            
-            // Don't save immediately - just add to UI
-            // The questions will be saved together when onboarding is completed
-            console.log('Generated probing question added to UI:', questionText);
-        }
-        
-        showNotification(`${mockQuestions.length} probing questions generated successfully!`, 'success');
-        
-    } catch (error) {
-        console.error('Error generating probing questions:', error);
-        showNotification('Failed to generate probing questions. Please try again.', 'error');
-    }
-}
+
 
 // Assessment Questions Functionality
 // Global variables for assessment questions
@@ -1475,69 +1435,7 @@ function saveQuestion() {
     showNotification('Question added successfully!', 'success');
 }
 
-/**
- * Generate AI questions
- */
-async function generateAIQuestions(week) {
-    showNotification('Generating AI assessment questions...', 'info');
-    
-    try {
-        // Simulate AI generation delay
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        // Generate mock assessment questions
-        const mockQuestions = [
-            {
-                id: Date.now() + 1,
-                type: 'multiple-choice',
-                question: 'Which of the following best describes the role of water in biological systems?',
-                options: [
-                    'Water acts as a universal solvent',
-                    'Water provides structural support only',
-                    'Water is only used for transport',
-                    'Water has no biological function'
-                ],
-                correctAnswer: 0
-            },
-            {
-                id: Date.now() + 2,
-                type: 'true-false',
-                question: 'Buffer systems help maintain pH homeostasis in living organisms.',
-                correctAnswer: true
-            },
-            {
-                id: Date.now() + 3,
-                type: 'short-answer',
-                question: 'Explain how amino acids form peptide bonds and why this is important for protein structure.',
-                correctAnswer: 'Amino acids form peptide bonds through dehydration synthesis, where the carboxyl group of one amino acid reacts with the amino group of another, releasing water. This creates the backbone of proteins and determines their primary structure.'
-            }
-        ];
-        
-        // Add questions to the assessment
-        // During onboarding, we're always working with 'Onboarding' as the week
-        const weekKey = week || 'Onboarding';
-        
-        if (!assessmentQuestions[weekKey]) {
-            assessmentQuestions[weekKey] = [];
-        }
-        
-        mockQuestions.forEach(question => {
-            assessmentQuestions[weekKey].push(question);
-        });
-        
-        console.log(`AI questions added to assessmentQuestions['${weekKey}']:`, mockQuestions);
-        console.log(`Total questions for ${weekKey}:`, assessmentQuestions[weekKey].length);
-        
-        // Update the display
-        displayAssessmentQuestions(weekKey);
-        
-        showNotification(`${mockQuestions.length} AI assessment questions generated successfully!`, 'success');
-        
-    } catch (error) {
-        console.error('Error generating AI questions:', error);
-        showNotification('Failed to generate AI questions. Please try again.', 'error');
-    }
-}
+
 
 /**
  * Display assessment questions
@@ -2649,16 +2547,7 @@ function showNotification(message, type) {
     }, 5000);
 }
 
-/**
- * Auth utility functions (placeholders - replace with actual auth implementation)
- */
-// getCurrentInstructorId() is now provided by ../common/scripts/auth.js
 
-function getAuthToken() {
-    // This would typically come from localStorage or sessionStorage
-    // For now, return a placeholder
-    return 'placeholder-token';
-}
 
 /**
  * Remove existing document of a specific type for a unit
