@@ -1092,17 +1092,7 @@ async function handleFlagAction(flagId, action, skipSuccessMessage = false) {
     }
 }
 
-/**
- * View flag details (placeholder for future implementation)
- * @param {string} flagId - The flag ID
- */
-function viewFlagDetails(flagId) {
-    const flag = appState.flags.find(f => f.flagId === flagId);
-    if (flag) {
-        // TODO: Implement detailed view modal or navigation
-        alert(`Flag Details:\n\nStudent: ${flag.studentId}\nType: ${flag.flagReason}\nStatus: ${flag.flagStatus}\nTimestamp: ${flag.createdAt}\n\nMessage: ${flag.flagDescription}`);
-    }
-}
+
 
 /**
  * Update the statistics display
@@ -1355,14 +1345,7 @@ function showErrorMessage(message) {
     alert(message); // Temporary simple alert
 }
 
-/**
- * Get auth token from storage (placeholder for future implementation)
- * @returns {string|null} Auth token
- */
-function getAuthToken() {
-    // TODO: Implement actual token retrieval from localStorage/sessionStorage
-    return null;
-}
+
 
 /**
  * Wait for authentication to be initialized
