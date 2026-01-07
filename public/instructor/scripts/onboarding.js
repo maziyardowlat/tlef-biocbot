@@ -1289,6 +1289,9 @@ function openQuestionModal(week) {
         modal.classList.add('show');
         // Reset form
         resetQuestionForm();
+        
+        // Check if AI generation should be enabled
+        checkAIGenerationInModal();
     }
 }
 
@@ -1348,6 +1351,9 @@ function updateQuestionForm() {
     } else if (questionType === 'short-answer') {
         document.getElementById('sa-answer-section').style.display = 'block';
     }
+    
+    // Check if AI generation is available for this question type
+    checkAIGenerationInModal();
 }
 
 /**
@@ -1675,6 +1681,7 @@ async function saveAssessment(week) {
             try {
                 // Pass the full question object instead of just the question text
                 const result = await saveUnit1AssessmentQuestion(courseId, 'Unit 1', question, instructorId);
+                question.saved = true; // Mark as saved to prevent duplicates
                 savedQuestions.push(result);
                 console.log(`Question ${i + 1} saved successfully:`, result);
             } catch (error) {
@@ -1796,6 +1803,9 @@ async function saveOnboardingData() {
  * Complete Unit 1 setup
  */
 async function completeUnit1Setup() {
+    if (onboardingState.isSubmitting) return;
+    onboardingState.isSubmitting = true;
+    
     console.log('%c--- Starting Final Onboarding Step ---', 'font-weight: bold; color: blue;');
 
     // Validate that required content has been set up
@@ -1844,6 +1854,7 @@ async function completeUnit1Setup() {
     } catch (error) {
         console.error('Error saving onboarding data:', error);
         showNotification('Error saving onboarding data. Please try again.', 'error');
+        onboardingState.isSubmitting = false;
     }
 }
 
@@ -1882,60 +1893,40 @@ async function saveAllUnit1Data() {
             await saveUnit1LearningObjectives(courseId, 'Unit 1', objectives, instructorId);
         }
         
-        // 2. Save all probing questions together as assessment questions
-        const questionsList = document.getElementById('assessment-questions-onboarding');
-        console.log('=== ASSESSMENT QUESTIONS DEBUGGING ===');
-        console.log('Looking for questions list with ID "assessment-questions-onboarding":', questionsList);
+        // 2. Save all assessment questions
+        // Use the memory state instead of scraping DOM, and avoid duplicates
+        const weekKey = 'Onboarding';
+        const questions = assessmentQuestions[weekKey] || [];
         
-        if (questionsList) {
-            console.log('Questions list element found!');
-            console.log('Questions list HTML content:', questionsList.innerHTML);
-            console.log('Questions list children count:', questionsList.children.length);
-            console.log('All child elements:', Array.from(questionsList.children).map(child => ({ tagName: child.tagName, className: child.className, id: child.id, textContent: child.textContent?.substring(0, 100) })));
+        console.log(`Checking ${questions.length} questions for saving...`);
+        
+        if (questions.length > 0) {
+            let savedCount = 0;
+            let skippedCount = 0;
             
-            const questions = Array.from(questionsList.querySelectorAll('.objective-display-item .objective-text'))
-                .map(q => q.textContent.trim())
-                .filter(q => q.length > 0);
-            
-            console.log('Found questions in DOM using selector ".objective-display-item .objective-text":', questions);
-            console.log('Questions array length:', questions.length);
-            console.log('Questions array details:', questions.map((q, i) => `Question ${i + 1}: "${q}"`));
-            
-            if (questions.length > 0) {
-                console.log('Saving all probing questions as assessment questions:', questions);
-                // Save each question individually as an assessment question
-                for (let i = 0; i < questions.length; i++) {
-                    const questionText = questions[i];
-                    console.log(`Saving question ${i + 1}/${questions.length}: "${questionText}"`);
-                    try {
-                        const result = await saveUnit1AssessmentQuestion(courseId, 'Unit 1', questionText, instructorId);
-                        console.log(`Question ${i + 1} saved successfully:`, result);
-                    } catch (error) {
-                        console.error(`Failed to save question ${i + 1}:`, questionText, error);
-                        // Continue with other questions even if one fails
-                    }
+            for (let i = 0; i < questions.length; i++) {
+                const question = questions[i];
+                
+                // Skip if already saved
+                if (question.saved) {
+                    console.log(`Skipping question ${i + 1} (already saved)`);
+                    skippedCount++;
+                    continue;
                 }
-            } else {
-                console.log('No questions found to save - questions array is empty');
-                console.log('All child elements in questions list:', questionsList.children);
-                console.log('Elements with class "objective-display-item":', questionsList.querySelectorAll('.objective-display-item'));
-                console.log('Elements with class "objective-text":', questionsList.querySelectorAll('.objective-text'));
-                console.log('Elements with class "objective-display-item .objective-text":', questionsList.querySelectorAll('.objective-display-item .objective-text'));
                 
-                // Try alternative selectors
-                console.log('Trying alternative selectors...');
-                const altQuestions1 = Array.from(questionsList.querySelectorAll('.objective-display-item')).map(item => item.textContent?.trim()).filter(t => t && t.length > 0);
-                console.log('Alternative selector 1 (all .objective-display-item text):', altQuestions1);
-                
-                const altQuestions2 = Array.from(questionsList.querySelectorAll('*')).filter(el => el.textContent && el.textContent.trim().length > 10 && !el.querySelector('*')).map(el => el.textContent.trim());
-                console.log('Alternative selector 2 (all leaf elements with text > 10 chars):', altQuestions2);
+                console.log(`Saving question ${i + 1}/${questions.length}:`, question);
+                try {
+                    const result = await saveUnit1AssessmentQuestion(courseId, 'Unit 1', question, instructorId);
+                    question.saved = true; // Mark as saved
+                    savedCount++;
+                    console.log(`Question ${i + 1} saved successfully`);
+                } catch (error) {
+                    console.error(`Failed to save question ${i + 1}:`, error);
+                }
             }
+            console.log(`Assessment questions save complete. Saved: ${savedCount}, Skipped: ${skippedCount}`);
         } else {
-            console.error('Questions list element not found with ID "assessment-questions-onboarding"');
-            console.log('Available elements with similar IDs:');
-            document.querySelectorAll('[id*="question"], [id*="assessment"]').forEach(el => {
-                console.log('Found element:', el.id, el);
-            });
+            console.log('No assessment questions to save.');
         }
         
         // 3. Save pass threshold setting
@@ -3005,4 +2996,419 @@ async function waitForAuth() {
     }
     
     console.warn('⚠️ [AUTH] Authentication not ready after 5 seconds, proceeding anyway');
+}
+
+// ==========================================
+// AI Question Generation Logic
+// ==========================================
+
+const API_BASE_URL = '';
+// AI Generation State
+let aiGenerationCount = 0;
+let lastGeneratedContent = null;
+let currentQuestionType = null;
+
+/**
+ * Check AI generation availability in the question modal
+ */
+function checkAIGenerationInModal() {
+    console.log(`🔍 [AI_MODAL_CHECK] Starting check for AI generation`);
+    
+    const questionType = document.getElementById('question-type').value;
+    const aiButton = document.getElementById('ai-generate-btn');
+    
+    if (!aiButton) return;
+    
+    if (!questionType) {
+        // No question type selected, hide AI button
+        aiButton.style.display = 'none';
+        return;
+    }
+    
+    // Check if course materials or objectives are available for Unit 1
+    // In onboarding, we check the status badges or the objectives list
+    const materialsAvailable = checkOnboardingCourseMaterialsAvailable();
+    const objectivesAvailable = checkOnboardingObjectivesAvailable();
+    
+    if (!materialsAvailable && !objectivesAvailable) {
+        // No materials/objectives available, disable AI button
+        aiButton.style.display = 'flex';
+        aiButton.disabled = true;
+        aiButton.title = 'Please upload course materials or add learning objectives before generating AI questions.';
+        return;
+    }
+    
+    // Materials available and question type selected, enable AI button
+    aiButton.style.display = 'flex';
+    aiButton.disabled = false;
+    aiButton.title = 'Generate AI question based on uploaded course materials and learning objectives.';
+}
+
+/**
+ * Check if course materials are uploaded/processed in onboarding
+ */
+function checkOnboardingCourseMaterialsAvailable() {
+    const lectureStatus = document.getElementById('lecture-status');
+    const practiceStatus = document.getElementById('practice-status');
+    
+    // Check if status text indicates uploaded/processed
+    // The text is usually 'Not Uploaded', 'Uploading...', 'Uploaded', 'Processed', 'Added'
+    const isAvailable = (status) => {
+        if (!status) return false;
+        const text = status.textContent;
+        return text === 'Uploaded' || text === 'Processed' || text === 'Added';
+    };
+    
+    return isAvailable(lectureStatus) || isAvailable(practiceStatus);
+}
+
+/**
+ * Check if learning objectives are available in onboarding
+ */
+function checkOnboardingObjectivesAvailable() {
+    const objectivesList = document.getElementById('objectives-list');
+    if (!objectivesList) return false;
+    
+    // Check if there are any objective items
+    return objectivesList.querySelectorAll('.objective-display-item').length > 0;
+}
+
+/**
+ * Generate AI content for the current question in the modal
+ */
+async function generateAIQuestionContent() {
+    const questionType = document.getElementById('question-type').value;
+    
+    if (!questionType) {
+        showNotification('Please select a question type first.', 'error');
+        return;
+    }
+    
+    if (!checkOnboardingCourseMaterialsAvailable() && !checkOnboardingObjectivesAvailable()) {
+        showNotification('Please upload course materials or add learning objectives before generating AI questions.', 'error');
+        return;
+    }
+
+    // Check if this is the second click with existing content
+    if (aiGenerationCount > 0 && lastGeneratedContent && questionType === currentQuestionType) {
+        // Show regenerate modal instead of generating new content
+        openRegenerateModal();
+        return;
+    }
+
+    // Reset tracking if question type changed
+    if (questionType !== currentQuestionType) {
+        aiGenerationCount = 0;
+        lastGeneratedContent = null;
+        currentQuestionType = questionType;
+    }
+    
+    // Show loading state
+    const aiButton = document.getElementById('ai-generate-btn');
+    const originalText = aiButton.innerHTML;
+    aiButton.innerHTML = '<span class="ai-icon">⏳</span> Generating...';
+    aiButton.disabled = true;
+    
+    try {
+        // Get course ID from onboarding state
+        const courseId = onboardingState.createdCourseId || onboardingState.existingCourseId;
+        const instructorId = getCurrentInstructorId();
+        const lectureName = 'Unit 1'; // Always Unit 1 for onboarding
+        
+        if (!courseId) {
+            throw new Error('Course ID not found. Please ensure course is created.');
+        }
+
+        // Get learning objectives from UI
+        const objectives = [];
+        document.querySelectorAll('#objectives-list .objective-text').forEach(el => {
+            const text = el.textContent.trim();
+            if (text) objectives.push(text);
+        });
+        
+        console.log('📚 [OBJECTIVES] Learning objectives for AI generation:', objectives);
+
+        // Call the AI question generation API
+        const apiUrl = API_BASE_URL + '/api/questions/generate-ai';
+        console.log('🔍 [API_CALL] Making request to:', apiUrl);
+        const response = await authenticatedFetch(apiUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                courseId: courseId,
+                lectureName: lectureName,
+                instructorId: instructorId,
+                questionType: questionType,
+                learningObjectives: objectives.length > 0 ? objectives : undefined
+            })
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
+            throw new Error(errorData.message || `Failed to generate question: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        
+        if (!result.success) {
+            throw new Error(result.message || 'Failed to generate question');
+        }
+        
+        const aiContent = result.data;
+        
+        // Store the generated content for potential regeneration
+        lastGeneratedContent = aiContent;
+        aiGenerationCount++;
+        currentQuestionType = questionType;
+        
+        // Populate form fields with AI content
+        populateFormWithAIContent(aiContent);
+        
+        // Update button text to indicate regeneration is available
+        if (aiGenerationCount === 1) {
+            aiButton.innerHTML = '<span class="ai-icon">🔄</span> Regenerate with AI';
+        }
+        
+        // Show success notification
+        showNotification('AI question generated successfully! You can now edit and save it.', 'success');
+        
+    } catch (error) {
+        console.error('Error generating AI question:', error);
+        showNotification(`Error generating AI question: ${error.message}`, 'error');
+        
+        // Show fallback content for demo purposes
+        const fallbackContent = createFallbackAIContent(questionType, 'Unit 1');
+        populateFormWithAIContent(fallbackContent);
+        showNotification('Using fallback content due to generation error. Please edit before saving.', 'warning');
+        
+    } finally {
+        // Restore button state
+        aiButton.disabled = false;
+        
+        // If we have generated content, show regenerate button
+        if (aiGenerationCount > 0) {
+            aiButton.innerHTML = '<span class="ai-icon">🔄</span> Regenerate with AI';
+        } else {
+            aiButton.innerHTML = originalText;
+        }
+    }
+}
+
+/**
+ * Open the regenerate modal
+ */
+function openRegenerateModal() {
+    const modal = document.getElementById('regenerate-modal');
+    if (!modal) return;
+    
+    // Display current question for reference
+    const displayContainer = document.getElementById('current-question-display');
+    if (displayContainer && lastGeneratedContent) {
+        let contentHtml = `<p><strong>Question:</strong> ${lastGeneratedContent.question || ''}</p>`;
+        
+        if (lastGeneratedContent.options) {
+            contentHtml += '<div class="preview-options">';
+            const options = lastGeneratedContent.options.choices || lastGeneratedContent.options;
+            if (Array.isArray(options)) {
+                options.forEach((opt, idx) => {
+                    contentHtml += `<div>${String.fromCharCode(65+idx)}) ${opt}</div>`;
+                });
+            } else {
+                Object.entries(options).forEach(([key, val]) => {
+                    contentHtml += `<div>${key}) ${val}</div>`;
+                });
+            }
+            contentHtml += '</div>';
+        }
+        
+        if (lastGeneratedContent.answer) {
+            contentHtml += `<p><strong>Answer:</strong> ${lastGeneratedContent.answer}</p>`;
+        }
+        
+        displayContainer.innerHTML = contentHtml;
+    }
+    
+    modal.classList.add('show');
+}
+
+/**
+ * Close the regenerate modal
+ */
+function closeRegenerateModal() {
+    const modal = document.getElementById('regenerate-modal');
+    if (modal) {
+        modal.classList.remove('show');
+        // Reset feedback
+        const feedback = document.getElementById('regenerate-feedback');
+        if (feedback) feedback.value = '';
+    }
+}
+
+/**
+ * Submit regenerate request with feedback
+ */
+async function submitRegenerate() {
+    const feedbackTextarea = document.getElementById('regenerate-feedback');
+    const submitButton = document.getElementById('regenerate-submit-btn');
+    const feedback = feedbackTextarea.value.trim();
+    
+    if (!feedback) {
+        showNotification('Please provide feedback about what you\'d like to improve.', 'error');
+        return;
+    }
+    
+    // Show loading state
+    const originalText = submitButton.innerHTML;
+    submitButton.innerHTML = '⏳ Regenerating...';
+    submitButton.disabled = true;
+    
+    try {
+        // Get current form data
+        const questionType = document.getElementById('question-type').value;
+        const courseId = onboardingState.createdCourseId || onboardingState.existingCourseId;
+        const instructorId = getCurrentInstructorId();
+        const lectureName = 'Unit 1';
+        
+        // Get learning objectives
+        const objectives = [];
+        document.querySelectorAll('#objectives-list .objective-text').forEach(el => {
+            const text = el.textContent.trim();
+            if (text) objectives.push(text);
+        });
+        
+        // Call the regenerate API
+        const response = await authenticatedFetch(API_BASE_URL + '/api/questions/generate-ai', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                courseId: courseId,
+                lectureName: lectureName,
+                instructorId: instructorId,
+                questionType: questionType,
+                learningObjectives: objectives.length > 0 ? objectives : undefined,
+                regenerate: true,
+                feedback: feedback,
+                previousQuestion: lastGeneratedContent
+            })
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
+            throw new Error(errorData.message || `Failed to regenerate question: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        
+        if (!result.success) {
+            throw new Error(result.message || 'Failed to regenerate question');
+        }
+        
+        // Update the stored content
+        lastGeneratedContent = result.data;
+        
+        // Populate form with new content
+        populateFormWithAIContent(result.data);
+        
+        // Close modal
+        closeRegenerateModal();
+        
+        // Show success notification
+        showNotification('Question regenerated successfully based on your feedback!', 'success');
+        
+    } catch (error) {
+        console.error('Error regenerating question:', error);
+        showNotification(`Error regenerating question: ${error.message}`, 'error');
+        
+    } finally {
+        // Restore button state
+        submitButton.innerHTML = originalText;
+        submitButton.disabled = false;
+    }
+}
+
+/**
+ * Populate the question modal form with AI-generated content
+ */
+function populateFormWithAIContent(aiContent) {
+    if (!aiContent) return;
+    
+    // Set question text
+    const questionText = aiContent.question || aiContent.options?.question || aiContent.prompt || '';
+    document.getElementById('question-text').value = questionText;
+    
+    // Set answer based on type
+    const questionType = document.getElementById('question-type').value;
+    
+    if (questionType === 'true-false') {
+        const answer = String(aiContent.answer).toLowerCase();
+        const radioButton = document.querySelector(`input[name="tf-answer"][value="${answer}"]`);
+        if (radioButton) {
+            radioButton.checked = true;
+        }
+    } else if (questionType === 'multiple-choice') {
+        // Set MCQ options
+        if (aiContent.options) {
+            const choices = aiContent.options.choices || aiContent.options;
+            
+            if (Array.isArray(choices)) {
+                choices.forEach((choice, index) => {
+                    const option = String.fromCharCode(65 + index);
+                    const input = document.querySelector(`.mcq-input[data-option="${option}"]`);
+                    if (input) input.value = choice;
+                });
+            } else if (typeof choices === 'object') {
+                Object.keys(choices).forEach(option => {
+                    const input = document.querySelector(`.mcq-input[data-option="${option}"]`);
+                    if (input) input.value = choices[option];
+                });
+            }
+        }
+        
+        // Enable radio buttons
+        const radioButtons = document.querySelectorAll('input[name="mcq-correct"]');
+        radioButtons.forEach(radio => radio.disabled = false);
+        
+        // Set correct answer
+        const correctAnswer = aiContent.options?.correctAnswer || aiContent.answer || '';
+        if (correctAnswer) {
+            let correctRadio = document.querySelector(`input[name="mcq-correct"][value="${correctAnswer}"]`) ||
+                             document.querySelector(`input[name="mcq-correct"][value="${correctAnswer.toUpperCase()}"]`);
+            if (correctRadio) correctRadio.checked = true;
+        }
+    } else if (questionType === 'short-answer') {
+        const expectedAnswer = aiContent.EXPECTED_ANSWER || aiContent.answer || '';
+        document.getElementById('sa-answer').value = expectedAnswer;
+    }
+}
+
+/**
+ * Create fallback AI content when the API fails
+ */
+function createFallbackAIContent(type, week) {
+    if (type === 'true-false') {
+        return {
+            question: `Based on the ${week} lecture notes, this concept is essential for understanding the course material.`,
+            answer: Math.random() > 0.5 ? 'true' : 'false'
+        };
+    } else if (type === 'multiple-choice') {
+        return {
+            question: `According to the ${week} lecture notes, which of the following is most accurate?`,
+            options: {
+                'A': 'Option A based on lecture content',
+                'B': 'Option B based on lecture content', 
+                'C': 'Option C based on lecture content',
+                'D': 'Option D based on lecture content'
+            },
+            answer: ['A', 'B', 'C', 'D'][Math.floor(Math.random() * 4)]
+        };
+    } else if (type === 'short-answer') {
+        return {
+            question: `Explain a key concept from the ${week} lecture notes and its significance.`,
+            answer: 'Students should demonstrate understanding by explaining the concept clearly and showing its relevance to the course material.'
+        };
+    }
 }
