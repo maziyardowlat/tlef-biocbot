@@ -466,19 +466,6 @@ async function updateTAPermission(courseId, taId, permissionType, value) {
     }
 }
 
-/**
- * View TA details (placeholder)
- */
-function viewTADetails(taId) {
-    showNotification('TA details feature coming soon!', 'info');
-}
-
-/**
- * Manage course TAs (placeholder)
- */
-function manageCourseTAs(courseId) {
-    showNotification('Course TA management feature coming soon!', 'info');
-}
 
 /**
  * Wait for authentication to be initialized
