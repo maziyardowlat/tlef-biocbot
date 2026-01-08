@@ -132,9 +132,138 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         }
     });
-    
 
+// Unit Management Functions
+
+/**
+ * Add a new unit to the course
+ */
+async function addNewUnit() {
+    const addUnitBtn = document.getElementById('add-unit-btn');
+    if (addUnitBtn) {
+        addUnitBtn.disabled = true;
+        addUnitBtn.innerHTML = '<span class="loading-spinner-small"></span> Adding...';
+    }
     
+    // Mark container as adding
+    const container = document.getElementById('dynamic-units-container');
+    if (container) container.dataset.addingUnit = 'true';
+    
+    try {
+        const courseId = await getCurrentCourseId();
+        const instructorId = getCurrentInstructorId();
+        
+        const response = await fetch(`/api/courses/${courseId}/units`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ instructorId })
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to add unit');
+        }
+        
+        const result = await response.json();
+        showNotification(result.message, 'success');
+        
+        // Reload course data to refresh the UI
+        if (container) delete container.dataset.addingUnit;
+        await loadSpecificCourse(courseId);
+        
+    } catch (error) {
+        console.error('Error adding new unit:', error);
+        showNotification('Failed to add new unit: ' + error.message, 'error');
+        if (addUnitBtn) {
+            addUnitBtn.disabled = false;
+            addUnitBtn.innerHTML = '<span class="btn-icon">➕</span> Add New Unit';
+        }
+        if (container) delete container.dataset.addingUnit;
+    }
+}
+
+// Delete Unit Modal Logic
+let unitToDelete = null;
+
+function openDeleteUnitModal(unitName) {
+    // Stop propagation if triggered from inside the accordion header
+    if (window.event) {
+        window.event.stopPropagation();
+    }
+    
+    unitToDelete = unitName;
+    const modal = document.getElementById('delete-unit-modal');
+    const displaySpan = document.getElementById('delete-unit-name-display');
+    
+    if (displaySpan) displaySpan.textContent = unitName;
+    if (modal) {
+        modal.style.display = ''; // Clear inline style to let CSS class handle display: flex
+        modal.classList.add('show');
+    }
+}
+
+function closeDeleteUnitModal() {
+    unitToDelete = null;
+    const modal = document.getElementById('delete-unit-modal');
+    if (modal) {
+        modal.classList.remove('show');
+        modal.style.display = 'none';
+    }
+}
+
+async function confirmDeleteUnit() {
+    if (!unitToDelete) return;
+    
+    const confirmBtn = document.getElementById('confirm-delete-unit-btn');
+    if (confirmBtn) {
+        confirmBtn.disabled = true;
+        confirmBtn.textContent = 'Deleting...';
+    }
+    
+    try {
+        const courseId = await getCurrentCourseId();
+        const instructorId = getCurrentInstructorId();
+        
+        // Encode unit name for URL (it might have spaces)
+        const encodedUnitName = encodeURIComponent(unitToDelete);
+        
+        const response = await fetch(`/api/courses/${courseId}/units/${encodedUnitName}`, {
+            method: 'DELETE',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ instructorId })
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to delete unit');
+        }
+        
+        const result = await response.json();
+        showNotification(result.message, 'success');
+        
+        closeDeleteUnitModal();
+        
+        // Reload course data
+        await loadSpecificCourse(courseId);
+        
+    } catch (error) {
+        console.error('Error deleting unit:', error);
+        showNotification('Failed to delete unit: ' + error.message, 'error');
+    } finally {
+        if (confirmBtn) {
+            confirmBtn.disabled = false;
+            confirmBtn.textContent = 'Delete Unit';
+        }
+    }
+}
+
+// Make functions globally available
+window.addNewUnit = addNewUnit;
+window.openDeleteUnitModal = openDeleteUnitModal;
+window.closeDeleteUnitModal = closeDeleteUnitModal;
+window.confirmDeleteUnit = confirmDeleteUnit;
 
     
     // Load the saved publish status from the database
@@ -4218,6 +4347,23 @@ function generateUnitsFromOnboarding(onboardingData) {
         const unitElement = createUnitElement(unitName, unitData, i === 1); // First unit is expanded
         container.appendChild(unitElement);
     }
+
+    // Add "Add Unit" button at the end
+    const addUnitContainer = document.createElement('div');
+    addUnitContainer.className = 'add-unit-container';
+    addUnitContainer.style.marginTop = '20px';
+    addUnitContainer.style.textAlign = 'center';
+    
+    // Check if adding unit is in progress
+    const isAdding = container.dataset.addingUnit === 'true';
+    
+    addUnitContainer.innerHTML = `
+        <button id="add-unit-btn" class="btn-secondary" onclick="addNewUnit()" ${isAdding ? 'disabled' : ''}>
+            <span class="btn-icon">➕</span>
+            ${isAdding ? 'Adding Unit...' : 'Add New Unit'}
+        </button>
+    `;
+    container.appendChild(addUnitContainer);
     
     // Reinitialize event listeners for the new units
     initializeUnitEventListeners();
@@ -4280,6 +4426,8 @@ function createUnitElement(unitName, unitData, isExpanded = false) {
                     </label>
                     <span class="toggle-label">Published</span>
                 </div>
+
+                <button class="delete-unit-btn" onclick="openDeleteUnitModal('${unitName}')" title="Delete Unit" style="background: none; border: none; cursor: pointer; font-size: 1.2rem; margin-right: 10px; color: #dc3545;">🗑️</button>
 
                 <span class="accordion-toggle">${isExpanded ? '▼' : '▶'}</span>
             </div>
@@ -5499,7 +5647,11 @@ function updatePublishedSummary() {
     });
     
     // Update the text
-    summaryContainer.textContent = `Currently, ${publishedCount} of the ${totalUnits} Units are Published.`;
+    if (publishedCount === 0) {
+        summaryContainer.innerHTML = `<strong style="color: #d9534f; font-size: 1.1em;">No units are currently published! Students cannot see any content. Please publish units to make them visible.</strong>`;
+    } else {
+        summaryContainer.textContent = `Currently, ${publishedCount} of the ${totalUnits} Units are Published.`;
+    }
 }
 
 // Also update summary when a toggle is changed
