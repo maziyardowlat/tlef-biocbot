@@ -102,6 +102,33 @@
     color: #666;
 }
 
+/* Helper Action Buttons (Explain, Simplify) */
+.message-action-btn {
+    background: none;
+    border: 1px solid var(--border-color);
+    cursor: pointer;
+    padding: 4px 10px;
+    border-radius: 15px;
+    color: #888;
+    font-size: 11px;
+    line-height: 1;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    background-color: white;
+}
+
+.message-action-btn:hover {
+    background-color: var(--background-color);
+    color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.message-action-btn .icon {
+    font-size: 14px;
+}
+
 .three-dots {
     font-size: 18px;
     font-weight: bold;

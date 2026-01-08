@@ -263,11 +263,13 @@ router.post('/', async (req, res) => {
 
         // Profanity filter: intercept before any RAG/GPT work to save tokens
         // If the cleaned text differs from the original, return a warning response
-        const cleanedMessage = profanityCleaner && typeof profanityCleaner.clean === 'function'
-            ? profanityCleaner.clean(message)
-            : message;
+        // Skip for explanation requests (system generated from valid bot content)
+        if (!req.body.isExplanationRequest) {
+            const cleanedMessage = profanityCleaner && typeof profanityCleaner.clean === 'function'
+                ? profanityCleaner.clean(message)
+                : message;
 
-        if (cleanedMessage !== message) {
+            if (cleanedMessage !== message) {
             const warningText = 'please watch the language, this is a tool and this data will be used for internal and data analysis';
             console.log('⚠️ [CHAT_API] Profanity detected. Returning warning without querying LLM.');
             return res.json({
@@ -291,8 +293,10 @@ router.post('/', async (req, res) => {
                     mode: 'n/a',
                     lectureNames: []
                 }
+
             });
         }
+    }
         
         // Safety/Wellness Check
         const safetyKeywords = ['suicide', 'kill myself', 'want to die', 'end my life', 'ending it all'];
