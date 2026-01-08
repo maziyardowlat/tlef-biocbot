@@ -5647,7 +5647,11 @@ function updatePublishedSummary() {
     });
     
     // Update the text
-    summaryContainer.textContent = `Currently, ${publishedCount} of the ${totalUnits} Units are Published.`;
+    if (publishedCount === 0) {
+        summaryContainer.innerHTML = `<strong style="color: #d9534f; font-size: 1.1em;">No units are currently published! Students cannot see any content. Please publish units to make them visible.</strong>`;
+    } else {
+        summaryContainer.textContent = `Currently, ${publishedCount} of the ${totalUnits} Units are Published.`;
+    }
 }
 
 // Also update summary when a toggle is changed
