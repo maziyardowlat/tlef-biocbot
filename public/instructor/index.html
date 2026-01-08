@@ -308,6 +308,32 @@
             </div>
         </div>
     </div>
+
+    <!-- Delete Unit Confirmation Modal -->
+    <div id="delete-unit-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Delete Unit</h2>
+                <button class="modal-close" onclick="closeDeleteUnitModal()">×</button>
+            </div>
+            
+            <div class="modal-body">
+                <div class="warning-icon" style="text-align: center; font-size: 3rem; margin-bottom: 1rem;">⚠️</div>
+                <p>Are you sure you want to delete <strong id="delete-unit-name-display">this unit</strong>?</p>
+                
+                <div class="warning-box" style="background-color: #fff3cd; border: 1px solid #ffeeba; color: #856404; padding: 15px; border-radius: 5px; margin-top: 15px;">
+                    <p style="margin: 0;"><strong>Please ensure that you understand that deleting this will delete the documents and cannot be retrieved. Consider un-publishing this if you do not need.</strong></p>
+                </div>
+            </div>
+            
+            <div class="modal-footer">
+                <div class="modal-actions">
+                    <button class="btn-secondary" onclick="closeDeleteUnitModal()">Cancel</button>
+                    <button class="btn-primary" id="confirm-delete-unit-btn" onclick="confirmDeleteUnit()" style="background-color: #dc3545; border-color: #dc3545;">Delete Unit</button>
+                </div>
+            </div>
+        </div>
+    </div>
     
     <!-- Calibration Quiz Modal -->
     <div id="calibration-modal" class="modal">

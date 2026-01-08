@@ -7,6 +7,8 @@ const express = require('express');
 const router = express.Router();
 const CourseModel = require('../models/Course');
 const UserModel = require('../models/User');
+const DocumentModel = require('../models/Document');
+const QdrantService = require('../services/qdrantService');
 
 // Middleware to parse JSON bodies
 router.use(express.json());
@@ -1974,4 +1976,215 @@ router.get('/:courseId/student-enrollment', async (req, res) => {
     }
 });
 
-module.exports = router; 
+/**
+ * POST /api/courses/:courseId/units
+ * Add a new unit to a course
+ */
+router.post('/:courseId/units', async (req, res) => {
+    try {
+        const { courseId } = req.params;
+        const { instructorId } = req.body;
+        
+        if (!instructorId) {
+            return res.status(400).json({
+                success: false,
+                message: 'instructorId is required'
+            });
+        }
+        
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
+        
+        // Check if instructor has access
+        const hasAccess = await CourseModel.userHasCourseAccess(db, courseId, instructorId, 'instructor');
+        if (!hasAccess) {
+            return res.status(403).json({
+                success: false,
+                message: 'You do not have permission to modify this course'
+            });
+        }
+        
+        // Get current course to determine next unit number
+        const collection = db.collection('courses');
+        const course = await collection.findOne({ courseId });
+        
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                message: 'Course not found'
+            });
+        }
+        
+        // Calculate new unit number
+        const currentUnitsCount = course.lectures ? course.lectures.length : 0;
+        const structureUnitsCount = course.courseStructure ? course.courseStructure.totalUnits : 0;
+        const newUnitNum = Math.max(currentUnitsCount, structureUnitsCount) + 1;
+        const newUnitName = `Unit ${newUnitNum}`;
+        
+        const now = new Date();
+        const newUnit = {
+            name: newUnitName,
+            isPublished: false,
+            learningObjectives: [],
+            passThreshold: 2,
+            createdAt: now,
+            updatedAt: now,
+            documents: [],
+            assessmentQuestions: []
+        };
+        
+        // Update course: add unit to lectures array AND update courseStructure
+        const result = await collection.updateOne(
+            { courseId },
+            {
+                $push: { lectures: newUnit },
+                $inc: { 'courseStructure.totalUnits': 1 },
+                $set: { updatedAt: now }
+            }
+        );
+        
+        console.log(`Added ${newUnitName} to course ${courseId}`);
+        
+        res.json({
+            success: true,
+            message: `${newUnitName} added successfully`,
+            data: {
+                unit: newUnit,
+                totalUnits: newUnitNum
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error adding new unit:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while adding new unit'
+        });
+    }
+});
+
+/**
+ * DELETE /api/courses/:courseId/units/:unitName
+ * Delete a unit and all its documents
+ */
+router.delete('/:courseId/units/:unitName', async (req, res) => {
+    try {
+        const { courseId, unitName } = req.params;
+        const { instructorId } = req.body; // Pass in body as it's a delete with authorization
+        
+        // If instructorID is not in body, check query (common for DELETE requests)
+        const effectiveInstructorId = instructorId || req.query.instructorId;
+        
+        if (!effectiveInstructorId) {
+            return res.status(400).json({
+                success: false,
+                message: 'instructorId is required'
+            });
+        }
+        
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
+        
+        // Check if instructor has access
+        const hasAccess = await CourseModel.userHasCourseAccess(db, courseId, effectiveInstructorId, 'instructor');
+        if (!hasAccess) {
+            return res.status(403).json({
+                success: false,
+                message: 'You do not have permission to modify this course'
+            });
+        }
+        
+        const collection = db.collection('courses');
+        const course = await collection.findOne({ courseId });
+        
+        if (!course) {
+            return res.status(404).json({
+                success: false,
+                message: 'Course not found'
+            });
+        }
+        
+        // Find the unit
+        const unit = course.lectures ? course.lectures.find(l => l.name === unitName) : null;
+        if (!unit) {
+            return res.status(404).json({
+                success: false,
+                message: 'Unit not found'
+            });
+        }
+        
+        // 1. Delete all documents associated with this unit
+        // We reuse the QdrantService and DocumentModel logic here for safety
+        const qdrantService = new QdrantService();
+        
+        let deletedDocsCount = 0;
+        if (unit.documents && unit.documents.length > 0) {
+            console.log(`Deleting ${unit.documents.length} documents for ${unitName}...`);
+            
+            for (const docRef of unit.documents) {
+                if (docRef.documentId) {
+                    try {
+                        // Delete from MongoDB Documents collection
+                        await DocumentModel.deleteDocument(db, docRef.documentId);
+                        
+                        // Delete from Qdrant
+                        try {
+                            if (!qdrantService.client) await qdrantService.initialize();
+                            await qdrantService.deleteDocumentChunks(docRef.documentId, courseId);
+                        } catch (qErr) {
+                            console.warn(`Failed to delete Qdrant chunks for ${docRef.documentId}:`, qErr.message);
+                        }
+                        
+                        deletedDocsCount++;
+                    } catch (dErr) {
+                        console.error(`Failed to delete document ${docRef.documentId}:`, dErr);
+                    }
+                }
+            }
+        }
+        
+        const now = new Date();
+        
+        // 2. Remove the unit from the course
+        const updateResult = await collection.updateOne(
+            { courseId },
+            {
+                $pull: { lectures: { name: unitName } },
+                $inc: { 'courseStructure.totalUnits': -1 },
+                $set: { updatedAt: now }
+            }
+        );
+        
+        console.log(`Deleted ${unitName} from course ${courseId}. Removed ${deletedDocsCount} documents.`);
+        
+        res.json({
+            success: true,
+            message: `Unit ${unitName} and ${deletedDocsCount} documents deleted successfully`,
+            data: {
+                deletedUnit: unitName,
+                deletedDocumentsCount: deletedDocsCount
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error deleting unit:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while deleting unit'
+        });
+    }
+});
+
+module.exports = router;
