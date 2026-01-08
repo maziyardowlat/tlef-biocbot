@@ -208,7 +208,7 @@ document.addEventListener('DOMContentLoaded', async () => {
      * @param {AbortSignal} signal - Optional abort signal
      * @returns {Promise<Object>} Response from LLM service
      */
-    async function sendMessageToLLM(message, checkSummaryAttempt = false, signal = null) {
+    async function sendMessageToLLM(message, checkSummaryAttempt = false, signal = null, isExplanationRequest = false) {
         try {
             // Get current student mode for context
             const currentMode = localStorage.getItem('studentMode') || 'tutor';
@@ -233,7 +233,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 courseId: courseId,
                 unitName: unitName,
                 conversationContext: conversationContext,
-                checkSummaryAttempt: checkSummaryAttempt
+                checkSummaryAttempt: checkSummaryAttempt,
+                isExplanationRequest: isExplanationRequest
             };
 
 
@@ -716,6 +717,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Initialize Chat Limit Modal
     initializeChatLimitModal();
+
+    // Expose functions to global scope for helper actions
+    window.sendMessageToLLM = sendMessageToLLM;
+    window.showTypingIndicator = showTypingIndicator;
+    window.removeTypingIndicator = removeTypingIndicator;
 });
 
 /**
@@ -879,6 +885,47 @@ async function renderStandaloneCourseSelectorBelowHeader(container) {
 // Global functions for flagging functionality
 
 /**
+ * Handle explanation request for a message
+ * @param {string} text - The message text to explain
+ */
+async function handleExplainAction(text) {
+    if (!text) return;
+    
+    // Check if we already have an ongoing request
+    const existingTyping = document.getElementById('typing-indicator');
+    if (existingTyping) return;
+
+    // Clean up the text (remove any existing HTML tags if passed as innerHTML)
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = text;
+    const cleanText = tempDiv.innerText;
+
+    const prompt = `Can you explain the following text as if to a novice?\n\n"${cleanText}"`;
+
+    // DO NOT add as user message - user wants this to be a background action
+    // addMessage(displayMessage, 'user');
+    
+    // Show typing indicator
+    showTypingIndicator();
+    
+    try {
+        // Send the detailed prompt to the LLM
+        const response = await sendMessageToLLM(prompt, false, null, true);
+        
+        // Remove typing indicator
+        removeTypingIndicator();
+        
+        // Add bot response
+        addMessage(response.message, 'bot', true, false, response.sourceAttribution);
+        
+    } catch (error) {
+        removeTypingIndicator();
+        console.error('Explain error:', error);
+        addMessage('Sorry, I encountered an error. Please try again.', 'bot', false, true, null);
+    }
+}
+
+/**
  * Global function to add a message to the chat
  * @param {string} content - The message content
  * @param {string} sender - 'user' or 'bot'
@@ -969,6 +1016,18 @@ function addMessage(content, sender, withSource = false, skipAutoSave = false, s
     if (sender === 'bot') {
         const flagContainer = document.createElement('div');
         flagContainer.classList.add('message-flag-container');
+
+        // Add Explain Button
+        // Only if message has content and is not the typing indicator
+        if (content && !content.includes('<div class="dots">')) {
+            const explainButton = document.createElement('button');
+            explainButton.classList.add('message-action-btn');
+            explainButton.innerHTML = 'Explain';
+            explainButton.title = 'Explain this message for a novice';
+            explainButton.style.marginRight = '8px'; // Add some spacing
+            explainButton.onclick = () => handleExplainAction(content);
+            rightContainer.appendChild(explainButton);
+        }
 
         const flagButton = document.createElement('button');
         flagButton.classList.add('flag-button');
