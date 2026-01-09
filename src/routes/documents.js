@@ -85,6 +85,19 @@ router.post('/upload', upload.single('file'), async (req, res) => {
             });
         }
         
+        // Determine filename
+        let filename = file.originalname;
+        if (req.body.title) {
+            // If title is provided, use it. Append extension if it doesn't have one and we can determine it from original
+            filename = req.body.title;
+            // Optional: preserve extension if the strict title doesn't include it. 
+            // In this case, the frontend strict titles (*Lecture Notes - Week 1) don't have extensions.
+            // But for file download/viewing, extension might be useful. 
+            // However, the user specifically wants the DISPLAY name to be the strict title.
+            // Let's stick to the title as provided for the "filename" field which is likely used for display.
+            // The 'originalName' usually tracks the actual uploaded file. But DocumentModel might use filename for display.
+        }
+
         // Prepare document data
         const documentData = {
             courseId,
@@ -92,8 +105,8 @@ router.post('/upload', upload.single('file'), async (req, res) => {
             documentType,
             instructorId,
             contentType: 'file',
-            filename: file.originalname,
-            originalName: file.originalname,
+            filename: filename,       // Use the determined filename (strict title or original)
+            originalName: file.originalname, // Keep the actual original filename for reference
             fileData: file.buffer,
             mimeType: file.mimetype,
             size: file.size,
@@ -173,7 +186,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
         const courseResult = await CourseModel.addDocumentToUnit(db, courseId, lectureName, {
             documentId: result.documentId,
             documentType: documentType,
-            filename: file.originalname,
+            filename: documentData.filename, // Use the same filename as stored in DocumentModel
             originalName: file.originalname,
             mimeType: file.mimetype,
             size: file.size,
@@ -196,13 +209,13 @@ router.post('/upload', upload.single('file'), async (req, res) => {
                 }
                 
                 // Try to process through Qdrant for vector search
-            console.log(`Processing document through Qdrant: ${file.originalname}`);
+            console.log(`Processing document through Qdrant: ${file.originalname} -> ${documentData.filename}`);
             qdrantResult = await qdrantService.processAndStoreDocument({
                 courseId,
                 lectureName,
                 documentId: result.documentId,
                 content: textContent,
-                fileName: file.originalname,
+                fileName: documentData.filename, // Use the strict title/filename
                 mimeType: file.mimetype,
                 documentType: documentType,
                 type: result.type
@@ -225,7 +238,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
             message: 'Document uploaded successfully!',
             data: {
                 documentId: result.documentId,
-                filename: file.originalname,
+                filename: documentData.filename, // Return the stored filename (strict title)
                 size: file.size,
                 uploadDate: result.uploadDate,
                 linkedToCourse: courseResult.success,

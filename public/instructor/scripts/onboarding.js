@@ -1893,13 +1893,9 @@ function openUploadModal(week, contentType = '') {
     }
     
     // Show/hide name input section based on content type
+    // Always hide name input section to enforce standardized naming
     if (nameInputSection) {
-        // Show name input for additional materials and practice questions (since they might need custom titles)
-        if (contentType === 'additional' || contentType === 'practice-quiz') {
-            nameInputSection.style.display = 'flex';
-        } else {
-            nameInputSection.style.display = 'none';
-        }
+        nameInputSection.style.display = 'none';
     }
     
     // Reset the modal to initial state
@@ -2061,9 +2057,11 @@ async function handleUpload() {
         
         // Save the uploaded content using the same API that course upload expects
         if (uploadedFile) {
-            await saveUnit1Document(courseId, 'Unit 1', documentType, uploadedFile, instructorId);
+            // Pass the standardized title to the save function
+            const title = getDefaultTitle(documentType);
+            await saveUnit1Document(courseId, 'Unit 1', documentType, uploadedFile, instructorId, title);
         } else if (textInput) {
-            const title = materialNameInput || getDefaultTitle(documentType, 'Text Content');
+            const title = getDefaultTitle(documentType, 'Text Content');
             console.log('Saving text content with title:', title);
             console.log('Request details:', {
                 courseId,
@@ -2156,7 +2154,7 @@ function getDefaultTitle(documentType, fallback) {
  * @param {File} file - The uploaded file
  * @param {string} instructorId - The instructor ID
  */
-async function saveUnit1Document(courseId, lectureName, documentType, file, instructorId) {
+async function saveUnit1Document(courseId, lectureName, documentType, file, instructorId, title) {
     try {
         console.log(`📁 [DOCUMENT] Starting document upload process...`);
         console.log(`📁 [DOCUMENT] Course ID: ${courseId}`);
@@ -2176,6 +2174,10 @@ async function saveUnit1Document(courseId, lectureName, documentType, file, inst
         formData.append('lectureName', lectureName);
         formData.append('documentType', documentType);
         formData.append('instructorId', instructorId);
+        // Add the standardized title to the form data
+        if (title) {
+            formData.append('title', title);
+        }
         
         console.log(`📡 [MONGODB] Making API request to /api/documents/upload (POST)`);
         console.log(`📡 [MONGODB] FormData contents:`, {

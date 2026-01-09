@@ -406,13 +406,9 @@ function openUploadModal(week, contentType = '') {
         uploadFileBtn.textContent = buttonText;
     }
     
-    // Show/hide name input section based on content type
+    // Always minimize name input section as per user request to remove rename capability
     if (nameInputSection) {
-        if (contentType === 'additional') {
-            nameInputSection.style.display = 'flex';
-        } else {
-            nameInputSection.style.display = 'none';
-        }
+        nameInputSection.style.display = 'none';
     }
     
     // Reset the modal to initial state
@@ -576,6 +572,20 @@ async function handleUpload() {
             formData.append('lectureName', lectureName);
             formData.append('documentType', currentContentType);
             formData.append('instructorId', instructorId);
+
+            // Determine strict title based on content type to ensure consistency
+            let strictTitle = '';
+            if (currentContentType === 'lecture-notes') {
+                strictTitle = `*Lecture Notes - ${lectureName}`;
+            } else if (currentContentType === 'practice-quiz') {
+                strictTitle = `*Practice Questions/Tutorial - ${lectureName}`;
+            } else if (currentContentType === 'additional') {
+                strictTitle = `Additional Material - ${lectureName}`;
+            }
+
+            if (strictTitle) {
+                formData.append('title', strictTitle);
+            }
             
             const response = await fetch('/api/documents/upload', {
                 method: 'POST',
@@ -1734,10 +1744,7 @@ async function loadDocuments() {
                         console.log(`🔍 [DOCUMENTS] Checking for missing placeholders in ${lectureName}`);
                         addRequiredPlaceholders(courseMaterialsSection, lectureName);
                         
-                        // Add cleanup button if there are documents (add this BEFORE action buttons)
-                        if (documents && documents.length > 0) {
-                            addCleanupButtonIfMissing(courseMaterialsSection, lectureName, courseId);
-                        }
+
                         
                         // ALWAYS add the "Add Additional Material" button and "Confirm Course Materials" button LAST
                         // This ensures they stay at the bottom, regardless of whether there are documents
@@ -1896,7 +1903,7 @@ function createDocumentItem(doc) {
     documentItem.innerHTML = `
         <span class="file-icon">${fileIcon}</span>
         <div class="file-info">
-            <h3>${doc.originalName}</h3>
+            <h3>${doc.filename || doc.originalName}</h3>
             ${doc.metadata?.description ? `<p>${doc.metadata.description}</p>` : ''}
             <span class="status-text">${statusText}</span>
         </div>
@@ -4851,48 +4858,7 @@ function addRequiredPlaceholders(container, unitName) {
     }
 }
 
-/**
- * Add action buttons for additional materials and confirmation
- * @param {HTMLElement} container - The container to add buttons to
- * @param {string} unitName - The name of the unit (e.g., 'Unit 1')
- */
-function addActionButtons(container, unitName) {
-    // Check if action buttons already exist
-    let hasAddContentSection = false;
-    let hasConfirmButton = false;
-    
-    container.querySelectorAll('.add-content-section, .save-objectives').forEach(item => {
-        if (item.classList.contains('add-content-section')) {
-            hasAddContentSection = true;
-        }
-        if (item.textContent.includes('Confirm Course Materials')) {
-            hasConfirmButton = true;
-        }
-    });
-    
-    // Add "Add Additional Material" button if it doesn't exist
-    if (!hasAddContentSection) {
-        const addContentSection = document.createElement('div');
-        addContentSection.className = 'add-content-section';
-        addContentSection.innerHTML = `
-            <button class="add-content-btn additional-material" onclick="openUploadModal('${unitName}', 'additional')">
-                <span class="btn-icon">➕</span>
-                Add Additional Material
-            </button>
-        `;
-        container.appendChild(addContentSection);
-    }
-    
-    // Add "Confirm Course Materials" button if it doesn't exist
-    if (!hasConfirmButton) {
-        const confirmSection = document.createElement('div');
-        confirmSection.className = 'save-objectives';
-        confirmSection.innerHTML = `
-            <button class="save-btn" onclick="confirmCourseMaterials('${unitName}')">Confirm Course Materials</button>
-        `;
-        container.appendChild(confirmSection);
-    }
-}
+
 
 /**
  * Add action buttons only if they don't already exist (prevents duplicates)
@@ -4937,43 +4903,7 @@ function addActionButtonsIfMissing(container, unitName) {
     }
 }
 
-/**
- * Add cleanup button to clear all documents from a unit
- * @param {HTMLElement} container - The container to add button to
- * @param {string} unitName - The name of the unit (e.g., 'Unit 1')
- * @param {string} courseId - The course ID
- */
-function addCleanupButton(container, unitName, courseId) {
-    // Check if cleanup button already exists
-    let hasCleanupButton = false;
-    container.querySelectorAll('.cleanup-section').forEach(item => {
-        if (item.textContent.includes('Clear All Documents')) {
-            hasCleanupButton = true;
-        }
-    });
-    
-    if (!hasCleanupButton) {
-        const cleanupSection = document.createElement('div');
-        cleanupSection.className = 'cleanup-section';
-        cleanupSection.style.marginTop = '20px';
-        cleanupSection.style.padding = '15px';
-        cleanupSection.style.backgroundColor = '#fff3cd';
-        cleanupSection.style.border = '1px solid #ffeaa7';
-        cleanupSection.style.borderRadius = '5px';
-        cleanupSection.innerHTML = `
-            <h4 style="margin: 0 0 10px 0; color: #856404;">⚠️ Document Cleanup</h4>
-            <p style="margin: 0 0 15px 0; color: #856404; font-size: 14px;">
-                This will remove ALL documents from ${unitName} in the course structure. 
-                This action cannot be undone.
-            </p>
-            <button class="cleanup-btn" onclick="clearAllDocuments('${unitName}', '${courseId}')" 
-                    style="background: #dc3545; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer;">
-                🗑️ Clear All Documents from ${unitName}
-            </button>
-        `;
-        container.appendChild(cleanupSection);
-    }
-}
+
 
 /**
  * Ensure action buttons exist for all units (fallback function)
@@ -5009,61 +4939,14 @@ function ensureActionButtonsExist() {
  * @param {string} unitName - The name of the unit (e.g., 'Unit 1')
  * @param {string} courseId - The course ID
  */
-function addCleanupButtonIfMissing(container, unitName, courseId) {
-    // Check if cleanup button already exists
-    let hasCleanupButton = false;
-    container.querySelectorAll('.cleanup-section').forEach(item => {
-        if (item.textContent.includes('Clear All Documents')) {
-            hasCleanupButton = true;
-        }
-    });
-    
-}
+
 
 /**
  * Clear all documents from a specific unit in the course structure
  * @param {string} unitName - The name of the unit (e.g., 'Unit 1')
  * @param {string} courseId - The course ID
  */
-async function clearAllDocuments(unitName, courseId) {
-    // Confirm the action
-    if (!confirm(`Are you sure you want to clear ALL documents from ${unitName}? This action cannot be undone.`)) {
-        return;
-    }
-    
-    try {
-        const instructorId = getCurrentInstructorId();
-        
-        showNotification(`Clearing all documents from ${unitName}...`, 'info');
-        
-        const response = await fetch(`/api/courses/${courseId}/clear-documents`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                unitName: unitName,
-                instructorId: instructorId
-            })
-        });
-        
-        if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Failed to clear documents: ${response.status} ${errorText}`);
-        }
-        
-        const result = await response.json();
-        
-        showNotification(`Successfully cleared ${result.data.clearedCount} documents from ${unitName}!`, 'success');
-        
-        // Reload documents to reflect the changes
-        await loadDocuments();
-        
-    } catch (error) {
-        console.error('Error clearing documents:', error);
-        showNotification(`Error clearing documents: ${error.message}`, 'error');
-    }
-}
+
 
 
 
