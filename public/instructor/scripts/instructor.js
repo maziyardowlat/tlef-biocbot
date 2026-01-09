@@ -2828,40 +2828,7 @@ function removeObjective(button) {
  * Add a new learning objective for a unit (used in onboarding)
  * @param {string} unitName - The unit name (e.g., 'Unit 1')
  */
-function addObjectiveForUnit(unitName) {
-    const inputField = document.getElementById('objective-input');
-    const objectivesList = document.getElementById('objectives-list');
-    
-    if (!inputField || !objectivesList) {
-        console.error('Could not find objective input or list elements');
-        showNotification('Error: Could not find objective elements', 'error');
-        return;
-    }
-    
-    const objectiveText = inputField.value.trim();
-    
-    if (!objectiveText) {
-        showNotification('Please enter a learning objective.', 'error');
-        return;
-    }
-    
-    // Create new objective display item
-    const objectiveItem = document.createElement('div');
-    objectiveItem.className = 'objective-display-item';
-    objectiveItem.innerHTML = `
-        <span class="objective-text">${objectiveText}</span>
-        <button class="remove-objective" onclick="removeObjective(this)">×</button>
-    `;
-    
-    // Add to the list
-    objectivesList.appendChild(objectiveItem);
-    
-    // Clear the input field
-    inputField.value = '';
-    inputField.focus();
-    
-    showNotification('Learning objective added successfully!', 'success');
-}
+
 
 /**
  * Save learning objectives for a week
@@ -3130,47 +3097,7 @@ function focusUnitFromURL() {
  * @param {HTMLElement} content - The accordion content element
  * @param {HTMLElement} toggle - The toggle icon element
  */
-function toggleAccordionDynamic(content, toggle) {
-    const isCollapsed = content.classList.contains('collapsed');
-    
-    if (isCollapsed) {
-        // Expanding: first remove collapsed class, measure height, then animate
-        content.classList.remove('collapsed');
-        
-        // Force a reflow to get the actual height
-        const height = content.scrollHeight;
-        
-        // Set max-height for smooth transition
-        content.style.maxHeight = height + 'px';
-        
-        // Update toggle icon
-        toggle.textContent = '▼';
-        
-        // Clean up after transition
-        setTimeout(() => {
-            content.style.maxHeight = 'none';
-        }, 300);
-        
-    } else {
-        // Collapsing: set height first, then add collapsed class
-        const height = content.scrollHeight;
-        content.style.maxHeight = height + 'px';
-        
-        // Force reflow
-        content.offsetHeight;
-        
-        // Add collapsed class for transition
-        content.classList.add('collapsed');
-        
-        // Update toggle icon
-        toggle.textContent = '▶';
-        
-        // Clean up after transition
-        setTimeout(() => {
-            content.style.maxHeight = '';
-        }, 300);
-    }
-}
+
 
 // ==========================================
 // Assessment Questions Functionality
@@ -4711,28 +4638,7 @@ function updateFileStatus(contentType, unitName, status, fileName) {
 /**
  * Add additional material to the display
  */
-function addAdditionalMaterial(unitName, materialName) {
-    // Find the add content section for Unit 1
-    const addContentSection = document.querySelector('.add-content-section');
-    if (addContentSection) {
-        const materialItem = document.createElement('div');
-        materialItem.className = 'file-item additional-material-item';
-        materialItem.innerHTML = `
-            <div class="file-info">
-                <h3>${materialName}</h3>
-                <p>Additional material uploaded during onboarding</p>
-                <span class="status-text uploaded">Uploaded</span>
-            </div>
-            <div class="file-actions">
-                <button class="action-button view" onclick="viewFile('${materialName}')">View</button>
-                <button class="action-button delete" onclick="deleteFileItem(this)">Delete</button>
-            </div>
-        `;
-        
-        // Insert before the add content button
-        addContentSection.parentNode.insertBefore(materialItem, addContentSection);
-    }
-} 
+ 
 
 /**
  * Show document content in a modal
@@ -5159,37 +5065,7 @@ async function clearAllDocuments(unitName, courseId) {
     }
 }
 
-function renderMCQOptions() {
-    const container = document.getElementById('mcq-options');
-    container.innerHTML = `
-        ${['A', 'B', 'C', 'D'].map(option => `
-            <div class="form-group mcq-option">
-                <label for="mcq-option-${option}">Option ${option}</label>
-                <div class="input-group">
-                    <input type="text" id="mcq-option-${option}" class="form-control mcq-input" data-option="${option}" placeholder="Enter option ${option} text...">
-                    <div class="input-group-append">
-                        <div class="input-group-text">
-                            <input type="radio" name="mcq-correct" value="${option}" disabled>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `).join('')}
-    `;
-    
-    // Add event listeners to enable radio buttons when text is entered
-    container.querySelectorAll('.mcq-input').forEach(input => {
-        input.addEventListener('input', function() {
-            const radioButton = document.querySelector(`input[name="mcq-correct"][value="${this.dataset.option}"]`);
-            if (this.value.trim()) {
-                radioButton.disabled = false;
-            } else {
-                radioButton.disabled = true;
-                radioButton.checked = false;
-            }
-        });
-    });
-}
+
 
 /**
  * Check if course materials are available for a specific week
@@ -5239,147 +5115,7 @@ function checkCourseMaterialsAvailable(week) {
 /**
  * @param {Array} units - Array of units/lectures for the course
  */
-function renderCourseUnits(units) {
-    const accordionContainer = document.querySelector('.accordion-container');
-    accordionContainer.innerHTML = ''; // Clear existing content
-    
-    if (!units || units.length === 0) {
-        accordionContainer.innerHTML = '<p>No units found for this course.</p>';
-        return;
-    }
-    
-    units.forEach(unit => {
-        const unitName = (unit.name || 'Unnamed Unit').trim();
-        const weekId = unitName.toLowerCase().replace(/\s+/g, '-');
-        
-        const accordionItem = document.createElement('div');
-        accordionItem.className = 'accordion-item';
-        accordionItem.id = `accordion-${weekId}`; // Add this ID for the check function
-        
-        accordionItem.innerHTML = `
-            <div class="accordion-header">
-                <div class="header-left">
-                    <span class="folder-name">${unitName}</span>
-                    <div class="header-actions">
-                        <div class="publish-toggle">
-                            <label class="toggle-switch">
-                                <input type="checkbox" id="publish-${weekId}" onchange="togglePublish('${unitName}', this.checked)">
-                                <span class="toggle-slider"></span>
-                            </label>
-                            <span class="toggle-label">Published</span>
-                        </div>
-                        <span class="accordion-toggle">${isExpanded ? '▼' : '▶'}</span>
-                    </div>
-                </div>
-            </div>
-            <div class="accordion-content ${isExpanded ? '' : 'collapsed'}">
-                <!-- Learning Objectives Section -->
-                <div class="unit-section learning-objectives-section">
-                    <div class="section-header">
-                        <h3>Learning Objectives</h3>
-                        <button class="toggle-section">▼</button>
-                    </div>
-                    <div class="section-content">
-                        <p style="margin-bottom: 10px; color: #666; font-size: 0.9em;">Please provide 3 - 8 learning objectives that are covered by this unit</p>
-                        <div class="objectives-list" id="objectives-list-${weekId}">
-                            <!-- Objectives will be added here -->
-                        </div>
-                        <div class="objective-input-container">
-                            <input type="text" id="objective-input-${weekId}" class="objective-input" placeholder="Enter learning objective...">
-                            <button class="add-objective-btn-inline" onclick="addObjectiveFromInput('${unitName}')">+</button>
-                        </div>
-                        <div class="save-objectives">
-                            <button class="save-btn" onclick="saveObjectives('${unitName}')">Save Learning Objectives</button>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Course Materials Section -->
-                <div class="unit-section course-materials-section">
-                    <div class="section-header">
-                        <h3>Course Materials</h3>
-                        <button class="toggle-section">▼</button>
-                    </div>
-                    <div class="section-content">
-                        <div class="content-type-header">
-                            <p><strong>Required Materials:</strong> *Lecture Notes and *Practice Questions/Tutorial are mandatory</p>
-                        </div>
-                        <div class="file-item placeholder-item">
-                            <div class="file-info">
-                                <h3>*Lecture Notes - ${unitName}</h3>
-                                <p>Placeholder for required lecture notes. Please upload content.</p>
-                                <span class="status-text">Not Uploaded</span>
-                            </div>
-                            <div class="file-actions">
-                                <button class="action-button upload" onclick="openUploadModal('${unitName}', 'lecture-notes')">Upload</button>
-                            </div>
-                        </div>
-                        <div class="file-item placeholder-item">
-                            <div class="file-info">
-                                <h3>*Practice Questions/Tutorial</h3>
-                                <p>Placeholder for required practice questions. Please upload content.</p>
-                                <span class="status-text">Not Uploaded</span>
-                            </div>
-                            <div class="file-actions">
-                                <button class="action-button upload" onclick="openUploadModal('${unitName}', 'practice-quiz')">Upload</button>
-                            </div>
-                        </div>
-                        <!-- Action buttons will be added dynamically by loadDocuments() -->
-                        <!-- Expected order: Documents → Placeholders → Cleanup → Action Buttons -->
-                        <!-- This ensures proper positioning below uploaded files -->
-                    </div>
-                </div>
-                
-                <!-- Assessment Questions Section -->
-                <div class="unit-section assessment-questions-section">
-                    <div class="section-header">
-                        <h3>Assessment Questions</h3>
-                        <button class="toggle-section">▼</button>
-                    </div>
-                    <div class="section-content">
-                        <div class="assessment-info">
-                            <p><strong>Assessment Settings:</strong> Assessment questions help BIOCBOT to determine whether to be in protégé or tutor mode. We recommend creating at least 3 questions.</p>
-                        </div>
-                        
-                        <!-- Pass Threshold Setting -->
-                        <div class="threshold-setting">
-                            <label for="pass-threshold-${weekId}">Number of correct answers required for BIOCBOT to be in protégé mode:</label>
-                            <input type="number" id="pass-threshold-${weekId}" min="0" max="10" value="0" class="threshold-input">
-                            <span class="threshold-help">out of total questions</span>
-                        </div>
-                        
-                        <!-- Questions List -->
-                        <div class="questions-list" id="assessment-questions-${weekId}">
-                            <!-- Assessment questions will be displayed here -->
-                            <div class="no-questions-message">
-                                <p>No assessment questions created yet. Click "Add Question" to get started.</p>
-                            </div>
-                        </div>
-                        
-                        <!-- Action Buttons -->
-                        <div class="assessment-actions">
-                            <button class="add-question-btn" onclick="openQuestionModal('${unitName}')">
-                                <span class="btn-icon">➕</span>
-                                Add Question
-                            </button>
-                        </div>
-                        
-                        <div class="save-assessment">
-                            <button class="save-btn" onclick="saveAssessment('${unitName}')">Save Assessment</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
-        
-        accordionContainer.appendChild(accordionItem);
-    });
 
-    // After rendering units, focus a unit if specified in URL
-    setTimeout(() => {
-        focusUnitFromURL();
-    }, 100);
-}
 
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('📄 [DOCUMENTS] DOM fully loaded and parsed');
