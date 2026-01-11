@@ -550,7 +550,8 @@ function createHistoryItem(chat, index) {
     mobileActions.classList.add('mobile-actions-container');
     mobileActions.innerHTML = `
         <button class="mobile-action-btn primary" data-action="continue">Continue Chat</button>
-        <button class="mobile-action-btn secondary" data-action="download">Download</button>
+        <button class="mobile-action-btn secondary" data-action="download" title="Download JSON">JSON</button>
+        <button class="mobile-action-btn secondary" data-action="download-md" title="Download Markdown">Markdown</button>
         <button class="mobile-action-btn secondary" data-action="delete">Delete</button>
     `;
 
@@ -562,6 +563,7 @@ function createHistoryItem(chat, index) {
             const action = e.target.dataset.action;
             if (action === 'continue') handleContinueChat();
             if (action === 'download') handleDownloadChat();
+            if (action === 'download-md') handleDownloadMarkdown();
             if (action === 'delete') handleDeleteChat();
         });
     });
@@ -721,10 +723,16 @@ function setupEventListeners() {
         continueBtn.addEventListener('click', handleContinueChat);
     }
     
-    // Download chat button
+    // Download chat button (JSON)
     const downloadBtn = document.getElementById('download-chat-btn');
     if (downloadBtn) {
         downloadBtn.addEventListener('click', handleDownloadChat);
+    }
+    
+    // Download markdown button
+    const downloadMdBtn = document.getElementById('download-md-btn');
+    if (downloadMdBtn) {
+        downloadMdBtn.addEventListener('click', handleDownloadMarkdown);
     }
     
     // Delete chat button
@@ -1113,6 +1121,185 @@ async function handleDownloadChat() {
     } catch (error) {
         console.error('Error downloading chat:', error);
         alert('Error downloading chat. Please try again.');
+    }
+}
+
+/**
+ * Handle download markdown button click
+ */
+async function handleDownloadMarkdown() {
+    if (!currentSelectedChat) {
+        console.error('No chat selected');
+        alert('Please select a chat to download.');
+        return;
+    }
+    
+    try {
+        console.log('Downloading chat as Markdown:', currentSelectedChat.id);
+        
+        // Get course ID from localStorage
+        const courseId = localStorage.getItem('selectedCourseId') || 'Unknown';
+        
+        // Get student name
+        const currentUser = getCurrentUser();
+        const studentName = currentUser?.displayName || currentUser?.username || 'Student';
+        
+        // Convert content to Markdown
+        const markdownContent = convertToMarkdown(currentSelectedChat, studentName, courseId);
+        
+        // Generate filename
+        const dateStr = new Date(currentSelectedChat.savedAt).toISOString().split('T')[0];
+        const fileName = `BiocBot_Chat_${courseId}_${studentName.replace(/[^a-zA-Z0-9]/g, '_')}_${dateStr}.md`;
+        
+        // Download the file
+        downloadText(markdownContent, fileName);
+        
+        console.log('Chat downloaded successfully:', fileName);
+        
+    } catch (error) {
+        console.error('Error downloading markdown:', error);
+        alert('Error downloading chat. Please try again.');
+    }
+}
+
+/**
+ * Convert chat object to Markdown string
+ * @param {Object} chat - The chat object
+ * @param {string} studentName - Student's name
+ * @param {string} courseId - Course ID
+ * @returns {string} Markdown content
+ */
+function convertToMarkdown(chat, studentName, courseId) {
+    let md = `# ${chat.title}\n\n`;
+    md += `**Date:** ${new Date(chat.savedAt).toLocaleString()}\n`;
+    md += `**Course:** ${courseId}\n`;
+    md += `**Student:** ${studentName}\n`;
+    md += `**Unit:** ${chat.unitName || 'Unknown'}\n`;
+    md += `**Duration:** ${chat.duration}\n\n`;
+    md += `---\n\n`;
+    
+    if (!chat.chatData || !chat.chatData.messages) {
+        return md + '*No messages found.*';
+    }
+    
+    chat.chatData.messages.forEach(msg => {
+        const role = msg.type === 'user' ? 'Student' : 'BiocBot';
+        const timestamp = msg.timestamp ? new Date(msg.timestamp).toLocaleString() : '';
+        
+        md += `### ${role} ${timestamp ? `(${timestamp})` : ''}\n\n`;
+        
+        // Prepare content
+        let content = msg.content || '';
+        
+        if (msg.messageType === 'mode-result' || msg.messageType === 'mode-toggle-result') {
+           // For mode results, prefer the detailed HTML content if available, but convert basic text
+           if (msg.htmlContent) {
+               content = convertHtmlToMarkdown(msg.htmlContent);
+           }
+        } else if (msg.messageType === 'practice-test-question' && msg.questionData) {
+            // Format practice questions specifically
+            content = formatPracticeQuestion(msg.questionData);
+        } else if (msg.isHtml) {
+             content = convertHtmlToMarkdown(content);
+        }
+        
+        md += `${content}\n\n`;
+        md += `---\n\n`;
+    });
+    
+    return md;
+}
+
+/**
+ * Helper to convert basic HTML to Markdown-like text
+ * @param {string} html - HTML string
+ * @returns {string} Markdown string
+ */
+function convertHtmlToMarkdown(html) {
+    if (!html) return '';
+    
+    // Create a temporary DOM element to parse HTML
+    const tmp = document.createElement('DIV');
+    tmp.innerHTML = html;
+    
+    // Process known structures
+    
+    // Replace <br> and <p> with newlines
+    let text = html
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/p>/gi, '\n\n')
+        .replace(/<p[^>]*>/gi, '');
+        
+    // Headers
+    text = text.replace(/<h[1-6][^>]*>(.*?)<\/h[1-6]>/gi, (match, content) => {
+        return `**${content.trim()}**\n\n`;
+    });
+        
+    // Bold/Strong
+    text = text.replace(/<(b|strong)[^>]*>(.*?)<\/\1>/gi, '**$2**');
+    
+    // Italic/Em
+    text = text.replace(/<(i|em)[^>]*>(.*?)<\/\1>/gi, '_$2_');
+    
+    // Lists
+    text = text.replace(/<ul[^>]*>/gi, '\n').replace(/<\/ul>/gi, '\n');
+    text = text.replace(/<ol[^>]*>/gi, '\n').replace(/<\/ol>/gi, '\n');
+    text = text.replace(/<li[^>]*>(.*?)<\/li>/gi, '- $1\n');
+    
+    // Code blocks
+    text = text.replace(/<pre[^>]*><code[^>]*>([\s\S]*?)<\/code><\/pre>/gi, '\n```\n$1\n```\n');
+    text = text.replace(/<code[^>]*>(.*?)<\/code>/gi, '`$1`');
+
+    // Strip remaining tags
+    const cleanDiv = document.createElement('div');
+    cleanDiv.innerHTML = text;
+    return cleanDiv.textContent || cleanDiv.innerText || '';
+}
+
+/**
+ * Format practice question data for Markdown
+ * @param {Object} qData - Question data
+ * @returns {string} Formatted string
+ */
+function formatPracticeQuestion(qData) {
+    let text = `**Question:** ${convertHtmlToMarkdown(qData.questionText || '')}\n\n`;
+    
+    if (qData.options && qData.options.length > 0) {
+        text += `**Options:**\n`;
+        qData.options.forEach(opt => {
+            const marker = opt.isSelected ? '(Selected) ' : '';
+            text += `- ${marker}${opt.text}\n`;
+        });
+        text += '\n';
+    }
+    
+    if (qData.studentAnswer) {
+        text += `**Your Answer:** ${qData.studentAnswer}\n`;
+    }
+    
+    return text;
+}
+
+/**
+ * Download text content as a file
+ * @param {string} content - Text content
+ * @param {string} fileName - Filename
+ */
+function downloadText(content, fileName) {
+    try {
+        const blob = new Blob([content], { type: 'text/markdown;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    } catch (error) {
+        console.error('Error creating text download:', error);
+        throw error;
     }
 }
 
