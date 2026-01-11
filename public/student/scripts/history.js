@@ -819,6 +819,32 @@ function displayChatPreview(chat) {
 }
 
 /**
+ * Format timestamp for message display
+ * @param {string} dateString - ISO date string
+ * @returns {string} Formatted date string
+ */
+function formatMessageTimestamp(dateString) {
+    if (!dateString) return 'Unknown time';
+    try {
+        const date = new Date(dateString);
+        // Check if date is valid
+        if (isNaN(date.getTime())) return 'Unknown time';
+        
+        return date.toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true
+        });
+    } catch (e) {
+        console.error('Error formatting message timestamp:', e);
+        return 'Unknown time';
+    }
+}
+
+/**
  * Create a preview message element
  * @param {Object} messageData - Message data
  * @returns {HTMLElement} Message element
@@ -842,9 +868,15 @@ function createPreviewMessage(messageData) {
         paragraph.textContent = messageData.content;
     }
     
+    // Calculate display timestamp dynamically
+    // Fallback to displayTimestamp if timestamp is missing, though we prefer recalculating
+    const displayTime = messageData.timestamp 
+        ? formatMessageTimestamp(messageData.timestamp) 
+        : (messageData.displayTimestamp || '');
+
     const timestamp = document.createElement('span');
     timestamp.classList.add('timestamp');
-    timestamp.textContent = messageData.displayTimestamp;
+    timestamp.textContent = displayTime;
     
     contentDiv.appendChild(paragraph);
     contentDiv.appendChild(timestamp);
@@ -853,8 +885,14 @@ function createPreviewMessage(messageData) {
     if (messageData.messageType === 'mode-result' || messageData.messageType === 'mode-toggle-result') {
         if (messageData.htmlContent) {
             contentDiv.innerHTML = messageData.htmlContent;
-            // Re-add timestamp if it was lost in HTML content replacement
-            if (!contentDiv.querySelector('.timestamp')) {
+            
+            // Check for existing timestamp in the HTML content
+            const existingTimestamp = contentDiv.querySelector('.timestamp');
+            if (existingTimestamp) {
+                // Update the existing timestamp with the correct recalculation
+                existingTimestamp.textContent = displayTime;
+            } else {
+                // Re-add timestamp if it was lost in HTML content replacement
                 contentDiv.appendChild(timestamp);
             }
         }
@@ -863,6 +901,74 @@ function createPreviewMessage(messageData) {
             messageDiv.classList.add('standard-mode-result');
             contentDiv.classList.add('standard-mode-content');
         }
+    } else if (messageData.messageType === 'practice-test-question' && messageData.questionData) {
+        // Clear default content
+        contentDiv.innerHTML = '';
+        
+        // Render Question Text
+        const questionText = document.createElement('p');
+        questionText.innerHTML = messageData.questionData.questionText || messageData.content;
+        contentDiv.appendChild(questionText);
+        
+        // Render Options (Multiple Choice)
+        if (messageData.questionData.options && messageData.questionData.options.length > 0) {
+            const optionsContainer = document.createElement('div');
+            optionsContainer.className = 'calibration-options';
+            optionsContainer.style.display = 'flex';
+            optionsContainer.style.flexDirection = 'column';
+            optionsContainer.style.gap = '8px';
+            optionsContainer.style.marginTop = '12px';
+            
+            messageData.questionData.options.forEach(option => {
+                const optionBtn = document.createElement('div');
+                optionBtn.className = 'calibration-option';
+                // Add some inline styles to ensure it looks good even if css is missing specific classes
+                optionBtn.style.padding = '10px 14px';
+                optionBtn.style.border = '1px solid #e0e0e0';
+                optionBtn.style.borderRadius = '8px';
+                optionBtn.style.backgroundColor = '#ffffff';
+                optionBtn.style.cursor = 'default';
+                optionBtn.textContent = option.text;
+                
+                // Highlight selected option
+                if (option.isSelected) {
+                    optionBtn.classList.add('selected');
+                    optionBtn.style.backgroundColor = 'var(--primary-color, #002145)';
+                    optionBtn.style.color = 'white';
+                    optionBtn.style.borderColor = 'var(--primary-color, #002145)';
+                }
+                
+                optionsContainer.appendChild(optionBtn);
+            });
+            contentDiv.appendChild(optionsContainer);
+        }
+        
+        // Render Short Answer Input
+        if (messageData.questionData.studentAnswer !== undefined && messageData.questionData.studentAnswer !== null) {
+            const answerContainer = document.createElement('div');
+            answerContainer.style.marginTop = '12px';
+            
+            const label = document.createElement('strong');
+            label.textContent = 'Your Answer:';
+            label.style.display = 'block';
+            label.style.marginBottom = '4px';
+            label.style.fontSize = '0.9em';
+            label.style.color = '#555';
+            
+            const answerBox = document.createElement('div');
+            answerBox.style.padding = '10px';
+            answerBox.style.backgroundColor = '#f5f5f5';
+            answerBox.style.borderRadius = '6px';
+            answerBox.style.border = '1px solid #e0e0e0';
+            answerBox.textContent = messageData.questionData.studentAnswer;
+            
+            answerContainer.appendChild(label);
+            answerContainer.appendChild(answerBox);
+            contentDiv.appendChild(answerContainer);
+        }
+        
+        // Re-add timestamp at the bottom
+        contentDiv.appendChild(timestamp);
     }
     
     messageDiv.appendChild(avatarDiv);
