@@ -892,7 +892,23 @@ function createPreviewMessage(messageData) {
     // Handle special message types
     if (messageData.messageType === 'mode-result' || messageData.messageType === 'mode-toggle-result') {
         if (messageData.htmlContent) {
-            contentDiv.innerHTML = messageData.htmlContent;
+            // Create a temp container to manipulate the HTML
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = messageData.htmlContent;
+            
+            // Remove the pink styling but keep the text
+            const modeExplanation = tempDiv.querySelector('.mode-explanation');
+            if (modeExplanation) {
+                modeExplanation.classList.remove('mode-explanation');
+                // Add neutral styling
+                modeExplanation.style.background = 'transparent';
+                modeExplanation.style.border = 'none';
+                modeExplanation.style.padding = '0';
+                modeExplanation.style.margin = '0 0 10px 0';
+                modeExplanation.style.color = '#333';
+            }
+            
+            contentDiv.innerHTML = tempDiv.innerHTML;
             
             // Check for existing timestamp in the HTML content
             const existingTimestamp = contentDiv.querySelector('.timestamp');
