@@ -4421,29 +4421,44 @@ function showModeResult(mode, score) {
 
     // Add Assessment Summary
     if (window.currentCalibrationQuestions && window.currentCalibrationQuestions.length > 0) {
-        const summaryDiv = document.createElement('div');
-        summaryDiv.className = 'assessment-summary';
-        summaryDiv.style.marginTop = '20px';
-        summaryDiv.style.borderTop = '1px solid #eee';
-        summaryDiv.style.paddingTop = '15px';
+        const summaryContainer = document.createElement('div');
+        summaryContainer.className = 'assessment-summary-container';
 
-        const summaryTitle = document.createElement('h4');
-        summaryTitle.textContent = 'Assessment Summary';
-        summaryTitle.style.marginBottom = '10px';
-        summaryDiv.appendChild(summaryTitle);
+        // Header
+        const header = document.createElement('div');
+        header.className = 'assessment-summary-header';
+        
+        const title = document.createElement('h4');
+        title.className = 'assessment-summary-title';
+        title.innerHTML = 'Assessment Summary';
+        
+        const score = document.createElement('div');
+        score.className = 'assessment-summary-score';
+        // Score set after loop
+
+        header.appendChild(title);
+        header.appendChild(score);
+        summaryContainer.appendChild(header);
+
+        // Questions List
+        const list = document.createElement('div');
+        list.className = 'assessment-questions-list';
+
+        let correctCount = 0;
+        let totalCount = window.currentCalibrationQuestions.length;
+        let hasEvaluations = window.studentEvaluations && Array.isArray(window.studentEvaluations);
 
         window.currentCalibrationQuestions.forEach((q, index) => {
-            const questionDiv = document.createElement('div');
-            questionDiv.style.marginBottom = '15px';
-            questionDiv.style.padding = '10px';
-            questionDiv.style.backgroundColor = '#f9f9f9';
-            questionDiv.style.borderRadius = '5px';
+            const card = document.createElement('div');
+            card.className = 'summary-question-card';
 
-            const qText = document.createElement('div');
-            qText.style.fontWeight = 'bold';
-            qText.style.marginBottom = '5px';
-            qText.textContent = `${index + 1}. ${q.question}`;
-            questionDiv.appendChild(qText);
+            const questionHeader = document.createElement('div');
+            questionHeader.className = 'summary-question-header';
+            questionHeader.innerHTML = `
+                <span class="summary-q-number">#${index + 1}</span>
+                <span class="summary-q-text">${q.question}</span>
+            `;
+            card.appendChild(questionHeader);
 
             const studentAnsIndex = window.studentAnswers[index];
             let displayStudentAns = studentAnsIndex;
@@ -4451,53 +4466,77 @@ function showModeResult(mode, score) {
             let feedback = '';
             let isCorrect = false;
 
-            // Format answers based on type
+            // Logic to format answers
             if (q.type === 'true-false') {
                 displayStudentAns = studentAnsIndex === 0 ? 'True' : (studentAnsIndex === 1 ? 'False' : studentAnsIndex);
-                // Ensure correct answer is displayed as True/False string
                 if (typeof displayCorrectAns === 'boolean') {
                     displayCorrectAns = displayCorrectAns ? 'True' : 'False';
                 } else if (typeof displayCorrectAns === 'string') {
-                    // Capitalize first letter if needed
                     displayCorrectAns = displayCorrectAns.charAt(0).toUpperCase() + displayCorrectAns.slice(1);
                 }
             } else if (q.type === 'multiple-choice' && q.options) {
-                // Student answer (index) to text
                 const optionKeys = Object.keys(q.options);
                 if (optionKeys[studentAnsIndex]) {
                     displayStudentAns = `${optionKeys[studentAnsIndex]}) ${q.options[optionKeys[studentAnsIndex]]}`;
                 }
-                
-                // Correct answer (key) to text
                 if (q.options[displayCorrectAns]) {
                     displayCorrectAns = `${displayCorrectAns}) ${q.options[displayCorrectAns]}`;
                 }
-            } else if (q.type === 'short-answer') {
-                if (window.studentEvaluations && window.studentEvaluations[index]) {
-                    feedback = window.studentEvaluations[index].feedback;
-                    isCorrect = window.studentEvaluations[index].correct;
-                }
             }
+            
+            // Check correctness
+            if (hasEvaluations && window.studentEvaluations[index]) {
+                 isCorrect = window.studentEvaluations[index].correct;
+                 feedback = window.studentEvaluations[index].feedback;
+            } else {
+                 // Fallback logic
+                 if (q.type === 'true-false' || q.type === 'multiple-choice') {
+                      const sAns = String(displayStudentAns).trim().toLowerCase();
+                      const cAns = String(displayCorrectAns).trim().toLowerCase();
+                      if (sAns === cAns) {
+                          isCorrect = true;
+                      }
+                 }
+            }
+            
+            if (isCorrect) correctCount++;
 
-            const ansDiv = document.createElement('div');
-            ansDiv.style.fontSize = '0.9em';
+            const answerSection = document.createElement('div');
+            answerSection.className = 'summary-answer-section';
             
-            // Build HTML for answers
-            let html = `<div><span style="color: #666;">Your Answer:</span> ${displayStudentAns}</div>`;
-            html += `<div style="margin-top: 2px;"><span style="color: #666;">Expected Answer:</span> ${displayCorrectAns}</div>`;
+            const safeStudentAns = displayStudentAns !== undefined && displayStudentAns !== null ? displayStudentAns : 'No answer provided';
+            const safeCorrectAns = displayCorrectAns !== undefined && displayCorrectAns !== null ? displayCorrectAns : 'N/A';
             
+            answerSection.innerHTML = `
+                <div class="answer-box student">
+                    <span class="answer-box-label">Your Answer</span>
+                    <div class="answer-box-content">${safeStudentAns}</div>
+                </div>
+                <div class="answer-box expected">
+                    <span class="answer-box-label">Expected Answer</span>
+                    <div class="answer-box-content">${safeCorrectAns}</div>
+                </div>
+            `;
+            card.appendChild(answerSection);
+
             if (feedback) {
-                html += `<div style="margin-top: 8px; padding: 8px; background-color: ${isCorrect ? '#d4edda' : '#f8d7da'}; border-radius: 4px; color: ${isCorrect ? '#155724' : '#721c24'};">
-                    <strong>Feedback:</strong> ${feedback}
-                </div>`;
+                const feedbackDiv = document.createElement('div');
+                feedbackDiv.className = `summary-feedback-section ${isCorrect ? 'correct' : 'incorrect'}`;
+                feedbackDiv.innerHTML = `
+                    <div class="feedback-icon">${isCorrect ? '✅' : '❌'}</div>
+                    <div class="feedback-content">
+                        <strong>Feedback:</strong> ${feedback}
+                    </div>
+                `;
+                card.appendChild(feedbackDiv);
             }
 
-            ansDiv.innerHTML = html;
-            questionDiv.appendChild(ansDiv);
-            summaryDiv.appendChild(questionDiv);
+            list.appendChild(card);
         });
 
-        contentDiv.appendChild(summaryDiv);
+        if (score) score.textContent = `Score: ${correctCount}/${totalCount}`;
+        summaryContainer.appendChild(list);
+        contentDiv.appendChild(summaryContainer);
     }
 
     // Add unit selection option after assessment completion
