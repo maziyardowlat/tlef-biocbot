@@ -969,7 +969,8 @@ async function updatePublishStatus(lectureName, isPublished) {
         }
         
         // Show success notification
-        showNotification(result.message || 'Publish status updated successfully', 'success');
+        // Success notification removed to prevent double notifications (already shown in togglePublish)
+        console.log(result.message || 'Publish status updated successfully');
         
     } catch (error) {
         console.error('Error updating publish status:', error);
@@ -4120,7 +4121,8 @@ async function loadOnboardingData() {
         loadExistingUnitData(onboardingData);
         
         // Show success notification
-        showNotification('Onboarding data loaded successfully!', 'success');
+        // Notification removed as per user request (was redundant)
+        console.log('Onboarding data loaded successfully!');
         
     } catch (error) {
         console.error('Error loading onboarding data:', error);
