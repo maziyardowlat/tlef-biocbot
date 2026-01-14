@@ -969,6 +969,21 @@ function addMessage(content, sender, withSource = false, skipAutoSave = false, s
     const footerDiv = document.createElement('div');
     footerDiv.classList.add('message-footer');
 
+    // Special handling: Never show source for the welcome message or the "Welcome to BiocBot!" unit selection message
+    if (content && typeof content === 'string') {
+        if ((content.includes("Hello! I'm BiocBot") && content.includes("AI study assistant")) ||
+            (content.includes("Welcome to BiocBot!") && content.includes("I can see you have access to published units"))) {
+            withSource = false;
+        }
+    }
+
+    // Check for assessment start message to apply styling
+    if (content && typeof content === 'string' && content.includes('Starting Assessment for')) {
+        messageDiv.classList.add('assessment-start');
+        // Force withSource to false for assessment start messages
+        withSource = false;
+    }
+
     // Add source citation if needed
     if (withSource && sender === 'bot') {
         const sourceDiv = document.createElement('div');
@@ -1894,21 +1909,7 @@ async function handleNewSession() {
         // Clear the chat interface
         const chatMessages = document.getElementById('chat-messages');
         if (chatMessages) {
-            chatMessages.innerHTML = `
-                <div class="message bot-message">
-                    <div class="message-avatar">B</div>
-                    <div class="message-content">
-                        <p>Hello! I'm BiocBot, your AI study assistant for ${courseName}. How can I help you today?</p>
-                        <div class="message-footer">
-                            <div class="message-footer-right">
-                                <span class="timestamp">Just now</span>
-                                <div class="message-flag-container" style="display: none;">
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
+            chatMessages.innerHTML = ''; // Start empty, let checkPublishedUnitsAndLoadQuestions handle the welcome message
         }
 
         // Reset flags
@@ -2569,21 +2570,7 @@ async function loadCourseData(courseId, isCourseChange = false) {
             // Clear the chat interface to start fresh
             const chatMessages = document.getElementById('chat-messages');
             if (chatMessages) {
-                chatMessages.innerHTML = `
-                    <div class="message bot-message">
-                        <div class="message-avatar">B</div>
-                        <div class="message-content">
-                            <p>Hello! I'm BiocBot, your AI study assistant for ${courseName}. How can I help you today?</p>
-                            <div class="message-footer">
-                                <div class="message-footer-right">
-                                    <span class="timestamp">Just now</span>
-                                    <div class="message-flag-container" style="display: none;">
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                `;
+            chatMessages.innerHTML = ''; // Start empty, let checkPublishedUnitsAndLoadQuestions handle the welcome message
             }
 
             // Reset flags
@@ -3404,14 +3391,19 @@ function showUnitSelectionDropdown(publishedUnits) {
         });
     }
 
-    // Show welcome message with unit selection instructions
-    showUnitSelectionWelcomeMessage();
+    // Check if we are loading from history or auto-continuing
+    const isHistoryLoad = window.loadingFromHistory || 
+                         sessionStorage.getItem('isContinuingChat') === 'true' || 
+                         window.autoContinued;
+    
+    // Only show welcome message if NOT loading from history
+    if (!isHistoryLoad) {
+        showUnitSelectionWelcomeMessage();
+    }
 
     // Hide chat input and mode toggle until assessment is completed
     // BUT ONLY if we are NOT loading from history or auto-continuing a chat
     // If we are loading history, the chat is already established so we need the input
-    const isHistoryLoad = window.loadingFromHistory || sessionStorage.getItem('isContinuingChat') === 'true';
-    
     if (!isHistoryLoad) {
         const chatInputContainer = document.querySelector('.chat-input-container');
         if (chatInputContainer) {
