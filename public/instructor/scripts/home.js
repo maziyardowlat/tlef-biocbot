@@ -804,6 +804,23 @@ async function setSelectedCourse(courseId, courseName) {
         window.history.replaceState({}, '', `${window.location.pathname}?${urlParams.toString()}`);
     }
     
+    // Auto-add instructor to course's instructors array when they select a course
+    // This ensures they have full access to the course features
+    const instructorId = getCurrentInstructorId();
+    if (instructorId) {
+        try {
+            await fetch(`/api/courses/${courseId}/instructors`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ instructorId })
+            });
+            console.log(`✅ Auto-added instructor ${instructorId} to course ${courseId}`);
+        } catch (error) {
+            console.warn('Could not auto-add instructor to course:', error);
+        }
+    }
+    
     // Update UI
     const courseNameDisplay = document.getElementById('course-name-display');
     if (courseNameDisplay) {

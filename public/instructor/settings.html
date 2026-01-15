@@ -96,6 +96,56 @@
                     </div>
                 </section>
 
+                <!-- Question Generation Settings (privileged users only) -->
+                <section class="settings-section" id="question-generation-section" style="display: none;">
+                    <h2>Question Generation Settings</h2>
+                    <p class="section-description">Customize the prompts used for AI question generation. Use placeholders: <code>{{learningObjectives}}</code>, <code>{{courseMaterial}}</code>, <code>{{unitName}}</code>, <code>{{questionType}}</code></p>
+                    <div class="settings-content">
+                        <div class="setting-item vertical">
+                            <div class="setting-info">
+                                <h3>System Prompt</h3>
+                                <p>Core instructions for the AI when generating questions. Applied to all question types.</p>
+                            </div>
+                            <div class="setting-controls full-width-control">
+                                <textarea id="question-system-prompt" rows="10" placeholder="Enter system prompt for question generation..."></textarea>
+                            </div>
+                        </div>
+
+                        <div class="setting-item vertical">
+                            <div class="setting-info">
+                                <h3>True/False Question Prompt</h3>
+                                <p>Template for generating true/false questions.</p>
+                            </div>
+                            <div class="setting-controls full-width-control">
+                                <textarea id="question-true-false-prompt" rows="10" placeholder="Enter true/false question prompt..."></textarea>
+                            </div>
+                        </div>
+
+                        <div class="setting-item vertical">
+                            <div class="setting-info">
+                                <h3>Multiple Choice Question Prompt</h3>
+                                <p>Template for generating multiple choice questions.</p>
+                            </div>
+                            <div class="setting-controls full-width-control">
+                                <textarea id="question-multiple-choice-prompt" rows="10" placeholder="Enter multiple choice question prompt..."></textarea>
+                            </div>
+                        </div>
+
+                        <div class="setting-item vertical">
+                            <div class="setting-info">
+                                <h3>Short Answer Question Prompt</h3>
+                                <p>Template for generating short answer questions.</p>
+                            </div>
+                            <div class="setting-controls full-width-control">
+                                <textarea id="question-short-answer-prompt" rows="10" placeholder="Enter short answer question prompt..."></textarea>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="settings-actions" style="margin-top: 1rem;">
+                        <button id="reset-question-prompts" class="secondary-button">Reset Question Prompts to Default</button>
+                    </div>
+                </section>
+
                 <!-- Chat Retrieval Settings -->
                 <section class="settings-section">
                     <h2>Chat Retrieval Settings</h2>
