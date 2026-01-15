@@ -291,4 +291,191 @@ router.post('/global', async (req, res) => {
     }
 });
 
+/**
+ * GET /api/settings/question-prompts
+ * Get question generation prompts for a specific course
+ * Requires CAN_SEE_DELETE_ALL_BUTTON permission
+ */
+router.get('/question-prompts', async (req, res) => {
+    try {
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({ success: false, message: 'Database connection not available' });
+        }
+
+        // Check authentication
+        if (!req.user) {
+            return res.status(401).json({ success: false, error: 'Not authenticated' });
+        }
+
+        // Check permission - only privileged users can access question prompts
+        const userEmail = req.user.email;
+        const allowedEmails = configService.getAllowedDeleteButtonEmails();
+        const hasPermission = userEmail && allowedEmails.includes(userEmail);
+
+        if (!hasPermission) {
+            return res.status(403).json({ success: false, error: 'Access denied' });
+        }
+
+        const courseId = req.query.courseId;
+        
+        // If no courseId provided, return defaults
+        if (!courseId) {
+            return res.json({
+                success: true,
+                prompts: prompts.DEFAULT_QUESTION_PROMPTS,
+                isCourseSpecific: false,
+                courseId: null
+            });
+        }
+
+        // Query the course document
+        const course = await db.collection('courses').findOne({ courseId });
+
+        // Retrieve question prompts from course or use defaults
+        const courseQuestionPrompts = course ? (course.questionPrompts || {}) : {};
+        
+        const result = {
+            systemPrompt: courseQuestionPrompts.systemPrompt || prompts.DEFAULT_QUESTION_PROMPTS.systemPrompt,
+            trueFalse: courseQuestionPrompts.trueFalse || prompts.DEFAULT_QUESTION_PROMPTS.trueFalse,
+            multipleChoice: courseQuestionPrompts.multipleChoice || prompts.DEFAULT_QUESTION_PROMPTS.multipleChoice,
+            shortAnswer: courseQuestionPrompts.shortAnswer || prompts.DEFAULT_QUESTION_PROMPTS.shortAnswer
+        };
+
+        res.json({
+            success: true,
+            prompts: result,
+            isCourseSpecific: true,
+            courseId: courseId
+        });
+    } catch (error) {
+        console.error('Error fetching question prompts:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch question prompts'
+        });
+    }
+});
+
+/**
+ * POST /api/settings/question-prompts
+ * Save custom question generation prompts for a specific course
+ * Requires CAN_SEE_DELETE_ALL_BUTTON permission
+ */
+router.post('/question-prompts', async (req, res) => {
+    try {
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({ success: false, message: 'Database connection not available' });
+        }
+
+        // Check authentication
+        if (!req.user) {
+            return res.status(401).json({ success: false, error: 'Not authenticated' });
+        }
+
+        // Check permission - only privileged users can modify question prompts
+        const userEmail = req.user.email;
+        const allowedEmails = configService.getAllowedDeleteButtonEmails();
+        const hasPermission = userEmail && allowedEmails.includes(userEmail);
+
+        if (!hasPermission) {
+            return res.status(403).json({ success: false, error: 'Access denied' });
+        }
+
+        const { systemPrompt, trueFalse, multipleChoice, shortAnswer, courseId } = req.body;
+
+        if (!courseId) {
+            return res.status(400).json({ success: false, message: 'courseId is required to save question prompts' });
+        }
+
+        // Validation - ensure they are all strings
+        if (typeof systemPrompt !== 'string' || typeof trueFalse !== 'string' || 
+            typeof multipleChoice !== 'string' || typeof shortAnswer !== 'string') {
+            return res.status(400).json({ success: false, message: 'Invalid prompt format - all prompts must be strings' });
+        }
+
+        // Update the course document with question prompts
+        await db.collection('courses').updateOne(
+            { courseId: courseId },
+            { 
+                $set: { 
+                    'questionPrompts.systemPrompt': systemPrompt,
+                    'questionPrompts.trueFalse': trueFalse,
+                    'questionPrompts.multipleChoice': multipleChoice,
+                    'questionPrompts.shortAnswer': shortAnswer,
+                    updatedAt: new Date()
+                } 
+            }
+        );
+
+        res.json({
+            success: true,
+            message: 'Question generation prompts saved successfully',
+            courseId: courseId
+        });
+    } catch (error) {
+        console.error('Error saving question prompts:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to save question prompts'
+        });
+    }
+});
+
+/**
+ * POST /api/settings/question-prompts/reset
+ * Reset question generation prompts to defaults for a specific course
+ * Requires CAN_SEE_DELETE_ALL_BUTTON permission
+ */
+router.post('/question-prompts/reset', async (req, res) => {
+    try {
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({ success: false, message: 'Database connection not available' });
+        }
+
+        // Check authentication
+        if (!req.user) {
+            return res.status(401).json({ success: false, error: 'Not authenticated' });
+        }
+
+        // Check permission
+        const userEmail = req.user.email;
+        const allowedEmails = configService.getAllowedDeleteButtonEmails();
+        const hasPermission = userEmail && allowedEmails.includes(userEmail);
+
+        if (!hasPermission) {
+            return res.status(403).json({ success: false, error: 'Access denied' });
+        }
+
+        const { courseId } = req.body;
+        
+        if (!courseId) {
+            return res.status(400).json({ success: false, message: 'courseId is required to reset question prompts' });
+        }
+
+        // Unset the questionPrompts field in the course document
+        await db.collection('courses').updateOne(
+            { courseId: courseId },
+            { 
+                $unset: { questionPrompts: "" }
+            }
+        );
+
+        res.json({
+            success: true,
+            message: 'Question generation prompts reset to defaults',
+            prompts: prompts.DEFAULT_QUESTION_PROMPTS,
+            courseId: courseId
+        });
+    } catch (error) {
+        console.error('Error resetting question prompts:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to reset question prompts'
+        });
+    }
+});
+
 module.exports = router;

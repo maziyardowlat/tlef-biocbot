@@ -792,8 +792,23 @@ router.post('/generate-ai', async (req, res) => {
             });
         }
         
-        // Check if the instructor has access to this course
-        if (course.instructorId !== instructorId) {
+        // Check if the user has access to this course
+        // Uses session user (req.user) for reliable authentication
+        // Also allows TAs who are assigned to this course
+        const user = req.user;
+        const hasAccess = user && (
+            course.instructorId === user.userId ||
+            course.instructorId === user.email ||
+            course.instructors?.includes(user.userId) ||
+            course.instructors?.includes(user.email) ||
+            course.tas?.some(ta => ta.email === user.email || ta.userId === user.userId) ||
+            user.role === 'admin'
+        );
+        
+        if (!hasAccess) {
+            console.log(`🚫 [PERMISSION] Access denied for user ${user?.userId || 'unknown'} to course ${courseId}`);
+            console.log(`🔍 [PERMISSION] Course instructorId: ${course.instructorId}, User: ${user?.userId}, Email: ${user?.email}`);
+            console.log(`🔍 [PERMISSION] Course instructors array: ${JSON.stringify(course.instructors)}`);
             return res.status(403).json({
                 success: false,
                 message: 'Access denied: You do not have permission to access this course'
@@ -914,6 +929,13 @@ router.post('/generate-ai', async (req, res) => {
 
             console.log('🎯 [GENERATE] Learning objectives available:', formattedLearningObjectives ? 'Yes' : 'No');
             
+            // Check for course-specific question prompts
+            let customPrompts = null;
+            if (course.questionPrompts) {
+                console.log('📝 [GENERATE] Using course-specific question prompts');
+                customPrompts = course.questionPrompts;
+            }
+            
             let generatedQuestion;
             
             if (regenerate) {
@@ -931,13 +953,13 @@ router.post('/generate-ai', async (req, res) => {
                 
                 console.log(`🔄 AI question regenerated successfully for ${lectureName}: ${questionType}`);
             } else {
-                // Normal generation
+                // Normal generation - pass custom prompts if available
                 generatedQuestion = await llmService.generateAssessmentQuestion(
                     questionType, 
                     combinedContent, 
                     lectureName,
                     formattedLearningObjectives,
-                    '' // practiceQuestions - empty for now, can be added later
+                    customPrompts  // Pass course-specific prompts (will be null if none set)
                 );
                 
                 console.log(`🤖 AI question generated successfully for ${lectureName}: ${questionType}`);

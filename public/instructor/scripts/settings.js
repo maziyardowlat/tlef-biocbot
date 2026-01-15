@@ -16,8 +16,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             await loadGlobalConfig();
             
             // If user has permission, load global settings (login restriction)
+            // and question generation prompts
             if (canManageDB) {
                 await loadAdminSettings();
+                await loadQuestionPrompts();
             }
         } catch (error) {
             console.error('Error loading settings:', error);
@@ -62,6 +64,32 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.error('Error fetching global config:', error);
         }
     }
+
+    /**
+     * Load question generation prompts for privileged users only
+     * These are course-specific prompts used for AI question generation
+     */
+    async function loadQuestionPrompts() {
+        try {
+            const courseId = await getCurrentCourseId();
+            const response = await fetch(`/api/settings/question-prompts?courseId=${courseId}`);
+            const result = await response.json();
+            
+            if (result.success && result.prompts) {
+                const systemPromptInput = document.getElementById('question-system-prompt');
+                const trueFalseInput = document.getElementById('question-true-false-prompt');
+                const multipleChoiceInput = document.getElementById('question-multiple-choice-prompt');
+                const shortAnswerInput = document.getElementById('question-short-answer-prompt');
+                
+                if (systemPromptInput) systemPromptInput.value = result.prompts.systemPrompt || '';
+                if (trueFalseInput) trueFalseInput.value = result.prompts.trueFalse || '';
+                if (multipleChoiceInput) multipleChoiceInput.value = result.prompts.multipleChoice || '';
+                if (shortAnswerInput) shortAnswerInput.value = result.prompts.shortAnswer || '';
+            }
+        } catch (error) {
+            console.error('Error fetching question prompts:', error);
+        }
+    }
     
     // Handle save button click
     if (saveSettingsBtn) {
@@ -87,6 +115,23 @@ document.addEventListener('DOMContentLoaded', async () => {
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ allowLocalLogin })
                     });
+                }
+
+                // Save question generation prompts if section is visible (privileged users only)
+                const questionGenSection = document.getElementById('question-generation-section');
+                if (questionGenSection && questionGenSection.style.display !== 'none') {
+                    const systemPrompt = document.getElementById('question-system-prompt')?.value;
+                    const trueFalse = document.getElementById('question-true-false-prompt')?.value;
+                    const multipleChoice = document.getElementById('question-multiple-choice-prompt')?.value;
+                    const shortAnswer = document.getElementById('question-short-answer-prompt')?.value;
+                    
+                    if (systemPrompt && trueFalse && multipleChoice && shortAnswer) {
+                        await fetch('/api/settings/question-prompts', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ systemPrompt, trueFalse, multipleChoice, shortAnswer, courseId })
+                        });
+                    }
                 }
                 
                 if (base && protege && tutor) {
@@ -234,6 +279,54 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         });
     }
+
+    // Handle reset question prompts button click (privileged users only)
+    const resetQuestionPromptsBtn = document.getElementById('reset-question-prompts');
+    if (resetQuestionPromptsBtn) {
+        resetQuestionPromptsBtn.addEventListener('click', async () => {
+            if (!confirm('Are you sure you want to reset all question generation prompts to default values? This only affects the current course.')) {
+                return;
+            }
+            
+            resetQuestionPromptsBtn.disabled = true;
+            resetQuestionPromptsBtn.textContent = 'Resetting...';
+            
+            try {
+                const courseId = await getCurrentCourseId();
+                
+                const response = await fetch('/api/settings/question-prompts/reset', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ courseId })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success && result.prompts) {
+                    // Reload the textareas with default values
+                    const systemPromptInput = document.getElementById('question-system-prompt');
+                    const trueFalseInput = document.getElementById('question-true-false-prompt');
+                    const multipleChoiceInput = document.getElementById('question-multiple-choice-prompt');
+                    const shortAnswerInput = document.getElementById('question-short-answer-prompt');
+                    
+                    if (systemPromptInput) systemPromptInput.value = result.prompts.systemPrompt || '';
+                    if (trueFalseInput) trueFalseInput.value = result.prompts.trueFalse || '';
+                    if (multipleChoiceInput) multipleChoiceInput.value = result.prompts.multipleChoice || '';
+                    if (shortAnswerInput) shortAnswerInput.value = result.prompts.shortAnswer || '';
+                    
+                    showNotification('Question prompts reset to defaults', 'success');
+                } else {
+                    showNotification('Failed to reset question prompts: ' + (result.message || 'Unknown error'), 'error');
+                }
+            } catch (error) {
+                console.error('Error resetting question prompts:', error);
+                showNotification('Error resetting question prompts', 'error');
+            } finally {
+                resetQuestionPromptsBtn.disabled = false;
+                resetQuestionPromptsBtn.textContent = 'Reset Question Prompts to Default';
+            }
+        });
+    }
     
     /**
      * Check if the current user has permission to see the delete all button
@@ -248,19 +341,22 @@ document.addEventListener('DOMContentLoaded', async () => {
             
             const result = await response.json();
             
-            // Get the Database Management section by ID
+            // Get all privileged sections by ID
             const databaseSection = document.getElementById('database-management-section');
             const loginRestrictionSection = document.getElementById('login-restriction-section');
+            const questionGenerationSection = document.getElementById('question-generation-section');
             
             if (result.success && result.canDeleteAll) {
                 // User has permission, ensure the sections are visible
                 if (databaseSection) databaseSection.style.display = '';
                 if (loginRestrictionSection) loginRestrictionSection.style.display = '';
+                if (questionGenerationSection) questionGenerationSection.style.display = '';
                 return true;
             } else {
                 // User doesn't have permission, hide the sections
                 if (databaseSection) databaseSection.style.display = 'none';
                 if (loginRestrictionSection) loginRestrictionSection.style.display = 'none';
+                if (questionGenerationSection) questionGenerationSection.style.display = 'none';
                 return false;
             }
         } catch (error) {
@@ -268,8 +364,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             // On error, hide the sections for security
             const databaseSection = document.getElementById('database-management-section');
             const loginRestrictionSection = document.getElementById('login-restriction-section');
+            const questionGenerationSection = document.getElementById('question-generation-section');
             if (databaseSection) databaseSection.style.display = 'none';
             if (loginRestrictionSection) loginRestrictionSection.style.display = 'none';
+            if (questionGenerationSection) questionGenerationSection.style.display = 'none';
             return false;
         }
     }

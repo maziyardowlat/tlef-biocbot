@@ -271,9 +271,10 @@ class LLMService {
      * @param {string} courseMaterialContent - The course material text content
      * @param {string} unitName - Name of the unit (e.g., 'Unit 1')
      * @param {string} learningObjectives - Learning objectives for the unit (optional)
+     * @param {Object} customPrompts - Optional course-specific custom prompts
      * @returns {Promise<Object>} Generated question content
      */
-    async generateAssessmentQuestion(questionType, courseMaterialContent, unitName, learningObjectives = '') {
+    async generateAssessmentQuestion(questionType, courseMaterialContent, unitName, learningObjectives = '', customPrompts = null) {
         try {
             // Initialize LLM service on first use if not already initialized
             if (!this.isInitialized) {
@@ -282,15 +283,24 @@ class LLMService {
             }
 
             console.log(`🤖 Generating ${questionType} question for ${unitName}...`);
+            if (customPrompts) {
+                console.log(`📝 Using custom question generation prompts for this course`);
+            }
 
-            // Create specific prompt based on question type
-            const prompt = this.createQuestionGenerationPrompt(questionType, courseMaterialContent, unitName, learningObjectives);
+            // Create specific prompt based on question type (use custom prompts if provided)
+            const prompt = this.createQuestionGenerationPrompt(questionType, courseMaterialContent, unitName, learningObjectives, customPrompts);
 
-            // Create system prompt using template function
-            const systemPrompt = prompts.createQuestionGenerationSystemPrompt(
-                questionType,
-                this.getJsonSchemaForQuestionType(questionType)
-            );
+            // Create system prompt - use custom if provided, otherwise use template function
+            let systemPrompt;
+            if (customPrompts && customPrompts.systemPrompt) {
+                // Replace placeholder in custom system prompt
+                systemPrompt = customPrompts.systemPrompt.replace(/\{\{questionType\}\}/g, questionType);
+            } else {
+                systemPrompt = prompts.createQuestionGenerationSystemPrompt(
+                    questionType,
+                    this.getJsonSchemaForQuestionType(questionType)
+                );
+            }
 
             // Set specific options for question generation - provider-aware
             // Use higher temperature (0.7) for more creative question generation
@@ -499,9 +509,38 @@ Return ONLY a JSON object with the following structure:
      * @param {string} courseMaterialContent - Course material content
      * @param {string} unitName - Unit name
      * @param {string} learningObjectives - Learning objectives (optional)
+     * @param {Object} customPrompts - Optional custom prompts with templates
      * @returns {string} Formatted prompt for the LLM
      */
-    createQuestionGenerationPrompt(questionType, courseMaterialContent, unitName, learningObjectives = '') {
+    createQuestionGenerationPrompt(questionType, courseMaterialContent, unitName, learningObjectives = '', customPrompts = null) {
+        // If custom prompts are provided, use them with placeholder substitution
+        if (customPrompts) {
+            let template;
+            switch (questionType) {
+                case 'true-false':
+                    template = customPrompts.trueFalse;
+                    break;
+                case 'multiple-choice':
+                    template = customPrompts.multipleChoice;
+                    break;
+                case 'short-answer':
+                    template = customPrompts.shortAnswer;
+                    break;
+                default:
+                    throw new Error(`Unsupported question type: ${questionType}`);
+            }
+            
+            // Replace placeholders with actual values
+            if (template) {
+                return template
+                    .replace(/\{\{learningObjectives\}\}/g, learningObjectives || '')
+                    .replace(/\{\{courseMaterial\}\}/g, courseMaterialContent)
+                    .replace(/\{\{unitName\}\}/g, unitName)
+                    .replace(/\{\{questionType\}\}/g, questionType);
+            }
+        }
+        
+        // Fall back to default prompts
         switch (questionType) {
             case 'true-false':
                 return prompts.QUESTION_GENERATION_PROMPT_TEMPLATE.trueFalse(learningObjectives, courseMaterialContent, unitName);
