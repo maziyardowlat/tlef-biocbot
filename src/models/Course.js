@@ -29,6 +29,7 @@ const { MongoClient } = require('mongodb');
  *   lectures: [                 // Array of lectures/units
  *     {
  *       name: String,           // e.g., "Unit 1", "Week 1"
+ *       displayName: String,    // Custom title e.g., "Biology" (optional)
  *       isPublished: Boolean,   // Publish status
  *       createdAt: Date,        // When the lecture was created
  *       updatedAt: Date,        // Last update timestamp
@@ -743,6 +744,73 @@ async function deleteUnit(db, courseId, unitName) {
 }
 
 /**
+ * Update the display name of a unit (for custom unit titles)
+ * @param {Object} db - MongoDB database instance
+ * @param {string} courseId - Course identifier
+ * @param {string} unitName - Internal name of the unit (e.g., "Unit 1")
+ * @param {string} displayName - Custom display name (e.g., "Biology") or null to clear
+ * @param {string} instructorId - ID of the instructor making the change
+ * @returns {Promise<Object>} Update result
+ */
+async function updateUnitDisplayName(db, courseId, unitName, displayName, instructorId) {
+    const collection = getCoursesCollection(db);
+    
+    const now = new Date();
+    
+    // First, ensure the course exists and find the unit
+    const course = await collection.findOne({ courseId });
+    if (!course) {
+        console.error(`Course ${courseId} not found for display name update`);
+        return { success: false, error: 'Course not found' };
+    }
+    
+    // Check if the unit exists
+    const existingUnit = course.lectures ? course.lectures.find(l => l.name === unitName) : null;
+    if (!existingUnit) {
+        console.error(`Unit ${unitName} not found in course ${courseId}`);
+        return { success: false, error: 'Unit not found' };
+    }
+    
+    // Build the update - set displayName or unset if empty/null
+    const updateFields = {
+        'lectures.$.updatedAt': now,
+        updatedAt: now,
+        lastUpdatedById: instructorId
+    };
+    
+    // If displayName is empty or null, remove the field; otherwise set it
+    if (displayName && displayName.trim()) {
+        updateFields['lectures.$.displayName'] = displayName.trim();
+    }
+    
+    const updateOp = {
+        $set: updateFields
+    };
+    
+    // If displayName is empty, also unset the field
+    if (!displayName || !displayName.trim()) {
+        updateOp.$unset = { 'lectures.$.displayName': '' };
+    }
+    
+    const result = await collection.updateOne(
+        { 
+            courseId,
+            'lectures.name': unitName 
+        },
+        updateOp
+    );
+    
+    console.log(`Updated display name for ${unitName} to "${displayName || '(cleared)'}" in course ${courseId}`);
+    
+    return { 
+        success: true, 
+        modifiedCount: result.modifiedCount,
+        unitName,
+        displayName: displayName && displayName.trim() ? displayName.trim() : null
+    };
+}
+
+/**
  * Add or update a document reference within a specific unit
  * @param {Object} db - MongoDB database instance
  * @param {string} courseId - Course identifier
@@ -1450,5 +1518,6 @@ module.exports = {
     checkTAPermission,
     updateStudentEnrollment,
     getStudentEnrollment,
-    joinCourse
+    joinCourse,
+    updateUnitDisplayName
 };

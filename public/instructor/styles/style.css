@@ -182,3 +182,75 @@
     cursor: not-allowed;
     opacity: 0.6;
 }
+
+/* ============================================ */
+/* Unit Rename Styles */
+/* ============================================ */
+
+.unit-name-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+}
+
+.unit-rename-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    padding: 4px 6px;
+    opacity: 0.6;
+    transition: opacity 0.2s ease;
+}
+
+.unit-rename-btn:hover {
+    opacity: 1;
+}
+
+.unit-rename-edit {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.unit-rename-input {
+    padding: 6px 10px;
+    border: 2px solid #007bff;
+    border-radius: 4px;
+    font-size: 14px;
+    width: 200px;
+    outline: none;
+}
+
+.unit-rename-input:focus {
+    border-color: #0056b3;
+    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+.unit-save-btn,
+.unit-cancel-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 16px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    transition: background-color 0.2s ease;
+}
+
+.unit-save-btn {
+    color: #28a745;
+}
+
+.unit-save-btn:hover {
+    background-color: rgba(40, 167, 69, 0.1);
+}
+
+.unit-cancel-btn {
+    color: #dc3545;
+}
+
+.unit-cancel-btn:hover {
+    background-color: rgba(220, 53, 69, 0.1);
+}

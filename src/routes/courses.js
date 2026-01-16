@@ -546,6 +546,7 @@ router.get('/:courseId', async (req, res) => {
             lectures: course.lectures?.map(lecture => ({
                 id: lecture.id || lecture.name,
                 name: lecture.name,
+                displayName: lecture.displayName || null,
                 isPublished: lecture.isPublished || false,
                 documents: lecture.documents || [],
                 questions: lecture.questions || [],
@@ -628,6 +629,7 @@ async function getCourseForStudent(req, res, courseId) {
             lectures: course.lectures?.map(lecture => ({
                 id: lecture.id || lecture.name,
                 name: lecture.name,
+                displayName: lecture.displayName || null,
                 isPublished: lecture.isPublished || false,
                 documents: lecture.documents || [],
                 questions: lecture.questions || [],
@@ -2122,6 +2124,76 @@ router.delete('/:courseId/units/:unitName', async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Internal server error while deleting unit'
+        });
+    }
+});
+
+/**
+ * PUT /api/courses/:courseId/units/:unitName/rename
+ * Update the display name of a unit (for custom unit titles)
+ */
+router.put('/:courseId/units/:unitName/rename', async (req, res) => {
+    try {
+        const { courseId, unitName } = req.params;
+        const { displayName, instructorId } = req.body;
+        
+        if (!instructorId) {
+            return res.status(400).json({
+                success: false,
+                message: 'instructorId is required'
+            });
+        }
+        
+        // Get database instance from app.locals
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
+        
+        // Check if instructor has access to modify this course
+        const hasAccess = await CourseModel.userHasCourseAccess(db, courseId, instructorId, 'instructor');
+        if (!hasAccess) {
+            return res.status(403).json({
+                success: false,
+                message: 'You do not have permission to modify this course'
+            });
+        }
+        
+        // Update the unit display name
+        const result = await CourseModel.updateUnitDisplayName(
+            db, 
+            courseId, 
+            decodeURIComponent(unitName), 
+            displayName, 
+            instructorId
+        );
+        
+        if (!result.success) {
+            return res.status(404).json({
+                success: false,
+                message: result.error || 'Unit not found'
+            });
+        }
+        
+        console.log(`Updated display name for ${unitName} to "${displayName || '(cleared)'}" in course ${courseId}`);
+        
+        res.json({
+            success: true,
+            message: displayName ? `Unit renamed to "${displayName}"` : 'Unit name cleared',
+            data: {
+                unitName: decodeURIComponent(unitName),
+                displayName: result.displayName
+            }
+        });
+        
+    } catch (error) {
+        console.error('Error renaming unit:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while renaming unit'
         });
     }
 });
