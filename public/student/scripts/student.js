@@ -3323,8 +3323,15 @@ function showUnitSelectionDropdown(publishedUnits) {
         // Add options for each published unit (in original order for display)
         publishedUnits.forEach(unit => {
             const option = document.createElement('option');
-            option.value = unit.name;
-            option.textContent = unit.name;
+            option.value = unit.name; // Keep internal name as value
+            
+            // Format display: "1. Biology" if displayName exists, otherwise just "Unit 1"
+            const unitNum = unit.name.match(/\d+/)?.[0] || '';
+            const displayText = unit.displayName 
+                ? `${unitNum}. ${unit.displayName}` 
+                : unit.name;
+            option.textContent = displayText;
+            
             updatedUnitSelect.appendChild(option);
         });
 

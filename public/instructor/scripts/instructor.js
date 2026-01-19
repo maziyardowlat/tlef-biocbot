@@ -715,8 +715,8 @@ async function handleUpload() {
  * @param {string} contentType - The content type ('lecture-notes', 'practice-quiz', etc.)
  */
 function addContentToWeek(week, fileName, description, documentId, status = 'uploaded', contentType = null) {
-    // Find the week accordion item
-    const weekAccordion = findElementsContainingText('.accordion-item .folder-name', week)[0].closest('.accordion-item');
+    // Find the week accordion item using data-unit-name attribute (internal name like "Unit 1")
+    const weekAccordion = document.querySelector(`.accordion-item[data-unit-name="${week}"]`);
     
     if (!weekAccordion) {
         console.error('Could not find week accordion for', week);
@@ -866,13 +866,13 @@ function formatFileSize(bytes) {
  * @param {boolean} isPublished - Whether the content should be published
  */
 function togglePublish(lectureName, isPublished) {
-    // Find the accordion item
+    // Find the accordion item using data-unit-name attribute (internal name like "Unit 1")
     const accordionItems = document.querySelectorAll('.accordion-item');
     let targetAccordion = null;
     
     for (let item of accordionItems) {
-        const folderName = item.querySelector('.folder-name').textContent;
-        if (folderName === lectureName) {
+        const unitName = item.getAttribute('data-unit-name');
+        if (unitName === lectureName) {
             targetAccordion = item;
             break;
         }
@@ -1611,10 +1611,10 @@ async function loadLearningObjectives() {
         console.log(`📚 [LEARNING_OBJECTIVES] Found ${accordionItems.length} accordion items (units/weeks)`);
         
         for (const item of accordionItems) {
-            const folderName = item.querySelector('.folder-name');
-            if (!folderName) continue;
+            // Use data-unit-name attribute for internal name (e.g., "Unit 1")
+            const lectureName = item.getAttribute('data-unit-name');
+            if (!lectureName) continue;
             
-            const lectureName = folderName.textContent;
             console.log(`📚 [LEARNING_OBJECTIVES] Processing lecture/unit: ${lectureName}`);
             
             console.log(`📡 [MONGODB] Making API request to /api/learning-objectives?week=${encodeURIComponent(lectureName)}&courseId=${courseId}`);
@@ -1679,13 +1679,13 @@ async function loadDocuments() {
         console.log(`📁 [DOCUMENTS] Found ${accordionItems.length} accordion items (units/weeks)`);
         
         for (const item of accordionItems) {
-            const folderName = item.querySelector('.folder-name');
-            if (!folderName) {
-                console.warn(`⚠️ [DOCUMENTS] No folder name found for accordion item`);
+            // Use data-unit-name attribute for internal name (e.g., "Unit 1")
+            const lectureName = item.getAttribute('data-unit-name');
+            if (!lectureName) {
+                console.warn(`⚠️ [DOCUMENTS] No unit name found for accordion item`);
                 continue;
             }
             
-            const lectureName = folderName.textContent;
             console.log(`📁 [DOCUMENTS] Processing lecture/unit: ${lectureName}`);
             
             // Load documents from the course structure instead of separate API
@@ -1805,10 +1805,10 @@ async function loadDocuments() {
         console.log(`🔧 [DOCUMENTS] Final check: Ensuring all units have action buttons`);
         const allAccordionItems = document.querySelectorAll('.accordion-item');
         allAccordionItems.forEach(accordionItem => {
-            const folderName = accordionItem.querySelector('.folder-name');
-            if (!folderName) return;
+            // Use data-unit-name attribute for internal name (e.g., "Unit 1")
+            const unitName = accordionItem.getAttribute('data-unit-name');
+            if (!unitName) return;
             
-            const unitName = folderName.textContent;
             const courseMaterialsSection = accordionItem.querySelector('.course-materials-section .section-content');
             
             if (courseMaterialsSection) {
@@ -1840,10 +1840,10 @@ async function loadDocuments() {
         try {
             const allAccordionItems = document.querySelectorAll('.accordion-item');
             allAccordionItems.forEach(accordionItem => {
-                const folderName = accordionItem.querySelector('.folder-name');
-                if (!folderName) return;
+                // Use data-unit-name attribute for internal name (e.g., "Unit 1")
+                const unitName = accordionItem.getAttribute('data-unit-name');
+                if (!unitName) return;
                 
-                const unitName = folderName.textContent;
                 const courseMaterialsSection = accordionItem.querySelector('.course-materials-section .section-content');
                 
                 if (courseMaterialsSection) {
@@ -2106,12 +2106,8 @@ async function findUnitNameForDocument(documentId, courseId) {
  * @returns {HTMLElement|null} Unit element or null if not found
  */
 function findUnitElementByName(unitName) {
-    // Use the existing helper function to find elements containing the unit name
-    const folderElements = findElementsContainingText('.accordion-item .folder-name', unitName);
-    if (folderElements.length > 0) {
-        return folderElements[0].closest('.accordion-item');
-    }
-    return null;
+    // Use data-unit-name attribute selector for internal name (e.g., "Unit 1")
+    return document.querySelector(`.accordion-item[data-unit-name="${unitName}"]`);
 }
 
 /**
@@ -2373,13 +2369,13 @@ async function loadAssessmentQuestions() {
         }
         
         for (const item of accordionItems) {
-            const folderName = item.querySelector('.folder-name');
-            if (!folderName) {
-                console.warn(`⚠️ [ASSESSMENT_QUESTIONS] No folder name found for accordion item`);
+            // Use data-unit-name attribute for internal name (e.g., "Unit 1")
+            const lectureName = item.getAttribute('data-unit-name');
+            if (!lectureName) {
+                console.warn(`⚠️ [ASSESSMENT_QUESTIONS] No unit name found for accordion item`);
                 continue;
             }
             
-            const lectureName = folderName.textContent;
             console.log(`❓ [ASSESSMENT_QUESTIONS] Processing lecture/unit: ${lectureName}`);
             
             console.log(`📡 [MONGODB] Making API request to ${API_BASE_URL}/api/questions/lecture?courseId=${courseId}&lectureName=${encodeURIComponent(lectureName)}`);
@@ -2579,10 +2575,9 @@ async function reloadPassThresholds() {
         const accordionItems = document.querySelectorAll('.accordion-item');
         
         for (const item of accordionItems) {
-            const folderName = item.querySelector('.folder-name');
-            if (!folderName) continue;
-            
-            const lectureName = folderName.textContent;
+            // Use data-unit-name attribute for internal name (e.g., "Unit 1")
+            const lectureName = item.getAttribute('data-unit-name');
+            if (!lectureName) continue;
             
             const response = await fetch(`/api/lectures/pass-threshold?courseId=${courseId}&lectureName=${encodeURIComponent(lectureName)}`);
             
@@ -2621,10 +2616,9 @@ async function loadPassThresholds() {
         const accordionItems = document.querySelectorAll('.accordion-item');
         
         for (const item of accordionItems) {
-            const folderName = item.querySelector('.folder-name');
-            if (!folderName) continue;
-            
-            const lectureName = folderName.textContent;
+            // Use data-unit-name attribute for internal name (e.g., "Unit 1")
+            const lectureName = item.getAttribute('data-unit-name');
+            if (!lectureName) continue;
             
             const response = await fetch(`/api/lectures/pass-threshold?courseId=${courseId}&lectureName=${encodeURIComponent(lectureName)}`);
             
@@ -2758,15 +2752,8 @@ function toggleSection(headerElement, e) {
  * @param {string} week - The week identifier (e.g., 'Week 1')
  */
 function addObjectiveFromInput(week) {
-    // Find the week element using our custom helper function
-    const folderElement = findElementsContainingText('.accordion-item .folder-name', week)[0];
-    if (!folderElement) {
-        console.error('Could not find folder element for:', week);
-        showNotification('Error: Could not find unit element', 'error');
-        return;
-    }
-    
-    const weekElement = folderElement.closest('.accordion-item');
+    // Find the week element using data-unit-name attribute (internal name like "Unit 1")
+    const weekElement = document.querySelector(`.accordion-item[data-unit-name="${week}"]`);
     if (!weekElement) {
         console.error('Could not find week element for:', week);
         showNotification('Error: Could not find unit element', 'error');
@@ -2843,15 +2830,8 @@ function removeObjective(button) {
  * @param {string} week - The week identifier (e.g., 'Week 1')
  */
 async function saveObjectives(week) {
-    // Find the week element using our custom helper function
-    const folderElement = findElementsContainingText('.accordion-item .folder-name', week)[0];
-    if (!folderElement) {
-        console.error('Could not find folder element for:', week);
-        showNotification('Error: Could not find unit element', 'error');
-        return;
-    }
-    
-    const weekElement = folderElement.closest('.accordion-item');
+    // Find the week element using data-unit-name attribute (internal name like "Unit 1")
+    const weekElement = document.querySelector(`.accordion-item[data-unit-name="${week}"]`);
     if (!weekElement) {
         console.error('Could not find week element for:', week);
         showNotification('Error: Could not find unit element', 'error');
@@ -2907,9 +2887,13 @@ async function saveObjectives(week) {
  * @param {string} week - The week identifier (e.g., 'Week 1')
  */
 async function confirmCourseMaterials(week) {
-    // Find the week element using our custom helper function
-    const folderElement = findElementsContainingText('.accordion-item .folder-name', week)[0];
-    const weekElement = folderElement.closest('.accordion-item');
+    // Find the week element using data-unit-name attribute (internal name like "Unit 1")
+    const weekElement = document.querySelector(`.accordion-item[data-unit-name="${week}"]`);
+    if (!weekElement) {
+        console.error('Could not find week element for:', week);
+        showNotification('Error: Could not find unit element', 'error');
+        return;
+    }
     const fileItems = weekElement.querySelectorAll('.course-materials-section .file-item');
     
     console.log(`🔍 [CONFIRM_MATERIALS] Checking materials for ${week}`);
@@ -3078,13 +3062,8 @@ function focusUnitFromURL() {
         const unitNameParam = params.get('unit');
         if (!unitNameParam) return;
         
-        // Find the accordion item whose folder-name matches the unit
-        const folderEls = findElementsContainingText('.accordion-item .folder-name', unitNameParam);
-        if (!folderEls || folderEls.length === 0) {
-            return;
-        }
-        
-        const accordionItem = folderEls[0].closest('.accordion-item');
+        // Find the accordion item using data-unit-name attribute (internal name like "Unit 1")
+        const accordionItem = document.querySelector(`.accordion-item[data-unit-name="${unitNameParam}"]`);
         if (!accordionItem) return;
         const header = accordionItem.querySelector('.accordion-header');
         const content = accordionItem.querySelector('.accordion-content');
@@ -3784,10 +3763,8 @@ async function generateAIQuestionContent() {
         const instructorId = getCurrentInstructorId();
         
         // Get course materials and learning objectives for the current week
-        const weekAccordionItem = Array.from(document.querySelectorAll('.accordion-item')).find(item => {
-            const folderName = item.querySelector('.folder-name')?.textContent;
-            return folderName === currentWeek;
-        });
+        // Use data-unit-name attribute selector instead of folder-name text (which shows formatted name)
+        const weekAccordionItem = document.querySelector(`.accordion-item[data-unit-name="${currentWeek}"]`);
 
         if (!weekAccordionItem) {
             throw new Error(`Could not find accordion item for week: ${currentWeek}`);
@@ -4351,9 +4328,24 @@ function createUnitElement(unitName, unitData, isExpanded = false) {
     
     const unitId = unitName.toLowerCase().replace(/\s+/g, '-');
     
+    // Extract unit number for display (e.g., "1" from "Unit 1")
+    const unitNum = unitName.match(/\d+/)?.[0] || '';
+    
+    // Use displayName if available, otherwise just show the unit name
+    const displayName = unitData?.displayName || '';
+    const formattedName = displayName ? `${unitNum}. ${displayName}` : unitName;
+    
     unitDiv.innerHTML = `
         <div class="accordion-header">
-            <span class="folder-name">${unitName}</span>
+            <div class="unit-name-container">
+                <span class="folder-name">${formattedName}</span>
+                <button class="unit-rename-btn" onclick="event.stopPropagation(); openRenameUnitInput('${unitName}')" title="Rename unit">✏️</button>
+                <div class="unit-rename-edit" style="display: none;">
+                    <input type="text" class="unit-rename-input" placeholder="Enter unit title..." value="${displayName}" data-unit-name="${unitName}">
+                    <button class="unit-save-btn" onclick="event.stopPropagation(); saveUnitDisplayName('${unitName}')" title="Save">✓</button>
+                    <button class="unit-cancel-btn" onclick="event.stopPropagation(); cancelRenameUnit('${unitName}')" title="Cancel">✕</button>
+                </div>
+            </div>
             <div class="header-actions">
                 <div class="publish-toggle">
                     <label class="toggle-switch">
@@ -4915,10 +4907,10 @@ function ensureActionButtonsExist() {
     
     const accordionItems = document.querySelectorAll('.accordion-item');
     accordionItems.forEach(item => {
-        const folderName = item.querySelector('.folder-name');
-        if (!folderName) return;
+        // Use data-unit-name attribute for internal name (e.g., "Unit 1")
+        const unitName = item.getAttribute('data-unit-name');
+        if (!unitName) return;
         
-        const unitName = folderName.textContent;
         const courseMaterialsSection = item.querySelector('.course-materials-section .section-content');
         
         if (courseMaterialsSection) {
@@ -4961,12 +4953,8 @@ function ensureActionButtonsExist() {
 function checkCourseMaterialsAvailable(week) {
     if (!week) return false;
 
-    // Find the accordion item by looking for the folder name that matches the week
-    const accordionItems = document.querySelectorAll('.accordion-item');
-    const weekAccordionItem = Array.from(accordionItems).find(item => {
-        const folderName = item.querySelector('.folder-name')?.textContent;
-        return folderName === week;
-    });
+    // Find the accordion item using data-unit-name attribute (internal name like "Unit 1")
+    const weekAccordionItem = document.querySelector(`.accordion-item[data-unit-name="${week}"]`);
 
     if (!weekAccordionItem) {
         console.warn(`Could not find accordion item for week: ${week}`);
@@ -5282,3 +5270,117 @@ document.addEventListener('change', (e) => {
         setTimeout(updatePublishedSummary, 100);
     }
 });
+
+// ============================================
+// Unit Renaming Functions
+// ============================================
+
+/**
+ * Open the inline rename input for a unit
+ * @param {string} unitName - Internal name of the unit (e.g., "Unit 1")
+ */
+function openRenameUnitInput(unitName) {
+    const accordionItem = document.querySelector(`.accordion-item[data-unit-name="${unitName}"]`);
+    if (!accordionItem) return;
+    
+    const folderName = accordionItem.querySelector('.folder-name');
+    const renameBtn = accordionItem.querySelector('.unit-rename-btn');
+    const editContainer = accordionItem.querySelector('.unit-rename-edit');
+    const input = accordionItem.querySelector('.unit-rename-input');
+    
+    // Hide the folder name and pencil button, show the edit container
+    if (folderName) folderName.style.display = 'none';
+    if (renameBtn) renameBtn.style.display = 'none';
+    if (editContainer) editContainer.style.display = 'flex';
+    
+    // Focus and select input
+    if (input) {
+        input.focus();
+        input.select();
+    }
+    
+    // Add Enter key handler
+    if (input) {
+        input.onkeydown = (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                saveUnitDisplayName(unitName);
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                cancelRenameUnit(unitName);
+            }
+        };
+    }
+}
+
+/**
+ * Save the unit display name
+ * @param {string} unitName - Internal name of the unit (e.g., "Unit 1")
+ */
+async function saveUnitDisplayName(unitName) {
+    const accordionItem = document.querySelector(`.accordion-item[data-unit-name="${unitName}"]`);
+    if (!accordionItem) return;
+    
+    const input = accordionItem.querySelector('.unit-rename-input');
+    const displayName = input ? input.value.trim() : '';
+    
+    try {
+        const courseId = await getCurrentCourseId();
+        const instructorId = getCurrentInstructorId();
+        
+        const response = await fetch(`/api/courses/${courseId}/units/${encodeURIComponent(unitName)}/rename`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ displayName, instructorId })
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to rename unit');
+        }
+        
+        const result = await response.json();
+        
+        // Update the folder name display
+        const folderName = accordionItem.querySelector('.folder-name');
+        const unitNum = unitName.match(/\d+/)?.[0] || '';
+        const formattedName = displayName ? `${unitNum}. ${displayName}` : unitName;
+        
+        if (folderName) {
+            folderName.textContent = formattedName;
+        }
+        
+        showNotification(result.message || 'Unit renamed successfully', 'success');
+        
+    } catch (error) {
+        console.error('Error renaming unit:', error);
+        showNotification('Failed to rename unit: ' + error.message, 'error');
+    }
+    
+    // Hide edit mode and restore normal display
+    cancelRenameUnit(unitName);
+}
+
+/**
+ * Cancel the rename operation and restore normal display
+ * @param {string} unitName - Internal name of the unit (e.g., "Unit 1")
+ */
+function cancelRenameUnit(unitName) {
+    const accordionItem = document.querySelector(`.accordion-item[data-unit-name="${unitName}"]`);
+    if (!accordionItem) return;
+    
+    const folderName = accordionItem.querySelector('.folder-name');
+    const renameBtn = accordionItem.querySelector('.unit-rename-btn');
+    const editContainer = accordionItem.querySelector('.unit-rename-edit');
+    
+    // Show the folder name and pencil button, hide the edit container
+    if (folderName) folderName.style.display = '';
+    if (renameBtn) renameBtn.style.display = '';
+    if (editContainer) editContainer.style.display = 'none';
+}
+
+// Make rename functions globally available
+window.openRenameUnitInput = openRenameUnitInput;
+window.saveUnitDisplayName = saveUnitDisplayName;
+window.cancelRenameUnit = cancelRenameUnit;
