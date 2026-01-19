@@ -550,7 +550,6 @@ function createHistoryItem(chat, index) {
     mobileActions.classList.add('mobile-actions-container');
     mobileActions.innerHTML = `
         <button class="mobile-action-btn primary" data-action="continue">Continue Chat</button>
-        <button class="mobile-action-btn secondary" data-action="download" title="Download JSON">JSON</button>
         <button class="mobile-action-btn secondary" data-action="download-md" title="Download Markdown">Markdown</button>
         <button class="mobile-action-btn secondary" data-action="delete">Delete</button>
     `;
@@ -562,7 +561,6 @@ function createHistoryItem(chat, index) {
             currentSelectedChat = chat; // Ensure correct context
             const action = e.target.dataset.action;
             if (action === 'continue') handleContinueChat();
-            if (action === 'download') handleDownloadChat();
             if (action === 'download-md') handleDownloadMarkdown();
             if (action === 'delete') handleDeleteChat();
         });
@@ -723,11 +721,7 @@ function setupEventListeners() {
         continueBtn.addEventListener('click', handleContinueChat);
     }
     
-    // Download chat button (JSON)
-    const downloadBtn = document.getElementById('download-chat-btn');
-    if (downloadBtn) {
-        downloadBtn.addEventListener('click', handleDownloadChat);
-    }
+
     
     // Download markdown button
     const downloadMdBtn = document.getElementById('download-md-btn');
@@ -1087,58 +1081,6 @@ async function handleDeleteChat() {
     }
 }
 
-/**
- * Handle download chat button click
- */
-async function handleDownloadChat() {
-    if (!currentSelectedChat) {
-        console.error('No chat selected');
-        alert('Please select a chat to download.');
-        return;
-    }
-    
-    try {
-        console.log('Downloading chat:', currentSelectedChat.id);
-        
-        // Get course ID from localStorage (same as used in loadChatHistory)
-        const courseId = localStorage.getItem('selectedCourseId');
-        if (!courseId) {
-            console.warn('No course ID found in localStorage');
-        }
-        
-        // Get student name from current user
-        const currentUser = getCurrentUser();
-        const studentName = currentUser?.displayName || currentUser?.username || 'Student';
-        
-        // Prepare the download data structure similar to instructor downloads
-        const downloadData = {
-            sessionId: currentSelectedChat.id,
-            title: currentSelectedChat.title,
-            courseId: courseId || 'Unknown',
-            studentName: studentName,
-            studentId: getCurrentStudentId(),
-            unitName: currentSelectedChat.unitName,
-            messageCount: currentSelectedChat.messageCount,
-            duration: currentSelectedChat.duration,
-            savedAt: currentSelectedChat.savedAt,
-            chatData: currentSelectedChat.chatData,
-            exportDate: new Date().toISOString()
-        };
-        
-        // Generate filename similar to instructor format
-        const dateStr = new Date(currentSelectedChat.savedAt).toISOString().split('T')[0];
-        const fileName = `BiocBot_Chat_${courseId || 'Unknown'}_${studentName.replace(/[^a-zA-Z0-9]/g, '_')}_${dateStr}.json`;
-        
-        // Download the JSON file
-        downloadJSON(downloadData, fileName);
-        
-        console.log('Chat downloaded successfully:', fileName);
-        
-    } catch (error) {
-        console.error('Error downloading chat:', error);
-        alert('Error downloading chat. Please try again.');
-    }
-}
 
 /**
  * Handle download markdown button click
