@@ -25,8 +25,11 @@ const { MongoClient } = require('mongodb');
  *       enrolled: Boolean,      // If false, student is blocked from course features
  *       updatedAt: Date
  *     }
+// ... (existing code)
  *   },
+ *   studentIdleTimeout: Number, // Idle timeout for students in seconds (default: 300)
  *   lectures: [                 // Array of lectures/units
+// ... (rest of the file)
  *     {
  *       name: String,           // e.g., "Unit 1", "Week 1"
  *       displayName: String,    // Custom title e.g., "Biology" (optional)

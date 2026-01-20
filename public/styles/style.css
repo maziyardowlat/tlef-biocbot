@@ -500,3 +500,73 @@ header h1 {
         border-bottom: none;
     }
 }
+/* Idle Timeout Modal Styles - Global */
+#idle-timeout-modal.modal-overlay {
+    display: flex; /* Hidden by default via inline style, but needs flex when shown */
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 10000;
+    justify-content: center;
+    align-items: center;
+}
+
+#idle-timeout-modal .modal-content {
+    background-color: var(--card-bg, #ffffff);
+    padding: 24px;
+    border-radius: 12px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+    width: 90%;
+    max-width: 400px;
+    border: 1px solid var(--border-color, #e0e0e0);
+}
+
+#idle-timeout-modal .modal-header h2 {
+    margin-top: 0;
+    color: var(--text-primary, #333333);
+    margin-bottom: 16px;
+}
+
+#idle-timeout-modal .modal-body {
+    margin-bottom: 24px;
+    color: var(--text-secondary, #666666);
+    line-height: 1.5;
+}
+
+#idle-timeout-modal .modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+}
+
+#idle-timeout-modal .primary-button {
+    background-color: var(--primary-color, #0055B7);
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+}
+
+#idle-timeout-modal .primary-button:hover {
+    background-color: var(--primary-dark, #002145);
+}
+
+#idle-timeout-modal .secondary-button {
+    background-color: transparent;
+    color: var(--text-secondary, #666666);
+    border: 1px solid var(--border-color, #e0e0e0);
+    padding: 8px 16px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 500;
+}
+
+#idle-timeout-modal .secondary-button:hover {
+    background-color: var(--bg-hover, #f5f5f5);
+    color: var(--text-primary, #333333);
+}

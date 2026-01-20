@@ -54,11 +54,17 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const protegePromptInput = document.getElementById('protege-prompt');
                 const tutorPromptInput = document.getElementById('tutor-prompt');
                 const additiveToggle = document.getElementById('additive-retrieval-toggle');
+                const idleTimeoutInput = document.getElementById('idle-timeout-input');
                 
                 if (basePromptInput) basePromptInput.value = result.prompts.base || '';
                 if (protegePromptInput) protegePromptInput.value = result.prompts.protege || '';
                 if (tutorPromptInput) tutorPromptInput.value = result.prompts.tutor || '';
                 if (additiveToggle) additiveToggle.checked = !!result.prompts.additiveRetrieval;
+                
+                // Convert seconds to minutes for display
+                if (idleTimeoutInput && result.prompts.studentIdleTimeout) {
+                    idleTimeoutInput.value = result.prompts.studentIdleTimeout / 60;
+                }
             }
         } catch (error) {
             console.error('Error fetching global config:', error);
@@ -103,7 +109,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const protege = document.getElementById('protege-prompt')?.value;
                 const tutor = document.getElementById('tutor-prompt')?.value;
                 const additiveRetrieval = document.getElementById('additive-retrieval-toggle')?.checked;
+                const idleTimeoutInput = document.getElementById('idle-timeout-input');
                 const courseId = await getCurrentCourseId();
+                
+                // Convert minutes back to seconds
+                let studentIdleTimeout = 240;
+                if (idleTimeoutInput) {
+                    studentIdleTimeout = parseFloat(idleTimeoutInput.value) * 60;
+                }
                 
                 // Save login restriction setting if visible
                 const loginRestrictionSection = document.getElementById('login-restriction-section');
@@ -140,7 +153,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         headers: {
                             'Content-Type': 'application/json'
                         },
-                        body: JSON.stringify({ base, protege, tutor, additiveRetrieval, courseId })
+                        body: JSON.stringify({ base, protege, tutor, additiveRetrieval, studentIdleTimeout, courseId })
                     });
                     
                     const result = await response.json();
@@ -202,6 +215,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                         if (tutorPromptInput) tutorPromptInput.value = result.prompts.tutor || '';
                         // Default for additive retrieval is true (on)
                         if (additiveToggle) additiveToggle.checked = true;
+                        
+                        const idleTimeoutInput = document.getElementById('idle-timeout-input');
+                        if (idleTimeoutInput) idleTimeoutInput.value = 4; // Default 4 mins
                     }
                     
                     showNotification('Settings reset to defaults', 'success');

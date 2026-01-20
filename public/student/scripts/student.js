@@ -135,6 +135,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     setTimeout(() => {
         checkForChatDataToLoad();
     }, 100);
+    
+    // Initialize Idle Timer
+    initializeIdleTimer();
 
     // Initialize user agreement modal
     initializeUserAgreement();
@@ -1794,27 +1797,23 @@ function checkForAutoContinue() {
 function clearCurrentChatData() {
     try {
         const studentId = getCurrentStudentId();
-        const autoSaveKey = `biocbot_current_chat_${studentId}`;
-        localStorage.removeItem(autoSaveKey);
-
-        // Also clear session tracking data
-        const courseId = localStorage.getItem('selectedCourseId') || 'unknown';
-        const unitName = localStorage.getItem('selectedUnitName') || 'unknown';
-        const sessionKey = `biocbot_session_${studentId}_${courseId}_${unitName}`;
-        const lastSyncKey = `biocbot_last_sync_${studentId}_${courseId}_${unitName}`;
-        localStorage.removeItem(sessionKey);
-        localStorage.removeItem(lastSyncKey);
-
-        // Clear conversation context flags from sessionStorage
-        // This ensures new sessions don't reference old conversations
-        sessionStorage.removeItem('isContinuingChat');
-        sessionStorage.removeItem('loadChatData');
-        sessionStorage.removeItem('loadedChatData');
-
+        if (studentId) {
+            const autoSaveKey = `biocbot_current_chat_${studentId}`;
+            localStorage.removeItem(autoSaveKey);
+        }
     } catch (error) {
-        console.error('Error clearing current chat data:', error);
+        console.error('Error clearing chat data:', error);
     }
 }
+
+
+
+/**
+ * Setup Idle Listeners and Warning Logic
+ * @param {number} timeoutSeconds - Timeout in seconds
+ */
+
+
 
 
 

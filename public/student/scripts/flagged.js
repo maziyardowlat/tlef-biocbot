@@ -63,6 +63,11 @@ document.addEventListener('DOMContentLoaded', async function() {
         refreshBtn.addEventListener('click', () => loadStudentFlags());
     }
     await loadStudentFlags();
+
+    // Initialize Idle Timer
+    if (window.initializeIdleTimer) {
+        window.initializeIdleTimer();
+    }
 });
 
 async function loadStudentFlags() {
