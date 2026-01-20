@@ -623,6 +623,7 @@ async function getCourseForStudent(req, res, courseId) {
             weeks: course.courseStructure?.weeks || 0,
             lecturesPerWeek: course.courseStructure?.lecturesPerWeek || 0,
             isAdditiveRetrieval: !!course.isAdditiveRetrieval,
+            studentIdleTimeout: course.prompts?.studentIdleTimeout || 240, // Default 4 minutes
             createdAt: course.createdAt?.toISOString() || new Date().toISOString(),
             status: course.status || 'active',
             // Include lectures array that students expect

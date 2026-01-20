@@ -89,7 +89,9 @@ router.get('/prompts', async (req, res) => {
             protege: coursePrompts.protege || prompts.DEFAULT_PROMPTS.protege,
             tutor: coursePrompts.tutor || prompts.DEFAULT_PROMPTS.tutor,
             // Course-level additive retrieval setting
-            additiveRetrieval: course ? !!course.isAdditiveRetrieval : false
+            additiveRetrieval: course ? !!course.isAdditiveRetrieval : false,
+            // Student idle timeout (seconds), default to 4 minutes (240s)
+            studentIdleTimeout: coursePrompts.studentIdleTimeout || 240
         };
 
         res.json({
@@ -118,7 +120,7 @@ router.post('/prompts', async (req, res) => {
             return res.status(503).json({ success: false, message: 'Database connection not available' });
         }
 
-        const { base, protege, tutor, additiveRetrieval, courseId } = req.body;
+        const { base, protege, tutor, additiveRetrieval, studentIdleTimeout, courseId } = req.body;
 
         if (!courseId) {
             return res.status(400).json({ success: false, message: 'courseId is required to save settings' });
@@ -129,6 +131,15 @@ router.post('/prompts', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Invalid prompt format' });
         }
 
+        // Validate timeout if present
+        let timeoutVal = 240; // Default
+        if (studentIdleTimeout !== undefined) {
+             timeoutVal = parseInt(studentIdleTimeout);
+             if (isNaN(timeoutVal) || timeoutVal < 30 || timeoutVal > 1200) { // 30s to 20m
+                 return res.status(400).json({ success: false, message: 'Invalid idle timeout value' });
+             }
+        }
+
         // Update the course document directly
         await db.collection('courses').updateOne(
             { courseId: courseId },
@@ -137,6 +148,7 @@ router.post('/prompts', async (req, res) => {
                     'prompts.base': base, 
                     'prompts.protege': protege, 
                     'prompts.tutor': tutor,
+                    'prompts.studentIdleTimeout': timeoutVal,
                     isAdditiveRetrieval: !!additiveRetrieval,
                     updatedAt: new Date()
                 } 

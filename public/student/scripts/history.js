@@ -267,6 +267,11 @@ document.addEventListener('DOMContentLoaded', () => {
         initializeHistoryPage();
         loadChatHistory();
         setupEventListeners();
+        
+        // Initialize Idle Timer
+        if (window.initializeIdleTimer) {
+            window.initializeIdleTimer();
+        }
     };
 
     // Wait for auth to be ready before initializing
