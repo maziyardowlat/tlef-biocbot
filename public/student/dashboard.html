@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BiocBot - Struggle Dashboard</title>
+    
+    <!-- Favicon - UBC Logo -->
+    <link rel="icon" type="image/x-icon" href="../assets/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/images/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="../assets/images/favicon-16x16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="../assets/images/apple-touch-icon.png">
+    <link rel="manifest" href="../assets/images/site.webmanifest">
+    
+    <link rel="stylesheet" href="../styles/style.css">
+    <link rel="stylesheet" href="../styles/dashboard.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="logo-container">
+                <h2>BiocBot</h2>
+            </div>
+            <nav class="main-nav">
+                <ul>
+                    <li><a href="/student"><span class="icon"></span> Chat</a></li>
+                    <li><a href="/student/history"><span class="icon"></span> Chat History</a></li>
+                    <li><a href="/student/flagged"><span class="icon"></span> Flagged</a></li>
+                    <li class="active"><a href="/student/dashboard.html"><span class="icon"></span> Struggle Dashboard</a></li>
+                    <li class="mobile-only-nav"><a href="#" id="mobile-logout-btn"><span class="icon"></span> Logout</a></li>
+                </ul>
+            </nav>
+            <div class="user-info">
+                <div class="user-avatar">S</div>
+                <div class="user-name" id="user-display-name">Student</div>
+                <div class="user-role">Student</div>
+                <div class="user-actions">
+                    <a href="#" id="logout-btn" class="user-action">Logout</a>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <header class="page-header">
+                <h1>Struggle Topic Dashboard</h1>
+                <p>Track your difficult topics and manage the bot's assistance mode.</p>
+            </header>
+
+            <div class="dashboard-content">
+                <section class="struggle-summary">
+                    <div class="summary-card">
+                        <h3>Active Struggle Topics</h3>
+                        <p class="summary-count" id="active-topics-count">Loading...</p>
+                    </div>
+                    <div class="summary-card">
+                        <h3>Directive Mode Active</h3>
+                        <p class="summary-status" id="directive-mode-status">Loading...</p>
+                    </div>
+                </section>
+
+                <section class="topics-list-section">
+                    <div class="section-header">
+                        <h2>Your Struggle Topics</h2>
+                        <button id="reset-all-btn" class="danger-button">Reset All Topics</button>
+                    </div>
+                    
+                    <div id="topics-list-container" class="topics-list">
+                        <!-- Topics will be dynamically inserted here -->
+                        <div class="loading-spinner">Loading topics...</div>
+                    </div>
+                </section>
+            </div>
+        </main>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div id="confirm-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-title">Confirm Reset</h2>
+            </div>
+            <div class="modal-body">
+                <p id="modal-message">Are you sure you want to reset this topic?</p>
+            </div>
+            <div class="modal-footer">
+                <button id="modal-cancel-btn" class="secondary-button">Cancel</button>
+                <button id="modal-confirm-btn" class="danger-button">Reset</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="../common/scripts/auth.js"></script>
+    <script src="../common/scripts/mobile-layout.js"></script>
+    <script src="./scripts/dashboard.js"></script>
+</body>
+</html>

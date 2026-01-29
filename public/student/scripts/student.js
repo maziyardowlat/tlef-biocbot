@@ -205,6 +205,46 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     /**
+     * Update UI based on Struggle State
+     * @param {Object} state - The struggle state object
+     */
+    function updateStruggleUI(state) {
+        if (!state || !state.topics) return;
+
+        const activeTopics = state.topics.filter(t => t.isActive);
+        const modeToggleContainer = document.querySelector('.mode-toggle-container');
+        let indicator = document.getElementById('directive-mode-indicator');
+
+        if (activeTopics.length > 0) {
+            if (!indicator) {
+                indicator = document.createElement('div');
+                indicator.id = 'directive-mode-indicator';
+                indicator.className = 'directive-mode-badge';
+                indicator.innerHTML = `
+                    <span class="icon">⚠️</span>
+                    <span>Directive Mode Active</span>
+                `;
+                indicator.title = `Directive Mode is active for: ${activeTopics.map(t => t.topic).join(', ')}`;
+                
+                // Add click handler to go to dashboard
+                indicator.style.cursor = 'pointer';
+                indicator.addEventListener('click', () => {
+                    window.location.href = '/student/dashboard.html';
+                });
+
+                // Insert before mode toggle
+                if (modeToggleContainer) {
+                    modeToggleContainer.parentNode.insertBefore(indicator, modeToggleContainer);
+                }
+            }
+        } else {
+            if (indicator) {
+                indicator.remove();
+            }
+        }
+    }
+
+    /**
      * Send message to LLM service
      * @param {string} message - The message to send
      * @param {boolean} checkSummaryAttempt - Whether to check for summary attempt
@@ -641,6 +681,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 
 
+
                 // Check if we should append the Protege prompt
                 const currentMode = localStorage.getItem('studentMode') || 'tutor';
                 const isTutorMode = currentMode === 'tutor';
@@ -655,8 +696,19 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const shouldShowProtegePrompt = !promptAlreadyShown && isTutorMode && (messageCountBefore === 12 || messageCountBefore === 13);
                 
                 if (shouldShowProtegePrompt) {
-
                      response.message += '\n\n----------------\nDo you want to try and explain our chat above to me?';
+                }
+
+                if (response.struggleDebug) {
+                    console.log('🕵️ [FRONTEND_DEBUG_V2] Backend Debug Info:', response.struggleDebug);
+                }
+
+                // Update Struggle UI if available
+                if (response.struggleState) {
+                    console.log('🕵️ [FRONTEND_DEBUG] Struggle State received:', response.struggleState);
+                    updateStruggleUI(response.struggleState);
+                } else {
+                    console.log('🕵️ [FRONTEND_DEBUG] No struggle state in response');
                 }
 
                 addMessage(response.message, 'bot', true, false, response.sourceAttribution);
