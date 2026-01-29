@@ -20,9 +20,7 @@ const flagNotificationState = {
  * Initialize flag notification system
  * Should be called when the student page loads
  */
-async function initializeFlagNotifications() {
-    console.log('🔔 [FLAG_NOTIFICATIONS] Initializing flag notification system...');
-    
+async function initializeFlagNotifications() {    
     // Wait for authentication to be ready
     await waitForAuthReady();
     
@@ -40,15 +38,12 @@ async function initializeFlagNotifications() {
     // Also check when page becomes visible (in case user was away when flag was approved)
     document.addEventListener('visibilitychange', () => {
         if (!document.hidden) {
-            console.log('🔔 [FLAG_NOTIFICATIONS] Page became visible, checking for updates...');
             // Small delay to ensure page is fully visible
             setTimeout(() => {
                 checkForFlagUpdates();
             }, 500);
         }
     });
-    
-    console.log('✅ [FLAG_NOTIFICATIONS] Flag notification system initialized');
 }
 
 /**
@@ -82,10 +77,10 @@ function loadLastKnownFlags() {
         const stored = localStorage.getItem(flagNotificationState.storageKey);
         if (stored) {
             flagNotificationState.lastKnownFlags = JSON.parse(stored);
-            console.log('🔔 [FLAG_NOTIFICATIONS] Loaded', flagNotificationState.lastKnownFlags.length, 'last known flags from storage');
+
         }
     } catch (error) {
-        console.warn('🔔 [FLAG_NOTIFICATIONS] Error loading last known flags:', error);
+
         flagNotificationState.lastKnownFlags = [];
     }
 }
@@ -107,9 +102,7 @@ function saveLastKnownFlags(flags) {
         
         localStorage.setItem(flagNotificationState.storageKey, JSON.stringify(flagsToStore));
         flagNotificationState.lastKnownFlags = flagsToStore;
-        console.log('🔔 [FLAG_NOTIFICATIONS] Saved', flagsToStore.length, 'flags to localStorage');
     } catch (error) {
-        console.warn('🔔 [FLAG_NOTIFICATIONS] Error saving last known flags:', error);
     }
 }
 
@@ -119,7 +112,7 @@ function saveLastKnownFlags(flags) {
 function startFlagPolling() {
     // Prevent multiple polling instances
     if (flagNotificationState.isPolling) {
-        console.warn('🔔 [FLAG_NOTIFICATIONS] Polling already started, skipping');
+
         return;
     }
     
@@ -135,18 +128,16 @@ function startFlagPolling() {
         checkForFlagUpdates();
     }, flagNotificationState.pollIntervalMs);
     
-    console.log(`🔔 [FLAG_NOTIFICATIONS] Started polling every ${flagNotificationState.pollIntervalMs / 1000} seconds`);
+
     
     // Stop polling when page becomes hidden (to save resources)
     document.addEventListener('visibilitychange', () => {
         if (document.hidden) {
-            console.log('🔔 [FLAG_NOTIFICATIONS] Page hidden, pausing polling');
             if (flagNotificationState.pollingInterval) {
                 clearInterval(flagNotificationState.pollingInterval);
                 flagNotificationState.pollingInterval = null;
             }
         } else {
-            console.log('🔔 [FLAG_NOTIFICATIONS] Page visible, resuming polling');
             if (!flagNotificationState.pollingInterval) {
                 flagNotificationState.pollingInterval = setInterval(() => {
                     checkForFlagUpdates();
@@ -165,7 +156,7 @@ function stopFlagPolling() {
         flagNotificationState.pollingInterval = null;
     }
     flagNotificationState.isPolling = false;
-    console.log('🔔 [FLAG_NOTIFICATIONS] Stopped polling');
+
 }
 
 /**
@@ -175,14 +166,11 @@ async function checkForFlagUpdates() {
     try {
         // Skip if already checking (prevent concurrent requests)
         if (flagNotificationState.isChecking) {
-            console.log('🔔 [FLAG_NOTIFICATIONS] Already checking, skipping...');
             return;
         }
         
         flagNotificationState.isChecking = true;
         
-        console.log('🔔 [FLAG_NOTIFICATIONS] Checking for flag updates...');
-        console.log('🔔 [FLAG_NOTIFICATIONS] Last known flags count:', flagNotificationState.lastKnownFlags.length);
         
         // Fetch current flags
         const response = await fetch('/api/flags/my', { credentials: 'include' });
@@ -198,34 +186,20 @@ async function checkForFlagUpdates() {
         }
         
         const currentFlags = result.data.flags || [];
-        console.log('🔔 [FLAG_NOTIFICATIONS] Current flags count:', currentFlags.length);
+
         
         // Compare with last known flags
         if (flagNotificationState.lastKnownFlags.length > 0) {
-            console.log('🔔 [FLAG_NOTIFICATIONS] Comparing flags for changes...');
-            console.log('🔔 [FLAG_NOTIFICATIONS] Last known flags:', flagNotificationState.lastKnownFlags.map(f => ({
-                flagId: f.flagId,
-                status: f.flagStatus,
-                hasResponse: !!f.instructorResponse
-            })));
-            console.log('🔔 [FLAG_NOTIFICATIONS] Current flags:', currentFlags.map(f => ({
-                flagId: f.flagId,
-                status: f.flagStatus,
-                hasResponse: !!f.instructorResponse,
-                instructorName: f.instructorName
-            })));
-            
             detectFlagChanges(flagNotificationState.lastKnownFlags, currentFlags);
         } else {
-            console.log('🔔 [FLAG_NOTIFICATIONS] No last known flags, skipping comparison (first load)');
+            // first load
         }
         
         // Update last known flags
         saveLastKnownFlags(currentFlags);
-        console.log('🔔 [FLAG_NOTIFICATIONS] Updated last known flags');
         
     } catch (error) {
-        console.error('🔔 [FLAG_NOTIFICATIONS] Error checking for flag updates:', error);
+        // error checking for flag updates
     } finally {
         flagNotificationState.isChecking = false;
     }
@@ -251,76 +225,57 @@ function detectFlagChanges(lastKnownFlags, currentFlags) {
         
         if (!lastKnownFlag) {
             // New flag (not in last known) - check if it's already resolved/dismissed
-            // This handles the case where a flag was created and approved before the next poll
             if (currentFlag.flagStatus === 'resolved' || currentFlag.flagStatus === 'dismissed') {
-                // Check if this flag was created recently (within last 2 hours)
-                // This indicates it was likely created by the user and then approved
                 const flagCreatedAt = new Date(currentFlag.createdAt || currentFlag.updatedAt);
                 const now = new Date();
                 const timeDiff = now - flagCreatedAt;
-                const twoHours = 2 * 60 * 60 * 1000; // 2 hours in milliseconds
+                const twoHours = 2 * 60 * 60 * 1000; 
                 
                 if (timeDiff < twoHours && timeDiff > 0) {
-                    // Flag was created recently and is already resolved/dismissed
-                    // This likely means it was approved while the user was away
                     const responderName = currentFlag.instructorName || 'Instructor';
                     const statusText = currentFlag.flagStatus === 'resolved' ? 'approved' : 'dismissed';
                     
-                    console.log(`🔔 [FLAG_NOTIFICATIONS] ✅ New resolved flag detected: ${currentFlag.flagId} (created ${Math.round(timeDiff / 1000 / 60)} minutes ago, already ${currentFlag.flagStatus})`);
                     showFlagStatusNotification(currentFlag, statusText, responderName);
                     changesDetected++;
-                } else {
-                    console.log(`🔔 [FLAG_NOTIFICATIONS] New flag detected: ${currentFlag.flagId} (skipping notification - not recently created or already old)`);
                 }
-            } else {
-                console.log(`🔔 [FLAG_NOTIFICATIONS] New flag detected: ${currentFlag.flagId} (status: ${currentFlag.flagStatus}, skipping notification)`);
             }
             return;
         }
         
-        console.log(`🔔 [FLAG_NOTIFICATIONS] Checking flag ${currentFlag.flagId}:`);
-        console.log(`  Last status: ${lastKnownFlag.flagStatus}, Current status: ${currentFlag.flagStatus}`);
-        console.log(`  Last has response: ${!!lastKnownFlag.instructorResponse}, Current has response: ${!!currentFlag.instructorResponse}`);
-        
-        // Check for new instructor response first (this is more informative than just status change)
-        // If both status changed AND response was added, we only show the response notification
+        // Check for new instructor response first
         if (!lastKnownFlag.instructorResponse && currentFlag.instructorResponse) {
             const responderName = currentFlag.instructorName || 'Instructor';
-            console.log(`🔔 [FLAG_NOTIFICATIONS] ✅ New response detected! Flag ${currentFlag.flagId} now has instructor response`);
             showFlagResponseNotification(currentFlag, responderName);
             changesDetected++;
         } 
-        // Only check for status change if there's no new response (to avoid duplicate notifications)
+        // Only check for status change if there's no new response
         else if (lastKnownFlag.flagStatus === 'pending' && 
             (currentFlag.flagStatus === 'resolved' || currentFlag.flagStatus === 'dismissed')) {
             
             const responderName = currentFlag.instructorName || 'Instructor';
             const statusText = currentFlag.flagStatus === 'resolved' ? 'approved' : 'dismissed';
             
-            console.log(`🔔 [FLAG_NOTIFICATIONS] ✅ Status change detected! Flag ${currentFlag.flagId} changed from pending to ${currentFlag.flagStatus}`);
             showFlagStatusNotification(currentFlag, statusText, responderName);
             changesDetected++;
         }
         
-        // Check if instructor response was updated (different content)
+        // Check if instructor response was updated
         if (lastKnownFlag.instructorResponse && 
             currentFlag.instructorResponse && 
             lastKnownFlag.instructorResponse !== currentFlag.instructorResponse) {
             
-            // Also check if updatedAt changed to ensure it's actually an update
             const lastUpdated = new Date(lastKnownFlag.updatedAt || lastKnownFlag.createdAt);
             const currentUpdated = new Date(currentFlag.updatedAt || currentFlag.createdAt);
             
             if (currentUpdated > lastUpdated) {
                 const responderName = currentFlag.instructorName || 'Instructor';
-                console.log(`🔔 [FLAG_NOTIFICATIONS] ✅ Response updated! Flag ${currentFlag.flagId} has updated instructor response`);
                 showFlagResponseNotification(currentFlag, responderName, true);
                 changesDetected++;
             }
         }
     });
     
-    console.log(`🔔 [FLAG_NOTIFICATIONS] Total changes detected: ${changesDetected}`);
+
 }
 
 /**
@@ -349,8 +304,6 @@ function showFlagStatusNotification(flag, statusText, responderName) {
     );
     
     showNotification(notification);
-    
-    console.log(`🔔 [FLAG_NOTIFICATIONS] Flag ${statusText}:`, flag.flagId);
 }
 
 /**
@@ -374,8 +327,6 @@ function showFlagResponseNotification(flag, responderName, isUpdate = false) {
     );
     
     showNotification(notification);
-    
-    console.log(`🔔 [FLAG_NOTIFICATIONS] Instructor response ${isUpdate ? 'updated' : 'added'}:`, flag.flagId);
 }
 
 /**
@@ -522,7 +473,6 @@ function showNotification(notification) {
  */
 function cleanupFlagNotifications() {
     stopFlagPolling();
-    console.log('🔔 [FLAG_NOTIFICATIONS] Cleaned up flag notification system');
 }
 
 // Cleanup on page unload

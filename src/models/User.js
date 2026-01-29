@@ -80,6 +80,9 @@ async function createUser(db, userData) {
             theme: 'light',
             notifications: true,
             courseId: userData.courseId || null
+        },
+        struggleState: {
+            topics: [] // Array of { topic: String, count: Number, lastStruggle: Date, isActive: Boolean }
         }
     };
     
@@ -217,6 +220,7 @@ async function getUserById(db, userId) {
         authProvider: user.authProvider,
         preferences: user.preferences,
         lastLogin: user.lastLogin,
+        struggleState: user.struggleState,
         invitedCourses: user.invitedCourses || []
     };
 }
@@ -474,5 +478,109 @@ module.exports = {
     updateUserPreferences,
     createOrGetSAMLUser,
     getUsersByRole,
-    deactivateUser
+    deactivateUser,
+    updateUserStruggleState,
+    resetUserStruggleState
 };
+
+/**
+ * Update user struggle state for a detected topic
+ * @param {Object} db - MongoDB database instance
+ * @param {string} userId - User identifier
+ * @param {Object} struggleData - Analysis result { topic, isStruggling }
+ * @returns {Promise<Object>} Update result and current state
+ */
+async function updateUserStruggleState(db, userId, struggleData) {
+    const collection = getUsersCollection(db);
+    const { topic, isStruggling } = struggleData;
+    const now = new Date();
+    
+    // Normalize topic for consistency (simple lowercase for now)
+    const normalizedTopic = topic.toLowerCase().trim();
+
+    // 1. Get current user to find existing topic state
+    const user = await collection.findOne({ userId });
+    if (!user) return { success: false, error: 'User not found' };
+
+    let topics = user.struggleState?.topics || [];
+    let currentTopicIndex = topics.findIndex(t => t.topic === normalizedTopic);
+    let topicState = null;
+
+    if (currentTopicIndex === -1) {
+        // New topic
+        topicState = {
+            topic: normalizedTopic,
+            count: isStruggling ? 1 : 0,
+            lastStruggle: isStruggling ? now : null,
+            isActive: false // Directive mode triggers at count >= 3
+        };
+        topics.push(topicState);
+    } else {
+        // Existing topic
+        topicState = topics[currentTopicIndex];
+        
+        if (isStruggling) {
+            topicState.count += 1;
+            topicState.lastStruggle = now;
+        } else {
+            // Optional: Decay logic or reset on good understanding? 
+            // For now, we only increment on struggle. 
+            // The prompt "reset" button handles clearing.
+        }
+        
+        // Update in array
+        topics[currentTopicIndex] = topicState;
+    }
+
+    // Check if Directive Mode should be active
+    topicState.isActive = topicState.count >= 3;
+
+    // Persist changes
+    await collection.updateOne(
+        { userId },
+        { 
+            $set: { 
+                'struggleState.topics': topics,
+                updatedAt: now
+            }
+        }
+    );
+
+    return { 
+        success: true, 
+        state: topicState,
+        allTopics: topics 
+    };
+}
+
+/**
+ * Reset struggle state for a topic
+ * @param {Object} db - MongoDB database instance
+ * @param {string} userId - User identifier
+ * @param {string} topic - Topic to reset (or 'ALL' for global reset)
+ * @returns {Promise<Object>} Update result
+ */
+async function resetUserStruggleState(db, userId, topic) {
+    const collection = getUsersCollection(db);
+    const now = new Date();
+
+    let updateOp = {};
+    
+    if (topic === 'ALL') {
+        updateOp.$set = { 
+            'struggleState.topics': [],
+            updatedAt: now
+        };
+    } else {
+        // Remove specific topic
+        updateOp.$pull = { 'struggleState.topics': { topic: topic.toLowerCase().trim() } };
+        updateOp.$set = { updatedAt: now };
+    }
+
+    const result = await collection.updateOne(
+        { userId },
+        updateOp
+    );
+
+    return { success: true };
+}

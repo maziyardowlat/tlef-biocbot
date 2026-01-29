@@ -11,17 +11,12 @@ const QdrantService = require('../services/qdrantService');
 const prompts = require('../services/prompts');
 const CourseModel = require('../models/Course');
 const profanityCleaner = require('profanity-cleaner');
+const TrackerService = require('../services/tracker');
+const User = require('../models/User');
 
-// Initialize LLM service
-let llmService;
-(async () => {
-    try {
-        llmService = await LLMService.create();
-        console.log('✅ LLM service initialized successfully');
-    } catch (error) {
-        console.error('❌ Failed to initialize LLM service:', error);
-    }
-})();
+// Initialize services
+// Initialize services lazily
+let localTrackerService;
 
 /**
  * Determine source attribution based on retrieved chunks
@@ -227,9 +222,14 @@ router.use(express.json());
  */
 router.post('/', async (req, res) => {
     try {
+        console.log('🔥 [CHAT_ROUTE_HIT] Processing POST /api/chat');
         console.log('💬 [CHAT_API] New chat request received');
         console.log('💬 [CHAT_API] Message:', req.body.message?.substring(0, 50) + '...');
         console.log('💬 [CHAT_API] Has conversationContext:', !!req.body.conversationContext);
+        console.log('🔐 [CHAT_API] Auth check - Cookie present:', !!req.headers.cookie);
+        console.log('🔐 [CHAT_API] Auth check - User present:', !!req.user);
+
+        const llmService = req.app.locals.llm;
 
         // Check if LLM service is initialized
         if (!llmService) {
@@ -240,6 +240,12 @@ router.post('/', async (req, res) => {
         }
 
         const { message, conversationId, mode, unitName, courseId, conversationContext } = req.body;
+
+        // Get DB connection early
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({ success: false, message: 'Database connection not available' });
+        }
 
 
         // Validate required fields
@@ -298,6 +304,7 @@ router.post('/', async (req, res) => {
         }
     }
         
+        
         // Safety/Wellness Check
         const safetyKeywords = ['suicide', 'kill myself', 'want to die', 'end my life', 'ending it all'];
         const lowerMessage = message.toLowerCase();
@@ -323,11 +330,61 @@ router.post('/', async (req, res) => {
                 retrieval: {
                     mode: 'n/a',
                     lectureNames: []
-                }
+                },
+                struggleState: null
             });
         }
 
-        // Initialize Qdrant and DB
+        // STRUGGLE DETECTION & TRACKING
+        let struggleState = null;
+        let directiveModeActive = false;
+        let identifiedTopic = null;
+
+        // Initialize TrackerService if needed
+        const appLLM = req.app.locals.llm;
+        if (appLLM && !localTrackerService) {
+            localTrackerService = new TrackerService(appLLM);
+            console.log('✅ [CHAT_API_DEBUG] Local TrackerService initialized from app.locals.llm');
+        }
+
+        console.log(`🕵️ [CHAT_API_DEBUG] User Context: ID=${req.user ? req.user.userId : 'MISSING'}, Tracker=${!!localTrackerService}`);
+
+        if (req.user && localTrackerService) {
+            try {
+                // 1. Analyze message for struggle
+                console.log('🕵️ [CHAT_API_DEBUG] ------------------------------------------------');
+                console.log(`🕵️ [CHAT_API_DEBUG] Analysis Start for msg: "${message.substring(0, 50)}..."`);
+                
+                const analysis = await localTrackerService.analyzeMessage(message, courseId, unitName);
+                console.log('🕵️ [CHAT_API_DEBUG] Raw Analysis Result:', JSON.stringify(analysis, null, 2));
+                
+                // 2. Update user state
+                const updateResult = await User.updateUserStruggleState(db, req.user.userId, analysis);
+                console.log('🕵️ [CHAT_API_DEBUG] User State Update Result:', JSON.stringify(updateResult, null, 2));
+                
+                if (updateResult.success) {
+                    struggleState = updateResult.state;
+                    identifiedTopic = analysis.topic;
+                    
+                    // 3. Check if Directive Mode should be active
+                    if (struggleState && struggleState.isActive) {
+                        directiveModeActive = true;
+                        console.log(`🚨 [CHAT_API_DEBUG] Directive Mode ACTIVATED for topic: ${identifiedTopic}`);
+                    } else {
+                         console.log(`🕵️ [CHAT_API_DEBUG] Struggle recorded but Directive Mode NOT active yet.`);
+                    }
+                }
+            } catch (trackerError) {
+                console.error('❌ [CHAT_API_DEBUG] Error in struggle tracking:', trackerError);
+            }
+        } else {
+            console.warn('⚠️ [CHAT_API_DEBUG] Check skipped. User:', !!req.user, 'Tracker:', !!localTrackerService);
+            if (!req.user) console.warn('⚠️ [CHAT_API_DEBUG] req.user is MISSING. Auth middleware might be failing.');
+            if (!localTrackerService) console.warn('⚠️ [CHAT_API_DEBUG] localTrackerService is MISSING. LLM service might not be ready.');
+        }
+
+
+        // Initialize Qdrant
         let qdrant;
         try {
             qdrant = new QdrantService();
@@ -349,11 +406,6 @@ router.post('/', async (req, res) => {
                 message: 'Vector database service error',
                 error: qdrantError.message
             });
-        }
-
-        const db = req.app.locals.db;
-        if (!db) {
-            return res.status(503).json({ success: false, message: 'Database connection not available' });
         }
 
         // Load course to get retrieval mode and published lectures
@@ -500,6 +552,20 @@ ${conversationHistory}`;
         let protegePrompt = prompts.DEFAULT_PROMPTS.protege;
         let tutorPrompt = prompts.DEFAULT_PROMPTS.tutor;
 
+        // Apply Directive Mode adjustments if active
+        if (directiveModeActive) {
+            const directiveInstruction = `\n\nCRITICAL INSTRUCTION: The student is struggling significantly with the topic "${identifiedTopic}". 
+            Switch to DIRECTIVE MODE:
+            1. Be extremely concrete and step-by-step.
+            2. Break down the concept into very small, digestible parts.
+            3. Ask a simple checking question after each small explanation to verify understanding.
+            4. Do not move on until the student confirms understanding.
+            5. Use simple analogies and avoid complex jargon unless defined immediately.`;
+            
+            basePrompt += directiveInstruction;
+            console.log('🚨 [CHAT_API] Appended Directive Mode instructions to system prompt');
+        }
+
         // Check if course has custom prompts
         if (course.prompts) {
             console.log('📝 [CHAT_API] Using course-specific prompts');
@@ -613,6 +679,14 @@ ${conversationHistory}`;
             retrieval: {
                 mode: isAdditive ? 'additive' : 'single',
                 lectureNames
+            },
+            struggleState: struggleState,
+            struggleDebug: {
+                userExists: !!req.user,
+                userId: req.user ? req.user.userId : null,
+                trackerInitialized: !!localTrackerService,
+                directiveModeActive: directiveModeActive,
+                identifiedTopic: identifiedTopic
             }
         };
 
