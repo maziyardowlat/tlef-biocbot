@@ -5626,7 +5626,7 @@ function loadChatData(chatData) {
                         renderRestoredModeToggleResult(messageData); // Skip auto-save
                     } else {
                         // Regular bot message
-                        addMessage(messageData.content, 'bot', messageData.hasFlagButton, true, messageData.sourceAttribution, messageData.isHtml); // Skip auto-save, force HTML for result
+                        addMessage(messageData.content, 'bot', messageData.hasFlagButton, true, messageData.sourceAttribution, messageData.isHtml, messageData.activeStruggleTopic); // Skip auto-save, force HTML for result
                     }
                 }
             });
