@@ -7,6 +7,23 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Auth check first
     if (!await checkAuth()) return;
 
+    // Enrollment check
+    const courseId = localStorage.getItem('selectedCourseId');
+    if (courseId) {
+        try {
+            const resp = await fetch(`/api/courses/${courseId}/student-enrollment`, { credentials: 'include' });
+            if (resp.ok) {
+                const data = await resp.json();
+                if (data && data.success && data.data && data.data.status === 'banned') {
+                    renderRevokedAccessUI();
+                    return;
+                }
+            }
+        } catch (e) {
+            console.warn('Enrollment check failed:', e);
+        }
+    }
+
     const topicsContainer = document.getElementById('topics-list-container');
     const activeCountEl = document.getElementById('active-topics-count');
     const directiveStatusEl = document.getElementById('directive-mode-status');
@@ -40,8 +57,18 @@ document.addEventListener('DOMContentLoaded', async () => {
      * Fetch struggle state from API
      */
     async function fetchStruggleState() {
+        const courseId = localStorage.getItem('selectedCourseId');
+        
+        if (!courseId) {
+            topicsContainer.innerHTML = '<p class="empty-state">Please select a course to view your dashboard.</p>';
+            activeCountEl.textContent = '-';
+            directiveStatusEl.textContent = 'Inactive';
+            directiveStatusEl.className = 'summary-status inactive';
+            return;
+        }
+
         try {
-            const response = await fetch('/api/student/struggle');
+            const response = await fetch(`/api/student/struggle?courseId=${courseId}`);
             const data = await response.json();
 
             if (data.success) {
@@ -143,13 +170,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     async function confirmReset() {
         if (!topicToReset) return;
 
+        const courseId = localStorage.getItem('selectedCourseId');
+        if (!courseId) return;
+
         try {
             const response = await fetch('/api/student/struggle/reset', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify({ topic: topicToReset })
+                body: JSON.stringify({ 
+                    topic: topicToReset,
+                    courseId: courseId
+                })
             });
 
             const result = await response.json();
@@ -192,5 +225,24 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function capitalize(str) {
         return str.charAt(0).toUpperCase() + str.slice(1);
+    }
+
+    function renderRevokedAccessUI() {
+        const dashboardContent = document.querySelector('.dashboard-content');
+        if (dashboardContent) dashboardContent.style.display = 'none';
+        
+        const mainContent = document.querySelector('.main-content');
+        if (mainContent) {
+            const notice = document.createElement('div');
+            notice.style.padding = '24px';
+            notice.innerHTML = `
+                <div style="background:#fff3cd;border:1px solid #ffeeba;color:#856404;padding:16px;border-radius:8px;">
+                    <h2 style="margin-top:0;margin-bottom:8px;">Access disabled</h2>
+                    <p>Your access in this course is revoked.</p>
+                    <p>Please select another course from the course selector at the top if available.</p>
+                </div>
+            `;
+            mainContent.appendChild(notice);
+        }
     }
 });
