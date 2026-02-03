@@ -17,6 +17,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const chatInput = document.getElementById('chat-input');
     const chatMessages = document.getElementById('chat-messages');
     let currentController = null; // Controller for aborting in-flight requests
+    let lastActiveStruggleTopic = null; // Track active struggle topic for the session
 
     // Guard: Only allow students on this page; redirect others immediately
     const handleRoleGuard = (user) => {
@@ -707,11 +708,32 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (response.struggleState) {
                     console.log('🕵️ [FRONTEND_DEBUG] Struggle State received:', response.struggleState);
                     updateStruggleUI(response.struggleState);
+                    
+                    // Check for active struggle topic to pass to addMessage
+                    let activeTopic = null;
+                    if (response.struggleState.topics && Array.isArray(response.struggleState.topics)) {
+                        activeTopic = response.struggleState.topics.find(t => t.isActive);
+                    } else if (response.struggleState.topic && response.struggleState.isActive) {
+                        activeTopic = response.struggleState;
+                    }
+
+                    if (activeTopic) {
+                        lastActiveStruggleTopic = activeTopic.topic;
+                    } else {
+                        // If we received a state where isActive is explicitly false, clear the topic
+                        if (response.struggleState.isActive === false) {
+                            lastActiveStruggleTopic = null;
+                        } else if (response.struggleState.topics) {
+                            // If we have a topics array and none are active, clear it
+                            const anyActive = response.struggleState.topics.some(t => t.isActive);
+                            if (!anyActive) lastActiveStruggleTopic = null;
+                        }
+                    }
                 } else {
                     console.log('🕵️ [FRONTEND_DEBUG] No struggle state in response');
                 }
 
-                addMessage(response.message, 'bot', true, false, response.sourceAttribution);
+                addMessage(response.message, 'bot', true, false, response.sourceAttribution, false, lastActiveStruggleTopic);
 
             } catch (error) {
                 // Remove typing indicator
@@ -988,7 +1010,7 @@ async function handleExplainAction(text) {
  * @param {boolean} skipAutoSave - Whether to skip auto-save for this message
  * @param {Object} sourceAttribution - Source attribution information
  */
-function addMessage(content, sender, withSource = false, skipAutoSave = false, sourceAttribution = null, isHtml = false) {
+function addMessage(content, sender, withSource = false, skipAutoSave = false, sourceAttribution = null, isHtml = false, activeStruggleTopic = null) {
 
 
     const chatMessages = document.getElementById('chat-messages');
@@ -1121,6 +1143,19 @@ function addMessage(content, sender, withSource = false, skipAutoSave = false, s
         flagContainer.appendChild(flagButton);
         flagContainer.appendChild(flagMenu);
         rightContainer.appendChild(flagContainer);
+
+        // Add Struggle Reset Button if active topic exists
+        if (activeStruggleTopic) {
+            const resetBtn = document.createElement('button');
+            resetBtn.className = 'message-action-btn struggle-reset-btn';
+            resetBtn.style.marginLeft = '8px';
+            resetBtn.style.color = '#dc3545'; // bootstrap danger color
+            resetBtn.style.borderColor = '#dc3545';
+            resetBtn.innerHTML = 'Reset Directive Mode';
+            resetBtn.title = `Turn off Directive Mode for ${activeStruggleTopic}`;
+            resetBtn.onclick = () => resetStruggleTopic(activeStruggleTopic);
+            rightContainer.appendChild(resetBtn);
+        }
     }
 
     footerDiv.appendChild(rightContainer);
@@ -1137,7 +1172,7 @@ function addMessage(content, sender, withSource = false, skipAutoSave = false, s
     // Auto-save the message
     // Only auto-save if not explicitly skipped
     if (!skipAutoSave) {
-        autoSaveMessage(content, sender, withSource, sourceAttribution, isHtml);
+        autoSaveMessage(content, sender, withSource, sourceAttribution, isHtml, activeStruggleTopic);
     }
 }
 
@@ -1239,7 +1274,7 @@ async function initializeAutoSave() {
  * @param {boolean} withSource - Whether the message has source citation
  * @param {Object} sourceAttribution - Source attribution information
  */
-function autoSaveMessage(content, sender, withSource = false, sourceAttribution = null, isHtml = false) {
+function autoSaveMessage(content, sender, withSource = false, sourceAttribution = null, isHtml = false, activeStruggleTopic = null) {
     try {
 
 
@@ -1318,7 +1353,8 @@ function autoSaveMessage(content, sender, withSource = false, sourceAttribution 
             messageType: 'regular-chat',
             messageType: 'regular-chat',
             sourceAttribution: sourceAttribution || null,  // Save source attribution for restoration
-            isHtml: isHtml // Save whether message was rendered as HTML
+            isHtml: isHtml, // Save whether message was rendered as HTML
+            activeStruggleTopic: activeStruggleTopic || null // Save active struggle topic
         };
 
         // Add message to messages array
@@ -1406,6 +1442,54 @@ function getCurrentSessionId(chatData) {
     }
 
     return sessionId;
+}
+
+/**
+ * Reset a struggle topic
+ * @param {string} topic - The topic to reset
+ */
+async function resetStruggleTopic(topic) {
+    if (!confirm(`Are you sure you want to turn off Directive Mode for "${topic}"? This will reset your struggle history for this topic.`)) {
+        return;
+    }
+
+    const courseId = localStorage.getItem('selectedCourseId');
+    try {
+        const response = await fetch('/api/student/struggle/reset', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ 
+                topic: topic,
+                courseId: courseId 
+            })
+        });
+
+        const result = await response.json();
+
+        if (result.success) {
+            alert('Directive Mode turned off.');
+            // Update UI without reload
+            
+            // 1. Clear global active topic
+            lastActiveStruggleTopic = null;
+            
+            // 2. Remove the "Directive Mode Active" indicator
+            const indicator = document.getElementById('directive-mode-indicator');
+            if (indicator) indicator.remove();
+            
+            // 3. Remove all reset buttons to prevent double-clicking
+            const buttons = document.querySelectorAll('.struggle-reset-btn');
+            buttons.forEach(btn => btn.remove());
+            
+        } else {
+            alert('Failed to reset: ' + result.message);
+        }
+    } catch (error) {
+        console.error('Error resetting topic:', error);
+        alert('Error connecting to server.');
+    }
 }
 
 /**
