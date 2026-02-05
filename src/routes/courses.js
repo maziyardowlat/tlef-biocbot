@@ -1750,7 +1750,7 @@ router.get('/:courseId/students', async (req, res) => {
 
         const [prefStudents, chatStudents, courseDoc] = await Promise.all([
             usersCol.find({ role: 'student', 'preferences.courseId': courseId, isActive: true })
-                .project({ userId: 1, username: 1, email: 1, displayName: 1, role: 1, createdAt: 1, lastLogin: 1 })
+                .project({ userId: 1, username: 1, email: 1, displayName: 1, role: 1, createdAt: 1, lastLogin: 1, struggleState: 1 })
                 .toArray(),
             chatCol.distinct('studentId', { courseId }),
             coursesCol.findOne({ courseId }, { projection: { studentEnrollment: 1, courseName: 1 } })
@@ -1760,7 +1760,7 @@ router.get('/:courseId/students', async (req, res) => {
 
         const chatStudentUsers = chatStudents.length > 0
             ? await usersCol.find({ userId: { $in: chatStudents }, role: 'student', isActive: true })
-                .project({ userId: 1, username: 1, email: 1, displayName: 1, role: 1, createdAt: 1, lastLogin: 1 })
+                .project({ userId: 1, username: 1, email: 1, displayName: 1, role: 1, createdAt: 1, lastLogin: 1, struggleState: 1 })
                 .toArray()
             : [];
 
@@ -1776,7 +1776,7 @@ router.get('/:courseId/students', async (req, res) => {
         if (missingIds.length > 0) {
             // Fetch details for these users regardless of role
             const additionalUsers = await usersCol.find({ userId: { $in: missingIds } })
-                .project({ userId: 1, username: 1, email: 1, displayName: 1, role: 1, createdAt: 1, lastLogin: 1 })
+                .project({ userId: 1, username: 1, email: 1, displayName: 1, role: 1, createdAt: 1, lastLogin: 1, struggleState: 1 })
                 .toArray();
                 
             additionalUsers.forEach(s => {
@@ -1807,7 +1807,8 @@ router.get('/:courseId/students', async (req, res) => {
             lastLogin: s.lastLogin,
             createdAt: s.createdAt,
             // Default enrolled=true if no override exists
-            enrolled: enrollmentMap[s.userId] ? !!enrollmentMap[s.userId].enrolled : true
+            enrolled: enrollmentMap[s.userId] ? !!enrollmentMap[s.userId].enrolled : true,
+            struggleState: s.struggleState || { topics: [] }
         }));
 
         // Sort by displayName

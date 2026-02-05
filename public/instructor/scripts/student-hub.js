@@ -147,6 +147,22 @@ function renderStudents(courseId) {
                     <p><strong>Username:</strong> ${escapeHTML(s.username || '—')}</p>
                     <p><strong>Email:</strong> ${escapeHTML(s.email || '—')}</p>
                     <p><strong>Last Login:</strong> ${s.lastLogin ? new Date(s.lastLogin).toLocaleString() : '—'}</p>
+                    
+                    <!-- Struggle Topics Section -->
+                    <div class="struggle-topics-section" style="margin-top: 15px; border-top: 1px solid #eee; padding-top: 10px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <strong>Struggle Topics</strong>
+                            ${s.struggleState && s.struggleState.topics && s.struggleState.topics.length > 0 
+                                ? `<button class="btn-small btn-secondary download-struggle-btn" 
+                                     onclick="downloadStruggleReport('${escapeHTML(s.userId)}', '${escapeHTML(s.displayName || s.username)}')">
+                                     Download Report
+                                   </button>` 
+                                : ''
+                            }
+                        </div>
+                        
+                        ${renderStruggleTopics(s.struggleState)}
+                    </div>
                 </div>
                 <div class="student-actions">
                     <label class="enroll-toggle">
@@ -313,6 +329,86 @@ function showNotification(message, type) {
     `;
     document.body.appendChild(notification);
     setTimeout(() => { if (notification.parentElement) notification.remove(); }, 5000);
+}
+
+/**
+ * Render struggle topics list
+ */
+function renderStruggleTopics(struggleState) {
+    if (!struggleState || !struggleState.topics || struggleState.topics.length === 0) {
+        return '<p style="color: #666; font-style: italic; font-size: 0.9em;">No active struggle topics.</p>';
+    }
+
+    const sortedTopics = struggleState.topics.sort((a, b) => new Date(b.lastStruggle) - new Date(a.lastStruggle));
+
+    return `
+        <ul style="list-style: none; padding: 0; margin: 0; max-height: 150px; overflow-y: auto;">
+            ${sortedTopics.map(t => `
+                <li style="padding: 4px 8px; margin-bottom: 4px; background: #f8f9fa; border-radius: 4px; border-left: 3px solid ${t.isActive ? '#dc3545' : '#28a745'}; font-size: 0.9em; display: flex; justify-content: space-between; align-items: center;">
+                    <span>${capitalize(t.topic)}</span>
+                    <div style="display: flex; gap: 8px; font-size: 0.85em; color: #555;">
+                        <span>Count: ${t.count}</span>
+                        <span>${new Date(t.lastStruggle).toLocaleDateString()}</span>
+                    </div>
+                </li>
+            `).join('')}
+        </ul>
+    `;
+}
+
+/**
+ * Handle download of struggle report
+ */
+window.downloadStruggleReport = function(studentId, studentName) {
+    const student = currentStudents.find(s => s.userId === studentId);
+    if (!student || !student.struggleState || !student.struggleState.topics) {
+        showNotification('No struggle data available for this student.', 'warning');
+        return;
+    }
+
+    const topics = student.struggleState.topics.sort((a, b) => new Date(b.lastStruggle) - new Date(a.lastStruggle));
+    
+    let markdown = `# Struggle Report: ${studentName}\n`;
+    markdown += `Generated on: ${new Date().toLocaleString()}\n\n`;
+    
+    if (topics.length === 0) {
+        markdown += `No struggle topics recorded.\n`;
+    } else {
+        markdown += `## Active Struggle Topics\n\n`;
+        markdown += `| Topic | Struggle Count | Last Occurred | Status |\n`;
+        markdown += `|-------|----------------|---------------|--------|\n`;
+        
+        topics.forEach(t => {
+            const status = t.isActive ? '**Directive Mode Active**' : 'Monitoring';
+            const date = new Date(t.lastStruggle).toLocaleString();
+            markdown += `| ${capitalize(t.topic)} | ${t.count} | ${date} | ${status} |\n`;
+        });
+        
+        markdown += `\n## Details\n\n`;
+        topics.forEach(t => {
+            markdown += `### ${capitalize(t.topic)}\n`;
+            markdown += `- **Count**: ${t.count}\n`;
+            markdown += `- **Last Struggle**: ${new Date(t.lastStruggle).toLocaleString()}\n`;
+            markdown += `- **Status**: ${t.isActive ? 'Active' : 'Resolved/Monitoring'}\n\n`;
+        });
+    }
+
+    // Trigger download
+    const blob = new Blob([markdown], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Struggle_Report_${studentName.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.md`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    showNotification('Report downloaded successfully.', 'success');
+};
+
+function capitalize(str) {
+    return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
 
