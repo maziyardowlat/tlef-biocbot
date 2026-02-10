@@ -270,7 +270,8 @@ function renderStruggleTopics(topicMap) {
     if (!container || !section) return;
 
     if (topicMap.size === 0) {
-        section.style.display = 'none';
+        section.style.display = 'block';
+        container.innerHTML = '<p class="no-data-message" style="text-align: center; color: #666; font-style: italic; padding: 20px;">No struggle topics recorded for this course yet.</p>';
         return;
     }
 
