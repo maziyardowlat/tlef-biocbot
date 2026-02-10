@@ -65,6 +65,7 @@ async function initializeHomePage() {
             await loadStatistics();
             await loadFlaggedContent();
             await checkMissingContent();
+            await loadStruggleTopics();
         }
     } catch (error) {
         console.error('Error initializing home page:', error);
@@ -199,6 +200,143 @@ async function loadStatistics() {
         // Don't show error to user, just hide the section
         document.getElementById('statistics-section')?.setAttribute('style', 'display: none;');
     }
+}
+
+/**
+ * Load struggle topics for the selected course
+ */
+async function loadStruggleTopics() {
+    try {
+        const courseId = getSelectedCourseId();
+        if (!courseId) return;
+
+        const response = await authenticatedFetch(`/api/courses/${courseId}/students`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        
+        const result = await response.json();
+        const students = result.data?.students || [];
+
+        // Aggregate struggle topics
+        const topicMap = new Map(); // topic -> { count, students: [] }
+
+        students.forEach(student => {
+            if (student.struggleState && student.struggleState.topics && student.struggleState.topics.length > 0) {
+                student.struggleState.topics.forEach(t => {
+                    // Only count active struggles if that's the requirement, 
+                    // but the prompt implies "pull different topics... Enzymes: 3 students"
+                    // checking student-hub.js, it lists all topics in struggleState.
+                    // Let's count all topics present in struggleState.
+                    // We might want to filter by `isActive` if that's what "Struggle Topics" implies,
+                    // but usually instructors want to see historical struggles too or current ones.
+                    // Given the prompt "Struggle Topics" and "Enzymes: 3 students", implies active or recent.
+                    // Let's count all for now, maybe distinguish active in the list.
+                    
+                    const topicName = t.topic.toLowerCase().trim();
+                    if (!topicMap.has(topicName)) {
+                        topicMap.set(topicName, { count: 0, students: [], isActiveCount: 0 });
+                    }
+                    
+                    const entry = topicMap.get(topicName);
+                    // Avoid counting the same student multiple times for the same topic if data allows duplicates (unlikely)
+                    if (!entry.students.some(s => s.id === student.userId)) {
+                        entry.count++;
+                        entry.students.push({
+                            id: student.userId,
+                            name: student.displayName || student.username || 'Unknown',
+                            isActive: t.isActive
+                        });
+                        if (t.isActive) entry.isActiveCount++;
+                    }
+                });
+            }
+        });
+
+        renderStruggleTopics(topicMap);
+
+    } catch (error) {
+        console.error('Error loading struggle topics:', error);
+        document.getElementById('struggle-topics-section')?.setAttribute('style', 'display: none;');
+    }
+}
+
+/**
+ * Render struggle topics list
+ * @param {Map} topicMap - Aggregated struggle topics
+ */
+function renderStruggleTopics(topicMap) {
+    const container = document.getElementById('struggle-topics-content');
+    const section = document.getElementById('struggle-topics-section');
+    
+    if (!container || !section) return;
+
+    if (topicMap.size === 0) {
+        section.style.display = 'none';
+        return;
+    }
+
+    section.style.display = 'block';
+    
+    // Sort by active count (descending), then total count
+    const sortedTopics = Array.from(topicMap.entries()).sort((a, b) => {
+        if (b[1].isActiveCount !== a[1].isActiveCount) {
+            return b[1].isActiveCount - a[1].isActiveCount;
+        }
+        return b[1].count - a[1].count;
+    });
+
+    let html = '<div class="struggle-topics-list">';
+    
+    sortedTopics.forEach(([topic, data]) => {
+        const displayTopic = topic.charAt(0).toUpperCase() + topic.slice(1);
+        
+        // Sort students: active first
+        const sortedStudents = [...data.students].sort((a, b) => {
+            if (a.isActive === b.isActive) return 0;
+            return a.isActive ? -1 : 1;
+        });
+
+        // Generate student list with indicators
+        // Limit to 10 names to avoid overcrowding, show "and X more" if needed
+        const displayLimit = 10;
+        const displayedStudents = sortedStudents.slice(0, displayLimit);
+        const remaining = sortedStudents.length - displayLimit;
+
+        const studentHtmlList = displayedStudents.map(s => {
+            const indicator = s.isActive ? '🔴' : '⚪️';
+            const title = s.isActive ? 'Active (Directive Mode)' : 'Inactive (Monitoring)';
+            // safe check for escapeHTML in case it's not hoisted or defined yet (it is defined below in the file)
+            // But to be safe, we can use a local helper or rely on the one in scope. 
+            // Since this function is at the bottom, escapeHTML (defined above or below) should be visible if it's a function declaration.
+            // In the previous view, escapeHTML was a function declaration.
+            return `<span title="${title}" style="display: inline-block; margin-right: 8px; white-space: nowrap;">${indicator} ${escapeHtml(s.name)}</span>`;
+        }).join('');
+        
+        const moreText = remaining > 0 ? `<span style="color: #666; font-size: 0.9em;">+ ${remaining} more</span>` : '';
+
+        // Badge color based on whether there are active struggles
+        const badgeColor = data.isActiveCount > 0 ? '#dc3545' : '#6c757d';
+        const badgeText = `${data.count} student${data.count !== 1 ? 's' : ''}` + 
+                          (data.isActiveCount > 0 ? ` (${data.isActiveCount} active)` : '');
+
+        html += `
+            <div class="struggle-topic-item" style="background: white; padding: 15px; margin-bottom: 10px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-left: 4px solid ${data.isActiveCount > 0 ? '#dc3545' : '#28a745'};">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <h3 style="margin: 0; font-size: 1.1em; color: #333;">${displayTopic}</h3>
+                    <span class="badge" style="background: ${badgeColor}; color: white; padding: 4px 10px; border-radius: 12px; font-weight: bold;">
+                        ${badgeText}
+                    </span>
+                </div>
+                <div style="font-size: 0.95em; color: #555; line-height: 1.5;">
+                    ${studentHtmlList} ${moreText}
+                </div>
+            </div>
+        `;
+    });
+    
+    html += '</div>';
+    html += '<div style="margin-top: 10px; font-size: 0.85em; color: #666; text-align: right;">🔴 Active (Directive Mode) &nbsp; ⚪️ Inactive (Monitoring)</div>';
+    
+    container.innerHTML = html;
 }
 
 /**
@@ -880,6 +1018,7 @@ async function setSelectedCourse(courseId, courseName) {
     await loadStatistics();
     await loadFlaggedContent();
     await checkMissingContent();
+    await loadStruggleTopics();
 }
 
 /**

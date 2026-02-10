@@ -153,9 +153,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (topic === 'ALL') {
             modalTitle.textContent = 'Reset All Topics?';
             modalMessage.textContent = 'This will clear all your struggle history and disable Directive Mode for all topics. Are you sure?';
+            modalConfirmBtn.textContent = 'Reset All';
         } else {
             modalTitle.textContent = `Reset "${capitalize(topic)}"?`;
             modalMessage.textContent = 'This will reset the struggle count for this topic and disable Directive Mode if active. Are you sure?';
+            modalConfirmBtn.textContent = `I understand ${capitalize(topic)} now`;
         }
     }
 

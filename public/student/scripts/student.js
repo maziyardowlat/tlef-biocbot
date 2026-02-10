@@ -1151,7 +1151,11 @@ function addMessage(content, sender, withSource = false, skipAutoSave = false, s
             resetBtn.style.marginLeft = '8px';
             resetBtn.style.color = '#dc3545'; // bootstrap danger color
             resetBtn.style.borderColor = '#dc3545';
-            resetBtn.innerHTML = 'Reset Directive Mode';
+            
+            // Simple inline capitalization since helper might not be available
+            const displayTopic = activeStruggleTopic.charAt(0).toUpperCase() + activeStruggleTopic.slice(1);
+            resetBtn.textContent = `I understand ${displayTopic} now`;
+            
             resetBtn.title = `Turn off Directive Mode for ${activeStruggleTopic}`;
             resetBtn.onclick = () => resetStruggleTopic(activeStruggleTopic);
             rightContainer.appendChild(resetBtn);
