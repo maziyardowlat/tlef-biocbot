@@ -72,7 +72,7 @@
                     </div>
                     <div class="modal-footer">
                         <button id="idle-signout-btn" class="secondary-button">Sign Out</button>
-                        <button id="idle-stay-btn" class="primary-button">Confirm Stay</button>
+                        <button id="idle-stay-btn" class="primary-button">I'm Still Here</button>
                     </div>
                 </div>
             </div>

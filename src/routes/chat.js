@@ -563,7 +563,7 @@ ${conversationHistory}`;
             5. Use simple analogies and avoid complex jargon unless defined immediately.`;
             
             basePrompt += directiveInstruction;
-            console.log('🚨 [CHAT_API] Appended Directive Mode instructions to system prompt');
+            console.log(' [CHAT_API] Appended Directive Mode instructions to system prompt');
         }
 
         // Check if course has custom prompts
@@ -573,7 +573,7 @@ ${conversationHistory}`;
             if (course.prompts.protege) protegePrompt = course.prompts.protege;
             if (course.prompts.tutor) tutorPrompt = course.prompts.tutor;
         } else {
-            console.log('📝 [CHAT_API] Using default prompts');
+            console.log('[CHAT_API] Using default prompts');
         }
 
         // Check for summary attempt via LLM if requested
