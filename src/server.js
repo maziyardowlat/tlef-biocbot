@@ -24,6 +24,7 @@ const studentsRoutes = require('./routes/students');
 const userAgreementRoutes = require('./routes/user-agreement');
 const settingsRoutes = require('./routes/settings');
 const studentTrackerRoutes = require('./routes/student-tracker');
+const struggleActivityRoutes = require('./routes/struggle-activity');
 const LLMService = require('./services/llm');
 const AuthService = require('./services/authService');
 const createAuthMiddleware = require('./middleware/auth');
@@ -485,6 +486,7 @@ function setupAPIRoutes() {
     app.use('/api/user-agreement', authMiddleware.requireAuth, userAgreementRoutes);
     app.use('/api/settings', authMiddleware.requireAuth, authMiddleware.populateUser, settingsRoutes);
     app.use('/api/student/struggle', authMiddleware.requireAuth, authMiddleware.populateUser, studentTrackerRoutes);
+    app.use('/api/struggle-activity', authMiddleware.requireAuth, struggleActivityRoutes);
 }
 
 // Initialize the application
