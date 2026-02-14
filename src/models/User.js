@@ -6,7 +6,6 @@
 
 const { MongoClient } = require('mongodb');
 const bcrypt = require('bcryptjs');
-const StruggleActivity = require('./StruggleActivity');
 
 /**
  * User Schema Structure:
@@ -489,11 +488,9 @@ module.exports = {
  * @param {Object} db - MongoDB database instance
  * @param {string} userId - User identifier
  * @param {Object} struggleData - Analysis result { topic, isStruggling }
- * @param {Object} socketManager - Optional Socket.IO manager for emitting real-time events
- * @param {string} courseId - Course ID context (from current chat/session)
  * @returns {Promise<Object>} Update result and current state
  */
-async function updateUserStruggleState(db, userId, struggleData, socketManager = null, courseId = null) {
+async function updateUserStruggleState(db, userId, struggleData) {
     const collection = getUsersCollection(db);
     const { topic, isStruggling } = struggleData;
     const now = new Date();
@@ -535,43 +532,8 @@ async function updateUserStruggleState(db, userId, struggleData, socketManager =
         topics[currentTopicIndex] = topicState;
     }
 
-    // Track if this is a NEW activation (was not active before, now is active)
-    const wasActive = currentTopicIndex !== -1 ? topics[currentTopicIndex].isActive : false;
-    
     // Check if Directive Mode should be active
     topicState.isActive = topicState.count >= 3;
-    
-    // Emit Socket.IO event if this is a NEW activation (transition from inactive to active)
-    const isNewActivation = !wasActive && topicState.isActive;
-    if (isNewActivation) {
-        // Use passed courseId or fallback to user preferences
-        const activeCourseId = courseId || user.preferences?.courseId || null;
-        const studentName = user.displayName || user.username || 'Unknown Student';
-        
-        // Emit Socket.IO event for real-time updates
-        if (socketManager) {
-            socketManager.emitStruggleStateChange(activeCourseId, {
-                userId: user.userId,
-                studentName: studentName,
-                topic: normalizedTopic,
-                state: 'Active',
-                timestamp: now,
-                courseId: activeCourseId
-            });
-            
-            console.log(`📊 [SOCKET] Emitted Active state change for ${studentName} - Topic: ${normalizedTopic}`);
-        }
-        
-        // Persist to activity history for permanent record
-        await StruggleActivity.createActivityEntry(db, {
-            userId: user.userId,
-            studentName: studentName,
-            courseId: activeCourseId,
-            topic: normalizedTopic,
-            state: 'Active',
-            timestamp: now
-        });
-    }
 
     // Persist changes
     await collection.updateOne(
@@ -596,44 +558,22 @@ async function updateUserStruggleState(db, userId, struggleData, socketManager =
  * @param {Object} db - MongoDB database instance
  * @param {string} userId - User identifier
  * @param {string} topic - Topic to reset (or 'ALL' for global reset)
- * @param {Object} socketManager - Optional Socket.IO manager for emitting real-time events
- * @param {string} courseId - Course ID context (from current session)
  * @returns {Promise<Object>} Update result
  */
-async function resetUserStruggleState(db, userId, topic, socketManager = null, courseId = null) {
+async function resetUserStruggleState(db, userId, topic) {
     const collection = getUsersCollection(db);
     const now = new Date();
-    
-    // Get user first to fetch info for Socket.IO event
-    const user = await collection.findOne({ userId });
-    if (!user) return { success: false, error: 'User not found' };
-    
-    const studentName = user.displayName || user.username || 'Unknown Student';
-    // Use passed courseId or fallback to user preferences
-    const activeCourseId = courseId || user.preferences?.courseId || null;
 
     let updateOp = {};
-    let topicsToReset = []; // Track which topics were reset
     
     if (topic === 'ALL') {
-        // Get all topics before clearing
-        topicsToReset = user.struggleState?.topics || [];
-        
         updateOp.$set = { 
             'struggleState.topics': [],
             updatedAt: now
         };
     } else {
-        // Find the specific topic
-        const normalizedTopic = topic.toLowerCase().trim();
-        const existingTopic = user.struggleState?.topics?.find(t => t.topic === normalizedTopic);
-        
-        if (existingTopic) {
-            topicsToReset = [existingTopic];
-        }
-        
         // Remove specific topic
-        updateOp.$pull = { 'struggleState.topics': { topic: normalizedTopic } };
+        updateOp.$pull = { 'struggleState.topics': { topic: topic.toLowerCase().trim() } };
         updateOp.$set = { updatedAt: now };
     }
 
@@ -641,35 +581,6 @@ async function resetUserStruggleState(db, userId, topic, socketManager = null, c
         { userId },
         updateOp
     );
-    
-    // Emit Socket.IO events and persist to history for each topic that was reset (deactivated)
-    if (topicsToReset.length > 0) {
-        for (const topicObj of topicsToReset) {
-            // Emit Socket.IO event for real-time updates
-            if (socketManager) {
-                socketManager.emitStruggleStateChange(activeCourseId, {
-                    userId: user.userId,
-                    studentName: studentName,
-                    topic: topicObj.topic,
-                    state: 'Inactive',
-                    timestamp: now,
-                    courseId: activeCourseId
-                });
-                
-                console.log(`📊 [SOCKET] Emitted Inactive state change for ${studentName} - Topic: ${topicObj.topic}`);
-            }
-            
-            // Persist to activity history for permanent record
-            await StruggleActivity.createActivityEntry(db, {
-                userId: user.userId,
-                studentName: studentName,
-                courseId: activeCourseId,
-                topic: topicObj.topic,
-                state: 'Inactive',
-                timestamp: now
-            });
-        }
-    }
 
     return { success: true };
 }
