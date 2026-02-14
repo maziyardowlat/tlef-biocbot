@@ -6,7 +6,6 @@
 
 const { MongoClient } = require('mongodb');
 const bcrypt = require('bcryptjs');
-const StruggleActivity = require('./StruggleActivity');
 
 /**
  * User Schema Structure:
@@ -534,9 +533,6 @@ async function updateUserStruggleState(db, userId, struggleData, courseId = null
         topics[currentTopicIndex] = topicState;
     }
 
-    // Track if this is a NEW activation (was not active before, now is active)
-    const wasActive = currentTopicIndex !== -1 ? topics[currentTopicIndex].isActive : false;
-    
     // Check if Directive Mode should be active
     topicState.isActive = topicState.count >= 3;
     
@@ -589,37 +585,17 @@ async function updateUserStruggleState(db, userId, struggleData, courseId = null
 async function resetUserStruggleState(db, userId, topic, courseId = null) {
     const collection = getUsersCollection(db);
     const now = new Date();
-    
-    // Get user first to fetch info for Socket.IO event
-    const user = await collection.findOne({ userId });
-    if (!user) return { success: false, error: 'User not found' };
-    
-    const studentName = user.displayName || user.username || 'Unknown Student';
-    // Use passed courseId or fallback to user preferences
-    const activeCourseId = courseId || user.preferences?.courseId || null;
 
     let updateOp = {};
-    let topicsToReset = []; // Track which topics were reset
     
     if (topic === 'ALL') {
-        // Get all topics before clearing
-        topicsToReset = user.struggleState?.topics || [];
-        
         updateOp.$set = { 
             'struggleState.topics': [],
             updatedAt: now
         };
     } else {
-        // Find the specific topic
-        const normalizedTopic = topic.toLowerCase().trim();
-        const existingTopic = user.struggleState?.topics?.find(t => t.topic === normalizedTopic);
-        
-        if (existingTopic) {
-            topicsToReset = [existingTopic];
-        }
-        
         // Remove specific topic
-        updateOp.$pull = { 'struggleState.topics': { topic: normalizedTopic } };
+        updateOp.$pull = { 'struggleState.topics': { topic: topic.toLowerCase().trim() } };
         updateOp.$set = { updatedAt: now };
     }
 

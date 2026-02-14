@@ -67,18 +67,6 @@ async function initializeHomePage() {
             await checkMissingContent();
             await loadStruggleTopics();
         }
-        
-        // Add event listeners for live struggle table controls
-        const filterCheckbox = document.getElementById('filter-active-only');
-        if (filterCheckbox) {
-            filterCheckbox.addEventListener('change', renderLiveStruggleTable);
-        }
-        
-        const downloadCSVBtn = document.getElementById('download-csv-btn');
-        if (downloadCSVBtn) {
-            downloadCSVBtn.addEventListener('click', downloadStruggleActivityCSV);
-        }
-        
     } catch (error) {
         console.error('Error initializing home page:', error);
         showErrorMessage('Failed to load home page data');
