@@ -731,76 +731,71 @@ function escapeHtml(text) {
 /**
  * Global variables for Socket.IO and live struggle data
  */
-let socket = null; // Socket.IO connection
+let pollingInterval = null; // Polling interval ID
 let struggleActivityData = []; // Array to store all struggle activity
 const MAX_TABLE_ENTRIES = 100; // Limit stored entries to prevent memory issues
+const POLLING_INTERVAL_MS = 10000; // Poll every 10 seconds
 
 /**
- * Initialize Socket.IO connection for real-time struggle updates
+ * Start polling for struggle activity updates
  * Called when a course is selected
  */
-function initializeSocketIO() {
+function startPollingStruggleActivity() {
     const courseId = getSelectedCourseId();
     if (!courseId) {
-        console.warn('Cannot initialize Socket.IO: No course selected');
+        console.warn('Cannot start polling: No course selected');
         return;
     }
     
-    // Disconnect existing socket if any
-    if (socket) {
-        socket.disconnect();
-    }
+    // Stop existing polling if any
+    stopPollingStruggleActivity();
     
-    // Connect to Socket.IO server
-    // NOTE: browser-sync proxies 8085 → 3000, but Socket.IO is on the actual server (8085)
-    // so we need to connect directly to 8085, not to the current page origin (3000)
-    const socketPort = 8085; // Actual server port
-    const socketUrl = `http://localhost:${socketPort}`;
+    console.log(`\ud83d\udd04 Starting struggle activity polling for course: ${courseId}`);
     
-    socket = io(socketUrl, {
-        transports: ['websocket', 'polling']
-    });
-    
-    socket.on('connect', () => {
-        console.log('✅ Socket.IO connected - ID:', socket.id);
-        // Join course-specific room
-        socket.emit('join:course', courseId);
-    });
-    
-    socket.on('disconnect', () => {
-        console.log('❌ Socket.IO disconnected');
-    });
-    
-    // Listen for struggle state changes
-    socket.on('struggle:stateChange', (data) => {
-        console.log('📊 Struggle state change received:', data);
-        handleStruggleStateChange(data);
-    });
+    // Poll immediately once, then set interval
+    pollStruggleActivity();
+    pollingInterval = setInterval(pollStruggleActivity, POLLING_INTERVAL_MS);
 }
 
 /**
- * Handle incoming struggle state change event from Socket.IO
- * @param {Object} data - Event data with userId, studentName, topic, state, timestamp, courseId
+ * Stop polling for struggle activity updates
  */
-function handleStruggleStateChange(data) {
-const courseId = getSelectedCourseId();
-    
-    // Only process if it's for the current course
-    if (data.courseId !== courseId) {
-        console.log('Ignoring event for different course:', data.courseId);
-        return;
+function stopPollingStruggleActivity() {
+    if (pollingInterval) {
+        clearInterval(pollingInterval);
+        pollingInterval = null;
+        console.log('\u274c Stopped struggle activity polling');
     }
-    
-    // Add to data array (newest first)
-    struggleActivityData.unshift(data);
-    
-    // Limit array size
-    if (struggleActivityData.length > MAX_TABLE_ENTRIES) {
-        struggleActivityData = struggleActivityData.slice(0, MAX_TABLE_ENTRIES);
+}
+
+/**
+ * Poll the server for new struggle activity data
+ */
+async function pollStruggleActivity() {
+    try {
+        const courseId = getSelectedCourseId();
+        if (!courseId) return;
+        
+        // Fetch latest activity from API
+        const response = await authenticatedFetch(`/api/struggle-activity/${courseId}?limit=100`);
+        
+        if (!response.ok) {
+            console.warn('Failed to poll struggle activity');
+            return;
+        }
+        
+        const result = await response.json();
+        const newActivities = result.data || [];
+        
+        // Update data array (replace entirely)
+        struggleActivityData = newActivities;
+        
+        // Re-render table
+        renderLiveStruggleTable();
+        
+    } catch (error) {
+        console.error('Error polling struggle activity:', error);
     }
-    
-    // Re-render table
-    renderLiveStruggleTable();
 }
 
 /**
@@ -1282,8 +1277,8 @@ async function setSelectedCourse(courseId, courseName) {
     await checkMissingContent();
     await loadStruggleTopics();
     
-    // Initialize Socket.IO for real-time updates
-    initializeSocketIO();
+    // Start polling for struggle activity updates
+    startPollingStruggleActivity();
     
     // Load initial struggle activity data for the live table
     await loadInitialStruggleActivity();
