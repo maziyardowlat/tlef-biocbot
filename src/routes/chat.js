@@ -358,8 +358,9 @@ router.post('/', async (req, res) => {
                 const analysis = await localTrackerService.analyzeMessage(message, courseId, unitName);
                 console.log('🕵️ [CHAT_API_DEBUG] Raw Analysis Result:', JSON.stringify(analysis, null, 2));
                 
-                // 2. Update user state
-                const updateResult = await User.updateUserStruggleState(db, req.user.userId, analysis);
+                // 2. Update user state (with Socket.IO emission if Directive Mode activates)
+                const socketManager = req.app.locals.socketManager;
+                const updateResult = await User.updateUserStruggleState(db, req.user.userId, analysis, socketManager, courseId);
                 console.log('🕵️ [CHAT_API_DEBUG] User State Update Result:', JSON.stringify(updateResult, null, 2));
                 
                 if (updateResult.success) {

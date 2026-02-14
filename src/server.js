@@ -1,5 +1,7 @@
 require('dotenv').config();
 const express = require('express');
+const http = require('http');
+const { Server } = require('socket.io');
 const path = require('path');
 const session = require('express-session');
 const MongoStore = require('connect-mongo');
@@ -24,12 +26,22 @@ const studentsRoutes = require('./routes/students');
 const userAgreementRoutes = require('./routes/user-agreement');
 const settingsRoutes = require('./routes/settings');
 const studentTrackerRoutes = require('./routes/student-tracker');
+const struggleActivityRoutes = require('./routes/struggle-activity');
 const LLMService = require('./services/llm');
 const AuthService = require('./services/authService');
 const createAuthMiddleware = require('./middleware/auth');
 const initializePassport = require('./config/passport');
+const SocketManager = require('./services/socketManager');
 
 const app = express();
+const server = http.createServer(app); // HTTP server for Socket.IO
+const io = new Server(server, {
+    cors: {
+        origin: ['http://localhost:3000', 'http://localhost:3002', 'http://localhost:8085'],
+        credentials: true,
+        methods: ['GET', 'POST']
+    }
+});
 const port = process.env.TLEF_BIOCBOT_PORT || 8080;
 
 // Configure CORS to allow requests from localhost:3002 (browser-sync proxy)
@@ -56,6 +68,7 @@ let llmService;
 let authService;
 let authMiddleware;
 let passport;
+let socketManager; // Socket.IO manager for real-time events
 
 /**
  * Initialize the LLM service
@@ -485,6 +498,7 @@ function setupAPIRoutes() {
     app.use('/api/user-agreement', authMiddleware.requireAuth, userAgreementRoutes);
     app.use('/api/settings', authMiddleware.requireAuth, authMiddleware.populateUser, settingsRoutes);
     app.use('/api/student/struggle', authMiddleware.requireAuth, authMiddleware.populateUser, studentTrackerRoutes);
+    app.use('/api/struggle-activity', authMiddleware.requireAuth, struggleActivityRoutes);
 }
 
 // Initialize the application
@@ -519,10 +533,16 @@ async function startServer() {
         setupProtectedRoutes();
         setupAPIRoutes();
 
-        // Start the Express server
-        app.listen(port, () => {
+        // Initialize Socket.IO manager for real-time updates
+        socketManager = new SocketManager(io);
+        app.locals.socketManager = socketManager;
+        console.log('✅ Socket.IO initialized successfully');
+
+        // Start the HTTP server (with Socket.IO attached)
+        server.listen(port, () => {
             console.log('\n✨ All services initialized successfully!');
             console.log(`🌐 Server is running on http://localhost:${port}`);
+            console.log(`🔌 Socket.IO is ready for connections`);
             console.log(`👨‍🎓 Student interface: http://localhost:${port}/student`);
             console.log(`👨‍🏫 Instructor interface: http://localhost:${port}/instructor`);
             console.log(`🔍 Health check: http://localhost:${port}/api/health`);
