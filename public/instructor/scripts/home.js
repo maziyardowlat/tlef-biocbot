@@ -712,6 +712,250 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+// ===========================
+// LIVE STRUGGLE TABLE & SOCKET.IO
+// ===========================
+
+/**
+ * Global variables for Socket.IO and live struggle data
+ */
+let pollingInterval = null; // Polling interval ID
+let struggleActivityData = []; // Array to store all struggle activity
+const MAX_TABLE_ENTRIES = 100; // Limit stored entries to prevent memory issues
+const POLLING_INTERVAL_MS = 10000; // Poll every 10 seconds
+
+/**
+ * Start polling for struggle activity updates
+ * Called when a course is selected
+ */
+function startPollingStruggleActivity() {
+    const courseId = getSelectedCourseId();
+    if (!courseId) {
+        console.warn('Cannot start polling: No course selected');
+        return;
+    }
+    
+    // Stop existing polling if any
+    stopPollingStruggleActivity();
+    
+    console.log(`\ud83d\udd04 Starting struggle activity polling for course: ${courseId}`);
+    
+    // Poll immediately once, then set interval
+    pollStruggleActivity();
+    pollingInterval = setInterval(pollStruggleActivity, POLLING_INTERVAL_MS);
+}
+
+/**
+ * Stop polling for struggle activity updates
+ */
+function stopPollingStruggleActivity() {
+    if (pollingInterval) {
+        clearInterval(pollingInterval);
+        pollingInterval = null;
+        console.log('\u274c Stopped struggle activity polling');
+    }
+}
+
+/**
+ * Poll the server for new struggle activity data
+ */
+async function pollStruggleActivity() {
+    try {
+        const courseId = getSelectedCourseId();
+        if (!courseId) return;
+        
+        // Fetch latest activity from API
+        const response = await authenticatedFetch(`/api/struggle-activity/${courseId}?limit=100`);
+        
+        if (!response.ok) {
+            console.warn('Failed to poll struggle activity');
+            return;
+        }
+        
+        const result = await response.json();
+        const newActivities = result.data || [];
+        
+        // Update data array (replace entirely)
+        struggleActivityData = newActivities;
+        
+        // Re-render table
+        renderLiveStruggleTable();
+        
+    } catch (error) {
+        console.error('Error polling struggle activity:', error);
+    }
+}
+
+/**
+ * Load initial struggle activity data from server
+ * Fetches from persistent MongoDB history collection
+ */
+async function loadInitialStruggleActivity() {
+    try {
+        const courseId = getSelectedCourseId();
+        if (!courseId) return;
+        
+        // Fetch from persistent history API
+        const response = await authenticatedFetch(`/api/struggle-activity/${courseId}?limit=100`);
+        
+        if (!response.ok) {
+            console.warn('Failed to load struggle activity history');
+            return;
+        }
+        
+        const result = await response.json();
+        const activities = result.data || [];
+        
+        // Activities are already sorted by timestamp (newest first) from backend
+        struggleActivityData = activities;
+        
+        // Show the table container
+        const container = document.getElementById('live-struggle-container');
+        if (container) {
+            container.style.display = 'block';
+        }
+        
+        renderLiveStruggleTable();
+        
+        console.log(`📊 Loaded ${struggleActivityData.length} struggle activity entries from history`);
+        
+    } catch (error) {
+        console.error('Error loading struggle activity history:', error);
+    }
+}
+
+
+/**
+ * Render the live struggle table
+ * Respects the "Show only active" filter
+ */
+function renderLiveStruggleTable() {
+    const tbody = document.getElementById('live-struggle-tbody');
+    if (!tbody) return;
+    
+    const filterActive =document.getElementById('filter-active-only')?.checked || false;
+    
+    // Filter data if needed
+    let dataToDisplay = struggleActivityData;
+    if (filterActive) {
+        dataToDisplay = struggleActivityData.filter(item => item.state === 'Active');
+    }
+    
+    if (dataToDisplay.length === 0) {
+        tbody.innerHTML = `
+            <tr class="no-data-row">
+                <td colspan="4" style="text-align: center; color: #666; padding: 20px;">
+                    ${filterActive ? 'No active struggle activity.' : 'No struggle activity yet. Activity will appear here as students interact with topics.'}
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    // Build table rows
+    let html = '';
+    dataToDisplay.forEach(item => {
+        const timestamp = formatTimestampPST(item.timestamp);
+        const stateBadge = item.state === 'Active' 
+            ? '<span class="state-badge active">Active</span>'
+            : '<span class="state-badge inactive">Inactive</span>';
+        
+        html += `
+            <tr>
+                <td>${timestamp}</td>
+                <td>${escapeHtml(item.studentName)}</td>
+                <td>${escapeHtml(capitalizeFirst(item.topic))}</td>
+                <td>${stateBadge}</td>
+            </tr>
+        `;
+    });
+    
+    tbody.innerHTML = html;
+}
+
+/**
+ * Format timestamp to PST timezone
+ * @param {Date|string} timestamp - Timestamp to format
+ * @returns {string} Formatted timestamp in PST (e.g., "February 13, 2024, 7:25 PM")
+ */
+function formatTimestampPST(timestamp) {
+    const date = typeof timestamp === 'string' ? new Date(timestamp) : timestamp;
+    
+    // Format to PST (America/Los_Angeles) - automatically handles PST/PDT
+    const options = {
+        timeZone: 'America/Los_Angeles',
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+    };
+    
+    const formatter = new Intl.DateTimeFormat('en-US', options);
+    return formatter.format(date);
+}
+
+/**
+ * Capitalize first letter of string
+ * @param {string} str - String to capitalize
+ * @returns {string} Capitalized string
+ */
+function capitalizeFirst(str) {
+    if (!str) return '';
+    return str.charAt(0).toUpperCase() + str.slice(1);
+}
+
+/**
+ * Download table data as CSV
+ * Respects the "Show only active" filter
+ */
+function downloadStruggleActivityCSV() {
+    const filterActive = document.getElementById('filter-active-only')?.checked || false;
+    let dataToExport = struggleActivityData;
+    
+    if (filterActive) {
+        dataToExport = struggleActivityData.filter(item => item.state === 'Active');
+    }
+    
+    if (dataToExport.length === 0) {
+        alert('No data to export');
+        return;
+    }
+    
+    // Build CSV
+    let csv = 'Time (PST),Name,Topic,Status\n';
+    
+    dataToExport.forEach(item => {
+        const timestamp = formatTimestampPST(item.timestamp);
+        const name = item.studentName.replace(/"/g, '""'); // Escape quotes
+        const topic = capitalizeFirst(item.topic).replace(/"/g, '""');
+        const status = item.state;
+        
+        csv += `"${timestamp}","${name}","${topic}","${status}"\n`;
+    });
+    
+    // Create download link
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', `struggle_activity_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    console.log(`📥 Downloaded CSV with ${dataToExport.length} entries`);
+}
+
+// ===========================
+// END OF LIVE STRUGGLE TABLE
+// ===========================
+
+
 /**
  * Show info message
  * @param {string} message - Info message
@@ -1020,6 +1264,12 @@ async function setSelectedCourse(courseId, courseName) {
     await loadFlaggedContent();
     await checkMissingContent();
     await loadStruggleTopics();
+    
+    // Start polling for struggle activity updates
+    startPollingStruggleActivity();
+    
+    // Load initial struggle activity data for the live table
+    await loadInitialStruggleActivity();
 }
 
 /**

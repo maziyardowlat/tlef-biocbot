@@ -49,9 +49,13 @@ router.post('/reset', async (req, res) => {
         }
 
         const db = req.app.locals.db;
-        console.log(`🔄 [TRACKER_API] Resetting struggle for user ${req.user.userId}, topic: ${topic}`);
+        
+        // Use courseId from request body (sent by frontend) or fallback to user preferences
+        const courseId = requestCourseId || req.user.preferences?.courseId || null;
+        
+        console.log(`🔄 [TRACKER_API] Resetting struggle for user ${req.user.userId}, topic: ${topic}, courseId: ${courseId}`);
 
-        const result = await User.resetUserStruggleState(db, req.user.userId, topic);
+        const result = await User.resetUserStruggleState(db, req.user.userId, topic, courseId);
 
         if (result.success) {
             res.json({ success: true, message: 'Struggle state reset successfully' });

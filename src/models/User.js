@@ -488,9 +488,10 @@ module.exports = {
  * @param {Object} db - MongoDB database instance
  * @param {string} userId - User identifier
  * @param {Object} struggleData - Analysis result { topic, isStruggling }
+ * @param {string} courseId - Course ID context (from current chat/session)
  * @returns {Promise<Object>} Update result and current state
  */
-async function updateUserStruggleState(db, userId, struggleData) {
+async function updateUserStruggleState(db, userId, struggleData, courseId = null) {
     const collection = getUsersCollection(db);
     const { topic, isStruggling } = struggleData;
     const now = new Date();
@@ -534,6 +535,26 @@ async function updateUserStruggleState(db, userId, struggleData) {
 
     // Check if Directive Mode should be active
     topicState.isActive = topicState.count >= 3;
+    
+    // Persist to MongoDB if this is a NEW activation (transition from inactive to active)
+    const isNewActivation = !wasActive && topicState.isActive;
+    if (isNewActivation) {
+        // Use passed courseId or fallback to user preferences
+        const activeCourseId = courseId || user.preferences?.courseId || null;
+        const studentName = user.displayName || user.username || 'Unknown Student';
+        
+        // Persist to activity history for permanent record
+        await StruggleActivity.createActivityEntry(db, {
+            userId: user.userId,
+            studentName: studentName,
+            courseId: activeCourseId,
+            topic: normalizedTopic,
+            state: 'Active',
+            timestamp: now
+        });
+        
+        console.log(`💾 [DB] Persisted Active state for ${studentName} - Topic: ${normalizedTopic}`);
+    }
 
     // Persist changes
     await collection.updateOne(
@@ -558,9 +579,10 @@ async function updateUserStruggleState(db, userId, struggleData) {
  * @param {Object} db - MongoDB database instance
  * @param {string} userId - User identifier
  * @param {string} topic - Topic to reset (or 'ALL' for global reset)
+ * @param {string} courseId - Course ID context (from current session)
  * @returns {Promise<Object>} Update result
  */
-async function resetUserStruggleState(db, userId, topic) {
+async function resetUserStruggleState(db, userId, topic, courseId = null) {
     const collection = getUsersCollection(db);
     const now = new Date();
 
@@ -581,6 +603,23 @@ async function resetUserStruggleState(db, userId, topic) {
         { userId },
         updateOp
     );
+    
+    // Persist to MongoDB for each topic that was reset (deactivated)
+    if (topicsToReset.length > 0) {
+        for (const topicObj of topicsToReset) {
+            // Persist to activity history for permanent record
+            await StruggleActivity.createActivityEntry(db, {
+                userId: user.userId,
+                studentName: studentName,
+                courseId: activeCourseId,
+                topic: topicObj.topic,
+                state: 'Inactive',
+                timestamp: now
+            });
+            
+            console.log(`� [DB] Persisted Inactive state for ${studentName} - Topic: ${topicObj.topic}`);
+        }
+    }
 
     return { success: true };
 }
