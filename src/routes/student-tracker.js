@@ -43,15 +43,21 @@ router.post('/reset', async (req, res) => {
             return res.status(401).json({ success: false, message: 'Unauthorized' });
         }
 
-        const { topic } = req.body;
+
+        const { topic, courseId: requestCourseId } = req.body;
         if (!topic) {
             return res.status(400).json({ success: false, message: 'Topic is required' });
         }
 
         const db = req.app.locals.db;
-        console.log(`🔄 [TRACKER_API] Resetting struggle for user ${req.user.userId}, topic: ${topic}`);
+        const socketManager = req.app.locals.socketManager;
+        
+        // Use courseId from request body (sent by frontend) or fallback to user preferences
+        const courseId = requestCourseId || req.user.preferences?.courseId || null;
+        
+        console.log(`🔄 [TRACKER_API] Resetting struggle for user ${req.user.userId}, topic: ${topic}, courseId: ${courseId}`);
 
-        const result = await User.resetUserStruggleState(db, req.user.userId, topic);
+        const result = await User.resetUserStruggleState(db, req.user.userId, topic, socketManager, courseId);
 
         if (result.success) {
             res.json({ success: true, message: 'Struggle state reset successfully' });
