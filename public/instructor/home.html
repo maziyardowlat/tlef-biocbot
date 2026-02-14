@@ -152,42 +152,6 @@
                         <!-- Struggle topics will be populated by JavaScript -->
                         <div class="loading-spinner">Loading...</div>
                     </div>
-                    
-                    <!-- Live Struggle Activity Table -->
-                    <div class="live-struggle-table-container" id="live-struggle-container" style="display: none;">
-                        <div class="table-header">
-                            <h3>📋 Live Struggle Activity</h3>
-                            <div class="table-controls">
-                                <label class="filter-checkbox">
-                                    <input type="checkbox" id="filter-active-only" />
-                                    <span>Show only active</span>
-                                </label>
-                                <button class="action-btn secondary" id="download-csv-btn">
-                                    Download CSV
-                                </button>
-                            </div>
-                        </div>
-                        <div class="table-scroll-container">
-                            <table class="live-struggle-table">
-                                <thead>
-                                    <tr>
-                                        <th>Time (PST)</th>
-                                        <th>Name</th>
-                                        <th>Topic</th>
-                                        <th>State</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="live-struggle-tbody">
-                                    <!-- Rows populated by JavaScript -->
-                                    <tr class="no-data-row">
-                                        <td colspan="4" style="text-align: center; color: #666; padding: 20px;">
-                                            No struggle activity yet. Activity will appear here as students interact with topics.
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
                 </section>
 
                 <!-- Flagged Content Section -->
@@ -255,7 +219,6 @@
     </div>
     
     <script src="../common/scripts/auth.js"></script>
-    <script src="/socket.io/socket.io.js"></script>
     <script src="../instructor/scripts/home.js"></script>
 </body>
 </html> 
