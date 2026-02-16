@@ -278,7 +278,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 unitName: unitName,
                 conversationContext: conversationContext,
                 checkSummaryAttempt: checkSummaryAttempt,
-                isExplanationRequest: isExplanationRequest
+                isExplanationRequest: isExplanationRequest,
+                topic: isExplanationRequest && typeof isExplanationRequest === 'object' ? isExplanationRequest.topic : null
             };
 
 
@@ -733,7 +734,27 @@ document.addEventListener('DOMContentLoaded', async () => {
                     console.log('🕵️ [FRONTEND_DEBUG] No struggle state in response');
                 }
 
-                addMessage(response.message, 'bot', true, false, response.sourceAttribution, false, lastActiveStruggleTopic);
+                // Extract detected topic (even if not active yet) for "Explain" button
+                // Priority: active topic -> latest detected topic in state -> simple topic string if passed (unlikely)
+                let detectedTopic = null;
+                if (response.struggleState) {
+                    // 1. Try to find the topic that was just analyzed/updated
+                    if (response.struggleDebug && response.struggleDebug.identifiedTopic) {
+                        detectedTopic = response.struggleDebug.identifiedTopic;
+                    } 
+                    // 2. Fallback to extracting from topics array if active
+                    else if (response.struggleState.topics && response.struggleState.topics.length > 0) {
+                        // We might want the most recently updated one, but for now let's use the active one if any
+                        const active = response.struggleState.topics.find(t => t.isActive);
+                        if (active) detectedTopic = active.topic;
+                    }
+                    // 3. Simple topic property if it exists at top level (depends on backend structure)
+                    else if (response.struggleState.topic) {
+                        detectedTopic = response.struggleState.topic;
+                    }
+                }
+
+                addMessage(response.message, 'bot', true, false, response.sourceAttribution, false, lastActiveStruggleTopic, detectedTopic);
 
             } catch (error) {
                 // Remove typing indicator
@@ -964,8 +985,9 @@ async function renderStandaloneCourseSelectorBelowHeader(container) {
 /**
  * Handle explanation request for a message
  * @param {string} text - The message text to explain
+ * @param {string|null} topic - The detected topic associated with this message
  */
-async function handleExplainAction(text) {
+async function handleExplainAction(text, topic = null) {
     if (!text) return;
     
     // Check if we already have an ongoing request
@@ -987,7 +1009,9 @@ async function handleExplainAction(text) {
     
     try {
         // Send the detailed prompt to the LLM
-        const response = await sendMessageToLLM(prompt, false, null, true);
+        // Pass the topic if available so backend can increment struggle count
+        const explanationOptions = topic ? { topic: topic } : true;
+        const response = await sendMessageToLLM(prompt, false, null, explanationOptions);
         
         // Remove typing indicator
         removeTypingIndicator();
@@ -1009,8 +1033,11 @@ async function handleExplainAction(text) {
  * @param {boolean} withSource - Whether to show source citation
  * @param {boolean} skipAutoSave - Whether to skip auto-save for this message
  * @param {Object} sourceAttribution - Source attribution information
+ * @param {boolean} isHtml - Whether content is HTML
+ * @param {string} activeStruggleTopic - The currently active struggle topic (for Reset button)
+ * @param {string} detectedTopic - The topic detected in this message (for Explain button)
  */
-function addMessage(content, sender, withSource = false, skipAutoSave = false, sourceAttribution = null, isHtml = false, activeStruggleTopic = null) {
+function addMessage(content, sender, withSource = false, skipAutoSave = false, sourceAttribution = null, isHtml = false, activeStruggleTopic = null, detectedTopic = null) {
 
 
     const chatMessages = document.getElementById('chat-messages');
@@ -1116,8 +1143,11 @@ function addMessage(content, sender, withSource = false, skipAutoSave = false, s
             explainButton.classList.add('message-action-btn');
             explainButton.innerHTML = 'Explain';
             explainButton.title = 'Explain this message for a novice';
+            if (detectedTopic) {
+                explainButton.title += ` (Topic: ${detectedTopic})`;
+            }
             explainButton.style.marginRight = '8px'; // Add some spacing
-            explainButton.onclick = () => handleExplainAction(content);
+            explainButton.onclick = () => handleExplainAction(content, detectedTopic);
             rightContainer.appendChild(explainButton);
         }
 
