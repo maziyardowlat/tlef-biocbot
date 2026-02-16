@@ -88,6 +88,7 @@ router.get('/prompts', async (req, res) => {
             base: coursePrompts.base || prompts.DEFAULT_PROMPTS.base,
             protege: coursePrompts.protege || prompts.DEFAULT_PROMPTS.protege,
             tutor: coursePrompts.tutor || prompts.DEFAULT_PROMPTS.tutor,
+            explain: coursePrompts.explain || prompts.DEFAULT_PROMPTS.explain,
             // Course-level additive retrieval setting
             additiveRetrieval: course ? !!course.isAdditiveRetrieval : false,
             // Student idle timeout (seconds), default to 4 minutes (240s)
@@ -120,14 +121,14 @@ router.post('/prompts', async (req, res) => {
             return res.status(503).json({ success: false, message: 'Database connection not available' });
         }
 
-        const { base, protege, tutor, additiveRetrieval, studentIdleTimeout, courseId } = req.body;
+        const { base, protege, tutor, explain, additiveRetrieval, studentIdleTimeout, courseId } = req.body;
 
         if (!courseId) {
             return res.status(400).json({ success: false, message: 'courseId is required to save settings' });
         }
 
         // Validation - ensure they are strings (prompts) and boolean (additiveRetrieval)
-        if (typeof base !== 'string' || typeof protege !== 'string' || typeof tutor !== 'string') {
+        if (typeof base !== 'string' || typeof protege !== 'string' || typeof tutor !== 'string' || typeof explain !== 'string') {
             return res.status(400).json({ success: false, message: 'Invalid prompt format' });
         }
 
@@ -148,6 +149,7 @@ router.post('/prompts', async (req, res) => {
                     'prompts.base': base, 
                     'prompts.protege': protege, 
                     'prompts.tutor': tutor,
+                    'prompts.explain': explain,
                     'prompts.studentIdleTimeout': timeoutVal,
                     isAdditiveRetrieval: !!additiveRetrieval,
                     updatedAt: new Date()

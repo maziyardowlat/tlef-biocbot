@@ -53,12 +53,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const basePromptInput = document.getElementById('base-prompt');
                 const protegePromptInput = document.getElementById('protege-prompt');
                 const tutorPromptInput = document.getElementById('tutor-prompt');
+                const explainPromptInput = document.getElementById('explain-prompt');
                 const additiveToggle = document.getElementById('additive-retrieval-toggle');
                 const idleTimeoutInput = document.getElementById('idle-timeout-input');
                 
                 if (basePromptInput) basePromptInput.value = result.prompts.base || '';
                 if (protegePromptInput) protegePromptInput.value = result.prompts.protege || '';
                 if (tutorPromptInput) tutorPromptInput.value = result.prompts.tutor || '';
+                if (explainPromptInput) explainPromptInput.value = result.prompts.explain || '';
                 if (additiveToggle) additiveToggle.checked = !!result.prompts.additiveRetrieval;
                 
                 // Convert seconds to minutes for display
@@ -108,6 +110,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const base = document.getElementById('base-prompt')?.value;
                 const protege = document.getElementById('protege-prompt')?.value;
                 const tutor = document.getElementById('tutor-prompt')?.value;
+                const explain = document.getElementById('explain-prompt')?.value;
                 const additiveRetrieval = document.getElementById('additive-retrieval-toggle')?.checked;
                 const idleTimeoutInput = document.getElementById('idle-timeout-input');
                 const courseId = await getCurrentCourseId();
@@ -153,7 +156,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         headers: {
                             'Content-Type': 'application/json'
                         },
-                        body: JSON.stringify({ base, protege, tutor, additiveRetrieval, studentIdleTimeout, courseId })
+                        body: JSON.stringify({ base, protege, tutor, explain, additiveRetrieval, studentIdleTimeout, courseId })
                     });
                     
                     const result = await response.json();
@@ -208,11 +211,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                         const basePromptInput = document.getElementById('base-prompt');
                         const protegePromptInput = document.getElementById('protege-prompt');
                         const tutorPromptInput = document.getElementById('tutor-prompt');
+                        const explainPromptInput = document.getElementById('explain-prompt');
                         const additiveToggle = document.getElementById('additive-retrieval-toggle');
                         
                         if (basePromptInput) basePromptInput.value = result.prompts.base || '';
                         if (protegePromptInput) protegePromptInput.value = result.prompts.protege || '';
                         if (tutorPromptInput) tutorPromptInput.value = result.prompts.tutor || '';
+                        if (explainPromptInput) explainPromptInput.value = result.prompts.explain || '';
                         // Default for additive retrieval is true (on)
                         if (additiveToggle) additiveToggle.checked = true;
                         

@@ -999,19 +999,16 @@ async function handleExplainAction(text, topic = null) {
     tempDiv.innerHTML = text;
     const cleanText = tempDiv.innerText;
 
-    const prompt = `Can you explain the following text as if to a novice?\n\n"${cleanText}"`;
-
-    // DO NOT add as user message - user wants this to be a background action
-    // addMessage(displayMessage, 'user');
+    // prompt construction moved to backend
     
     // Show typing indicator
     showTypingIndicator();
     
     try {
-        // Send the detailed prompt to the LLM
+        // Send the clean text to the LLM - backend will wrap it with the Explain Mode prompt
         // Pass the topic if available so backend can increment struggle count
         const explanationOptions = topic ? { topic: topic } : true;
-        const response = await sendMessageToLLM(prompt, false, null, explanationOptions);
+        const response = await sendMessageToLLM(cleanText, false, null, explanationOptions);
         
         // Remove typing indicator
         removeTypingIndicator();

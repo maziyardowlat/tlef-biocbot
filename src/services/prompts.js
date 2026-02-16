@@ -83,10 +83,20 @@ Example Interactions:
 - Student: "Why does the cell need so many steps in glycolysis?"
 - You: "Great question! Let's think about this together. What would happen if the cell tried to break down glucose in just one big reaction? Think about energy release..."`;
 
+
+const EXPLAIN_SYSTEM_PROMPT = `EXPLAIN MODE: You are a helpful tutor explaining a concept to a novice.
+
+Your Goal:
+Take the provided text/concept and explain it in simple, easy-to-understand terms. 
+- Use analogies where appropriate.
+- Avoid complex jargon or define it immediately if necessary.
+- Keep the tone encouraging and supportive.
+- Focus on clarity and simplicity.`;
 const DEFAULT_PROMPTS = {
     base: BASE_SYSTEM_PROMPT,
     protege: PROTEGE_SYSTEM_PROMPT,
-    tutor: TUTOR_SYSTEM_PROMPT
+    tutor: TUTOR_SYSTEM_PROMPT,
+    explain: EXPLAIN_SYSTEM_PROMPT
 };
 
 /**
@@ -411,6 +421,7 @@ Generate your question following this exact JSON format.`
 
 module.exports = {
     BASE_SYSTEM_PROMPT,
+    EXPLAIN_SYSTEM_PROMPT,
     createQuestionGenerationSystemPrompt,
     QUESTION_GENERATION_PROMPT_TEMPLATE,
     DEFAULT_PROMPTS,
