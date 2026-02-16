@@ -546,6 +546,10 @@ INSTRUCTIONS:
 Based on the Context above, act as the student described in the System Prompt.
 The user just said: "${message}"
 Do not explain the context to the user. Ask the user to explain it to you.`;
+        } else if (req.body.isExplanationRequest) {
+            // Explain mode
+            messageToSend = `Use the provided course context to help explain the concept if needed.
+\n\nCourse context:\n${contextText}\n\nConcept/Text to explain:\n"${message}"`;
         } else {
             // Default/Tutor mode
             messageToSend = `Use only the provided course context to answer. Cite which unit a fact came from.
@@ -580,6 +584,7 @@ ${conversationHistory}`;
         let basePrompt = prompts.DEFAULT_PROMPTS.base;
         let protegePrompt = prompts.DEFAULT_PROMPTS.protege;
         let tutorPrompt = prompts.DEFAULT_PROMPTS.tutor;
+        let explainPrompt = prompts.DEFAULT_PROMPTS.explain;
 
         // Apply Directive Mode adjustments if active
         if (directiveModeActive) {
@@ -601,6 +606,7 @@ ${conversationHistory}`;
             if (course.prompts.base) basePrompt = course.prompts.base;
             if (course.prompts.protege) protegePrompt = course.prompts.protege;
             if (course.prompts.tutor) tutorPrompt = course.prompts.tutor;
+            if (course.prompts.explain) explainPrompt = course.prompts.explain;
         } else {
             console.log('[CHAT_API] Using default prompts');
         }
@@ -643,7 +649,8 @@ ${conversationHistory}`;
             temperature: mode === 'protege' ? 0.5 : 0.5,
             maxTokens: mode === 'protege' ? 32768 : 32768,
             systemPrompt: basePrompt +
-                (mode === 'protege' ? protegePrompt : tutorPrompt)
+                (req.body.isExplanationRequest ? explainPrompt : 
+                (mode === 'protege' ? protegePrompt : tutorPrompt))
         });
 
         let fullContent = response && response.content ? response.content : '';
