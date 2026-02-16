@@ -351,27 +351,56 @@ router.post('/', async (req, res) => {
 
         if (req.user && localTrackerService) {
             try {
-                // 1. Analyze message for struggle
-                console.log('🕵️ [CHAT_API_DEBUG] ------------------------------------------------');
-                console.log(`🕵️ [CHAT_API_DEBUG] Analysis Start for msg: "${message.substring(0, 50)}..."`);
-                
-                const analysis = await localTrackerService.analyzeMessage(message, courseId, unitName);
-                console.log('🕵️ [CHAT_API_DEBUG] Raw Analysis Result:', JSON.stringify(analysis, null, 2));
-                
-                // 2. Update user state and persist to MongoDB
-                const updateResult = await User.updateUserStruggleState(db, req.user.userId, analysis, courseId);
-                console.log('🕵️ [CHAT_API_DEBUG] User State Update Result:', JSON.stringify(updateResult, null, 2));
-                
-                if (updateResult.success) {
-                    struggleState = updateResult.state;
-                    identifiedTopic = analysis.topic;
+                // Check if this is an explanation request with a known topic
+                // If so, we can skip analysis and directly increment struggle for that topic
+                if (req.body.isExplanationRequest && req.body.topic) {
+                     console.log(`🕵️ [CHAT_API_DEBUG] Explanation Request for topic: "${req.body.topic}" - Incrementing Struggle Count`);
+                     
+                     const updateResult = await User.updateUserStruggleState(db, req.user.userId, {
+                        topic: req.body.topic,
+                        isStruggling: true,
+                        reason: 'User requested explanation'
+                     }, courseId);
+                     
+                     console.log('🕵️ [CHAT_API_DEBUG] Struggle Update (Explain) Result:', JSON.stringify(updateResult, null, 2));
+
+                     if (updateResult.success) {
+                        struggleState = updateResult.state; // topic specific state
+                        identifiedTopic = req.body.topic;
+                        
+                        // We also need the full state to determine if ANY directive mode is active
+                        // But updateUserStruggleState returns { success, state, allTopics }
+                        // Let's verify if *this* topic triggered directive mode
+                         if (struggleState && struggleState.isActive) {
+                            directiveModeActive = true;
+                            console.log(`🚨 [CHAT_API_DEBUG] Directive Mode ACTIVATED via Explain for topic: ${identifiedTopic}`);
+                        }
+                    }
+
+                } else {
+                    // Normal message analysis
+                    // 1. Analyze message for struggle
+                    console.log('🕵️ [CHAT_API_DEBUG] ------------------------------------------------');
+                    console.log(`🕵️ [CHAT_API_DEBUG] Analysis Start for msg: "${message.substring(0, 50)}..."`);
                     
-                    // 3. Check if Directive Mode should be active
-                    if (struggleState && struggleState.isActive) {
-                        directiveModeActive = true;
-                        console.log(`🚨 [CHAT_API_DEBUG] Directive Mode ACTIVATED for topic: ${identifiedTopic}`);
-                    } else {
-                         console.log(`🕵️ [CHAT_API_DEBUG] Struggle recorded but Directive Mode NOT active yet.`);
+                    const analysis = await localTrackerService.analyzeMessage(message, courseId, unitName);
+                    console.log('🕵️ [CHAT_API_DEBUG] Raw Analysis Result:', JSON.stringify(analysis, null, 2));
+                    
+                    // 2. Update user state and persist to MongoDB
+                    const updateResult = await User.updateUserStruggleState(db, req.user.userId, analysis, courseId);
+                    console.log('🕵️ [CHAT_API_DEBUG] User State Update Result:', JSON.stringify(updateResult, null, 2));
+                    
+                    if (updateResult.success) {
+                        struggleState = updateResult.state;
+                        identifiedTopic = analysis.topic;
+                        
+                        // 3. Check if Directive Mode should be active
+                        if (struggleState && struggleState.isActive) {
+                            directiveModeActive = true;
+                            console.log(`🚨 [CHAT_API_DEBUG] Directive Mode ACTIVATED for topic: ${identifiedTopic}`);
+                        } else {
+                             console.log(`🕵️ [CHAT_API_DEBUG] Struggle recorded but Directive Mode NOT active yet.`);
+                        }
                     }
                 }
             } catch (trackerError) {
