@@ -92,11 +92,18 @@ Take the provided text/concept and explain it in simple, easy-to-understand term
 - Avoid complex jargon or define it immediately if necessary.
 - Keep the tone encouraging and supportive.
 - Focus on clarity and simplicity.`;
+
+const DIRECTIVE_SYSTEM_PROMPT = `1. Be extremely concrete and step-by-step.
+2. Break down the concept into very small, digestible parts.
+3. Ask a simple checking question after each small explanation to verify understanding.
+4. Do not move on until the student confirms understanding.
+5. Use simple analogies and avoid complex jargon unless defined immediately.`;
 const DEFAULT_PROMPTS = {
     base: BASE_SYSTEM_PROMPT,
     protege: PROTEGE_SYSTEM_PROMPT,
     tutor: TUTOR_SYSTEM_PROMPT,
-    explain: EXPLAIN_SYSTEM_PROMPT
+    explain: EXPLAIN_SYSTEM_PROMPT,
+    directive: DIRECTIVE_SYSTEM_PROMPT
 };
 
 /**
@@ -422,6 +429,7 @@ Generate your question following this exact JSON format.`
 module.exports = {
     BASE_SYSTEM_PROMPT,
     EXPLAIN_SYSTEM_PROMPT,
+    DIRECTIVE_SYSTEM_PROMPT,
     createQuestionGenerationSystemPrompt,
     QUESTION_GENERATION_PROMPT_TEMPLATE,
     DEFAULT_PROMPTS,

@@ -54,6 +54,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const protegePromptInput = document.getElementById('protege-prompt');
                 const tutorPromptInput = document.getElementById('tutor-prompt');
                 const explainPromptInput = document.getElementById('explain-prompt');
+                const directivePromptInput = document.getElementById('directive-prompt');
                 const additiveToggle = document.getElementById('additive-retrieval-toggle');
                 const idleTimeoutInput = document.getElementById('idle-timeout-input');
                 
@@ -61,6 +62,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (protegePromptInput) protegePromptInput.value = result.prompts.protege || '';
                 if (tutorPromptInput) tutorPromptInput.value = result.prompts.tutor || '';
                 if (explainPromptInput) explainPromptInput.value = result.prompts.explain || '';
+                if (directivePromptInput) directivePromptInput.value = result.prompts.directive || '';
                 if (additiveToggle) additiveToggle.checked = !!result.prompts.additiveRetrieval;
                 
                 // Convert seconds to minutes for display
@@ -111,6 +113,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const protege = document.getElementById('protege-prompt')?.value;
                 const tutor = document.getElementById('tutor-prompt')?.value;
                 const explain = document.getElementById('explain-prompt')?.value;
+                const directive = document.getElementById('directive-prompt')?.value;
                 const additiveRetrieval = document.getElementById('additive-retrieval-toggle')?.checked;
                 const idleTimeoutInput = document.getElementById('idle-timeout-input');
                 const courseId = await getCurrentCourseId();
@@ -156,7 +159,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         headers: {
                             'Content-Type': 'application/json'
                         },
-                        body: JSON.stringify({ base, protege, tutor, explain, additiveRetrieval, studentIdleTimeout, courseId })
+                        body: JSON.stringify({ base, protege, tutor, explain, directive, additiveRetrieval, studentIdleTimeout, courseId })
                     });
                     
                     const result = await response.json();
@@ -212,12 +215,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                         const protegePromptInput = document.getElementById('protege-prompt');
                         const tutorPromptInput = document.getElementById('tutor-prompt');
                         const explainPromptInput = document.getElementById('explain-prompt');
+                        const directivePromptInput = document.getElementById('directive-prompt');
                         const additiveToggle = document.getElementById('additive-retrieval-toggle');
                         
                         if (basePromptInput) basePromptInput.value = result.prompts.base || '';
                         if (protegePromptInput) protegePromptInput.value = result.prompts.protege || '';
                         if (tutorPromptInput) tutorPromptInput.value = result.prompts.tutor || '';
                         if (explainPromptInput) explainPromptInput.value = result.prompts.explain || '';
+                        if (directivePromptInput) directivePromptInput.value = result.prompts.directive || '';
                         // Default for additive retrieval is true (on)
                         if (additiveToggle) additiveToggle.checked = true;
                         
