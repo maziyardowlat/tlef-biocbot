@@ -585,20 +585,7 @@ ${conversationHistory}`;
         let protegePrompt = prompts.DEFAULT_PROMPTS.protege;
         let tutorPrompt = prompts.DEFAULT_PROMPTS.tutor;
         let explainPrompt = prompts.DEFAULT_PROMPTS.explain;
-
-        // Apply Directive Mode adjustments if active
-        if (directiveModeActive) {
-            const directiveInstruction = `\n\nCRITICAL INSTRUCTION: The student is struggling significantly with the topic "${identifiedTopic}". 
-            Switch to DIRECTIVE MODE:
-            1. Be extremely concrete and step-by-step.
-            2. Break down the concept into very small, digestible parts.
-            3. Ask a simple checking question after each small explanation to verify understanding.
-            4. Do not move on until the student confirms understanding.
-            5. Use simple analogies and avoid complex jargon unless defined immediately.`;
-            
-            basePrompt += directiveInstruction;
-            console.log(' [CHAT_API] Appended Directive Mode instructions to system prompt');
-        }
+        let directivePrompt = prompts.DEFAULT_PROMPTS.directive;
 
         // Check if course has custom prompts
         if (course.prompts) {
@@ -607,8 +594,22 @@ ${conversationHistory}`;
             if (course.prompts.protege) protegePrompt = course.prompts.protege;
             if (course.prompts.tutor) tutorPrompt = course.prompts.tutor;
             if (course.prompts.explain) explainPrompt = course.prompts.explain;
+            if (course.prompts.directive) directivePrompt = course.prompts.directive;
         } else {
             console.log('[CHAT_API] Using default prompts');
+        }
+
+        // Apply Directive Mode adjustments if active
+        // Apply Directive Mode adjustments if active
+        if (directiveModeActive) {
+            // Locked Trigger: Always prepend the topic announcement
+            const lockedHeader = `\n\nCRITICAL INSTRUCTION: The student is struggling significantly with the topic "${identifiedTopic}".\nSwitch to DIRECTIVE MODE:\n`;
+            
+            // Configurable Strategy: Append the instructor's custom instructions
+            // Append to TUTOR prompt only to avoid polluting Protege mode or Base
+            tutorPrompt += lockedHeader + directivePrompt;
+            
+            console.log(' [CHAT_API] Appended Directive Mode instructions (Header + Strategy) to TUTOR prompt');
         }
 
         // Check for summary attempt via LLM if requested

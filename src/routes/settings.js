@@ -89,6 +89,7 @@ router.get('/prompts', async (req, res) => {
             protege: coursePrompts.protege || prompts.DEFAULT_PROMPTS.protege,
             tutor: coursePrompts.tutor || prompts.DEFAULT_PROMPTS.tutor,
             explain: coursePrompts.explain || prompts.DEFAULT_PROMPTS.explain,
+            directive: coursePrompts.directive || prompts.DEFAULT_PROMPTS.directive,
             // Course-level additive retrieval setting
             additiveRetrieval: course ? !!course.isAdditiveRetrieval : false,
             // Student idle timeout (seconds), default to 4 minutes (240s)
@@ -121,14 +122,14 @@ router.post('/prompts', async (req, res) => {
             return res.status(503).json({ success: false, message: 'Database connection not available' });
         }
 
-        const { base, protege, tutor, explain, additiveRetrieval, studentIdleTimeout, courseId } = req.body;
+        const { base, protege, tutor, explain, directive, additiveRetrieval, studentIdleTimeout, courseId } = req.body;
 
         if (!courseId) {
             return res.status(400).json({ success: false, message: 'courseId is required to save settings' });
         }
 
         // Validation - ensure they are strings (prompts) and boolean (additiveRetrieval)
-        if (typeof base !== 'string' || typeof protege !== 'string' || typeof tutor !== 'string' || typeof explain !== 'string') {
+        if (typeof base !== 'string' || typeof protege !== 'string' || typeof tutor !== 'string' || typeof explain !== 'string' || typeof directive !== 'string') {
             return res.status(400).json({ success: false, message: 'Invalid prompt format' });
         }
 
@@ -150,6 +151,7 @@ router.post('/prompts', async (req, res) => {
                     'prompts.protege': protege, 
                     'prompts.tutor': tutor,
                     'prompts.explain': explain,
+                    'prompts.directive': directive,
                     'prompts.studentIdleTimeout': timeoutVal,
                     isAdditiveRetrieval: !!additiveRetrieval,
                     updatedAt: new Date()
