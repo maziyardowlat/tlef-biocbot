@@ -8,6 +8,7 @@
 const express = require('express');
 const router = express.Router();
 const StruggleActivity = require('../models/StruggleActivity');
+const PersistenceTopic = require('../models/PersistenceTopic');
 
 /**
  * GET /api/struggle-activity/:courseId
@@ -89,6 +90,41 @@ router.get('/student/:userId', async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Failed to fetch student struggle activity',
+            error: error.message
+        });
+    }
+});
+
+/**
+ * GET /api/struggle-activity/persistence/:courseId
+ * Fetch persistence struggle topics (cumulative unique students) for a specific course
+ */
+router.get('/persistence/:courseId', async (req, res) => {
+    try {
+        const { courseId } = req.params;
+        
+        if (!courseId) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Course ID is required' 
+            });
+        }
+        
+        const db = req.app.locals.db;
+        
+        const topics = await PersistenceTopic.getPersistenceTopics(db, courseId);
+        
+        res.json({
+            success: true,
+            data: topics,
+            count: topics.length
+        });
+        
+    } catch (error) {
+        console.error('Error fetching persistence topics:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch persistence topics',
             error: error.message
         });
     }

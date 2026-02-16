@@ -7,6 +7,7 @@
 const { MongoClient } = require('mongodb');
 const bcrypt = require('bcryptjs');
 const StruggleActivity = require('./StruggleActivity');
+const PersistenceTopic = require('./PersistenceTopic');
 
 /**
  * User Schema Structure:
@@ -542,11 +543,24 @@ async function updateUserStruggleState(db, userId, struggleData, courseId = null
     
     // Persist to MongoDB if this is a NEW activation (transition from inactive to active)
     const isNewActivation = !wasActive && topicState.isActive;
+    
+    // Determine active course ID
+    const activeCourseId = courseId || user.preferences?.courseId || null;
+    const studentName = user.displayName || user.username || 'Unknown Student';
+    
+    // PERSISTENCE TOPIC UPDATE:
+    // Update the cumulative count for this topic (tracks unique students over time)
+    // Only update if the student has reached the threshold for Directive Mode (count >= 3)
+    if (topicState.isActive && activeCourseId) {
+        try {
+            await PersistenceTopic.incrementStudentCount(db, activeCourseId, normalizedTopic, user.userId);
+            console.log(`📊 [PERSISTENCE] Updated persistence count for topic: ${normalizedTopic} (Directive Mode Active)`);
+        } catch (err) {
+            console.error('❌ [PERSISTENCE] Error updating persistence topic:', err);
+        }
+    }
+
     if (isNewActivation) {
-        // Use passed courseId or fallback to user preferences
-        const activeCourseId = courseId || user.preferences?.courseId || null;
-        const studentName = user.displayName || user.username || 'Unknown Student';
-        
         // Persist to activity history for permanent record
         await StruggleActivity.createActivityEntry(db, {
             userId: user.userId,

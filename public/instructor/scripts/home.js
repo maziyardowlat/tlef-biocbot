@@ -66,6 +66,7 @@ async function initializeHomePage() {
             await loadFlaggedContent();
             await checkMissingContent();
             await loadStruggleTopics();
+            await loadPersistenceTopics();
         }
         
         // Add event listeners for live struggle table controls
@@ -1275,6 +1276,7 @@ async function setSelectedCourse(courseId, courseName) {
     await loadFlaggedContent();
     await checkMissingContent();
     await loadStruggleTopics();
+    await loadPersistenceTopics();
     
     // Start polling for struggle activity updates
     startPollingStruggleActivity();
@@ -1535,3 +1537,71 @@ function updateNavigationLinks() {
         viewFlagsBtn.href = url.pathname + url.search;
     }
 } 
+
+/**
+ * Load persistence (all-time) struggle topics for the selected course
+ */
+async function loadPersistenceTopics() {
+    try {
+        const courseId = getSelectedCourseId();
+        if (!courseId) return;
+
+        const response = await authenticatedFetch(`/api/struggle-activity/persistence/${courseId}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        
+        const result = await response.json();
+        const topics = result.data || [];
+
+        renderPersistenceTopics(topics);
+
+    } catch (error) {
+        console.error('Error loading persistence topics:', error);
+        document.getElementById('persistence-topics-section')?.setAttribute('style', 'display: none;');
+    }
+}
+
+/**
+ * Render persistence topics list
+ * @param {Array} topics - Array of persistence topic objects
+ */
+function renderPersistenceTopics(topics) {
+    const container = document.getElementById('persistence-topics-content');
+    const section = document.getElementById('persistence-topics-section');
+    
+    if (!container || !section) return;
+
+    if (topics.length === 0) {
+        section.style.display = 'block';
+        container.innerHTML = '<p class="no-data-message" style="text-align: center; color: #666; font-style: italic; padding: 20px;">No struggle data recorded yet.</p>';
+        return;
+    }
+
+    section.style.display = 'block';
+    
+    // Sort by count (descending)
+    const sortedTopics = [...topics].sort((a, b) => b.studentCount - a.studentCount);
+
+    let html = '<div class="persistence-topics-list" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 15px;">';
+    
+    sortedTopics.forEach(topicData => {
+        const displayTopic = topicData.topic.charAt(0).toUpperCase() + topicData.topic.slice(1);
+        const count = topicData.studentCount;
+        
+        // Determine severity color
+        let severityColor = '#28a745'; // Green (low)
+        if (count >= 5) severityColor = '#ffc107'; // Yellow (medium)
+        if (count >= 10) severityColor = '#dc3545'; // Red (high)
+        
+        html += `
+            <div class="persistence-topic-card" style="background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-top: 4px solid ${severityColor}; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center;">
+                <div style="font-size: 2.5em; font-weight: bold; color: #333; margin-bottom: 5px;">${count}</div>
+                <div style="font-size: 0.9em; color: #666; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">Students</div>
+                <h3 style="margin: 0; font-size: 1.1em; color: #333; word-break: break-word;">${displayTopic}</h3>
+            </div>
+        `;
+    });
+    
+    html += '</div>';
+    
+    container.innerHTML = html;
+}
