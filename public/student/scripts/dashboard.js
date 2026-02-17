@@ -25,6 +25,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     const topicsContainer = document.getElementById('topics-list-container');
+    const courseTopicsContainer = document.getElementById('course-topics-container');
     const activeCountEl = document.getElementById('active-topics-count');
     const directiveStatusEl = document.getElementById('directive-mode-status');
     const resetAllBtn = document.getElementById('reset-all-btn');
@@ -246,5 +247,133 @@ document.addEventListener('DOMContentLoaded', async () => {
             `;
             mainContent.appendChild(notice);
         }
+    }
+    // Load Course Topics
+    loadCourseTopics();
+    
+    // Update Sidebar with Course Name
+    updateSidebarCourseInfo();
+
+    function updateSidebarCourseInfo() {
+        const storedCourseName = localStorage.getItem('selectedCourseName');
+        if (storedCourseName) {
+            const userRoleElement = document.querySelector('.user-role');
+            if (userRoleElement) {
+                userRoleElement.textContent = `Student - ${storedCourseName}`;
+            }
+        }
+    }
+
+    /**
+     * Load course topics and check status
+     */
+    async function loadCourseTopics() {
+        if (!courseTopicsContainer) return;
+
+        const courseId = localStorage.getItem('selectedCourseId');
+        if (!courseId) {
+            courseTopicsContainer.innerHTML = '<p>Please select a course to view topics.</p>';
+            return;
+        }
+
+        try {
+            // 1. Get current user for ID
+            const user = getCurrentUser();
+            
+            if (!user || !user.userId) {
+                console.error('User not found');
+                return;
+            }
+
+            // 2. Fetch Course Data (for published units)
+            const courseResp = await fetch(`/api/courses/${courseId}`);
+            const courseResult = await courseResp.json();
+            
+            if (!courseResult.success) throw new Error('Failed to load course');
+            const course = courseResult.data;
+
+            // 3. Fetch Student Sessions (to check what's done)
+            const sessionsResp = await fetch(`/api/students/${courseId}/${user.userId}/sessions/own`);
+            const sessionsResult = await sessionsResp.json();
+            const sessions = sessionsResult.success && sessionsResult.data ? sessionsResult.data.sessions : [];
+
+            // 4. Render
+            renderCourseTopics(course, sessions);
+
+        } catch (error) {
+            console.error('Error loading course topics:', error);
+            courseTopicsContainer.innerHTML = '<p class="error-message">Failed to load course topics.</p>';
+        }
+    }
+
+    /**
+     * Render the course topics grid
+     */
+    function renderCourseTopics(course, sessions) {
+        if (!course || !course.lectures) {
+             courseTopicsContainer.innerHTML = '<p>No topics found.</p>';
+             return;
+        }
+
+        // Get published units only
+        // Note: Logic matches backend expectations (lectures array)
+        // Check both direct lectures array or structure
+        const lectures = course.lectures || [];
+        const publishedUnits = lectures.filter(l => l.isPublished);
+
+        if (publishedUnits.length === 0) {
+            courseTopicsContainer.innerHTML = '<p>No published topics yet.</p>';
+            return;
+        }
+
+        // Create a Set of unit names the student has chatted about
+        // Normalize names to handle potential casing issues, though backend is usually consistent
+        const chattedUnitNames = new Set(
+            sessions.map(s => (s.unitName || '').trim().toLowerCase())
+        );
+
+        courseTopicsContainer.innerHTML = publishedUnits.map(unit => {
+            const isChatted = chattedUnitNames.has((unit.name || '').trim().toLowerCase());
+            // Use displayName if available, otherwise name
+            const displayTitle = unit.displayName || capitalize(unit.name);
+            
+            return `
+                <div class="topic-item-card">
+                    <div class="topic-header">
+                        <h3 class="topic-title">${displayTitle}</h3>
+                        ${isChatted 
+                            ? '<span class="topic-status-icon" title="Completed">✅</span>' 
+                            : '<span class="topic-status-icon" title="Not Started">⚪️</span>'
+                        }
+                    </div>
+                    <div class="topic-footer">
+                        <span class="topic-status-text ${isChatted ? 'status-completed' : 'status-explore'}">
+                            ${isChatted ? 'Chatted' : 'Explore'}
+                        </span>
+                    </div>
+                </div>
+            `;
+        }).join('');
+    }
+
+    /**
+     * Get current user helper
+     */
+    function getCurrentUser() {
+        if (window.currentUser) return window.currentUser;
+        if (typeof window.getCurrentUser === 'function') return window.getCurrentUser();
+        try {
+            const stored = localStorage.getItem('currentUser');
+            if (stored) return JSON.parse(stored);
+        } catch (e) { console.error(e); }
+        return null;
+    }
+
+    /**
+     * Capitalize first letter helper
+     */
+    function capitalize(str) {
+        if (!str) return '';
+        return str.charAt(0).toUpperCase() + str.slice(1);
     }
 });
