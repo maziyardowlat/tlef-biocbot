@@ -1779,8 +1779,17 @@ function updateLastActivityTimestamp() {
  * Load the current session data into the chat interface
  * This is used for auto-continue to restore the session without creating a new one
  */
-function loadCurrentSessionIntoInterface() {
+async function loadCurrentSessionIntoInterface() {
     try {
+        // Fetch current struggle state first
+        if (typeof fetchCurrentStruggleState === 'function') {
+            window.currentStruggleState = await fetchCurrentStruggleState();
+            // Update UI indicator immediately
+            if (typeof updateStruggleUI === 'function') {
+                updateStruggleUI(window.currentStruggleState);
+            }
+        }
+
 
 
         const chatData = getCurrentChatData();
@@ -5595,6 +5604,25 @@ function deleteChatFromHistory(chatId) {
 }
 
 /**
+ * Fetch current struggle state from backend
+ * @returns {Promise<Object>} The struggle state object
+ */
+async function fetchCurrentStruggleState() {
+    try {
+        const response = await fetch('/api/student/struggle');
+        if (response.ok) {
+            const data = await response.json();
+            if (data.success) {
+                return data.struggleState;
+            }
+        }
+    } catch (e) {
+        console.error('Failed to fetch struggle state', e);
+    }
+    return null;
+}
+
+/**
  * Load chat data into the current chat interface
  * @param {Object} chatData - The chat data to load
  */
@@ -5657,7 +5685,17 @@ function loadChatData(chatData) {
                         renderRestoredModeToggleResult(messageData); // Skip auto-save
                     } else {
                         // Regular bot message
-                        addMessage(messageData.content, 'bot', messageData.hasFlagButton, true, messageData.sourceAttribution, messageData.isHtml, messageData.activeStruggleTopic); // Skip auto-save, force HTML for result
+                        // Check if the struggle topic is still active
+                        let activeTopic = messageData.activeStruggleTopic;
+                        if (activeTopic && window.currentStruggleState) {
+                             const isStillActive = window.currentStruggleState.topics && 
+                                                 window.currentStruggleState.topics.some(t => t.topic === activeTopic && t.isActive);
+                             if (!isStillActive) {
+                                 activeTopic = null;
+                             }
+                        }
+                        
+                        addMessage(messageData.content, 'bot', messageData.hasFlagButton, true, messageData.sourceAttribution, messageData.isHtml, activeTopic); // Skip auto-save, force HTML for result
                     }
                 }
             });
@@ -5911,7 +5949,15 @@ function formatHistoryDate(dateString) {
 /**
  * Check for chat data to load from history
  */
-function checkForChatDataToLoad() {
+async function checkForChatDataToLoad() {
+    // Fetch current struggle state first
+    if (typeof fetchCurrentStruggleState === 'function') {
+        window.currentStruggleState = await fetchCurrentStruggleState();
+         // Update UI indicator immediately
+        if (typeof updateStruggleUI === 'function') {
+            updateStruggleUI(window.currentStruggleState);
+        }
+    }
     try {
 
         const storedChatData = sessionStorage.getItem('loadChatData');
