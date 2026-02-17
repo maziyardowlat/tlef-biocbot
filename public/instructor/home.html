@@ -145,8 +145,12 @@
 
                 <!-- Persistence Topics Section (All-Time) -->
                 <section class="home-section persistence-topics-section" id="persistence-topics-section" style="display: none;">
-                    <div class="section-header">
-                        <h2>📈 Cumulative Struggle Topics</h2>
+                    <div class="section-header clickable" onclick="toggleSection(this)">
+                        <h2>
+                            <span class="section-toggle-icon">▼</span>
+                            📈 Cumulative Struggle Topics
+                            <span class="info-icon tooltip" data-tooltip="Total unique students who have struggled with this topic at any point during the course term. This helps identify long-term pain points.">ℹ️</span>
+                        </h2>
                         <span style="font-size: 0.85em; color: #666; font-weight: normal; margin-left: 10px;">(All Unique Students)</span>
                     </div>
                     <div class="persistence-topics-content" id="persistence-topics-content">
@@ -157,8 +161,12 @@
 
                 <!-- Struggle Topics Section -->
                 <section class="home-section struggle-topics-section" id="struggle-topics-section" style="display: none;">
-                    <div class="section-header">
-                        <h2>⚠️ Struggle Topics</h2>
+                    <div class="section-header clickable" onclick="toggleSection(this)">
+                        <h2>
+                            <span class="section-toggle-icon">▼</span>
+                            ⚠️ Struggle Topics
+                            <span class="info-icon tooltip" data-tooltip="Snapshot of students currently in Directive Mode (Active) or being monitored after a struggle (Inactive). Focus here for immediate interventions.">ℹ️</span>
+                        </h2>
                     </div>
                     <div class="struggle-topics-content" id="struggle-topics-content">
                         <!-- Struggle topics will be populated by JavaScript -->
@@ -168,7 +176,10 @@
                     <!-- Live Struggle Activity Table -->
                     <div class="live-struggle-table-container" id="live-struggle-container" style="display: none;">
                         <div class="table-header">
-                            <h3>📋 Live Struggle Activity</h3>
+                            <h3>
+                                📋 Live Struggle Activity
+                                <span class="info-icon tooltip" data-tooltip="Real-time log of struggle interactions as they happen. Use this to see who is struggling right now.">ℹ️</span>
+                            </h3>
                             <div class="table-controls">
                                 <label class="filter-checkbox">
                                     <input type="checkbox" id="filter-active-only" />

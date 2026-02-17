@@ -333,14 +333,19 @@ function renderStruggleTopics(topicMap) {
 
         html += `
             <div class="struggle-topic-item" style="background: white; padding: 15px; margin-bottom: 10px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); border-left: 4px solid ${data.isActiveCount > 0 ? '#dc3545' : '#28a745'};">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                    <h3 style="margin: 0; font-size: 1.1em; color: #333;">${displayTopic}</h3>
+                <div class="topic-header" onclick="toggleTopic(this)">
+                    <h3 style="margin: 0; font-size: 1.1em; color: #333;">
+                        <span class="toggle-icon">▼</span>
+                         ${displayTopic}
+                    </h3>
                     <span class="badge" style="background: ${badgeColor}; color: white; padding: 4px 10px; border-radius: 12px; font-weight: bold;">
                         ${badgeText}
                     </span>
                 </div>
-                <div style="font-size: 0.95em; color: #555; line-height: 1.5;">
-                    ${studentHtmlList} ${moreText}
+                <div class="topic-content">
+                    <div style="font-size: 0.95em; color: #555; line-height: 1.5;">
+                        ${studentHtmlList} ${moreText}
+                    </div>
                 </div>
             </div>
         `;
@@ -1604,4 +1609,26 @@ function renderPersistenceTopics(topics) {
     html += '</div>';
     
     container.innerHTML = html;
+}
+
+/**
+ * Toggle visibility of struggle topic content
+ * @param {HTMLElement} headerElement - The header element clicked
+ */
+function toggleTopic(headerElement) {
+    const topicItem = headerElement.closest('.struggle-topic-item');
+    if (topicItem) {
+        topicItem.classList.toggle('collapsed');
+    }
+}
+
+/**
+ * Toggle visibility of an entire home section
+ * @param {HTMLElement} headerElement - The header clicked
+ */
+function toggleSection(headerElement) {
+    const section = headerElement.closest('.home-section');
+    if (section) {
+        section.classList.toggle('section-collapsed');
+    }
 }
