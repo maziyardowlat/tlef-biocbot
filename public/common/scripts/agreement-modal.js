@@ -45,6 +45,7 @@ class AgreementModal {
 
                     <div class="agreement-section">
                         <h3>Information We Store</h3>
+                        <p>As with most applications we store usage data. This data includes the conversations you have with BiocBot. This both enables you to return to the application after some time to resume a conversation and enables us, after deidentifying the data, to assess the tool.</p>
                         <p>To provide you with the best learning experience, BiocBot collects and stores:</p>
                         <ul>
                             <li><strong>Your questions and conversations</strong> - To improve responses and track your learning progress</li>

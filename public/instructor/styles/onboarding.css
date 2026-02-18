@@ -2,1422 +2,1423 @@
 
 /* Progress Bar */
 .onboarding-progress {
-    margin-bottom: 2rem;
-    padding: 0 2rem;
+  margin-bottom: 2rem;
+  padding: 0 2rem;
 }
 
 .progress-bar {
-    width: 100%;
-    height: 8px;
-    background-color: #e0e0e0;
-    border-radius: 4px;
-    overflow: hidden;
-    margin-bottom: 1rem;
+  width: 100%;
+  height: 8px;
+  background-color: #e0e0e0;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 1rem;
 }
 
 .progress-fill {
-    height: 100%;
-    background: linear-gradient(90deg, #4CAF50, #45a049);
-    transition: width 0.3s ease;
-    width: 25%; /* Start at 25% for step 1 */
+  height: 100%;
+  background: linear-gradient(90deg, #4caf50, #45a049);
+  transition: width 0.3s ease;
+  width: 25%; /* Start at 25% for step 1 */
 }
 
 .progress-steps {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .step-indicator {
-    font-size: 0.9rem;
-    color: #666;
-    position: relative;
-    padding: 0.5rem 1rem;
-    border-radius: 20px;
-    transition: all 0.3s ease;
+  font-size: 0.9rem;
+  color: #666;
+  position: relative;
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  transition: all 0.3s ease;
 }
 
 .step-indicator.active {
-    background-color: #4CAF50;
-    color: white;
-    font-weight: 600;
+  background-color: #4caf50;
+  color: white;
+  font-weight: 600;
 }
 
 .step-indicator.completed {
-    background-color: #45a049;
-    color: white;
+  background-color: #45a049;
+  color: white;
 }
 
 /* Onboarding Steps */
 .onboarding-step {
-    display: none;
-    padding: 2rem;
-    max-width: 800px;
-    margin: 0 auto;
+  display: none;
+  padding: 2rem;
+  max-width: 800px;
+  margin: 0 auto;
 }
 
 .onboarding-step.active {
-    display: block;
+  display: block;
 }
 
 .step-content {
-    background: white;
-    border-radius: 12px;
-    padding: 2rem;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  background: white;
+  border-radius: 12px;
+  padding: 2rem;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
 
 /* Welcome Step */
 .welcome-header {
-    text-align: center;
-    margin-bottom: 3rem;
+  text-align: center;
+  margin-bottom: 3rem;
 }
 
 .welcome-header h1 {
-    font-size: 2.5rem;
-    color: #333;
-    margin-bottom: 0.5rem;
+  font-size: 2.5rem;
+  color: #333;
+  margin-bottom: 0.5rem;
 }
 
 .welcome-subtitle {
-    font-size: 1.2rem;
-    color: #666;
-    margin: 0;
+  font-size: 1.2rem;
+  color: #666;
+  margin: 0;
 }
 
 .intro-section {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 1.5rem;
-    margin-bottom: 3rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+  margin-bottom: 3rem;
 }
 
 .feature-card {
-    background: #f8f9fa;
-    padding: 1.5rem;
-    border-radius: 8px;
-    text-align: center;
-    border: 1px solid #e9ecef;
+  background: #f8f9fa;
+  padding: 1.5rem;
+  border-radius: 8px;
+  text-align: center;
+  border: 1px solid #e9ecef;
 }
 
 .feature-icon {
-    font-size: 2.5rem;
-    margin-bottom: 1rem;
-    display: block;
+  font-size: 2.5rem;
+  margin-bottom: 1rem;
+  display: block;
 }
 
 .feature-card h3 {
-    color: #333;
-    margin-bottom: 0.5rem;
-    font-size: 1.1rem;
+  color: #333;
+  margin-bottom: 0.5rem;
+  font-size: 1.1rem;
 }
 
 .feature-card p {
-    color: #666;
-    font-size: 0.9rem;
-    line-height: 1.4;
-    margin: 0;
+  color: #666;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  margin: 0;
 }
 
 .how-it-works {
-    margin-top: 3rem;
+  margin-top: 3rem;
 }
 
 .how-it-works h2 {
-    text-align: center;
-    color: #333;
-    margin-bottom: 2rem;
+  text-align: center;
+  color: #333;
+  margin-bottom: 2rem;
 }
 
 .workflow-steps {
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
 }
 
 .workflow-step {
-    display: flex;
-    align-items: flex-start;
-    gap: 1rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
 }
 
 .step-number {
-    background: #4CAF50;
-    color: white;
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: bold;
-    flex-shrink: 0;
+  background: #4caf50;
+  color: white;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  flex-shrink: 0;
 }
 
 .step-details h4 {
-    color: #333;
-    margin-bottom: 0.5rem;
-    font-size: 1.1rem;
+  color: #333;
+  margin-bottom: 0.5rem;
+  font-size: 1.1rem;
 }
 
 .step-details p {
-    color: #666;
-    margin: 0;
-    line-height: 1.4;
+  color: #666;
+  margin: 0;
+  line-height: 1.4;
 }
 
 /* Course Setup Step */
 .step-header {
-    text-align: center;
-    margin-bottom: 2rem;
+  text-align: center;
+  margin-bottom: 2rem;
 }
 
 .step-header h2 {
-    color: #333;
-    margin-bottom: 0.5rem;
+  color: #333;
+  margin-bottom: 0.5rem;
 }
 
 .step-header p {
-    color: #666;
-    margin: 0;
+  color: #666;
+  margin: 0;
 }
 
 .setup-form {
-    max-width: 600px;
-    margin: 0 auto;
+  max-width: 600px;
+  margin: 0 auto;
 }
 
 .form-section {
-    margin-bottom: 2rem;
+  margin-bottom: 2rem;
 }
 
 .form-section h3 {
-    color: #333;
-    margin-bottom: 1rem;
-    font-size: 1.2rem;
+  color: #333;
+  margin-bottom: 1rem;
+  font-size: 1.2rem;
 }
 
 .form-row {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 1rem;
-    margin-bottom: 1rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1rem;
 }
 
 .form-row.full-width {
-    grid-template-columns: 1fr;
+  grid-template-columns: 1fr;
 }
 
 .form-group {
-    display: flex;
-    flex-direction: column;
+  display: flex;
+  flex-direction: column;
 }
 
 .form-group label {
-    font-weight: 600;
-    color: #333;
-    margin-bottom: 0.5rem;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 0.5rem;
 }
 
 .form-group input,
 .form-group select {
-    padding: 0.75rem;
-    border: 2px solid #e0e0e0;
-    border-radius: 6px;
-    font-size: 1rem;
-    transition: border-color 0.3s ease;
+  padding: 0.75rem;
+  border: 2px solid #e0e0e0;
+  border-radius: 6px;
+  font-size: 1rem;
+  transition: border-color 0.3s ease;
 }
 
 .form-group input:focus,
 .form-group select:focus {
-    outline: none;
-    border-color: #4CAF50;
+  outline: none;
+  border-color: #4caf50;
 }
 
 .content-types {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 1rem;
-    margin-top: 1rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
 }
 
 .checkbox-label {
-    display: flex;
-    align-items: center;
-    padding: 1rem;
-    border: 2px solid #e0e0e0;
-    border-radius: 6px;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    background: white;
+  display: flex;
+  align-items: center;
+  padding: 1rem;
+  border: 2px solid #e0e0e0;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  background: white;
 }
 
 .checkbox-label:hover {
-    border-color: #4CAF50;
-    background: #f8f9fa;
+  border-color: #4caf50;
+  background: #f8f9fa;
 }
 
 .checkbox-label input[type="checkbox"] {
-    margin-right: 0.75rem;
-    transform: scale(1.2);
+  margin-right: 0.75rem;
+  transform: scale(1.2);
 }
 
 .checkbox-label.checked {
-    border-color: #4CAF50;
-    background: #f0f8f0;
+  border-color: #4caf50;
+  background: #f0f8f0;
 }
 
 /* Guided Progress Indicators */
 .guided-progress {
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: 2rem;
-    gap: 1rem;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 2rem;
+  gap: 1rem;
 }
 
 .progress-card {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    padding: 1rem;
-    background: #f8f9fa;
-    border-radius: 8px;
-    border: 2px solid #e0e0e0;
-    transition: all 0.3s ease;
-    cursor: pointer;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  padding: 1rem;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 2px solid #e0e0e0;
+  transition: all 0.3s ease;
+  cursor: pointer;
 }
 
 .progress-card.active {
-    background: #e8f5e8;
-    border-color: #4CAF50;
+  background: #e8f5e8;
+  border-color: #4caf50;
 }
 
 .progress-card.completed {
-    background: #f0f8f0;
-    border-color: #45a049;
+  background: #f0f8f0;
+  border-color: #45a049;
 }
 
 .progress-icon {
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    background: #4CAF50;
-    color: white;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: bold;
-    margin-right: 1rem;
-    flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #4caf50;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  margin-right: 1rem;
+  flex-shrink: 0;
 }
 
 .progress-card.active .progress-icon {
-    background: #45a049;
+  background: #45a049;
 }
 
 .progress-text h4 {
-    margin: 0 0 0.25rem 0;
-    font-size: 0.9rem;
-    color: #333;
+  margin: 0 0 0.25rem 0;
+  font-size: 0.9rem;
+  color: #333;
 }
 
 .progress-text p {
-    margin: 0;
-    font-size: 0.8rem;
-    color: #666;
+  margin: 0;
+  font-size: 0.8rem;
+  color: #666;
 }
 
 /* Guided Sub-steps */
 .guided-substep {
-    display: none;
+  display: none;
 }
 
 .guided-substep.active {
-    display: block;
+  display: block;
 }
 
 .substep-header {
-    text-align: center;
-    margin-bottom: 1.5rem;
+  text-align: center;
+  margin-bottom: 1.5rem;
 }
 
 .substep-header h3 {
-    color: #333;
-    margin-bottom: 0.5rem;
-    font-size: 1.5rem;
+  color: #333;
+  margin-bottom: 0.5rem;
+  font-size: 1.5rem;
 }
 
 .substep-header p {
-    color: #666;
-    margin: 0;
-    max-width: 600px;
-    margin: 0 auto;
+  color: #666;
+  margin: 0;
+  max-width: 600px;
+  margin: 0 auto;
 }
 
 .substep-content {
-    margin-bottom: 1.5rem;
+  margin-bottom: 1.5rem;
 }
 
 /* Learning Objectives Sub-step */
 .objectives-input-section {
-    margin-bottom: 1.5rem;
+  margin-bottom: 1.5rem;
 }
 
 .input-group {
-    display: flex;
-    gap: 0.5rem;
-    margin-bottom: 1rem;
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
 }
 
 .objective-input {
-    flex: 1;
-    padding: 0.75rem;
-    border: 2px solid #e0e0e0;
-    border-radius: 6px;
-    font-size: 1rem;
+  flex: 1;
+  padding: 0.75rem;
+  border: 2px solid #e0e0e0;
+  border-radius: 6px;
+  font-size: 1rem;
 }
 
 .objective-input:focus {
-    outline: none;
-    border-color: #4CAF50;
+  outline: none;
+  border-color: #4caf50;
 }
 
 .add-objective-btn {
-    width: 40px;
-    height: 40px;
-    background: #4CAF50;
-    color: white;
-    border: none;
-    border-radius: 6px;
-    font-size: 1.2rem;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background-color 0.3s ease;
+  width: 40px;
+  height: 40px;
+  background: #4caf50;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 1.2rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.3s ease;
 }
 
 .add-objective-btn:hover {
-    background: #45a049;
+  background: #45a049;
 }
 
 .tip-box {
-    background: #e8f5e8;
-    border: 1px solid #4CAF50;
-    border-radius: 6px;
-    padding: 1rem;
-    font-size: 0.9rem;
-    color: #2e7d32;
+  background: #e8f5e8;
+  border: 1px solid #4caf50;
+  border-radius: 6px;
+  padding: 1rem;
+  font-size: 0.9rem;
+  color: #2e7d32;
 }
 
 .objectives-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    max-height: 200px;
-    overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 200px;
+  overflow-y: auto;
 }
 
 .objective-display-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0.75rem;
-    background: #f8f9fa;
-    border-radius: 6px;
-    border-left: 4px solid #4CAF50;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem;
+  background: #f8f9fa;
+  border-radius: 6px;
+  border-left: 4px solid #4caf50;
 }
 
 .objective-text {
-    flex: 1;
-    color: #333;
+  flex: 1;
+  color: #333;
 }
 
 .remove-objective {
-    background: #dc3545;
-    color: white;
-    border: none;
-    border-radius: 50%;
-    width: 24px;
-    height: 24px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.8rem;
-    margin-left: 0.5rem;
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  margin-left: 0.5rem;
 }
 
 .remove-objective:hover {
-    background: #c82333;
+  background: #c82333;
 }
 
 /* Course Materials Sub-step */
 .materials-section {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
 }
 
 .material-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 1.5rem;
-    background: white;
-    border: 2px solid #e0e0e0;
-    border-radius: 8px;
-    transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.5rem;
+  background: white;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  transition: all 0.3s ease;
 }
 
 .material-item.required {
-    border-left: 4px solid #dc3545;
+  border-left: 4px solid #dc3545;
 }
 
 .material-item.optional {
-    border-left: 4px solid #6c757d;
+  border-left: 4px solid #6c757d;
 }
 
 .material-info {
-    flex: 1;
+  flex: 1;
 }
 
 .material-info h4 {
-    margin: 0 0 0.5rem 0;
-    color: #333;
-    font-size: 1.1rem;
+  margin: 0 0 0.5rem 0;
+  color: #333;
+  font-size: 1.1rem;
 }
 
 .material-info p {
-    margin: 0 0 0.5rem 0;
-    color: #666;
-    font-size: 0.9rem;
+  margin: 0 0 0.5rem 0;
+  color: #666;
+  font-size: 0.9rem;
 }
 
 .status-badge {
-    display: inline-block;
-    padding: 0.25rem 0.5rem;
-    border-radius: 4px;
-    font-size: 0.8rem;
-    font-weight: 500;
+  display: inline-block;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  font-weight: 500;
 }
 
 .status-badge:contains("Not Uploaded") {
-    background: rgba(220, 53, 69, 0.1);
-    color: #dc3545;
+  background: rgba(220, 53, 69, 0.1);
+  color: #dc3545;
 }
 
 .status-badge:contains("Uploaded") {
-    background: rgba(40, 167, 69, 0.1);
-    color: #28a745;
+  background: rgba(40, 167, 69, 0.1);
+  color: #28a745;
 }
 
 .status-badge:contains("Optional") {
-    background: rgba(108, 117, 125, 0.1);
-    color: #6c757d;
+  background: rgba(108, 117, 125, 0.1);
+  color: #6c757d;
 }
 
 .upload-btn {
-    background: #4CAF50;
-    color: white;
-    border: none;
-    padding: 0.75rem 1.5rem;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 0.9rem;
-    transition: background-color 0.3s ease;
+  background: #4caf50;
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background-color 0.3s ease;
 }
 
 .upload-btn:hover {
-    background: #45a049;
+  background: #45a049;
 }
 
 /* Probing Questions Sub-step */
 .questions-section {
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
 }
 
 .generate-section {
-    text-align: center;
-    padding: 1.5rem;
-    background: #f8f9fa;
-    border-radius: 8px;
-    border: 2px dashed #e0e0e0;
+  text-align: center;
+  padding: 1.5rem;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 2px dashed #e0e0e0;
 }
 
 .generate-btn {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
-    border: none;
-    padding: 1rem 2rem;
-    border-radius: 6px;
-    font-size: 1rem;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin: 0 auto 1rem auto;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  padding: 1rem 2rem;
+  border-radius: 6px;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 auto 1rem auto;
 }
 
 .generate-btn:hover {
-    background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
-    transform: translateY(-1px);
+  background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+  transform: translateY(-1px);
 }
 
 .generate-help {
-    color: #666;
-    font-size: 0.9rem;
-    margin: 0;
+  color: #666;
+  font-size: 0.9rem;
+  margin: 0;
 }
 
 .questions-input-section {
-    margin-bottom: 1rem;
+  margin-bottom: 1rem;
 }
 
 .question-input {
-    flex: 1;
-    padding: 0.75rem;
-    border: 2px solid #e0e0e0;
-    border-radius: 6px;
-    font-size: 1rem;
+  flex: 1;
+  padding: 0.75rem;
+  border: 2px solid #e0e0e0;
+  border-radius: 6px;
+  font-size: 1rem;
 }
 
 .question-input:focus {
-    outline: none;
-    border-color: #4CAF50;
+  outline: none;
+  border-color: #4caf50;
 }
 
 .add-question-btn {
-    width: 40px;
-    height: 40px;
-    background: #4CAF50;
-    color: white;
-    border: none;
-    border-radius: 6px;
-    font-size: 1.2rem;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: background-color 0.3s ease;
+  width: 40px;
+  height: 40px;
+  background: #4caf50;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 1.2rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.3s ease;
 }
 
 .add-question-btn:hover {
-    background: #45a049;
+  background: #45a049;
 }
 
 .questions-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    max-height: 200px;
-    overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  /* Removed max-height to allow full questions to display */
 }
 
 /* Assessment Questions Styling */
 .assessment-info {
-    background: #f8f9fa;
-    padding: 0.75rem;
-    border-left: 3px solid #007bff;
-    margin-bottom: 1rem;
-    border-radius: 4px;
+  background: #f8f9fa;
+  padding: 0.75rem;
+  border-left: 3px solid #007bff;
+  margin-bottom: 1rem;
+  border-radius: 4px;
 }
 
 .threshold-setting {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-bottom: 1.5rem;
-    padding: 0.75rem;
-    background: #e9ecef;
-    border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+  padding: 0.75rem;
+  background: #e9ecef;
+  border-radius: 6px;
 }
 
 .threshold-input {
-    width: 60px;
-    padding: 0.25rem 0.5rem;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    text-align: center;
+  width: 60px;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  text-align: center;
 }
 
 .threshold-help {
-    color: #6c757d;
-    font-size: 0.875rem;
+  color: #6c757d;
+  font-size: 0.875rem;
 }
 
 .questions-list {
-    min-height: 100px;
-    margin-bottom: 1.5rem;
+  min-height: 100px;
+  margin-bottom: 1.5rem;
 }
 
 .no-questions-message {
-    text-align: center;
-    padding: 2rem 1rem;
-    color: #6c757d;
-    background: #f8f9fa;
-    border-radius: 6px;
-    border: 2px dashed #dee2e6;
+  text-align: center;
+  padding: 2rem 1rem;
+  color: #6c757d;
+  background: #f8f9fa;
+  border-radius: 6px;
+  border: 2px dashed #dee2e6;
 }
 
 .question-item {
-    border: 1px solid #e1e5e9;
-    border-radius: 6px;
-    margin-bottom: 1rem;
-    background: white;
-    overflow: hidden;
+  border: 1px solid #e1e5e9;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+  background: white;
+  overflow: hidden;
+  flex-shrink: 0;
 }
 
 .question-header {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    padding: 0.75rem 1rem;
-    background: #f8f9fa;
-    border-bottom: 1px solid #e1e5e9;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: #f8f9fa;
+  border-bottom: 1px solid #e1e5e9;
 }
 
 .question-type-badge {
-    padding: 0.25rem 0.5rem;
-    border-radius: 12px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    text-transform: uppercase;
+  padding: 0.25rem 0.5rem;
+  border-radius: 12px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
 }
 
 .question-type-badge.true-false {
-    background: #d4edda;
-    color: #155724;
+  background: #d4edda;
+  color: #155724;
 }
 
 .question-type-badge.multiple-choice {
-    background: #cce7ff;
-    color: #004085;
+  background: #cce7ff;
+  color: #004085;
 }
 
 .question-type-badge.short-answer {
-    background: #fff3cd;
-    color: #856404;
+  background: #fff3cd;
+  color: #856404;
 }
 
 .question-number {
-    flex: 1;
-    font-weight: 500;
-    color: #495057;
+  flex: 1;
+  font-weight: 500;
+  color: #495057;
 }
 
 .delete-question-btn {
-    background: #dc3545;
-    color: white;
-    border: none;
-    border-radius: 50%;
-    width: 24px;
-    height: 24px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-    font-size: 14px;
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 14px;
 }
 
 .delete-question-btn:hover {
-    background: #c82333;
+  background: #c82333;
 }
 
 .question-content {
-    padding: 1rem;
+  padding: 1rem;
 }
 
 .question-text {
-    margin-bottom: 1rem;
-    font-weight: 500;
-    color: #333;
+  margin-bottom: 1rem;
+  font-weight: 500;
+  color: #333;
 }
 
 .answer-preview {
-    margin-top: 0.5rem;
-    padding: 0.5rem;
-    background: #f8f9fa;
-    border-radius: 4px;
-    font-size: 0.9rem;
+  margin-top: 0.5rem;
+  padding: 0.5rem;
+  background: #f8f9fa;
+  border-radius: 4px;
+  font-size: 0.9rem;
 }
 
 .mcq-preview {
-    margin-top: 0.5rem;
+  margin-top: 0.5rem;
 }
 
 .mcq-option-preview {
-    padding: 0.25rem 0.5rem;
-    margin: 0.25rem 0;
-    border-radius: 4px;
-    font-size: 0.9rem;
+  padding: 0.25rem 0.5rem;
+  margin: 0.25rem 0;
+  border-radius: 4px;
+  font-size: 0.9rem;
 }
 
 .mcq-option-preview.correct {
-    background: #d4edda;
-    color: #155724;
-    font-weight: 500;
+  background: #d4edda;
+  color: #155724;
+  font-weight: 500;
 }
 
 .assessment-actions {
-    display: flex;
-    gap: 1rem;
-    margin-bottom: 1rem;
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
 }
 
-.add-question-btn, .generate-ai-btn {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.75rem 1rem;
-    border: none;
-    border-radius: 6px;
-    cursor: pointer;
-    font-weight: 500;
-    font-size: 0.9rem;
-    transition: all 0.2s ease;
+.add-question-btn,
+.generate-ai-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
 }
 
 .add-question-btn {
-    background-color: #f8f9fa;
-    border: 1px dashed #e0e0e0;
-    color: #666;
-    display: flex;
-    visibility: visible;
-    opacity: 1;
-    width: 100%;
-    justify-content: center;
+  background-color: #f8f9fa;
+  border: 1px dashed #e0e0e0;
+  color: #666;
+  display: flex;
+  visibility: visible;
+  opacity: 1;
+  width: 100%;
+  justify-content: center;
 }
 
 .add-question-btn:hover {
-    background-color: #f0f0f0;
-    border-color: #999;
-    color: #333;
+  background-color: #f0f0f0;
+  border-color: #999;
+  color: #333;
 }
 
 .generate-ai-btn {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
 }
 
 .generate-ai-btn:hover:not(:disabled) {
-    background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
+  background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
 }
 
 .generate-ai-btn:disabled {
-    background: #6c757d;
-    cursor: not-allowed;
+  background: #6c757d;
+  cursor: not-allowed;
 }
 
 .btn-icon {
-    font-size: 1rem;
+  font-size: 1rem;
 }
 
 .save-assessment {
-    text-align: center;
+  text-align: center;
 }
 
 .save-btn {
-    background: #28a745;
-    color: white;
-    border: none;
-    padding: 0.75rem 1.5rem;
-    border-radius: 6px;
-    font-size: 0.9rem;
-    font-weight: 500;
-    cursor: pointer;
-    transition: background-color 0.3s ease;
+  background: #28a745;
+  color: white;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
 }
 
 .save-btn:hover {
-    background: #218838;
+  background: #218838;
 }
 
 /* Question Modal Styling */
 #question-modal .modal-content {
-    max-width: 600px;
-    width: 90%;
+  max-width: 600px;
+  width: 90%;
 }
 
 .question-form .form-section {
-    margin-bottom: 1.5rem;
+  margin-bottom: 1.5rem;
 }
 
 .question-form label {
-    display: block;
-    margin-bottom: 0.5rem;
-    font-weight: 500;
-    color: #333;
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: #333;
 }
 
 .question-form select,
 .question-form textarea,
 .question-form input[type="text"] {
-    width: 100%;
-    padding: 0.75rem;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    font-size: 1rem;
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  font-size: 1rem;
 }
 
 .question-form select:focus,
 .question-form textarea:focus,
 .question-form input[type="text"]:focus {
-    outline: none;
-    border-color: #007bff;
-    box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
 }
 
 .radio-group {
-    display: flex;
-    gap: 1rem;
-    margin-top: 0.5rem;
+  display: flex;
+  gap: 1rem;
+  margin-top: 0.5rem;
 }
 
 .radio-option {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    cursor: pointer;
-    padding: 0.5rem;
-    border-radius: 4px;
-    transition: background-color 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  padding: 0.5rem;
+  border-radius: 4px;
+  transition: background-color 0.2s ease;
 }
 
 .radio-option:hover {
-    background-color: #f8f9fa;
+  background-color: #f8f9fa;
 }
 
 .radio-option input[type="radio"] {
-    margin: 0;
+  margin: 0;
 }
 
 .mcq-options {
-    display: flex;
-    flex-direction: column;
-    gap: 1rem;
-    margin-top: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 0.5rem;
 }
 
 .mcq-option {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    padding: 0.75rem;
-    border: 1px solid #e0e0e0;
-    border-radius: 4px;
-    background: #f8f9fa;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  background: #f8f9fa;
 }
 
 .mcq-option .mcq-input {
-    flex: 1;
-    margin: 0;
+  flex: 1;
+  margin: 0;
 }
 
 .mcq-option .radio-option {
-    margin: 0;
-    padding: 0;
+  margin: 0;
+  padding: 0;
 }
 
 .correct-label {
-    font-weight: 500;
-    color: #28a745;
+  font-weight: 500;
+  color: #28a745;
 }
 
 /* Sub-step Actions */
 .substep-actions {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-top: 1.5rem;
-    padding-top: 1.5rem;
-    border-top: 1px solid #e0e0e0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid #e0e0e0;
 }
 
 /* Step Actions */
 .step-actions {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-top: 2rem;
-    padding-top: 2rem;
-    border-top: 1px solid #e0e0e0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 2rem;
+  padding-top: 2rem;
+  border-top: 1px solid #e0e0e0;
 }
 
 .btn-primary,
 .btn-secondary {
-    padding: 0.75rem 1.5rem;
-    border-radius: 6px;
-    font-size: 1rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    border: none;
-    text-decoration: none;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: none;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .btn-primary {
-    background: #4CAF50;
-    color: white;
+  background: #4caf50;
+  color: white;
 }
 
 .btn-primary:hover {
-    background: #45a049;
+  background: #45a049;
 }
 
 .btn-secondary {
-    background: #6c757d;
-    color: white;
+  background: #6c757d;
+  color: white;
 }
 
 .btn-secondary:hover {
-    background: #5a6268;
+  background: #5a6268;
 }
 
 .btn-primary:disabled,
 .btn-secondary:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 /* Responsive Design */
 @media (max-width: 768px) {
-    .intro-section {
-        grid-template-columns: 1fr;
-    }
-    
-    .form-row {
-        grid-template-columns: 1fr;
-    }
-    
-    .guided-progress {
-        flex-direction: column;
-        gap: 1rem;
-    }
-    
-    .progress-card {
-        flex-direction: column;
-        text-align: center;
-    }
-    
-    .progress-icon {
-        margin-right: 0;
-        margin-bottom: 0.5rem;
-    }
-    
-    .substep-actions {
-        flex-direction: column;
-        gap: 1rem;
-    }
-    
-    .substep-actions .btn-primary,
-    .substep-actions .btn-secondary {
-        width: 100%;
-        justify-content: center;
-    }
-    
-    .onboarding-step {
-        padding: 1rem;
-    }
-    
-    .step-content {
-        padding: 1.5rem;
-    }
-    
-    .material-item {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 1rem;
-    }
-    
-    .upload-btn {
-        align-self: flex-end;
-    }
+  .intro-section {
+    grid-template-columns: 1fr;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .guided-progress {
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .progress-card {
+    flex-direction: column;
+    text-align: center;
+  }
+
+  .progress-icon {
+    margin-right: 0;
+    margin-bottom: 0.5rem;
+  }
+
+  .substep-actions {
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .substep-actions .btn-primary,
+  .substep-actions .btn-secondary {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .onboarding-step {
+    padding: 1rem;
+  }
+
+  .step-content {
+    padding: 1.5rem;
+  }
+
+  .material-item {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1rem;
+  }
+
+  .upload-btn {
+    align-self: flex-end;
+  }
 }
 
 /* Remove old accordion overrides since we're using guided approach */
 .onboarding-accordion {
-    display: none;
+  display: none;
 }
 
 /* Modal Styles */
 .modal {
-    display: none;
-    position: fixed;
-    z-index: 1000;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0, 0, 0, 0.5);
+  display: none;
+  position: fixed;
+  z-index: 1000;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
 }
 
 .modal.show {
-    display: flex;
-    align-items: center;
-    justify-content: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .modal-content {
-    background-color: white;
-    margin: 2rem;
-    padding: 0;
-    border-radius: 12px;
-    width: 90%;
-    max-width: 600px;
-    max-height: 90vh;
-    overflow-y: auto;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  background-color: white;
+  margin: 2rem;
+  padding: 0;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 600px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
 
 .modal-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 1.5rem 2rem;
-    border-bottom: 1px solid #e0e0e0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem 2rem;
+  border-bottom: 1px solid #e0e0e0;
 }
 
 .modal-header h2 {
-    margin: 0;
-    color: #333;
+  margin: 0;
+  color: #333;
 }
 
 .modal-close {
-    background: none;
-    border: none;
-    font-size: 1.5rem;
-    cursor: pointer;
-    color: #666;
-    padding: 0;
-    width: 30px;
-    height: 30px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: #666;
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .modal-close:hover {
-    color: #333;
+  color: #333;
 }
 
 .modal-body {
-    padding: 2rem;
+  padding: 2rem;
 }
 
 .modal-footer {
-    padding: 1.5rem 2rem;
-    border-top: 1px solid #e0e0e0;
+  padding: 1.5rem 2rem;
+  border-top: 1px solid #e0e0e0;
 }
 
 .modal-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 1rem;
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
 }
 
 /* Upload Section Styles */
 .upload-section {
-    display: flex;
-    flex-direction: column;
-    gap: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
 }
 
 .file-upload-container {
-    text-align: center;
+  text-align: center;
 }
 
 .upload-file-btn {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 1rem;
-    width: 100%;
-    padding: 2rem;
-    border: 2px dashed #e0e0e0;
-    border-radius: 8px;
-    background: white;
-    cursor: pointer;
-    transition: all 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  width: 100%;
+  padding: 2rem;
+  border: 2px dashed #e0e0e0;
+  border-radius: 8px;
+  background: white;
+  cursor: pointer;
+  transition: all 0.3s ease;
 }
 
 .upload-file-btn:hover {
-    border-color: #4CAF50;
-    background: #f8f9fa;
+  border-color: #4caf50;
+  background: #f8f9fa;
 }
 
 .upload-icon {
-    font-size: 2rem;
-    color: #666;
+  font-size: 2rem;
+  color: #666;
 }
 
 .input-section {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
 }
 
 .input-section label {
-    font-weight: 600;
-    color: #333;
+  font-weight: 600;
+  color: #333;
 }
 
 .input-section input,
 .input-section textarea {
-    padding: 0.75rem;
-    border: 2px solid #e0e0e0;
-    border-radius: 6px;
-    font-size: 1rem;
-    transition: border-color 0.3s ease;
+  padding: 0.75rem;
+  border: 2px solid #e0e0e0;
+  border-radius: 6px;
+  font-size: 1rem;
+  transition: border-color 0.3s ease;
 }
 
 .input-section input:focus,
 .input-section textarea:focus {
-    outline: none;
-    border-color: #4CAF50;
+  outline: none;
+  border-color: #4caf50;
 }
 
 .file-info {
-    display: none;
-    flex-direction: column;
-    gap: 0.25rem;
-    padding: 1rem;
-    background: #f8f9fa;
-    border-radius: 6px;
-    margin-top: 1rem;
+  display: none;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 1rem;
+  background: #f8f9fa;
+  border-radius: 6px;
+  margin-top: 1rem;
 }
 
 .file-info.show {
-    display: flex;
+  display: flex;
 }
 
 .file-name {
-    font-weight: 600;
-    color: #333;
+  font-weight: 600;
+  color: #333;
 }
 
 .file-size {
-    color: #666;
-    font-size: 0.9rem;
-} 
+  color: #666;
+  font-size: 0.9rem;
+}
 
 /* Learning Objectives Styles */
 .objectives-input-section {
-    margin-bottom: 2rem;
+  margin-bottom: 2rem;
 }
 
 .objectives-input-section .input-group {
-    display: flex;
-    gap: 1rem;
-    margin-bottom: 1rem;
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
 }
 
 .objectives-input-section .objective-input {
-    flex: 1;
-    padding: 0.75rem;
-    border: 2px solid #e1e5e9;
-    border-radius: 8px;
-    font-size: 1rem;
-    transition: border-color 0.3s ease;
+  flex: 1;
+  padding: 0.75rem;
+  border: 2px solid #e1e5e9;
+  border-radius: 8px;
+  font-size: 1rem;
+  transition: border-color 0.3s ease;
 }
 
 .objectives-input-section .objective-input:focus {
-    outline: none;
-    border-color: #4CAF50;
+  outline: none;
+  border-color: #4caf50;
 }
 
 .objectives-input-section .add-objective-btn {
-    background: #4CAF50;
-    color: white;
-    border: none;
-    border-radius: 8px;
-    padding: 0.75rem 1.5rem;
-    font-size: 1.2rem;
-    cursor: pointer;
-    transition: background-color 0.3s ease;
+  background: #4caf50;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 0.75rem 1.5rem;
+  font-size: 1.2rem;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
 }
 
 .objectives-input-section .add-objective-btn:hover {
-    background: #45a049;
+  background: #45a049;
 }
 
 .objectives-list {
-    margin-top: 1rem;
+  margin-top: 1rem;
 }
 
 .objective-display-item {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    background: #f8f9fa;
-    border: 1px solid #e1e5e9;
-    border-radius: 6px;
-    padding: 0.75rem 1rem;
-    margin-bottom: 0.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #f8f9fa;
+  border: 1px solid #e1e5e9;
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.5rem;
 }
 
 .objective-display-item .objective-text {
-    flex: 1;
-    color: #333;
+  flex: 1;
+  color: #333;
 }
 
 .objective-display-item .remove-objective {
-    background: #dc3545;
-    color: white;
-    border: none;
-    border-radius: 4px;
-    padding: 0.25rem 0.5rem;
-    cursor: pointer;
-    font-size: 1rem;
-    margin-left: 1rem;
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+  font-size: 1rem;
+  margin-left: 1rem;
 }
 
 .objective-display-item .remove-objective:hover {
-    background: #c82333;
+  background: #c82333;
 }
 
 .tip-box {
-    background: #e3f2fd;
-    border: 1px solid #2196f3;
-    border-radius: 6px;
-    padding: 1rem;
-    margin-top: 1rem;
+  background: #e3f2fd;
+  border: 1px solid #2196f3;
+  border-radius: 6px;
+  padding: 1rem;
+  margin-top: 1rem;
 }
 
 .tip-box strong {
-    color: #1976d2;
+  color: #1976d2;
 }
 
 /* Onboarding Complete Styles */
 .onboarding-complete {
-    padding: 2rem;
-    max-width: 800px;
-    margin: 0 auto;
+  padding: 2rem;
+  max-width: 800px;
+  margin: 0 auto;
 }
 
 .onboarding-complete .step-content {
-    text-align: center;
-    background: linear-gradient(135deg, #4CAF50, #45a049);
-    color: white;
-    padding: 3rem 2rem;
+  text-align: center;
+  background: linear-gradient(135deg, #4caf50, #45a049);
+  color: white;
+  padding: 3rem 2rem;
 }
 
 .onboarding-complete .welcome-header h1 {
-    color: white;
-    font-size: 3rem;
-    margin-bottom: 1rem;
+  color: white;
+  font-size: 3rem;
+  margin-bottom: 1rem;
 }
 
 .onboarding-complete .welcome-subtitle {
-    color: rgba(255, 255, 255, 0.9);
-    font-size: 1.3rem;
-    margin-bottom: 1rem;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 1.3rem;
+  margin-bottom: 1rem;
 }
 
 .onboarding-complete .completion-message {
-    background: rgba(255, 255, 255, 0.1);
-    border: 2px solid rgba(255, 255, 255, 0.3);
-    border-radius: 8px;
-    padding: 1.5rem;
-    margin-bottom: 2rem;
+  background: rgba(255, 255, 255, 0.1);
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
 }
 
 .onboarding-complete .completion-message p {
-    color: white;
-    font-size: 1.1rem;
-    margin: 0;
-    text-align: center;
+  color: white;
+  font-size: 1.1rem;
+  margin: 0;
+  text-align: center;
 }
 
 .completion-actions {
-    display: flex;
-    gap: 1rem;
-    justify-content: center;
-    flex-wrap: wrap;
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  flex-wrap: wrap;
 }
 
 .completion-actions .btn-primary,
 .completion-actions .btn-secondary {
-    padding: 1rem 2rem;
-    border-radius: 8px;
-    text-decoration: none;
-    font-weight: 600;
-    transition: all 0.3s ease;
-    min-width: 200px;
+  padding: 1rem 2rem;
+  border-radius: 8px;
+  text-decoration: none;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  min-width: 200px;
 }
 
 .completion-actions .btn-primary {
-    background: white;
-    color: #4CAF50;
+  background: white;
+  color: #4caf50;
 }
 
 .completion-actions .btn-primary:hover {
-    background: #f8f9fa;
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  background: #f8f9fa;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .completion-actions .btn-secondary {
-    background: rgba(255, 255, 255, 0.2);
-    color: white;
-    border: 2px solid rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  border: 2px solid rgba(255, 255, 255, 0.3);
 }
 
 .completion-actions .btn-secondary:hover {
-    background: rgba(255, 255, 255, 0.3);
-    border-color: rgba(255, 255, 255, 0.5);
-    transform: translateY(-2px);
+  background: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.5);
+  transform: translateY(-2px);
 }
 
 /* Join Course Section */
 .join-course-info {
-    background: #f8f9fa;
-    border: 2px solid #e9ecef;
-    border-radius: 8px;
-    padding: 1.5rem;
-    margin: 1rem 0;
+  background: #f8f9fa;
+  border: 2px solid #e9ecef;
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin: 1rem 0;
 }
 
 .join-course-info h3 {
-    color: #495057;
-    margin-bottom: 0.5rem;
-    font-size: 1.2rem;
+  color: #495057;
+  margin-bottom: 0.5rem;
+  font-size: 1.2rem;
 }
 
 .join-course-info p {
-    color: #6c757d;
-    margin-bottom: 1rem;
-    line-height: 1.5;
+  color: #6c757d;
+  margin-bottom: 1rem;
+  line-height: 1.5;
 }
 
 .course-details {
-    background: white;
-    border: 1px solid #dee2e6;
-    border-radius: 6px;
-    padding: 1rem;
-    margin-top: 1rem;
+  background: white;
+  border: 1px solid #dee2e6;
+  border-radius: 6px;
+  padding: 1rem;
+  margin-top: 1rem;
 }
 
 .course-info h4 {
-    color: #495057;
-    margin-bottom: 0.5rem;
-    font-size: 1.1rem;
+  color: #495057;
+  margin-bottom: 0.5rem;
+  font-size: 1.1rem;
 }
 
 .course-info p {
-    color: #6c757d;
-    margin-bottom: 0.25rem;
-    font-size: 0.9rem;
+  color: #6c757d;
+  margin-bottom: 0.25rem;
+  font-size: 0.9rem;
 }
 
 .course-info p:last-child {
-    margin-bottom: 0;
-    font-style: italic;
-    color: #28a745;
+  margin-bottom: 0;
+  font-style: italic;
+  color: #28a745;
 }
