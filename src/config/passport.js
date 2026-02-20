@@ -257,7 +257,7 @@ function initializePassport(db) {
 
                             // --- Role Determination Logic ---
                             //
-                            // Priority 1: "Super admin" allow-list (the "you and me" list).
+                            // Priority 1: "Super admin" allow-list (CAN_SEE_DELTE_ALL_BUTTON).
                             //   These emails ALWAYS get instructor, regardless of affiliation.
                             //
                             // Priority 2: Pure instructor affiliation.
@@ -289,21 +289,21 @@ function initializePassport(db) {
                                 console.log(`[UBC SHIB] Email ${normalizedEmail} is on the allow-list → instructor`);
                             } else {
                                 // Check UBC affiliations.
-                                // A user is ONLY an instructor if they have instructor-type affiliations
-                                // AND they do NOT simultaneously hold a student affiliation.
-                                const hasInstructorAffiliation =
-                                    affiliationList.includes('faculty') ||
-                                    affiliationList.includes('staff');
-                                    // Note: 'member' alone is NOT enough — a student can also be a member.
-
+                                // ONLY users with the 'faculty' affiliation — and NOTHING else
+                                // that would indicate a dual student/staff role — get instructor.
+                                // 'staff', 'member', 'employee', etc. are NOT sufficient on their own.
+                                // If a user has BOTH 'faculty' and 'student', they are treated as student.
+                                const hasFacultyAffiliation = affiliationList.includes('faculty');
                                 const hasStudentAffiliation = affiliationList.includes('student');
 
-                                if (hasInstructorAffiliation && !hasStudentAffiliation) {
-                                    // Pure instructor/faculty/staff — no student role mixed in
+                                if (hasFacultyAffiliation && !hasStudentAffiliation) {
+                                    // Pure faculty — no student role mixed in
                                     role = 'instructor';
                                 } else {
-                                    // Anyone with a student affiliation (even alongside staff) → student
-                                    // Also the default for any other unrecognised affiliation
+                                    // Everyone else defaults to student:
+                                    //   - dual-role users (faculty + student)
+                                    //   - staff-only, member-only, employee-only
+                                    //   - any unrecognised affiliation
                                     role = 'student';
                                 }
                             }
