@@ -255,21 +255,60 @@ function initializePassport(db) {
                                 return done(null, false, { message: 'UBC Shibboleth profile missing required attributes (email or nameID)' });
                             }
 
-                            // Determine role from affiliation
-                            // UBC affiliation can be: student, faculty, staff, member, etc.
-                            // Note: affiliation can be a string or array
+                            // --- Role Determination Logic ---
+                            //
+                            // Priority 1: "Super admin" allow-list (the "you and me" list).
+                            //   These emails ALWAYS get instructor, regardless of affiliation.
+                            //
+                            // Priority 2: Pure instructor affiliation.
+                            //   A user gets 'instructor' ONLY if they have faculty/staff
+                            //   affiliations AND do NOT also have a 'student' affiliation.
+                            //   This prevents dual-role users (student + staff) from being
+                            //   incorrectly promoted to instructor.
+                            //
+                            // Default: Everyone else is 'student'.
+
                             let role = 'student'; // Default role
+
+                            // Normalize the affiliation attribute — it can arrive as a string or array
                             const affiliationList = Array.isArray(affiliation) ? affiliation : [affiliation];
-                            
-                            if (affiliationList.includes('faculty') || 
-                                affiliationList.includes('staff') || 
-                                affiliationList.includes('member')) {
-                                role = 'instructor'; // Faculty/staff/member are instructors
-                            } else if (affiliationList.includes('student')) {
-                                role = 'student';
+
+                            // Load the allow-list from the environment variable.
+                            // CAN_SEE_DELTE_ALL_BUTTON holds comma-separated emails of super-admins.
+                            const allowedEmailsRaw = process.env.CAN_SEE_DELTE_ALL_BUTTON || '';
+                            const allowedEmails = allowedEmailsRaw
+                                .split(',')
+                                .map(e => e.trim().toLowerCase())
+                                .filter(e => e.length > 0);
+
+                            const normalizedEmail = (email || '').trim().toLowerCase();
+
+                            if (allowedEmails.includes(normalizedEmail)) {
+                                // This email is on the super-admin allow-list — always instructor
+                                role = 'instructor';
+                                console.log(`[UBC SHIB] Email ${normalizedEmail} is on the allow-list → instructor`);
+                            } else {
+                                // Check UBC affiliations.
+                                // A user is ONLY an instructor if they have instructor-type affiliations
+                                // AND they do NOT simultaneously hold a student affiliation.
+                                const hasInstructorAffiliation =
+                                    affiliationList.includes('faculty') ||
+                                    affiliationList.includes('staff');
+                                    // Note: 'member' alone is NOT enough — a student can also be a member.
+
+                                const hasStudentAffiliation = affiliationList.includes('student');
+
+                                if (hasInstructorAffiliation && !hasStudentAffiliation) {
+                                    // Pure instructor/faculty/staff — no student role mixed in
+                                    role = 'instructor';
+                                } else {
+                                    // Anyone with a student affiliation (even alongside staff) → student
+                                    // Also the default for any other unrecognised affiliation
+                                    role = 'student';
+                                }
                             }
-                            
-                            console.log(`[UBC SHIB] Affiliation: ${JSON.stringify(affiliation)}, Role: ${role}`);
+
+                            console.log(`[UBC SHIB] Affiliation: ${JSON.stringify(affiliationList)}, Email: ${normalizedEmail}, Assigned Role: ${role}`);
 
                             // Create or get user from UBC Shibboleth data
                             // ubcEduCwlPuid is the primary identifier for CWL users
