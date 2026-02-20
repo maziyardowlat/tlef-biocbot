@@ -353,12 +353,24 @@ async function createOrGetSAMLUser(db, samlData) {
         // Always re-apply the role determined by the Passport strategy on each login.
         // This corrects any previously mis-assigned roles (e.g. a student+staff dual-role
         // user who was incorrectly given 'instructor' before this fix was applied).
-        if (samlData.role && samlData.role !== existingUser.role) {
+        //
+        // IMPORTANT: Do NOT overwrite a manually-granted 'ta' role.
+        // The 'ta' role is assigned by an instructor through the app — it is not
+        // derived from CWL affiliations. A TA's CWL affiliation will still say 'student',
+        // so we must preserve the 'ta' role and never downgrade it via CWL login.
+        const isManuallyGrantedRole = existingUser.role === 'ta';
+
+        if (samlData.role && samlData.role !== existingUser.role && !isManuallyGrantedRole) {
             console.log(
                 `[USER] Role change for ${existingUser.userId}: ` +
                 `${existingUser.role} → ${samlData.role} (re-evaluated from CWL attributes)`
             );
             updateFields.role = samlData.role;
+        } else if (isManuallyGrantedRole) {
+            console.log(
+                `[USER] Preserving manually-granted 'ta' role for ${existingUser.userId} ` +
+                `(CWL says '${samlData.role}', keeping 'ta')`
+            );
         }
 
         await collection.updateOne(
