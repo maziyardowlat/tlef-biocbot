@@ -335,6 +335,16 @@ router.post('/', async (req, res) => {
             });
         }
 
+        // Load course early (used by both struggle mapping and retrieval config)
+        const coursesCol = db.collection('courses');
+        const course = await coursesCol.findOne({ courseId });
+        if (!course) {
+            return res.status(404).json({ success: false, message: 'Course not found' });
+        }
+
+        const approvedStruggleTopics = CourseModel.normalizeTopicList(course.approvedStruggleTopics || []);
+        console.log(`🧭 [CHAT_TOPIC_MAP] Approved topics loaded: ${approvedStruggleTopics.length}`);
+
         // STRUGGLE DETECTION & TRACKING
         let struggleState = null;
         let directiveModeActive = false;
@@ -354,28 +364,37 @@ router.post('/', async (req, res) => {
                 // Check if this is an explanation request with a known topic
                 // If so, we can skip analysis and directly increment struggle for that topic
                 if (req.body.isExplanationRequest && req.body.topic) {
-                     console.log(`🕵️ [CHAT_API_DEBUG] Explanation Request for topic: "${req.body.topic}" - Incrementing Struggle Count`);
-                     
-                     const updateResult = await User.updateUserStruggleState(db, req.user.userId, {
-                        topic: req.body.topic,
-                        isStruggling: true,
-                        reason: 'User requested explanation'
-                     }, courseId);
-                     
-                     console.log('🕵️ [CHAT_API_DEBUG] Struggle Update (Explain) Result:', JSON.stringify(updateResult, null, 2));
+                     const explanationTopic = String(req.body.topic || '').trim();
+                     const matchedApprovedTopic = approvedStruggleTopics.find(
+                        topic => topic.toLowerCase() === explanationTopic.toLowerCase()
+                     );
 
-                     if (updateResult.success) {
-                        struggleState = updateResult.state; // topic specific state
-                        identifiedTopic = req.body.topic;
-                        
-                        // We also need the full state to determine if ANY directive mode is active
-                        // But updateUserStruggleState returns { success, state, allTopics }
-                        // Let's verify if *this* topic triggered directive mode
-                         if (struggleState && struggleState.isActive) {
-                            directiveModeActive = true;
-                            console.log(`🚨 [CHAT_API_DEBUG] Directive Mode ACTIVATED via Explain for topic: ${identifiedTopic}`);
+                     if (!matchedApprovedTopic) {
+                        console.log(`🕵️ [CHAT_API_DEBUG] Explanation topic "${explanationTopic}" is not approved; skipping struggle update.`);
+                     } else {
+                        console.log(`🕵️ [CHAT_API_DEBUG] Explanation Request for approved topic: "${matchedApprovedTopic}" - Incrementing Struggle Count`);
+
+                        const updateResult = await User.updateUserStruggleState(db, req.user.userId, {
+                            topic: matchedApprovedTopic,
+                            isStruggling: true,
+                            reason: 'User requested explanation'
+                        }, courseId);
+
+                        console.log('🕵️ [CHAT_API_DEBUG] Struggle Update (Explain) Result:', JSON.stringify(updateResult, null, 2));
+
+                        if (updateResult.success && !updateResult.skipped) {
+                            struggleState = updateResult.state; // topic specific state
+                            identifiedTopic = matchedApprovedTopic;
+
+                            // We also need the full state to determine if ANY directive mode is active
+                            // But updateUserStruggleState returns { success, state, allTopics }
+                            // Let's verify if *this* topic triggered directive mode
+                            if (struggleState && struggleState.isActive) {
+                                directiveModeActive = true;
+                                console.log(`🚨 [CHAT_API_DEBUG] Directive Mode ACTIVATED via Explain for topic: ${identifiedTopic}`);
+                            }
                         }
-                    }
+                     }
 
                 } else {
                     // Normal message analysis
@@ -383,24 +402,30 @@ router.post('/', async (req, res) => {
                     console.log('🕵️ [CHAT_API_DEBUG] ------------------------------------------------');
                     console.log(`🕵️ [CHAT_API_DEBUG] Analysis Start for msg: "${message.substring(0, 50)}..."`);
                     
-                    const analysis = await localTrackerService.analyzeMessage(message, courseId, unitName);
+                    const analysis = await localTrackerService.analyzeMessage(message, courseId, unitName, approvedStruggleTopics);
                     console.log('🕵️ [CHAT_API_DEBUG] Raw Analysis Result:', JSON.stringify(analysis, null, 2));
-                    
-                    // 2. Update user state and persist to MongoDB
-                    const updateResult = await User.updateUserStruggleState(db, req.user.userId, analysis, courseId);
-                    console.log('🕵️ [CHAT_API_DEBUG] User State Update Result:', JSON.stringify(updateResult, null, 2));
-                    
-                    if (updateResult.success) {
-                        struggleState = updateResult.state;
-                        identifiedTopic = analysis.topic;
-                        
-                        // 3. Check if Directive Mode should be active
-                        if (struggleState && struggleState.isActive) {
-                            directiveModeActive = true;
-                            console.log(`🚨 [CHAT_API_DEBUG] Directive Mode ACTIVATED for topic: ${identifiedTopic}`);
-                        } else {
-                             console.log(`🕵️ [CHAT_API_DEBUG] Struggle recorded but Directive Mode NOT active yet.`);
+
+                    if (analysis.isStruggling && analysis.isMapped) {
+                        // 2. Update user state and persist to MongoDB for mapped topics only
+                        const updateResult = await User.updateUserStruggleState(db, req.user.userId, analysis, courseId);
+                        console.log('🕵️ [CHAT_API_DEBUG] User State Update Result:', JSON.stringify(updateResult, null, 2));
+
+                        if (updateResult.success && !updateResult.skipped) {
+                            struggleState = updateResult.state;
+                            identifiedTopic = analysis.topic;
+
+                            // 3. Check if Directive Mode should be active
+                            if (struggleState && struggleState.isActive) {
+                                directiveModeActive = true;
+                                console.log(`🚨 [CHAT_API_DEBUG] Directive Mode ACTIVATED for topic: ${identifiedTopic}`);
+                            } else {
+                                 console.log(`🕵️ [CHAT_API_DEBUG] Struggle recorded but Directive Mode NOT active yet.`);
+                            }
                         }
+                    } else if (analysis.isStruggling && !analysis.isMapped) {
+                        console.log(`🕵️ [CHAT_API_DEBUG] Struggle detected but topic unmapped; no struggle topic update applied.`);
+                    } else {
+                        console.log(`🕵️ [CHAT_API_DEBUG] No struggle detected for this message.`);
                     }
                 }
             } catch (trackerError) {
@@ -437,14 +462,7 @@ router.post('/', async (req, res) => {
             });
         }
 
-        // Load course to get retrieval mode and published lectures
-        const coursesCol = db.collection('courses');
-        const course = await coursesCol.findOne({ courseId });
-        if (!course) {
-            return res.status(404).json({ success: false, message: 'Course not found' });
-        }
-
-        // (Global settings fetch removed - prompts now come from course document)
+        // Course is already loaded above for topic mapping; reuse it here for retrieval config.
 
         // Determine retrieval mode: Course override ? Default : False (default)
         const isAdditive = course.isAdditiveRetrieval !== undefined && course.isAdditiveRetrieval !== null

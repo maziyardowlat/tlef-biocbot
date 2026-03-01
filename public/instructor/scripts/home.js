@@ -66,6 +66,7 @@ async function initializeHomePage() {
             await loadFlaggedContent();
             await checkMissingContent();
             await loadStruggleTopics();
+            await loadApprovedGlobalTopics();
             await loadPersistenceTopics();
         }
         
@@ -1281,6 +1282,7 @@ async function setSelectedCourse(courseId, courseName) {
     await loadFlaggedContent();
     await checkMissingContent();
     await loadStruggleTopics();
+    await loadApprovedGlobalTopics();
     await loadPersistenceTopics();
     
     // Start polling for struggle activity updates
@@ -1563,6 +1565,85 @@ async function loadPersistenceTopics() {
         console.error('Error loading persistence topics:', error);
         document.getElementById('persistence-topics-section')?.setAttribute('style', 'display: none;');
     }
+}
+
+/**
+ * Load approved global topics for the selected course
+ */
+async function loadApprovedGlobalTopics() {
+    try {
+        const courseId = getSelectedCourseId();
+        if (!courseId) return;
+
+        const response = await authenticatedFetch(`/api/courses/${courseId}/approved-topics`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const result = await response.json();
+        const topics = Array.isArray(result?.data?.topics) ? result.data.topics : [];
+
+        renderApprovedGlobalTopics(topics, courseId);
+    } catch (error) {
+        console.error('Error loading approved global topics:', error);
+        document.getElementById('approved-topics-section')?.setAttribute('style', 'display: none;');
+    }
+}
+
+/**
+ * Render approved global topics list
+ * @param {Array<string>} topics - Approved topic labels
+ * @param {string} courseId - Current course ID
+ */
+function renderApprovedGlobalTopics(topics, courseId) {
+    const container = document.getElementById('approved-topics-content');
+    const section = document.getElementById('approved-topics-section');
+    if (!container || !section) return;
+
+    section.style.display = 'block';
+
+    const cleanTopics = Array.isArray(topics)
+        ? [...new Set(topics.map(t => String(t || '').trim()).filter(Boolean).map(t => t.toLowerCase()))]
+            .map(normalized => {
+                const original = topics.find(t => String(t || '').trim().toLowerCase() === normalized);
+                return String(original || normalized).trim();
+            })
+        : [];
+
+    window.courseApprovedTopicsByCourse = window.courseApprovedTopicsByCourse || {};
+    window.courseApprovedTopicsByCourse[courseId] = cleanTopics;
+    window.courseApprovedTopics = cleanTopics;
+
+    if (cleanTopics.length === 0) {
+        container.innerHTML = `
+            <p class="no-data-message" style="text-align: center; color: #666; font-style: italic; padding: 20px;">
+                No approved global topics set yet for this course.
+            </p>
+        `;
+        return;
+    }
+
+    const chips = cleanTopics.map(topic => `
+        <span style="
+            display:inline-flex;
+            align-items:center;
+            padding:8px 12px;
+            border-radius:999px;
+            background:#eef6ff;
+            border:1px solid #cfe2ff;
+            color:#1e3a8a;
+            font-size:0.9em;
+            font-weight:600;
+            line-height:1.2;
+        ">${escapeHtml(topic)}</span>
+    `).join('');
+
+    container.innerHTML = `
+        <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:flex-start;">
+            ${chips}
+        </div>
+        <div style="margin-top:10px; font-size:0.85em; color:#666;">
+            Total topics available to struggle mapping: <strong>${cleanTopics.length}</strong>
+        </div>
+    `;
 }
 
 /**

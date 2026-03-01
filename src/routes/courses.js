@@ -13,6 +13,51 @@ const QdrantService = require('../services/qdrantService');
 // Middleware to parse JSON bodies
 router.use(express.json());
 
+function hasInstructorOrTAAccess(course, userId) {
+    return course.instructorId === userId ||
+        (Array.isArray(course.instructors) && course.instructors.includes(userId)) ||
+        (Array.isArray(course.tas) && course.tas.includes(userId));
+}
+
+function extractFirstJSONObject(text = '') {
+    if (!text || typeof text !== 'string') return null;
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
+    if (start === -1 || end === -1 || end <= start) return null;
+
+    const jsonSlice = text.substring(start, end + 1);
+    try {
+        return JSON.parse(jsonSlice);
+    } catch (error) {
+        return null;
+    }
+}
+
+function buildTopicExtractionPrompt(content, maxTopics = 8) {
+    const truncatedContent = typeof content === 'string' ? content.slice(0, 12000) : '';
+    return `
+You are BIOCBOT, an expert chemistry/biochemistry curriculum analyst.
+Read the uploaded course content and extract the core concepts that students might struggle with.
+
+Requirements:
+1. Return ${maxTopics} or fewer concise topic labels.
+2. Each topic should be 1-5 words.
+3. Prefer concept-level terms (e.g., "Hydrophilic Interactions", "Enzyme Kinetics", "Acid-Base Chemistry").
+4. Avoid duplicates and overly generic labels like "Chemistry" or "General".
+5. Return JSON ONLY.
+
+JSON format:
+{
+  "topics": ["topic 1", "topic 2"]
+}
+
+Course content:
+"""
+${truncatedContent}
+"""
+`;
+}
+
 /**
  * POST /api/courses
  * Create a new course for an instructor (updated for onboarding)
@@ -534,6 +579,7 @@ router.get('/:courseId', async (req, res) => {
             id: course.courseId,
             name: course.courseName,
             courseCode: course.courseCode, // Include course code for instructors
+            approvedStruggleTopics: CourseModel.normalizeTopicList(course.approvedStruggleTopics || []),
             weeks: course.courseStructure?.weeks || 0,
             lecturesPerWeek: course.courseStructure?.lecturesPerWeek || 0,
             isAdditiveRetrieval: !!course.isAdditiveRetrieval,
@@ -582,6 +628,210 @@ router.get('/:courseId', async (req, res) => {
 });
 
 /**
+ * GET /api/courses/:courseId/approved-topics
+ * Fetch the per-course approved struggle topic list
+ */
+router.get('/:courseId/approved-topics', async (req, res) => {
+    try {
+        const { courseId } = req.params;
+        const user = req.user;
+
+        if (!user) {
+            return res.status(401).json({ success: false, message: 'Authentication required' });
+        }
+
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({ success: false, message: 'Database connection not available' });
+        }
+
+        const course = await CourseModel.getCourseById(db, courseId);
+        if (!course) {
+            return res.status(404).json({ success: false, message: 'Course not found' });
+        }
+
+        let hasAccess = false;
+        if (user.role === 'instructor' || user.role === 'ta') {
+            hasAccess = hasInstructorOrTAAccess(course, user.userId);
+        } else if (user.role === 'student') {
+            const enrollment = await CourseModel.getStudentEnrollment(db, courseId, user.userId);
+            hasAccess = enrollment.success && enrollment.enrolled === true;
+        }
+
+        if (!hasAccess) {
+            return res.status(403).json({
+                success: false,
+                message: 'You do not have access to this course'
+            });
+        }
+
+        const topics = await CourseModel.getApprovedStruggleTopics(db, courseId);
+        return res.json({
+            success: true,
+            data: {
+                courseId,
+                topics
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching approved topics:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Internal server error while fetching approved topics'
+        });
+    }
+});
+
+/**
+ * PUT /api/courses/:courseId/approved-topics
+ * Replace the approved struggle topic list for a course
+ */
+router.put('/:courseId/approved-topics', async (req, res) => {
+    try {
+        const { courseId } = req.params;
+        const { topics } = req.body;
+        const user = req.user;
+
+        if (!user) {
+            return res.status(401).json({ success: false, message: 'Authentication required' });
+        }
+
+        if (!Array.isArray(topics)) {
+            return res.status(400).json({ success: false, message: 'topics must be an array of strings' });
+        }
+
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({ success: false, message: 'Database connection not available' });
+        }
+
+        const course = await CourseModel.getCourseById(db, courseId);
+        if (!course) {
+            return res.status(404).json({ success: false, message: 'Course not found' });
+        }
+
+        if (!hasInstructorOrTAAccess(course, user.userId)) {
+            return res.status(403).json({
+                success: false,
+                message: 'Only instructors/TAs with course access can update approved topics'
+            });
+        }
+
+        const result = await CourseModel.setApprovedStruggleTopics(db, courseId, topics, user.userId);
+        if (!result.success) {
+            return res.status(404).json({
+                success: false,
+                message: result.error || 'Course not found'
+            });
+        }
+
+        return res.json({
+            success: true,
+            message: 'Approved struggle topics updated',
+            data: {
+                courseId,
+                topics: result.topics
+            }
+        });
+    } catch (error) {
+        console.error('Error updating approved topics:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Internal server error while updating approved topics'
+        });
+    }
+});
+
+/**
+ * POST /api/courses/:courseId/extract-topics
+ * Extract suggested topics from uploaded content using LLM
+ */
+router.post('/:courseId/extract-topics', async (req, res) => {
+    try {
+        const { courseId } = req.params;
+        const { documentId, content, maxTopics } = req.body;
+        const user = req.user;
+
+        if (!user) {
+            return res.status(401).json({ success: false, message: 'Authentication required' });
+        }
+
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({ success: false, message: 'Database connection not available' });
+        }
+
+        const course = await CourseModel.getCourseById(db, courseId);
+        if (!course) {
+            return res.status(404).json({ success: false, message: 'Course not found' });
+        }
+
+        if (!hasInstructorOrTAAccess(course, user.userId)) {
+            return res.status(403).json({
+                success: false,
+                message: 'Only instructors/TAs with course access can extract topics'
+            });
+        }
+
+        let sourceContent = typeof content === 'string' ? content : '';
+        if (!sourceContent && documentId) {
+            const document = await DocumentModel.getDocumentById(db, documentId);
+            if (!document || document.courseId !== courseId) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Document not found in this course'
+                });
+            }
+            sourceContent = typeof document.content === 'string' ? document.content : '';
+        }
+
+        sourceContent = sourceContent.trim();
+        if (!sourceContent) {
+            return res.status(400).json({
+                success: false,
+                message: 'No document content available for topic extraction'
+            });
+        }
+
+        const topicLimit = Math.min(Math.max(parseInt(maxTopics, 10) || 8, 1), 15);
+        const llm = req.app.locals.llm;
+        let suggestedTopics = [];
+
+        if (llm && typeof llm.sendMessage === 'function') {
+            const prompt = buildTopicExtractionPrompt(sourceContent, topicLimit);
+            const llmResponse = await llm.sendMessage(prompt, {
+                temperature: 0.1,
+                maxTokens: 300,
+                systemPrompt: 'You extract concise chemistry/biochemistry topic labels from course content. Return strict JSON only.'
+            });
+
+            const parsed = extractFirstJSONObject(llmResponse?.content || '');
+            if (parsed && Array.isArray(parsed.topics)) {
+                suggestedTopics = parsed.topics;
+            }
+        } else {
+            console.warn('LLM service unavailable for /extract-topics; returning empty suggestions');
+        }
+
+        suggestedTopics = CourseModel.normalizeTopicList(suggestedTopics).slice(0, topicLimit);
+
+        return res.json({
+            success: true,
+            data: {
+                courseId,
+                topics: suggestedTopics
+            }
+        });
+    } catch (error) {
+        console.error('Error extracting topics from course content:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Internal server error while extracting topics'
+        });
+    }
+});
+
+/**
  * Helper function to get course data for students
  * @param {Object} req - Express request object
  * @param {Object} res - Express response object
@@ -620,6 +870,7 @@ async function getCourseForStudent(req, res, courseId) {
         const transformedCourse = {
             id: course.courseId,
             name: course.courseName,
+            approvedStruggleTopics: CourseModel.normalizeTopicList(course.approvedStruggleTopics || []),
             weeks: course.courseStructure?.weeks || 0,
             lecturesPerWeek: course.courseStructure?.lecturesPerWeek || 0,
             isAdditiveRetrieval: !!course.isAdditiveRetrieval,

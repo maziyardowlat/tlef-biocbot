@@ -143,6 +143,21 @@
                     </div>
                 </section>
 
+                <!-- Approved Global Topics Section -->
+                <section class="home-section approved-topics-section" id="approved-topics-section" style="display: none;">
+                    <div class="section-header clickable" onclick="toggleSection(this)">
+                        <h2>
+                            <span class="section-toggle-icon">▼</span>
+                            🧭 Approved Global Topics
+                            <span class="info-icon tooltip" data-tooltip="Per-course topics that the struggle bot is allowed to map students to. Unmatched topics are ignored.">ℹ️</span>
+                        </h2>
+                    </div>
+                    <div class="approved-topics-content" id="approved-topics-content">
+                        <!-- Approved topics will be populated by JavaScript -->
+                        <div class="loading-spinner">Loading...</div>
+                    </div>
+                </section>
+
                 <!-- Persistence Topics Section (All-Time) -->
                 <section class="home-section persistence-topics-section" id="persistence-topics-section" style="display: none;">
                     <div class="section-header clickable" onclick="toggleSection(this)">
