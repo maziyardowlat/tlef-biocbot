@@ -520,7 +520,7 @@ function ensureTopicReviewModal() {
             </div>
             <div class="modal-body">
                 <p class="topic-review-context" id="topic-review-context"></p>
-                <p class="topic-review-hint">Edit, add, or remove topics before saving this course-level list.</p>
+                <p class="topic-review-hint">These are topics found in this upload only. Edit, add, or remove before saving. Existing course topics are not affected.</p>
                 <div class="topic-review-list" id="topic-review-list"></div>
                 <div class="topic-review-add-row">
                     <input id="topic-review-new-input" class="topic-review-input" type="text" placeholder="Add a topic (e.g., Enzyme Kinetics)" />
@@ -614,7 +614,7 @@ function populateTopicReviewRows(topics) {
 
     const cleanTopics = dedupeTopics(topics);
     if (cleanTopics.length === 0) {
-        list.innerHTML = '<div class="topic-review-empty">No topics detected yet. Add topics manually for this course.</div>';
+        list.innerHTML = '<div class="topic-review-empty">No new topics detected from this upload. You can add topics manually below.</div>';
         return;
     }
 
@@ -623,14 +623,36 @@ function populateTopicReviewRows(topics) {
 
 function openTopicReviewModal(courseId, sourceName, existingTopics, suggestedTopics) {
     const modal = ensureTopicReviewModal();
-    const mergedTopics = dedupeTopics([...(existingTopics || []), ...(suggestedTopics || [])]);
+
+    // Only show NEW topics that don't already exist in the course list
+    const existingSet = new Set((existingTopics || []).map(t => t.toLowerCase().trim()));
+    const newOnlyTopics = dedupeTopics(
+        (suggestedTopics || []).filter(t => !existingSet.has(t.toLowerCase().trim()))
+    );
+
     const contextText = sourceName
-        ? `Detected concepts after processing: ${sourceName}`
-        : 'Detected concepts from the uploaded content.';
+        ? `New topics detected from: ${sourceName}`
+        : 'New topics detected from the uploaded content.';
 
     modal.querySelector('#topic-review-context').textContent = contextText;
     modal.querySelector('#topic-review-new-input').value = '';
-    populateTopicReviewRows(mergedTopics);
+    populateTopicReviewRows(newOnlyTopics);
+
+    // Show a read-only count of existing topics so the instructor has context
+    let existingNote = modal.querySelector('#topic-review-existing-note');
+    if (!existingNote) {
+        existingNote = document.createElement('p');
+        existingNote.id = 'topic-review-existing-note';
+        existingNote.style.cssText = 'margin:0 0 10px; color:#666; font-size:12px; font-style:italic;';
+        const hint = modal.querySelector('.topic-review-hint');
+        if (hint) hint.insertAdjacentElement('afterend', existingNote);
+    }
+    if (existingTopics && existingTopics.length > 0) {
+        existingNote.textContent = `${existingTopics.length} existing topic${existingTopics.length === 1 ? '' : 's'} already saved for this course (not shown).`;
+        existingNote.style.display = '';
+    } else {
+        existingNote.style.display = 'none';
+    }
 
     modal.style.display = '';
     modal.classList.add('show');
@@ -658,14 +680,23 @@ async function runTopicReviewAfterUpload(courseId, documentId, sourceName) {
         console.warn('Could not extract topics from uploaded document:', error);
     }
 
-    const reviewedTopics = await openTopicReviewModal(courseId, sourceName, existingTopics, suggestedTopics);
-    if (!reviewedTopics) {
+    // Modal only shows NEW topics from this upload (existing are hidden)
+    const reviewedNewTopics = await openTopicReviewModal(courseId, sourceName, existingTopics, suggestedTopics);
+    if (!reviewedNewTopics) {
         showNotification('Topic review skipped. Existing course topics were unchanged.', 'info');
         return;
     }
 
-    const savedTopics = await saveCourseApprovedTopics(courseId, reviewedTopics);
-    showNotification(`Saved ${savedTopics.length} approved course topic${savedTopics.length === 1 ? '' : 's'}.`, 'success');
+    // Merge: keep all existing topics + append the reviewed new ones
+    const mergedTopics = dedupeTopics([...existingTopics, ...reviewedNewTopics]);
+
+    const savedTopics = await saveCourseApprovedTopics(courseId, mergedTopics);
+    const addedCount = savedTopics.length - existingTopics.length;
+    if (addedCount > 0) {
+        showNotification(`Added ${addedCount} new topic${addedCount === 1 ? '' : 's'} (${savedTopics.length} total).`, 'success');
+    } else {
+        showNotification('No new topics were added.', 'info');
+    }
 }
 
 /**

@@ -1589,7 +1589,7 @@ async function loadApprovedGlobalTopics() {
 }
 
 /**
- * Render approved global topics list
+ * Render approved global topics list with inline editing capabilities
  * @param {Array<string>} topics - Approved topic labels
  * @param {string} courseId - Current course ID
  */
@@ -1612,38 +1612,268 @@ function renderApprovedGlobalTopics(topics, courseId) {
     window.courseApprovedTopicsByCourse[courseId] = cleanTopics;
     window.courseApprovedTopics = cleanTopics;
 
-    if (cleanTopics.length === 0) {
-        container.innerHTML = `
-            <p class="no-data-message" style="text-align: center; color: #666; font-style: italic; padding: 20px;">
-                No approved global topics set yet for this course.
-            </p>
-        `;
+    // Build editable chips
+    const chips = cleanTopics.map((topic, index) => `
+        <span class="approved-topic-chip" data-index="${index}" data-topic="${escapeHtml(topic)}">
+            <span class="topic-chip-label" ondblclick="startEditTopic(this)">${escapeHtml(topic)}</span>
+            <button class="topic-chip-remove" onclick="removeApprovedTopic(${index})" title="Remove topic">&times;</button>
+        </span>
+    `).join('');
+
+    const emptyMessage = cleanTopics.length === 0
+        ? '<p class="no-data-message" style="text-align: center; color: #666; font-style: italic; padding: 10px;">No approved global topics set yet. Add one below.</p>'
+        : '';
+
+    container.innerHTML = `
+        <div class="approved-topics-chips-container" id="approved-topics-chips">
+            ${emptyMessage}
+            ${chips}
+        </div>
+        <div class="approved-topics-add-row">
+            <input
+                type="text"
+                id="new-topic-input"
+                class="approved-topic-input"
+                placeholder="Type a new topic and press Enter..."
+                onkeydown="handleNewTopicKeydown(event)"
+            />
+            <button class="approved-topic-add-btn" onclick="addApprovedTopic()" title="Add topic">+ Add</button>
+        </div>
+        <div class="approved-topics-footer">
+            <span>Total topics: <strong>${cleanTopics.length}</strong></span>
+            <span class="approved-topics-hint">Double-click a topic to edit it</span>
+        </div>
+    `;
+}
+
+// ===========================
+// APPROVED TOPICS CRUD
+// ===========================
+
+/**
+ * Save the current approved topics list to the server
+ * @param {string} [courseId] - Course ID (falls back to selected course)
+ * @returns {Promise<boolean>} Whether save succeeded
+ */
+async function saveApprovedTopics(courseId) {
+    courseId = courseId || getSelectedCourseId();
+    if (!courseId) return false;
+
+    const topics = window.courseApprovedTopics || [];
+
+    try {
+        const response = await authenticatedFetch(`/api/courses/${courseId}/approved-topics`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ topics })
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.message || `HTTP ${response.status}`);
+        }
+
+        return true;
+    } catch (error) {
+        console.error('Error saving approved topics:', error);
+        showErrorMessage(`Failed to save topics: ${error.message}`);
+        return false;
+    }
+}
+
+/**
+ * Add a new approved topic from the input field
+ */
+async function addApprovedTopic() {
+    const input = document.getElementById('new-topic-input');
+    if (!input) return;
+
+    const value = input.value.trim();
+    if (!value) {
+        input.focus();
         return;
     }
 
-    const chips = cleanTopics.map(topic => `
-        <span style="
-            display:inline-flex;
-            align-items:center;
-            padding:8px 12px;
-            border-radius:999px;
-            background:#eef6ff;
-            border:1px solid #cfe2ff;
-            color:#1e3a8a;
-            font-size:0.9em;
-            font-weight:600;
-            line-height:1.2;
-        ">${escapeHtml(topic)}</span>
-    `).join('');
+    const topics = window.courseApprovedTopics || [];
 
-    container.innerHTML = `
-        <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:flex-start;">
-            ${chips}
-        </div>
-        <div style="margin-top:10px; font-size:0.85em; color:#666;">
-            Total topics available to struggle mapping: <strong>${cleanTopics.length}</strong>
-        </div>
-    `;
+    // Check for duplicates (case-insensitive)
+    if (topics.some(t => t.toLowerCase() === value.toLowerCase())) {
+        showErrorMessage('This topic already exists.');
+        input.focus();
+        input.select();
+        return;
+    }
+
+    topics.push(value);
+    window.courseApprovedTopics = topics;
+
+    const courseId = getSelectedCourseId();
+
+    // Optimistically re-render
+    renderApprovedGlobalTopics(topics, courseId);
+    showSuccessMessage(`Added topic "${value}"`);
+
+    // Persist to server
+    const saved = await saveApprovedTopics(courseId);
+    if (!saved) {
+        // Revert on failure
+        topics.pop();
+        window.courseApprovedTopics = topics;
+        renderApprovedGlobalTopics(topics, courseId);
+    } else {
+        // Focus the input for rapid entry
+        const newInput = document.getElementById('new-topic-input');
+        if (newInput) newInput.focus();
+    }
+}
+
+/**
+ * Remove an approved topic by index
+ * @param {number} index - Index in the approved topics array
+ */
+async function removeApprovedTopic(index) {
+    const topics = window.courseApprovedTopics || [];
+    if (index < 0 || index >= topics.length) return;
+
+    const removedTopic = topics[index];
+
+    if (!confirm(`Remove the topic "${removedTopic}"?`)) return;
+
+    topics.splice(index, 1);
+    window.courseApprovedTopics = topics;
+
+    const courseId = getSelectedCourseId();
+
+    // Optimistically re-render
+    renderApprovedGlobalTopics(topics, courseId);
+    showSuccessMessage(`Removed topic "${removedTopic}"`);
+
+    // Persist to server
+    const saved = await saveApprovedTopics(courseId);
+    if (!saved) {
+        // Revert on failure
+        topics.splice(index, 0, removedTopic);
+        window.courseApprovedTopics = topics;
+        renderApprovedGlobalTopics(topics, courseId);
+    }
+}
+
+/**
+ * Start inline editing a topic chip label
+ * Triggered by double-clicking the label text
+ * @param {HTMLElement} labelEl - The .topic-chip-label span
+ */
+function startEditTopic(labelEl) {
+    const chip = labelEl.closest('.approved-topic-chip');
+    if (!chip || chip.classList.contains('editing')) return;
+
+    const index = parseInt(chip.dataset.index, 10);
+    const currentValue = (window.courseApprovedTopics || [])[index];
+    if (currentValue === undefined) return;
+
+    chip.classList.add('editing');
+
+    // Replace label with an input
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'topic-chip-edit-input';
+    input.value = currentValue;
+
+    // Save on Enter, cancel on Escape
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            commitEditTopic(chip, index, input.value.trim());
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            cancelEditTopic(chip, currentValue);
+        }
+    });
+
+    // Save on blur (clicking away)
+    input.addEventListener('blur', () => {
+        // Small delay so that pressing Escape can fire first
+        setTimeout(() => {
+            if (chip.classList.contains('editing')) {
+                commitEditTopic(chip, index, input.value.trim());
+            }
+        }, 100);
+    });
+
+    labelEl.replaceWith(input);
+    input.focus();
+    input.select();
+}
+
+/**
+ * Commit an inline topic edit
+ * @param {HTMLElement} chip - The .approved-topic-chip element
+ * @param {number} index - Index in the topics array
+ * @param {string} newValue - New topic text
+ */
+async function commitEditTopic(chip, index, newValue) {
+    if (!chip.classList.contains('editing')) return;
+    chip.classList.remove('editing');
+
+    const topics = window.courseApprovedTopics || [];
+    const oldValue = topics[index];
+
+    // If empty or unchanged, just restore
+    if (!newValue || newValue === oldValue) {
+        cancelEditTopic(chip, oldValue);
+        return;
+    }
+
+    // Check for duplicates
+    if (topics.some((t, i) => i !== index && t.toLowerCase() === newValue.toLowerCase())) {
+        showErrorMessage('A topic with that name already exists.');
+        cancelEditTopic(chip, oldValue);
+        return;
+    }
+
+    // Apply change
+    topics[index] = newValue;
+    window.courseApprovedTopics = topics;
+
+    const courseId = getSelectedCourseId();
+    renderApprovedGlobalTopics(topics, courseId);
+    showSuccessMessage(`Renamed "${oldValue}" to "${newValue}"`);
+
+    // Persist
+    const saved = await saveApprovedTopics(courseId);
+    if (!saved) {
+        topics[index] = oldValue;
+        window.courseApprovedTopics = topics;
+        renderApprovedGlobalTopics(topics, courseId);
+    }
+}
+
+/**
+ * Cancel an inline edit and restore the original label
+ * @param {HTMLElement} chip - The .approved-topic-chip element
+ * @param {string} originalValue - Original topic text to restore
+ */
+function cancelEditTopic(chip, originalValue) {
+    chip.classList.remove('editing');
+    const input = chip.querySelector('.topic-chip-edit-input');
+    if (input) {
+        const label = document.createElement('span');
+        label.className = 'topic-chip-label';
+        label.setAttribute('ondblclick', 'startEditTopic(this)');
+        label.textContent = originalValue;
+        input.replaceWith(label);
+    }
+}
+
+/**
+ * Handle keydown in the "add new topic" input
+ * @param {KeyboardEvent} event
+ */
+function handleNewTopicKeydown(event) {
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        addApprovedTopic();
+    }
 }
 
 /**
