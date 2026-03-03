@@ -324,6 +324,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    // Maximum number of regular-chat messages (user + bot combined) before session is capped
+    const MAX_MESSAGES = 40;
+
     /**
      * Check if the 15-message warning has already been shown
      * @returns {boolean} True if warning was already shown
@@ -345,6 +348,79 @@ document.addEventListener('DOMContentLoaded', async () => {
         } catch (error) {
             console.error('Error checking if warning was shown:', error);
             return false;
+        }
+    }
+
+    /**
+     * Check if the 25-message warning has already been shown
+     * @returns {boolean} True if warning was already shown
+     */
+    function hasWarning25BeenShown() {
+        try {
+            const chatData = getCurrentChatData();
+            if (!chatData || !chatData.messages || chatData.messages.length === 0) {
+                return false;
+            }
+            const warningText = 'You\'ve reached 25 messages. We recommend starting a new session';
+            return chatData.messages.some(msg =>
+                msg.type === 'bot' &&
+                msg.content &&
+                msg.content.includes(warningText.substring(0, 50))
+            );
+        } catch (error) {
+            console.error('Error checking if 25-message warning was shown:', error);
+            return false;
+        }
+    }
+
+    /**
+     * Check if the 35-message warning has already been shown
+     * @returns {boolean} True if warning was already shown
+     */
+    function hasWarning35BeenShown() {
+        try {
+            const chatData = getCurrentChatData();
+            if (!chatData || !chatData.messages || chatData.messages.length === 0) {
+                return false;
+            }
+            const warningText = 'In 5 messages, this session will automatically close';
+            return chatData.messages.some(msg =>
+                msg.type === 'bot' &&
+                msg.content &&
+                msg.content.includes(warningText.substring(0, 50))
+            );
+        } catch (error) {
+            console.error('Error checking if 35-message warning was shown:', error);
+            return false;
+        }
+    }
+
+    /**
+     * Check if the session has been capped (40 messages reached)
+     * @returns {boolean} True if session is capped
+     */
+    function isSessionCapped() {
+        const count = countMessagesFromFirstStudent();
+        return count >= MAX_MESSAGES;
+    }
+
+    /**
+     * Disable chat input because the session has reached the message cap
+     */
+    function disableChatInputForCap() {
+        const chatInput = document.getElementById('chat-input');
+        if (chatInput) {
+            chatInput.disabled = true;
+            chatInput.placeholder = 'This session has reached the 40-message limit. Please start a new session.';
+            chatInput.classList.add('disabled-input');
+            chatInput.style.cursor = 'not-allowed';
+        }
+        const sendButton = document.getElementById('send-button');
+        if (sendButton) {
+            sendButton.disabled = true;
+            sendButton.classList.add('disabled-button');
+            sendButton.style.cursor = 'not-allowed';
+            sendButton.style.opacity = '0.5';
         }
     }
 
@@ -622,43 +698,60 @@ document.addEventListener('DOMContentLoaded', async () => {
             const message = chatInput.value.trim();
             if (!message) return;
 
-            // Check if we need to show the 15-message warning BEFORE adding the user message
-            // We want to show the warning before the bot responds to the student's 14th message
-            // If count is 13, after adding user message = 14, bot response = 15 (show warning)
-            // If count is 14, after adding user message = 15, bot response = 16 (we've passed the window)
-            // So we check for count === 13 OR count === 14 (to catch edge cases)
+            // Check message count BEFORE adding the user message
             const messageCountBefore = countMessagesFromFirstStudent();
-            const warningAlreadyShown = hasWarningBeenShown();
-            const shouldShowWarning = !warningAlreadyShown && (messageCountBefore === 13 || messageCountBefore === 14);
 
-
-
-            // Check if this is the 15th message (count=14) to trigger summary check on backend
-            // The student is reacting to the warning shown at the end of message 14 (count=13)
-            const shouldCheckSummaryAttempt = !warningAlreadyShown && messageCountBefore === 14;
-            if (shouldCheckSummaryAttempt) {
-
+            // Block input if session is already capped
+            if (messageCountBefore >= MAX_MESSAGES) {
+                disableChatInputForCap();
+                return;
             }
 
-            // Add user message to chat
+            // Determine which warnings to show
+            const warningAlreadyShown = hasWarningBeenShown();
+            const shouldShowWarning15 = !warningAlreadyShown && (messageCountBefore === 13 || messageCountBefore === 14);
+
+            const warning25AlreadyShown = hasWarning25BeenShown();
+            const shouldShowWarning25 = !warning25AlreadyShown && (messageCountBefore === 23 || messageCountBefore === 24);
+
+            const warning35AlreadyShown = hasWarning35BeenShown();
+            const shouldShowWarning35 = !warning35AlreadyShown && (messageCountBefore === 33 || messageCountBefore === 34);
+
+            // Check if this is the 15th message to trigger summary check on backend
+            const shouldCheckSummaryAttempt = !warningAlreadyShown && messageCountBefore === 14;
+
             // Add user message to chat
             addMessage(message, 'user');
 
             // Clear input
             chatInput.value = '';
 
-            // Show warning message if needed (before the bot responds)
-            // Since autoSaveMessage is synchronous, we can add the warning immediately
-            if (shouldShowWarning) {
+            const systemSource = {
+                source: 'System',
+                description: 'System notification',
+                unitName: null,
+                documentType: null
+            };
 
-                // Add the warning message just like a normal bot response, with source attribution
-                addMessage('Please be aware that after 15 messages, the quality of the responses might be degraded. <a href="#" class="chat-limit-link">See why?</a>', 'bot', true, false, {
-                    source: 'System',
-                    description: 'System notification',
-                    unitName: null,
-                    documentType: null
-                }, true);
+            // Show 15-message warning if needed
+            if (shouldShowWarning15) {
+                addMessage('Please be aware that after 15 messages, the quality of the responses might be degraded. <a href="#" class="chat-limit-link">See why?</a>', 'bot', true, false, systemSource, true);
             }
+
+            // Show 25-message warning if needed
+            if (shouldShowWarning25) {
+                addMessage('You\'ve reached 25 messages. We recommend starting a new session for better response quality. <a href="#" class="chat-limit-link">See why?</a>', 'bot', true, false, systemSource, true);
+            }
+
+            // Show 35-message warning if needed
+            if (shouldShowWarning35) {
+                addMessage('In 5 messages, this session will automatically close. Please wrap up your current discussion or start a new session. <a href="#" class="chat-limit-link">See why?</a>', 'bot', true, false, systemSource, true);
+            }
+
+            // Check if the bot response would hit or exceed the cap
+            // messageCountBefore + 1 (user msg) + warnings + 1 (bot response)
+            const currentCountAfterUser = countMessagesFromFirstStudent();
+            const willHitCap = (currentCountAfterUser + 1) >= MAX_MESSAGES; // +1 for the upcoming bot response
 
             // Show typing indicator
             showTypingIndicator();
@@ -754,9 +847,19 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }
                 }
 
+                // If this bot response will hit the cap, append the session-closed notice
+                if (willHitCap) {
+                    response.message += '\n\n----------------\nThis chat session has been exhausted. Please start a new session to continue.';
+                }
+
                 // Only show "I understand X now" button when directive mode is active for this response
                 const showStruggleReset = response.struggleDebug?.directiveModeActive ? lastActiveStruggleTopic : null;
                 addMessage(response.message, 'bot', true, false, response.sourceAttribution, false, showStruggleReset, detectedTopic);
+
+                // Disable chat input if session is now capped
+                if (willHitCap) {
+                    disableChatInputForCap();
+                }
 
             } catch (error) {
                 // Remove typing indicator
@@ -5809,10 +5912,16 @@ function loadChatData(chatData) {
                                           window.studentAnswers && 
                                           window.studentAnswers.length < window.currentCalibrationQuestions.length;
             
+            // Check if this loaded session has hit the message cap
+            const regularChatMsgCount = chatData.messages.filter(msg =>
+                (msg.type === 'user' || msg.type === 'bot') && msg.messageType === 'regular-chat'
+            ).length;
+            const isSessionAtCap = regularChatMsgCount >= 40;
+
             if (!isAssessmentInProgress) {
 
                 enableChatInput();
-                
+
                 // Force show input container regardless of enableChatInput logic
                 const chatInputContainer = document.querySelector('.chat-input-container');
                 if (chatInputContainer) {
@@ -5833,11 +5942,29 @@ function loadChatData(chatData) {
                         sendButton.style.opacity = '1';
                     }
                 }
-                
+
                 // Also ensure mode toggle is visible if not in assessment
                 const modeToggleContainer = document.querySelector('.mode-toggle-container');
                 if (modeToggleContainer) {
                     modeToggleContainer.style.display = 'flex';
+                }
+
+                // If session is capped, disable chat input after enabling it
+                if (isSessionAtCap) {
+                    const chatInput = document.getElementById('chat-input');
+                    if (chatInput) {
+                        chatInput.disabled = true;
+                        chatInput.placeholder = 'This session has reached the 40-message limit. Please start a new session.';
+                        chatInput.classList.add('disabled-input');
+                        chatInput.style.cursor = 'not-allowed';
+                    }
+                    const sendButton = document.getElementById('send-button');
+                    if (sendButton) {
+                        sendButton.disabled = true;
+                        sendButton.classList.add('disabled-button');
+                        sendButton.style.cursor = 'not-allowed';
+                        sendButton.style.opacity = '0.5';
+                    }
                 }
             } else {
 
