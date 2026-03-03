@@ -647,8 +647,8 @@ function createSessionElement(session) {
     const sessionDiv = document.createElement('div');
     sessionDiv.className = 'session-item';
     
-    const savedDate = new Date(session.savedAt).toLocaleDateString();
-    const savedTime = new Date(session.savedAt).toLocaleTimeString();
+    const savedDate = session.savedAt ? new Date(session.savedAt).toLocaleDateString() : 'Unknown date';
+    const savedTime = session.savedAt ? new Date(session.savedAt).toLocaleTimeString() : 'Unknown time';
     
     sessionDiv.innerHTML = `
         <div class="session-info">

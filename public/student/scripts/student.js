@@ -754,7 +754,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }
                 }
 
-                addMessage(response.message, 'bot', true, false, response.sourceAttribution, false, lastActiveStruggleTopic, detectedTopic);
+                // Only show "I understand X now" button when directive mode is active for this response
+                const showStruggleReset = response.struggleDebug?.directiveModeActive ? lastActiveStruggleTopic : null;
+                addMessage(response.message, 'bot', true, false, response.sourceAttribution, false, showStruggleReset, detectedTopic);
 
             } catch (error) {
                 // Remove typing indicator

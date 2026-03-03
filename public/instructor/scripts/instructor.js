@@ -366,6 +366,338 @@ function showNotification(message, type = 'info') {
 let uploadedFile = null;
 let currentWeek = null;
 let currentContentType = null;
+let topicReviewResolve = null;
+
+function normalizeTopicLabel(topic) {
+    if (typeof topic !== 'string') return '';
+    return topic.replace(/\s+/g, ' ').trim();
+}
+
+function dedupeTopics(topics = []) {
+    const seen = new Set();
+    const output = [];
+
+    topics.forEach((topic) => {
+        const normalized = normalizeTopicLabel(topic);
+        if (!normalized) return;
+        const key = normalized.toLowerCase();
+        if (seen.has(key)) return;
+        seen.add(key);
+        output.push(normalized);
+    });
+
+    return output;
+}
+
+function setCourseTopicsGlobal(courseId, topics) {
+    if (!courseId) return;
+    const cleanTopics = dedupeTopics(topics);
+    window.courseApprovedTopicsByCourse = window.courseApprovedTopicsByCourse || {};
+    window.courseApprovedTopicsByCourse[courseId] = cleanTopics;
+    window.courseApprovedTopics = cleanTopics;
+}
+
+async function fetchCourseApprovedTopics(courseId) {
+    const response = await fetch(`/api/courses/${courseId}/approved-topics`);
+    if (!response.ok) {
+        throw new Error(`Failed to fetch approved topics: ${response.status}`);
+    }
+
+    const result = await response.json();
+    const topics = dedupeTopics(result?.data?.topics || []);
+    setCourseTopicsGlobal(courseId, topics);
+    return topics;
+}
+
+async function extractTopicsForUploadedDocument(courseId, documentId) {
+    if (!documentId) return [];
+
+    const response = await fetch(`/api/courses/${courseId}/extract-topics`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ documentId, maxTopics: 8 })
+    });
+
+    if (!response.ok) {
+        throw new Error(`Failed to extract topics: ${response.status}`);
+    }
+
+    const result = await response.json();
+    return dedupeTopics(result?.data?.topics || []);
+}
+
+async function saveCourseApprovedTopics(courseId, topics) {
+    const response = await fetch(`/api/courses/${courseId}/approved-topics`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topics: dedupeTopics(topics) })
+    });
+
+    if (!response.ok) {
+        throw new Error(`Failed to save approved topics: ${response.status}`);
+    }
+
+    const result = await response.json();
+    const savedTopics = dedupeTopics(result?.data?.topics || []);
+    setCourseTopicsGlobal(courseId, savedTopics);
+    return savedTopics;
+}
+
+function ensureTopicReviewModal() {
+    let modal = document.getElementById('topic-review-modal');
+    if (modal) return modal;
+
+    if (!document.getElementById('topic-review-style')) {
+        const style = document.createElement('style');
+        style.id = 'topic-review-style';
+        style.textContent = `
+            .topic-review-context {
+                margin: 0 0 10px;
+                color: #333;
+                font-size: 14px;
+            }
+            .topic-review-hint {
+                margin: 0 0 12px;
+                color: #666;
+                font-size: 13px;
+            }
+            .topic-review-list {
+                display: flex;
+                flex-direction: column;
+                gap: 8px;
+                max-height: 280px;
+                overflow-y: auto;
+                margin-bottom: 10px;
+            }
+            .topic-review-item {
+                display: grid;
+                grid-template-columns: 1fr auto;
+                gap: 8px;
+                align-items: center;
+            }
+            .topic-review-input {
+                width: 100%;
+                padding: 10px;
+                border: 1px solid #d0d7de;
+                border-radius: 6px;
+                font-size: 14px;
+            }
+            .topic-review-remove {
+                border: 1px solid #d0d7de;
+                background: #fff;
+                color: #a61b1b;
+                border-radius: 6px;
+                padding: 8px 10px;
+                cursor: pointer;
+                font-size: 12px;
+            }
+            .topic-review-add-row {
+                display: grid;
+                grid-template-columns: 1fr auto;
+                gap: 8px;
+                margin-top: 6px;
+            }
+            .topic-review-empty {
+                padding: 10px;
+                border: 1px dashed #c7ced6;
+                border-radius: 6px;
+                color: #666;
+                font-size: 13px;
+                text-align: center;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    modal = document.createElement('div');
+    modal.id = 'topic-review-modal';
+    modal.className = 'modal';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Review Detected Topics</h2>
+                <button class="modal-close" id="topic-review-close-btn">×</button>
+            </div>
+            <div class="modal-body">
+                <p class="topic-review-context" id="topic-review-context"></p>
+                <p class="topic-review-hint">These are topics found in this upload only. Edit, add, or remove before saving. Existing course topics are not affected.</p>
+                <div class="topic-review-list" id="topic-review-list"></div>
+                <div class="topic-review-add-row">
+                    <input id="topic-review-new-input" class="topic-review-input" type="text" placeholder="Add a topic (e.g., Enzyme Kinetics)" />
+                    <button class="btn-secondary" id="topic-review-add-btn">Add Topic</button>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="modal-actions">
+                    <button class="btn-secondary" id="topic-review-cancel-btn">Cancel</button>
+                    <button class="btn-primary" id="topic-review-save-btn">Save Topics</button>
+                </div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+
+    const closeWithResult = (topics) => {
+        modal.classList.remove('show');
+        modal.style.display = 'none';
+        const resolver = topicReviewResolve;
+        topicReviewResolve = null;
+        if (resolver) resolver(topics);
+    };
+
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal) closeWithResult(null);
+    });
+
+    modal.querySelector('#topic-review-close-btn').addEventListener('click', () => closeWithResult(null));
+    modal.querySelector('#topic-review-cancel-btn').addEventListener('click', () => closeWithResult(null));
+
+    modal.querySelector('#topic-review-add-btn').addEventListener('click', () => {
+        const input = modal.querySelector('#topic-review-new-input');
+        const value = normalizeTopicLabel(input.value);
+        if (!value) return;
+        addTopicReviewRow(value);
+        input.value = '';
+        input.focus();
+    });
+
+    modal.querySelector('#topic-review-save-btn').addEventListener('click', () => {
+        closeWithResult(collectTopicReviewRows());
+    });
+
+    return modal;
+}
+
+function addTopicReviewRow(topic) {
+    const modal = ensureTopicReviewModal();
+    const list = modal.querySelector('#topic-review-list');
+
+    // Remove empty placeholder when first real topic is added.
+    const emptyState = list.querySelector('.topic-review-empty');
+    if (emptyState) emptyState.remove();
+
+    const row = document.createElement('div');
+    row.className = 'topic-review-item';
+    const input = document.createElement('input');
+    input.className = 'topic-review-input';
+    input.type = 'text';
+    input.value = topic;
+
+    const removeButton = document.createElement('button');
+    removeButton.className = 'topic-review-remove';
+    removeButton.type = 'button';
+    removeButton.textContent = 'Remove';
+
+    row.appendChild(input);
+    row.appendChild(removeButton);
+
+    removeButton.addEventListener('click', () => {
+        row.remove();
+        if (!list.querySelector('.topic-review-item')) {
+            list.innerHTML = '<div class="topic-review-empty">No topics yet. Add at least one topic to track struggle mapping.</div>';
+        }
+    });
+
+    list.appendChild(row);
+}
+
+function collectTopicReviewRows() {
+    const modal = ensureTopicReviewModal();
+    const rows = Array.from(modal.querySelectorAll('.topic-review-item .topic-review-input'));
+    return dedupeTopics(rows.map((input) => input.value));
+}
+
+function populateTopicReviewRows(topics) {
+    const modal = ensureTopicReviewModal();
+    const list = modal.querySelector('#topic-review-list');
+    list.innerHTML = '';
+
+    const cleanTopics = dedupeTopics(topics);
+    if (cleanTopics.length === 0) {
+        list.innerHTML = '<div class="topic-review-empty">No new topics detected from this upload. You can add topics manually below.</div>';
+        return;
+    }
+
+    cleanTopics.forEach((topic) => addTopicReviewRow(topic));
+}
+
+function openTopicReviewModal(courseId, sourceName, existingTopics, suggestedTopics) {
+    const modal = ensureTopicReviewModal();
+
+    // Only show NEW topics that don't already exist in the course list
+    const existingSet = new Set((existingTopics || []).map(t => t.toLowerCase().trim()));
+    const newOnlyTopics = dedupeTopics(
+        (suggestedTopics || []).filter(t => !existingSet.has(t.toLowerCase().trim()))
+    );
+
+    const contextText = sourceName
+        ? `New topics detected from: ${sourceName}`
+        : 'New topics detected from the uploaded content.';
+
+    modal.querySelector('#topic-review-context').textContent = contextText;
+    modal.querySelector('#topic-review-new-input').value = '';
+    populateTopicReviewRows(newOnlyTopics);
+
+    // Show a read-only count of existing topics so the instructor has context
+    let existingNote = modal.querySelector('#topic-review-existing-note');
+    if (!existingNote) {
+        existingNote = document.createElement('p');
+        existingNote.id = 'topic-review-existing-note';
+        existingNote.style.cssText = 'margin:0 0 10px; color:#666; font-size:12px; font-style:italic;';
+        const hint = modal.querySelector('.topic-review-hint');
+        if (hint) hint.insertAdjacentElement('afterend', existingNote);
+    }
+    if (existingTopics && existingTopics.length > 0) {
+        existingNote.textContent = `${existingTopics.length} existing topic${existingTopics.length === 1 ? '' : 's'} already saved for this course (not shown).`;
+        existingNote.style.display = '';
+    } else {
+        existingNote.style.display = 'none';
+    }
+
+    modal.style.display = '';
+    modal.classList.add('show');
+
+    return new Promise((resolve) => {
+        topicReviewResolve = resolve;
+    });
+}
+
+async function runTopicReviewAfterUpload(courseId, documentId, sourceName) {
+    if (!courseId) return;
+
+    let existingTopics = [];
+    let suggestedTopics = [];
+
+    try {
+        existingTopics = await fetchCourseApprovedTopics(courseId);
+    } catch (error) {
+        console.warn('Could not load existing approved topics:', error);
+    }
+
+    try {
+        suggestedTopics = await extractTopicsForUploadedDocument(courseId, documentId);
+    } catch (error) {
+        console.warn('Could not extract topics from uploaded document:', error);
+    }
+
+    // Modal only shows NEW topics from this upload (existing are hidden)
+    const reviewedNewTopics = await openTopicReviewModal(courseId, sourceName, existingTopics, suggestedTopics);
+    if (!reviewedNewTopics) {
+        showNotification('Topic review skipped. Existing course topics were unchanged.', 'info');
+        return;
+    }
+
+    // Merge: keep all existing topics + append the reviewed new ones
+    const mergedTopics = dedupeTopics([...existingTopics, ...reviewedNewTopics]);
+
+    const savedTopics = await saveCourseApprovedTopics(courseId, mergedTopics);
+    const addedCount = savedTopics.length - existingTopics.length;
+    if (addedCount > 0) {
+        showNotification(`Added ${addedCount} new topic${addedCount === 1 ? '' : 's'} (${savedTopics.length} total).`, 'success');
+    } else {
+        showNotification('No new topics were added.', 'info');
+    }
+}
 
 /**
  * Open the upload modal for a specific week and content type
@@ -443,37 +775,43 @@ function closeUploadModal() {
  */
 function resetModal() {
     uploadedFile = null;
-    
+    pendingTopicReviewData = null;
+
     // Reset file input and info
     const fileInput = document.getElementById('file-input');
     const fileInfo = document.getElementById('file-info');
     const textInput = document.getElementById('text-input');
     const materialName = document.getElementById('material-name');
     const uploadFileBtn = document.querySelector('.upload-file-btn span:last-child');
-    
+
     if (fileInput) fileInput.value = '';
     if (fileInfo) fileInfo.style.display = 'none';
     if (textInput) textInput.value = '';
     if (materialName) materialName.value = '';
-    
+
     // Reset upload file button text to default
     if (uploadFileBtn) {
         uploadFileBtn.textContent = 'Upload Content';
     }
-    
-    // Reset upload button text
+
+    // Reset upload button text and show it; hide Save Topics button
     const uploadBtn = document.getElementById('upload-btn');
+    const saveBtn = document.getElementById('save-topics-btn');
     if (uploadBtn) {
         uploadBtn.textContent = 'Upload';
         uploadBtn.disabled = false;
+        uploadBtn.style.display = '';
     }
-    
-    // Hide loading indicator and show upload section
+    if (saveBtn) saveBtn.style.display = 'none';
+
+    // Hide loading indicator and show upload section; hide topic review section
     const loadingIndicator = document.getElementById('upload-loading-indicator');
     const uploadSection = document.getElementById('upload-section');
+    const topicSection = document.getElementById('topic-review-section');
     if (loadingIndicator) loadingIndicator.style.display = 'none';
     if (uploadSection) uploadSection.style.display = 'block';
-    
+    if (topicSection) topicSection.style.display = 'none';
+
     // Reset to selection view
     resetToSelection();
 }
@@ -504,6 +842,185 @@ function resetToSelection() {
     document.getElementById('file-upload-section').style.display = 'none';
     document.getElementById('text-input-section').style.display = 'none';
 }
+
+// --- Inline Topic Review (inside upload modal) ---
+
+// State for pending topic save after inline review
+let pendingTopicReviewData = null;
+
+function ensureTopicReviewStyles() {
+    if (document.getElementById('topic-review-style')) return;
+    const style = document.createElement('style');
+    style.id = 'topic-review-style';
+    style.textContent = `
+        .topic-review-context { margin: 0 0 10px; color: #333; font-size: 14px; }
+        .topic-review-hint { margin: 0 0 12px; color: #666; font-size: 13px; }
+        .topic-review-list { display: flex; flex-direction: column; gap: 8px; max-height: 280px; overflow-y: auto; margin-bottom: 10px; }
+        .topic-review-item { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }
+        .topic-review-input { width: 100%; padding: 10px; border: 1px solid #d0d7de; border-radius: 6px; font-size: 14px; }
+        .topic-review-remove { border: 1px solid #d0d7de; background: #fff; color: #a61b1b; border-radius: 6px; padding: 8px 10px; cursor: pointer; font-size: 12px; }
+        .topic-review-add-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin-top: 6px; }
+        .topic-review-empty { padding: 10px; border: 1px dashed #c7ced6; border-radius: 6px; color: #666; font-size: 13px; text-align: center; }
+    `;
+    document.head.appendChild(style);
+}
+
+function addInlineTopicRow(topic) {
+    const list = document.getElementById('upload-topic-review-list');
+    if (!list) return;
+
+    const emptyState = list.querySelector('.topic-review-empty');
+    if (emptyState) emptyState.remove();
+
+    const row = document.createElement('div');
+    row.className = 'topic-review-item';
+    const input = document.createElement('input');
+    input.className = 'topic-review-input';
+    input.type = 'text';
+    input.value = topic;
+
+    const removeButton = document.createElement('button');
+    removeButton.className = 'topic-review-remove';
+    removeButton.type = 'button';
+    removeButton.textContent = 'Remove';
+
+    row.appendChild(input);
+    row.appendChild(removeButton);
+
+    removeButton.addEventListener('click', () => {
+        row.remove();
+        if (!list.querySelector('.topic-review-item')) {
+            list.innerHTML = '<div class="topic-review-empty">No topics yet. Add at least one topic to track struggle mapping.</div>';
+        }
+    });
+
+    list.appendChild(row);
+}
+
+function collectInlineTopicRows() {
+    const rows = Array.from(document.querySelectorAll('#upload-topic-review-list .topic-review-item .topic-review-input'));
+    return dedupeTopics(rows.map((input) => input.value));
+}
+
+function showInlineTopicReview(courseId, sourceName, existingTopics, suggestedTopics) {
+    ensureTopicReviewStyles();
+
+    // Filter to only new topics
+    const existingSet = new Set((existingTopics || []).map(t => t.toLowerCase().trim()));
+    const newOnlyTopics = dedupeTopics(
+        (suggestedTopics || []).filter(t => !existingSet.has(t.toLowerCase().trim()))
+    );
+
+    // Store data for when Save is clicked
+    pendingTopicReviewData = { courseId, existingTopics };
+
+    // Update modal title
+    const modalTitle = document.getElementById('modal-title');
+    if (modalTitle) modalTitle.textContent = 'Review Detected Topics';
+
+    // Hide upload section and loading, show topic review section
+    const uploadSection = document.getElementById('upload-section');
+    const loadingIndicator = document.getElementById('upload-loading-indicator');
+    const topicSection = document.getElementById('topic-review-section');
+    if (uploadSection) uploadSection.style.display = 'none';
+    if (loadingIndicator) loadingIndicator.style.display = 'none';
+    if (topicSection) topicSection.style.display = 'block';
+
+    // Set context text
+    const contextEl = document.getElementById('upload-topic-review-context');
+    if (contextEl) {
+        contextEl.textContent = sourceName
+            ? `New topics detected from: ${sourceName}`
+            : 'New topics detected from the uploaded content.';
+    }
+
+    // Show existing topic count
+    const existingNote = document.getElementById('upload-topic-existing-note');
+    if (existingNote) {
+        if (existingTopics && existingTopics.length > 0) {
+            existingNote.textContent = `${existingTopics.length} existing topic${existingTopics.length === 1 ? '' : 's'} already saved for this course (not shown).`;
+            existingNote.style.display = '';
+        } else {
+            existingNote.style.display = 'none';
+        }
+    }
+
+    // Populate topic rows
+    const list = document.getElementById('upload-topic-review-list');
+    if (list) {
+        list.innerHTML = '';
+        const cleanTopics = dedupeTopics(newOnlyTopics);
+        if (cleanTopics.length === 0) {
+            list.innerHTML = '<div class="topic-review-empty">No new topics detected from this upload. You can add topics manually below.</div>';
+        } else {
+            cleanTopics.forEach(topic => addInlineTopicRow(topic));
+        }
+    }
+
+    // Reset the new-topic input
+    const newInput = document.getElementById('upload-topic-new-input');
+    if (newInput) newInput.value = '';
+
+    // Switch footer buttons: hide Upload, show Save Topics
+    const uploadBtn = document.getElementById('upload-btn');
+    const saveBtn = document.getElementById('save-topics-btn');
+    if (uploadBtn) uploadBtn.style.display = 'none';
+    if (saveBtn) saveBtn.style.display = '';
+
+    // Wire up the Add Topic button
+    const addBtn = document.getElementById('upload-topic-add-btn');
+    if (addBtn) {
+        // Remove old listeners by cloning
+        const newAddBtn = addBtn.cloneNode(true);
+        addBtn.parentNode.replaceChild(newAddBtn, addBtn);
+        newAddBtn.addEventListener('click', () => {
+            const input = document.getElementById('upload-topic-new-input');
+            const value = normalizeTopicLabel(input.value);
+            if (!value) return;
+            addInlineTopicRow(value);
+            input.value = '';
+            input.focus();
+        });
+    }
+
+    // Re-enable modal close button
+    const modalCloseBtn = document.querySelector('#upload-modal .modal-close');
+    if (modalCloseBtn) {
+        modalCloseBtn.style.pointerEvents = 'auto';
+        modalCloseBtn.style.opacity = '1';
+    }
+}
+
+async function handleSaveTopicsFromModal() {
+    if (!pendingTopicReviewData) {
+        closeUploadModal();
+        return;
+    }
+
+    const { courseId, existingTopics } = pendingTopicReviewData;
+    const reviewedNewTopics = collectInlineTopicRows();
+
+    // Merge existing + reviewed new topics
+    const mergedTopics = dedupeTopics([...(existingTopics || []), ...reviewedNewTopics]);
+
+    try {
+        const savedTopics = await saveCourseApprovedTopics(courseId, mergedTopics);
+        const addedCount = savedTopics.length - (existingTopics || []).length;
+        if (addedCount > 0) {
+            showNotification(`Added ${addedCount} new topic${addedCount === 1 ? '' : 's'} (${savedTopics.length} total).`, 'success');
+        } else {
+            showNotification('No new topics were added.', 'info');
+        }
+    } catch (err) {
+        console.error('Error saving topics:', err);
+        showNotification('Could not save topics. Please try again.', 'error');
+    }
+
+    pendingTopicReviewData = null;
+    closeUploadModal();
+}
+
+// --- End Inline Topic Review ---
 
 /**
  * Trigger file input when upload button is clicked
@@ -675,30 +1192,44 @@ async function handleUpload() {
         const uploadStatus = uploadResult?.data?.qdrantProcessed ? 'processed' : 'uploaded';
         addContentToWeek(currentWeek, fileName, `Uploaded successfully - ${uploadResult?.data?.filename || fileName}`, documentId, uploadStatus, currentContentType);
         
-        // Hide loading indicator before closing modal
-        if (loadingIndicator) loadingIndicator.style.display = 'none';
-        if (uploadSection) uploadSection.style.display = 'block';
-        
-        // Re-enable modal close button
-        if (modalCloseBtn) modalCloseBtn.style.pointerEvents = 'auto';
-        if (modalCloseBtn) modalCloseBtn.style.opacity = '1';
-        
-        // Close modal and show success
-        closeUploadModal();
         showNotification(uploadResult?.message || 'Content uploaded successfully!', 'success');
-        
+
+        // Transition to inline topic review within the same modal
+        try {
+            let existingTopics = [];
+            let suggestedTopics = [];
+
+            try {
+                existingTopics = await fetchCourseApprovedTopics(courseId);
+            } catch (e) {
+                console.warn('Could not load existing approved topics:', e);
+            }
+
+            try {
+                suggestedTopics = await extractTopicsForUploadedDocument(courseId, documentId);
+            } catch (e) {
+                console.warn('Could not extract topics from uploaded document:', e);
+            }
+
+            showInlineTopicReview(courseId, fileName, existingTopics, suggestedTopics);
+        } catch (topicError) {
+            console.error('Error during topic review flow:', topicError);
+            showNotification('Upload succeeded, but topic review could not be completed.', 'warning');
+            closeUploadModal();
+        }
+
     } catch (error) {
         console.error('Error uploading content:', error);
         showNotification(`Error uploading content: ${error.message}`, 'error');
-        
+
         // Hide loading indicator and show upload section on error
         if (loadingIndicator) loadingIndicator.style.display = 'none';
         if (uploadSection) uploadSection.style.display = 'block';
-        
+
         // Re-enable modal close button
         if (modalCloseBtn) modalCloseBtn.style.pointerEvents = 'auto';
         if (modalCloseBtn) modalCloseBtn.style.opacity = '1';
-        
+
         // Re-enable upload button
         uploadBtn.textContent = 'Upload';
         uploadBtn.disabled = false;

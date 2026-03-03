@@ -1123,3 +1123,140 @@
     visibility: visible;
     opacity: 1;
 }
+
+/* ===========================
+   EDITABLE APPROVED TOPICS
+   =========================== */
+.approved-topics-chips-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: flex-start;
+    min-height: 40px;
+}
+
+.approved-topic-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 12px;
+    border-radius: 999px;
+    background: #eef6ff;
+    border: 1px solid #cfe2ff;
+    color: #1e3a8a;
+    font-size: 0.9em;
+    font-weight: 600;
+    line-height: 1.2;
+    transition: background 0.15s, box-shadow 0.15s;
+}
+
+.approved-topic-chip:hover {
+    background: #dceeff;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+
+.approved-topic-chip.editing {
+    background: #fff;
+    border-color: #4a90d9;
+    box-shadow: 0 0 0 2px rgba(74,144,217,0.25);
+}
+
+.topic-chip-label {
+    cursor: default;
+    user-select: none;
+}
+
+.topic-chip-remove {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: none;
+    color: #1e3a8a;
+    font-size: 1.15em;
+    font-weight: 700;
+    cursor: pointer;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    padding: 0;
+    line-height: 1;
+    opacity: 0.45;
+    transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+
+.topic-chip-remove:hover {
+    opacity: 1;
+    background: #dc3545;
+    color: #fff;
+}
+
+.topic-chip-edit-input {
+    border: none;
+    outline: none;
+    background: transparent;
+    font-size: 0.9em;
+    font-weight: 600;
+    color: #1e3a8a;
+    width: 140px;
+    padding: 0;
+    line-height: 1.2;
+    font-family: inherit;
+}
+
+/* Add row */
+.approved-topics-add-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 14px;
+    align-items: center;
+}
+
+.approved-topic-input {
+    flex: 1;
+    max-width: 360px;
+    padding: 8px 14px;
+    border: 1px solid #d0d5dd;
+    border-radius: 8px;
+    font-size: 0.9em;
+    font-family: inherit;
+    outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.approved-topic-input:focus {
+    border-color: #4a90d9;
+    box-shadow: 0 0 0 2px rgba(74,144,217,0.2);
+}
+
+.approved-topic-add-btn {
+    padding: 8px 16px;
+    border-radius: 8px;
+    border: 1px solid #4a90d9;
+    background: #4a90d9;
+    color: #fff;
+    font-size: 0.9em;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.15s;
+}
+
+.approved-topic-add-btn:hover {
+    background: #3a7bc8;
+}
+
+/* Footer */
+.approved-topics-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 10px;
+    font-size: 0.85em;
+    color: #666;
+}
+
+.approved-topics-hint {
+    font-style: italic;
+    opacity: 0.7;
+}

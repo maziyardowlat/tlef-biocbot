@@ -287,7 +287,7 @@ function displayTAs() {
                     <p><strong>Username:</strong> ${ta.username}</p>
                     <p><strong>Email:</strong> ${ta.email || 'Not provided'}</p>
                     <p><strong>Course:</strong> ${ta.courseName || 'Unknown'}</p>
-                    <p><strong>Joined:</strong> ${new Date(ta.createdAt).toLocaleDateString()}</p>
+                    <p><strong>Joined:</strong> ${ta.createdAt ? new Date(ta.createdAt).toLocaleDateString() : 'Unknown'}</p>
                 </div>
                 
                 <!-- Permission Controls -->

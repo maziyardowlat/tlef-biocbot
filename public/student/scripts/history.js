@@ -436,7 +436,7 @@ async function loadChatHistory() {
             
             return {
                 id: session.sessionId,
-                title: session.title || `Chat Session ${new Date(session.savedAt).toLocaleDateString()}`,
+                title: session.title || `Chat Session ${session.savedAt ? new Date(session.savedAt).toLocaleDateString() : 'Unknown date'}`,
                 preview: generateChatPreview(session.chatData),
                 unitName: session.unitName || 'Unknown Unit',
                 messageCount: session.messageCount || 0,

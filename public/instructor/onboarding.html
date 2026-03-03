@@ -393,17 +393,29 @@
                         <textarea id="text-input" rows="8" placeholder="Enter or paste your content directly here..."></textarea>
                     </div>
                 </div>
+
+                <!-- Topic Review Section (shown after upload succeeds) -->
+                <div id="topic-review-section" style="display: none;">
+                    <p class="topic-review-context" id="upload-topic-review-context"></p>
+                    <p class="topic-review-hint">Edit, add, or remove topics before saving this course-level list.</p>
+                    <div class="topic-review-list" id="upload-topic-review-list"></div>
+                    <div class="topic-review-add-row">
+                        <input id="upload-topic-new-input" class="topic-review-input" type="text" placeholder="Add a topic (e.g., Enzyme Kinetics)" />
+                        <button class="btn-secondary" id="upload-topic-add-btn">Add Topic</button>
+                    </div>
+                </div>
             </div>
-            
+
             <div class="modal-footer">
                 <div class="modal-actions">
                     <button class="btn-secondary" onclick="closeUploadModal()">Cancel</button>
                     <button class="btn-primary" id="upload-btn" onclick="handleUpload()">Upload</button>
+                    <button class="btn-primary" id="save-topics-btn" style="display: none;" onclick="handleSaveTopicsFromModal()">Save Topics</button>
                 </div>
             </div>
         </div>
     </div>
-    
+
     <!-- Question Creation Modal -->
     <div id="question-modal" class="modal">
         <div class="modal-content">

@@ -298,12 +298,25 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Topic Review Section (shown after upload succeeds) -->
+                <div id="topic-review-section" style="display: none;">
+                    <p class="topic-review-context" id="upload-topic-review-context"></p>
+                    <p class="topic-review-hint">These are topics found in this upload only. Edit, add, or remove before saving. Existing course topics are not affected.</p>
+                    <p id="upload-topic-existing-note" style="margin:0 0 10px; color:#666; font-size:12px; font-style:italic; display:none;"></p>
+                    <div class="topic-review-list" id="upload-topic-review-list"></div>
+                    <div class="topic-review-add-row">
+                        <input id="upload-topic-new-input" class="topic-review-input" type="text" placeholder="Add a topic (e.g., Enzyme Kinetics)" />
+                        <button class="btn-secondary" id="upload-topic-add-btn">Add Topic</button>
+                    </div>
+                </div>
             </div>
-            
+
             <div class="modal-footer">
                 <div class="modal-actions">
                     <button class="btn-secondary" onclick="closeUploadModal()">Cancel</button>
                     <button class="btn-primary" id="upload-btn" onclick="handleUpload()">Upload</button>
+                    <button class="btn-primary" id="save-topics-btn" style="display: none;" onclick="handleSaveTopicsFromModal()">Save Topics</button>
                 </div>
             </div>
         </div>

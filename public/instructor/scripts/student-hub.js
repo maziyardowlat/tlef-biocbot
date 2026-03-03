@@ -348,7 +348,7 @@ function renderStruggleTopics(struggleState) {
                     <span>${capitalize(t.topic)}</span>
                     <div style="display: flex; gap: 8px; font-size: 0.85em; color: #555;">
                         <span>Count: ${t.count}</span>
-                        <span>${new Date(t.lastStruggle).toLocaleDateString()}</span>
+                        <span>${t.lastStruggle ? new Date(t.lastStruggle).toLocaleDateString() : 'N/A'}</span>
                     </div>
                 </li>
             `).join('')}

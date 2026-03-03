@@ -39,9 +39,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     let currentStruggleState = null;
     let topicToReset = null;
+    let currentApprovedTopics = [];
 
     // Initialize
     fetchStruggleState();
+    loadApprovedCourseTopicsGlobal();
 
     // Event Listeners
     resetAllBtn.addEventListener('click', () => showConfirmModal('ALL'));
@@ -367,6 +369,25 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (stored) return JSON.parse(stored);
         } catch (e) { console.error(e); }
         return null;
+    }
+
+    async function loadApprovedCourseTopicsGlobal() {
+        const courseId = localStorage.getItem('selectedCourseId');
+        if (!courseId) return;
+
+        try {
+            const response = await fetch(`/api/courses/${courseId}/approved-topics`);
+            if (!response.ok) return;
+
+            const result = await response.json();
+            currentApprovedTopics = Array.isArray(result?.data?.topics) ? result.data.topics : [];
+
+            window.courseApprovedTopicsByCourse = window.courseApprovedTopicsByCourse || {};
+            window.courseApprovedTopicsByCourse[courseId] = currentApprovedTopics;
+            window.courseApprovedTopics = currentApprovedTopics;
+        } catch (error) {
+            console.warn('Unable to load approved course topics:', error);
+        }
     }
 
     /**

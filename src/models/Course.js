@@ -67,6 +67,40 @@ function generateCourseCode() {
 }
 
 /**
+ * Normalize a topic label for storage/display consistency
+ * @param {string} topic - Raw topic text
+ * @returns {string} Normalized topic text
+ */
+function normalizeTopicLabel(topic) {
+    if (typeof topic !== 'string') return '';
+    return topic.replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Normalize + deduplicate topic list (case-insensitive)
+ * @param {Array<string>} topics - Raw topic list
+ * @returns {Array<string>} Cleaned topic list
+ */
+function normalizeTopicList(topics = []) {
+    if (!Array.isArray(topics)) return [];
+    const seen = new Set();
+    const output = [];
+
+    for (const rawTopic of topics) {
+        const normalized = normalizeTopicLabel(rawTopic);
+        if (!normalized) continue;
+
+        const key = normalized.toLowerCase();
+        if (seen.has(key)) continue;
+
+        seen.add(key);
+        output.push(normalized);
+    }
+
+    return output;
+}
+
+/**
  * Get the courses collection from the database
  * @param {Object} db - MongoDB database instance
  * @returns {Collection} Courses collection
@@ -629,6 +663,7 @@ async function createCourseFromOnboarding(db, onboardingData) {
             courseDescription: courseDescription || '',
             assessmentCriteria: assessmentCriteria || '',
             courseMaterials: courseMaterials || [],
+            approvedStruggleTopics: [],
             // Retrieval behavior setting will be inherited from global settings if not set
             // isAdditiveRetrieval: false,
             courseStructure: {
@@ -1487,6 +1522,58 @@ async function joinCourse(db, courseId, studentId, code) {
     return { success: true, enrolled: true, message: 'Successfully joined course' };
 }
 
+/**
+ * Get approved struggle topics for a course
+ * @param {Object} db - MongoDB database instance
+ * @param {string} courseId - Course identifier
+ * @returns {Promise<Array<string>>} Approved topic list
+ */
+async function getApprovedStruggleTopics(db, courseId) {
+    const collection = getCoursesCollection(db);
+    const course = await collection.findOne(
+        { courseId },
+        { projection: { approvedStruggleTopics: 1 } }
+    );
+
+    if (!course || !Array.isArray(course.approvedStruggleTopics)) {
+        return [];
+    }
+
+    return normalizeTopicList(course.approvedStruggleTopics);
+}
+
+/**
+ * Replace approved struggle topics for a course
+ * @param {Object} db - MongoDB database instance
+ * @param {string} courseId - Course identifier
+ * @param {Array<string>} topics - Topic list
+ * @param {string} updatedById - User making update
+ * @returns {Promise<Object>} Update result
+ */
+async function setApprovedStruggleTopics(db, courseId, topics, updatedById) {
+    const collection = getCoursesCollection(db);
+    const normalizedTopics = normalizeTopicList(topics);
+    const now = new Date();
+
+    const result = await collection.updateOne(
+        { courseId },
+        {
+            $set: {
+                approvedStruggleTopics: normalizedTopics,
+                updatedAt: now,
+                lastUpdatedById: updatedById
+            }
+        }
+    );
+
+    return {
+        success: result.matchedCount > 0,
+        modifiedCount: result.modifiedCount,
+        topics: normalizedTopics,
+        error: result.matchedCount > 0 ? null : 'Course not found'
+    };
+}
+
 module.exports = {
     getCoursesCollection,
     ensureCourseCodes,
@@ -1522,5 +1609,8 @@ module.exports = {
     updateStudentEnrollment,
     getStudentEnrollment,
     joinCourse,
-    updateUnitDisplayName
+    updateUnitDisplayName,
+    getApprovedStruggleTopics,
+    setApprovedStruggleTopics,
+    normalizeTopicList
 };

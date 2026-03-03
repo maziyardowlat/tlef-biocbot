@@ -520,17 +520,41 @@ module.exports = {
  */
 async function updateUserStruggleState(db, userId, struggleData, courseId = null) {
     const collection = getUsersCollection(db);
-    const { topic, isStruggling } = struggleData;
+    const { topic, isStruggling } = struggleData || {};
     const now = new Date();
-    
-    // Normalize topic for consistency (simple lowercase for now)
-    const normalizedTopic = topic.toLowerCase().trim();
 
     // 1. Get current user to find existing topic state
     const user = await collection.findOne({ userId });
     if (!user) return { success: false, error: 'User not found' };
 
-    let topics = user.struggleState?.topics || [];
+    const existingTopics = user.struggleState?.topics || [];
+
+    // Ignore non-struggle messages (do not create/update topics)
+    if (!isStruggling) {
+        return {
+            success: true,
+            skipped: true,
+            reason: 'Not struggling',
+            state: null,
+            allTopics: existingTopics
+        };
+    }
+
+    // Ignore unmapped/invalid topics (do not create/update topics)
+    if (!topic || typeof topic !== 'string' || topic.toLowerCase().trim() === 'unmapped') {
+        return {
+            success: true,
+            skipped: true,
+            reason: 'Unmapped topic',
+            state: null,
+            allTopics: existingTopics
+        };
+    }
+    
+    // Normalize topic for consistency (simple lowercase for now)
+    const normalizedTopic = topic.toLowerCase().trim();
+
+    let topics = existingTopics;
     let currentTopicIndex = topics.findIndex(t => t.topic === normalizedTopic);
     let topicState = null;
 

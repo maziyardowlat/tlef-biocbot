@@ -13,37 +13,49 @@ class TrackerService {
      * @param {string} message - The student's message
      * @param {string} courseId - Course context
      * @param {string} unitName - Unit context
-     * @returns {Promise<Object>} Analysis result { isStruggling, topic, reason }
+     * @param {Array<string>} approvedTopics - Instructor-approved per-course topics
+     * @returns {Promise<Object>} Analysis result
      */
-    async analyzeMessage(message, courseId, unitName) {
+    async analyzeMessage(message, courseId, unitName, approvedTopics = []) {
         try {
             console.log(`🕵️ [TRACKER_DEBUG] LLM Analyze Request for: "${message}"`);
+            const cleanApprovedTopics = Array.isArray(approvedTopics)
+                ? approvedTopics.filter(topic => typeof topic === 'string' && topic.trim())
+                : [];
+
             const prompt = `
-            Analyze the following student message from a Biochemistry course chat.
-            Student Message: "${message}"
-            Context: Course ${courseId}, Unit ${unitName}
+You are analyzing student struggle in a biochemistry chat.
 
-            Task:
-            1. Identify if the student is expressing confusion, frustration, or a lack of understanding ("struggle").
-            2. Identify the specific biochemical topic they are struggling with.
-            3. Return JSON ONLY.
+Student Message: "${message}"
+Context: Course ${courseId}, Unit ${unitName}
+Approved Course Topics:
+${cleanApprovedTopics.length > 0 ? cleanApprovedTopics.map((topic, index) => `${index + 1}. ${topic}`).join('\n') : 'No approved topics configured'}
 
-            JSON Schema:
-            {
-                "topic": "string (the specific biochemical topic, e.g., 'Enzyme Kinetics', 'Protein Structure')",
-                "isStruggling": boolean,
-                "reason": "string (brief explanation)"
-            }
+Tasks:
+1. Detect if the student is struggling (confusion, frustration, or explicit lack of understanding).
+2. Identify the raw topic from the student's language.
+3. Map that raw topic to the closest approved topic using semantic similarity.
+4. If no approved topic is a reasonable semantic match, use "unmapped".
+5. Return JSON only.
 
-            Examples:
-            - "I don't understand chemical bonds" -> {"topic": "Chemical Bonds", "isStruggling": true, "reason": "Explicit confusion"}
-            - "What is the answer?" -> {"topic": "General", "isStruggling": false, "reason": "Simple inquiry"}
-            - "This is so hard, I'm lost" -> {"topic": "Current Unit", "isStruggling": true, "reason": "Frustration expressed"}
+Output JSON schema:
+{
+  "isStruggling": boolean,
+  "rawTopic": "string",
+  "mappedTopic": "string (must be one approved topic or 'unmapped')",
+  "matchConfidence": "number 0-1",
+  "reason": "string"
+}
+
+Rules:
+- Never invent a mapped topic outside the approved list.
+- If semantic match confidence is below 0.55, use "unmapped".
+- If message is not a struggle, mappedTopic should still be "unmapped" unless there is a clear mapped struggle topic.
             `;
 
             const response = await this.llmService.sendMessage(prompt, {
                 temperature: 0.1,
-                maxTokens: 150,
+                maxTokens: 220,
                 systemPrompt: "You are an empathetic analyst detecting student struggle. Output JSON only."
             });
 
@@ -54,8 +66,20 @@ class TrackerService {
             
             console.log(`🕵️ [TRACKER_DEBUG] Parsed Result:`, result);
 
+            const mappedTopic = typeof result.mappedTopic === 'string' ? result.mappedTopic.trim() : '';
+            const approvedTopicMap = new Map(
+                cleanApprovedTopics.map((topic) => [topic.toLowerCase(), topic])
+            );
+            const normalizedMappedTopic = mappedTopic.toLowerCase();
+            const matchedApprovedTopic = approvedTopicMap.get(normalizedMappedTopic) || '';
+            const matchConfidence = typeof result.matchConfidence === 'number' ? result.matchConfidence : 0;
+            const isMapped = !!matchedApprovedTopic && matchConfidence >= 0.55;
+
             return {
-                topic: result.topic || 'General',
+                topic: isMapped ? matchedApprovedTopic : 'unmapped',
+                rawTopic: result.rawTopic || '',
+                isMapped,
+                matchConfidence,
                 isStruggling: result.isStruggling || false,
                 reason: result.reason || ''
             };
@@ -63,7 +87,7 @@ class TrackerService {
         } catch (error) {
             console.error('❌ [TRACKER] Error analyzing message:', error);
             // Fail gracefully - assume no struggle
-            return { isStruggling: false, topic: 'General', reason: 'Error' };
+            return { isStruggling: false, topic: 'unmapped', isMapped: false, reason: 'Error' };
         }
     }
 }
