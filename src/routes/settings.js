@@ -494,4 +494,65 @@ router.post('/question-prompts/reset', async (req, res) => {
     }
 });
 
+/**
+ * GET /api/settings/quiz
+ * Get quiz practice settings for a course
+ */
+router.get('/quiz', async (req, res) => {
+    try {
+        const { courseId } = req.query;
+        if (!courseId) {
+            return res.status(400).json({ success: false, message: 'Missing courseId parameter' });
+        }
+
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({ success: false, message: 'Database connection not available' });
+        }
+
+        const CourseModel = require('../models/Course');
+        const settings = await CourseModel.getQuizSettings(db, courseId);
+
+        res.json({ success: true, settings });
+    } catch (error) {
+        console.error('Error fetching quiz settings:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch quiz settings' });
+    }
+});
+
+/**
+ * POST /api/settings/quiz
+ * Save quiz practice settings for a course
+ */
+router.post('/quiz', async (req, res) => {
+    try {
+        const { courseId, enabled, testableUnits, allowLectureMaterialAccess } = req.body;
+        if (!courseId) {
+            return res.status(400).json({ success: false, message: 'Missing courseId' });
+        }
+
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({ success: false, message: 'Database connection not available' });
+        }
+
+        const instructorId = req.user ? req.user.userId : null;
+        const CourseModel = require('../models/Course');
+        const result = await CourseModel.updateQuizSettings(db, courseId, {
+            enabled,
+            testableUnits,
+            allowLectureMaterialAccess
+        }, instructorId);
+
+        if (result.success) {
+            res.json({ success: true, message: 'Quiz settings saved successfully' });
+        } else {
+            res.status(400).json({ success: false, message: result.error || 'Failed to save quiz settings' });
+        }
+    } catch (error) {
+        console.error('Error saving quiz settings:', error);
+        res.status(500).json({ success: false, message: 'Failed to save quiz settings' });
+    }
+});
+
 module.exports = router;

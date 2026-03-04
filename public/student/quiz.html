@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BiocBot - Quiz Practice</title>
+
+    <!-- Favicon - UBC Logo -->
+    <link rel="icon" type="image/x-icon" href="../assets/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/images/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="../assets/images/favicon-16x16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="../assets/images/apple-touch-icon.png">
+    <link rel="manifest" href="../assets/images/site.webmanifest">
+
+    <link rel="stylesheet" href="../styles/style.css">
+    <link rel="stylesheet" href="../styles/quiz.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="logo-container">
+                <h2>BiocBot</h2>
+            </div>
+            <nav class="main-nav">
+                <ul>
+                    <li><a href="/student"><span class="icon"></span> Chat</a></li>
+                    <li><a href="/student/history"><span class="icon"></span> Chat History</a></li>
+                    <li><a href="/student/flagged"><span class="icon"></span> Flagged</a></li>
+                    <li><a href="/student/dashboard.html"><span class="icon"></span> Topic Dashboard</a></li>
+                    <li class="active"><a href="/student/quiz"><span class="icon"></span> Quiz</a></li>
+                    <li class="mobile-only-nav"><a href="#" id="mobile-logout-btn"><span class="icon"></span> Logout</a></li>
+                </ul>
+            </nav>
+            <div class="user-info">
+                <div class="user-avatar">S</div>
+                <div class="user-name" id="user-display-name">Student</div>
+                <div class="user-role">Student</div>
+                <div class="user-actions">
+                    <a href="#" id="logout-btn" class="user-action">Logout</a>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <header class="page-header">
+                <h1>Quiz Practice</h1>
+                <p>Test your knowledge with practice questions. You can attempt questions as many times as you like.</p>
+            </header>
+
+            <!-- Stats Summary -->
+            <div class="quiz-stats" id="quiz-stats">
+                <div class="stat-card">
+                    <span class="stat-value" id="stat-total">0</span>
+                    <span class="stat-label">Attempted</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-value" id="stat-correct">0</span>
+                    <span class="stat-label">Correct</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-value" id="stat-accuracy">0%</span>
+                    <span class="stat-label">Accuracy</span>
+                </div>
+            </div>
+
+            <!-- Filters -->
+            <div class="quiz-filters">
+                <div class="filter-group">
+                    <label for="unit-filter">Unit:</label>
+                    <select id="unit-filter">
+                        <option value="all">All Units</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label for="type-filter">Type:</label>
+                    <select id="type-filter">
+                        <option value="all">All Types</option>
+                        <option value="multiple-choice">Multiple Choice</option>
+                        <option value="true-false">True/False</option>
+                        <option value="short-answer">Short Answer</option>
+                    </select>
+                </div>
+                <button id="shuffle-btn" class="secondary-button" title="Shuffle questions">Shuffle</button>
+            </div>
+
+            <!-- Progress -->
+            <div class="quiz-progress" id="quiz-progress" style="display: none;">
+                <span id="progress-text">Question 1 of 10</span>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progress-fill"></div>
+                </div>
+            </div>
+
+            <!-- Question Display -->
+            <div class="quiz-content" id="quiz-content">
+                <!-- Loading State -->
+                <div class="quiz-loading" id="quiz-loading">
+                    <div class="loading-spinner">Loading questions...</div>
+                </div>
+
+                <!-- Empty State -->
+                <div class="quiz-empty" id="quiz-empty" style="display: none;">
+                    <p>No questions available for the selected filters. Try selecting a different unit or question type.</p>
+                </div>
+
+                <!-- Disabled State -->
+                <div class="quiz-disabled" id="quiz-disabled" style="display: none;">
+                    <p>Quiz practice is not currently available for this course. Please check back later.</p>
+                </div>
+
+                <!-- Question Card -->
+                <div class="question-card" id="question-card" style="display: none;">
+                    <div class="question-meta">
+                        <span class="question-unit" id="question-unit"></span>
+                        <span class="question-type-badge" id="question-type-badge"></span>
+                    </div>
+                    <div class="question-text" id="question-text"></div>
+
+                    <!-- MC Options -->
+                    <div class="answer-options" id="mc-options" style="display: none;"></div>
+
+                    <!-- TF Options -->
+                    <div class="answer-options" id="tf-options" style="display: none;">
+                        <label class="option-label">
+                            <input type="radio" name="tf-answer" value="true">
+                            <span class="option-text">True</span>
+                        </label>
+                        <label class="option-label">
+                            <input type="radio" name="tf-answer" value="false">
+                            <span class="option-text">False</span>
+                        </label>
+                    </div>
+
+                    <!-- Short Answer -->
+                    <div class="short-answer-container" id="sa-container" style="display: none;">
+                        <textarea id="sa-input" rows="4" placeholder="Type your answer here..."></textarea>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="question-actions">
+                        <button id="submit-btn" class="primary-button">Submit Answer</button>
+                        <button id="next-btn" class="secondary-button" style="display: none;">Next Question</button>
+                    </div>
+
+                    <!-- Feedback -->
+                    <div class="feedback-container" id="feedback-container" style="display: none;">
+                        <div class="feedback-icon" id="feedback-icon"></div>
+                        <div class="feedback-text" id="feedback-text"></div>
+                    </div>
+
+                    <!-- Materials (shown on wrong answer) -->
+                    <div class="materials-container" id="materials-container" style="display: none;">
+                        <h4>Review Materials</h4>
+                        <p>Review the lecture materials for this unit to strengthen your understanding:</p>
+                        <div class="materials-list" id="materials-list"></div>
+                    </div>
+                </div>
+
+                <!-- Completion Card -->
+                <div class="quiz-complete" id="quiz-complete" style="display: none;">
+                    <h2>All Done!</h2>
+                    <p>You've completed all questions for the current selection.</p>
+                    <div class="completion-stats">
+                        <span id="completion-correct">0</span> / <span id="completion-total">0</span> correct
+                    </div>
+                    <button id="restart-btn" class="primary-button">Try Again</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="../common/scripts/auth.js"></script>
+    <script src="../common/scripts/mobile-layout.js"></script>
+    <script src="../common/scripts/idle-timer.js"></script>
+    <script src="./scripts/quiz.js"></script>
+</body>
+</html>
