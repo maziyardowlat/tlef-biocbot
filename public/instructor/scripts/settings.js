@@ -58,14 +58,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const tutorPromptInput = document.getElementById('tutor-prompt');
                 const explainPromptInput = document.getElementById('explain-prompt');
                 const directivePromptInput = document.getElementById('directive-prompt');
+                const quizHelpPromptInput = document.getElementById('quiz-help-prompt');
                 const additiveToggle = document.getElementById('additive-retrieval-toggle');
                 const idleTimeoutInput = document.getElementById('idle-timeout-input');
-                
+
                 if (basePromptInput) basePromptInput.value = result.prompts.base || '';
                 if (protegePromptInput) protegePromptInput.value = result.prompts.protege || '';
                 if (tutorPromptInput) tutorPromptInput.value = result.prompts.tutor || '';
                 if (explainPromptInput) explainPromptInput.value = result.prompts.explain || '';
                 if (directivePromptInput) directivePromptInput.value = result.prompts.directive || '';
+                if (quizHelpPromptInput) quizHelpPromptInput.value = result.prompts.quizHelp || '';
                 if (additiveToggle) additiveToggle.checked = !!result.prompts.additiveRetrieval;
                 
                 // Convert seconds to minutes for display
@@ -183,6 +185,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const tutor = document.getElementById('tutor-prompt')?.value;
                 const explain = document.getElementById('explain-prompt')?.value;
                 const directive = document.getElementById('directive-prompt')?.value;
+                const quizHelp = document.getElementById('quiz-help-prompt')?.value;
                 const additiveRetrieval = document.getElementById('additive-retrieval-toggle')?.checked;
                 const idleTimeoutInput = document.getElementById('idle-timeout-input');
                 const courseId = await getCurrentCourseId();
@@ -250,7 +253,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         headers: {
                             'Content-Type': 'application/json'
                         },
-                        body: JSON.stringify({ base, protege, tutor, explain, directive, additiveRetrieval, studentIdleTimeout, courseId })
+                        body: JSON.stringify({ base, protege, tutor, explain, directive, quizHelp, additiveRetrieval, studentIdleTimeout, courseId })
                     });
                     
                     const result = await response.json();

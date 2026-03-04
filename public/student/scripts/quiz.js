@@ -21,6 +21,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     let sessionTotal = 0;
     let answered = false;
 
+    // Quiz help chat state
+    let quizChatHistory = [];
+    let quizChatActive = false;
+    let currentQuestionContext = null;
+    const QUIZ_CHAT_MAX_MESSAGES = 10;
+
     // DOM refs
     const loadingEl = document.getElementById('quiz-loading');
     const emptyEl = document.getElementById('quiz-empty');
@@ -37,6 +43,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     const submitBtn = document.getElementById('submit-btn');
     const nextBtn = document.getElementById('next-btn');
     const restartBtn = document.getElementById('restart-btn');
+
+    // Quiz help chat DOM refs
+    const quizChatContainer = document.getElementById('quiz-chat-container');
+    const quizChatMessages = document.getElementById('quiz-chat-messages');
+    const quizChatForm = document.getElementById('quiz-chat-form');
+    const quizChatInput = document.getElementById('quiz-chat-input');
+    const quizChatTyping = document.getElementById('quiz-chat-typing');
+    const quizChatCloseBtn = document.getElementById('quiz-chat-close');
 
     // Load quiz data
     try {
@@ -108,6 +122,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         completeCard.style.display = 'none';
         displayQuestion();
     });
+
+    // Quiz help chat event listeners
+    if (quizChatForm) {
+        quizChatForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const message = quizChatInput.value.trim();
+            if (message) {
+                sendQuizChatMessage(message);
+            }
+        });
+    }
+
+    if (quizChatCloseBtn) {
+        quizChatCloseBtn.addEventListener('click', () => {
+            closeQuizChat();
+        });
+    }
 
     function applyFilters() {
         const unit = unitFilter.value;
@@ -214,6 +245,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         nextBtn.style.display = 'none';
         document.getElementById('feedback-container').style.display = 'none';
         document.getElementById('materials-container').style.display = 'none';
+        if (quizChatContainer) quizChatContainer.style.display = 'none';
     }
 
     async function submitAnswer() {
@@ -332,12 +364,18 @@ document.addEventListener('DOMContentLoaded', async () => {
             loadMaterials(q.lectureName);
         }
 
+        // Open quiz help chat on wrong answer
+        if (!correct) {
+            openQuizChat(q, studentAnswer, feedback);
+        }
+
         // Show next button
         submitBtn.style.display = 'none';
         nextBtn.style.display = '';
     }
 
     function nextQuestion() {
+        closeQuizChat();
         currentIndex++;
         displayQuestion();
     }
@@ -432,6 +470,153 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.error('Error downloading material:', e);
             showToast('Error downloading material.');
         }
+    }
+
+    // ==============================
+    // Quiz Help Chat Functions
+    // ==============================
+
+    /**
+     * Open the quiz help chat panel for a wrong answer
+     */
+    function openQuizChat(question, studentAnswer, saFeedback) {
+        // Build the correct answer string based on question type
+        let correctAnswerStr = '';
+        if (question.questionType === 'multiple-choice') {
+            correctAnswerStr = `${question.correctAnswer}. ${question.options[question.correctAnswer]}`;
+        } else if (question.questionType === 'true-false') {
+            correctAnswerStr = String(question.correctAnswer);
+        } else if (question.questionType === 'short-answer') {
+            // Short-answer correctAnswer is not on the client; server will look it up
+            correctAnswerStr = '[evaluated by AI on server]';
+        }
+
+        // Build student answer display string
+        let studentAnswerStr = studentAnswer;
+        if (question.questionType === 'multiple-choice' && question.options && question.options[studentAnswer]) {
+            studentAnswerStr = `${studentAnswer}. ${question.options[studentAnswer]}`;
+        }
+
+        currentQuestionContext = {
+            questionText: question.question,
+            questionType: question.questionType,
+            correctAnswer: correctAnswerStr,
+            studentAnswer: studentAnswerStr,
+            lectureName: question.lectureName
+        };
+
+        quizChatHistory = [];
+        quizChatMessages.innerHTML = '';
+        quizChatActive = true;
+
+        // Add initial bot message
+        addQuizChatMessage(
+            'I noticed you got this one wrong. No worries - let me help you understand the concept! What part are you finding confusing?',
+            'bot'
+        );
+
+        quizChatContainer.style.display = '';
+
+        // Scroll the chat panel into view
+        setTimeout(() => {
+            quizChatContainer.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            quizChatInput.focus();
+        }, 100);
+    }
+
+    /**
+     * Close and reset the quiz help chat
+     */
+    function closeQuizChat() {
+        quizChatActive = false;
+        quizChatHistory = [];
+        currentQuestionContext = null;
+        if (quizChatMessages) quizChatMessages.innerHTML = '';
+        if (quizChatContainer) quizChatContainer.style.display = 'none';
+        if (quizChatTyping) quizChatTyping.style.display = 'none';
+        if (quizChatInput) {
+            quizChatInput.disabled = false;
+            quizChatInput.value = '';
+        }
+        const sendBtn = document.getElementById('quiz-chat-send');
+        if (sendBtn) sendBtn.disabled = false;
+    }
+
+    /**
+     * Add a message to the quiz chat display
+     */
+    function addQuizChatMessage(text, role) {
+        const msgDiv = document.createElement('div');
+        msgDiv.className = `quiz-chat-msg ${role}`;
+        msgDiv.textContent = text;
+        quizChatMessages.appendChild(msgDiv);
+        quizChatMessages.scrollTop = quizChatMessages.scrollHeight;
+    }
+
+    /**
+     * Send a message in the quiz help chat
+     */
+    async function sendQuizChatMessage(message) {
+        if (!message.trim() || !quizChatActive || !currentQuestionContext) return;
+
+        // Check message limit
+        const userMsgCount = quizChatHistory.filter(m => m.role === 'user').length;
+        if (userMsgCount >= QUIZ_CHAT_MAX_MESSAGES) {
+            addQuizChatMessage(
+                'You have reached the message limit for this question. Click "Next Question" to continue, or review the materials above.',
+                'system'
+            );
+            quizChatInput.disabled = true;
+            document.getElementById('quiz-chat-send').disabled = true;
+            return;
+        }
+
+        // Add user message to UI and history
+        addQuizChatMessage(message, 'user');
+        quizChatHistory.push({ role: 'user', content: message });
+
+        // Disable input while waiting
+        quizChatInput.disabled = true;
+        quizChatInput.value = '';
+        document.getElementById('quiz-chat-send').disabled = true;
+        quizChatTyping.style.display = '';
+
+        try {
+            const response = await fetch('/api/quiz/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    message,
+                    courseId,
+                    lectureName: currentQuestionContext.lectureName,
+                    questionText: currentQuestionContext.questionText,
+                    questionType: currentQuestionContext.questionType,
+                    correctAnswer: currentQuestionContext.correctAnswer,
+                    studentAnswer: currentQuestionContext.studentAnswer,
+                    conversationHistory: quizChatHistory
+                })
+            });
+
+            const data = await response.json();
+            quizChatTyping.style.display = 'none';
+
+            if (data.success) {
+                const botMessage = data.message;
+                addQuizChatMessage(botMessage, data.source === 'system' ? 'system' : 'bot');
+                quizChatHistory.push({ role: 'assistant', content: botMessage });
+            } else {
+                addQuizChatMessage('Sorry, I had trouble processing that. Please try again.', 'system');
+            }
+        } catch (error) {
+            console.error('Quiz chat error:', error);
+            quizChatTyping.style.display = 'none';
+            addQuizChatMessage('Connection error. Please try again.', 'system');
+        }
+
+        // Re-enable input
+        quizChatInput.disabled = false;
+        document.getElementById('quiz-chat-send').disabled = false;
+        quizChatInput.focus();
     }
 
     function showCompletion() {

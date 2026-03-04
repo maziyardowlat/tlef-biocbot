@@ -8,6 +8,9 @@ const router = express.Router();
 const CourseModel = require('../models/Course');
 const QuizAttempt = require('../models/QuizAttempt');
 const DocumentModel = require('../models/Document');
+const QdrantService = require('../services/qdrantService');
+const prompts = require('../services/prompts');
+const profanityCleaner = require('profanity-cleaner');
 
 router.use(express.json());
 
@@ -320,6 +323,167 @@ router.get('/materials/:documentId/download', async (req, res) => {
     } catch (error) {
         console.error('Error downloading quiz material:', error);
         res.status(500).json({ success: false, message: 'Internal server error' });
+    }
+});
+
+/**
+ * POST /api/quiz/chat
+ * Quiz-specific help chat - scoped to a single question and its lecture unit
+ */
+router.post('/chat', async (req, res) => {
+    try {
+        const {
+            message,
+            courseId,
+            lectureName,
+            questionText,
+            questionType,
+            correctAnswer,
+            studentAnswer,
+            conversationHistory
+        } = req.body;
+
+        // Validation
+        if (!message || !courseId || !lectureName || !questionText) {
+            return res.status(400).json({
+                success: false,
+                message: 'Missing required fields: message, courseId, lectureName, questionText'
+            });
+        }
+
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({ success: false, message: 'Database connection not available' });
+        }
+
+        const llmService = req.app.locals.llm;
+        if (!llmService) {
+            return res.status(503).json({ success: false, message: 'LLM service not available' });
+        }
+
+        // Profanity filter
+        const cleanedMessage = profanityCleaner && typeof profanityCleaner.clean === 'function'
+            ? profanityCleaner.clean(message)
+            : message;
+
+        if (cleanedMessage !== message) {
+            return res.json({
+                success: true,
+                message: 'Please keep the language appropriate. This is an educational tool.',
+                source: 'system'
+            });
+        }
+
+        // Safety check
+        const safetyKeywords = ['suicide', 'kill myself', 'want to die', 'end my life', 'ending it all'];
+        if (safetyKeywords.some(kw => message.toLowerCase().includes(kw))) {
+            return res.json({
+                success: true,
+                message: "I'm sorry you're feeling this way. Please reach out to the UBC Wellness Centre: http://students.ubc.ca/health/wellness-centre/",
+                source: 'system'
+            });
+        }
+
+        // For short-answer questions, look up the correct answer server-side
+        let actualCorrectAnswer = correctAnswer || '';
+        if (questionType === 'short-answer' && (!correctAnswer || correctAnswer.includes('[evaluated by AI'))) {
+            try {
+                const course = await db.collection('courses').findOne({ courseId });
+                if (course && course.lectures) {
+                    for (const lecture of course.lectures) {
+                        if (lecture.name === lectureName && lecture.assessmentQuestions) {
+                            const matchedQ = lecture.assessmentQuestions.find(q => q.question === questionText);
+                            if (matchedQ && matchedQ.correctAnswer) {
+                                actualCorrectAnswer = matchedQ.correctAnswer;
+                            }
+                            break;
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('Could not look up short-answer correct answer:', e);
+            }
+        }
+
+        // RAG Retrieval (single unit only)
+        let contextText = '';
+        try {
+            const qdrant = new QdrantService();
+            await qdrant.initialize();
+
+            const searchResults = await qdrant.searchDocuments(
+                message,
+                { courseId, lectureNames: [lectureName] },
+                6
+            );
+
+            if (searchResults && searchResults.length > 0) {
+                contextText = searchResults
+                    .map(r => `From ${r.lectureName} (${r.fileName}):\n${r.chunkText}`)
+                    .join('\n\n---\n\n');
+            }
+        } catch (qdrantError) {
+            console.error('Quiz chat RAG error:', qdrantError.message);
+        }
+
+        // Build the question context block
+        const questionContext = `QUIZ QUESTION CONTEXT:
+Question: ${questionText}
+Question Type: ${questionType}
+Correct Answer: ${actualCorrectAnswer}
+Student's Answer: ${studentAnswer}
+Lecture Unit: ${lectureName}`;
+
+        // Build conversation history block
+        let conversationBlock = '';
+        if (conversationHistory && conversationHistory.length > 0) {
+            conversationBlock = '\nPrevious conversation:\n';
+            conversationHistory.forEach(msg => {
+                const speaker = msg.role === 'user' ? 'Student' : 'BiocBot';
+                conversationBlock += `${speaker}: ${msg.content}\n\n`;
+            });
+        }
+
+        const messageToSend = `${questionContext}
+
+Course context (from ${lectureName}):
+${contextText || 'No specific course materials retrieved for this query.'}
+${conversationBlock}
+Student's new message: ${message}`;
+
+        // Load course-specific or default prompts
+        const course = await db.collection('courses').findOne({ courseId });
+        let basePrompt = prompts.DEFAULT_PROMPTS.base;
+        let quizHelpPrompt = prompts.DEFAULT_PROMPTS.quizHelp;
+
+        if (course && course.prompts) {
+            if (course.prompts.base) basePrompt = course.prompts.base;
+            if (course.prompts.quizHelp) quizHelpPrompt = course.prompts.quizHelp;
+        }
+
+        // Call LLM
+        const response = await llmService.sendMessage(messageToSend, {
+            temperature: 0.5,
+            maxTokens: 1024,
+            systemPrompt: basePrompt + '\n\n' + quizHelpPrompt
+        });
+
+        const responseText = response && response.content
+            ? response.content
+            : 'Sorry, I could not generate a response. Please try again.';
+
+        res.json({
+            success: true,
+            message: responseText,
+            source: 'quiz-help'
+        });
+
+    } catch (error) {
+        console.error('Error in quiz chat endpoint:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Sorry, I encountered an error. Please try again.'
+        });
     }
 });
 
