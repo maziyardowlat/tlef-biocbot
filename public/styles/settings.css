@@ -258,3 +258,47 @@ input.is-invalid {
     border-color: var(--primary-color);
     box-shadow: 0 0 0 3px rgba(var(--primary-rgb), 0.1);
 }
+
+/* Testable Units Checkboxes */
+#testable-units-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    border: 1px solid var(--border-color, #e0e0e0);
+    border-radius: 8px;
+    background: var(--card-bg, #fff);
+}
+
+#testable-units-container label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 0.75rem;
+    border: 1px solid var(--border-color, #e0e0e0);
+    border-radius: 20px;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+    font-size: 0.85rem;
+    color: var(--text-primary, #333);
+    white-space: nowrap;
+}
+
+#testable-units-container label:hover {
+    background: var(--hover-bg, #f0f4f8);
+    border-color: var(--primary-color, #0055b7);
+}
+
+#testable-units-container input[type="checkbox"] {
+    width: auto;
+    height: auto;
+    padding: 0;
+    flex-shrink: 0;
+    accent-color: var(--primary-color, #0055b7);
+}
+
+#testable-units-container .loading-text {
+    color: var(--text-secondary, #666);
+    font-size: 0.9rem;
+    padding: 0.5rem;
+}

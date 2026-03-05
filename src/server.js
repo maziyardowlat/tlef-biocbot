@@ -23,6 +23,7 @@ const qdrantRoutes = require('./routes/qdrant');
 const studentsRoutes = require('./routes/students');
 const userAgreementRoutes = require('./routes/user-agreement');
 const settingsRoutes = require('./routes/settings');
+const quizRoutes = require('./routes/quiz');
 const studentTrackerRoutes = require('./routes/student-tracker');
 const struggleActivityRoutes = require('./routes/struggle-activity');
 const LLMService = require('./services/llm');
@@ -282,6 +283,11 @@ function setupProtectedRoutes() {
         res.sendFile(path.join(__dirname, '../public/student/flagged.html'));
     });
 
+    // Student quiz practice page
+    app.get('/student/quiz', authMiddleware.requireStudent, (req, res) => {
+        res.sendFile(path.join(__dirname, '../public/student/quiz.html'));
+    });
+
     // TA routes (protected)
     app.get('/ta', authMiddleware.requireTA, (req, res) => {
         res.sendFile(path.join(__dirname, '../public/ta/home.html'));
@@ -487,6 +493,7 @@ function setupAPIRoutes() {
     app.use('/api/settings', authMiddleware.requireAuth, authMiddleware.populateUser, settingsRoutes);
     app.use('/api/student/struggle', authMiddleware.requireAuth, authMiddleware.populateUser, studentTrackerRoutes);
     app.use('/api/struggle-activity', authMiddleware.requireAuth, struggleActivityRoutes);
+    app.use('/api/quiz', authMiddleware.requireAuth, authMiddleware.populateUser, authMiddleware.requireStudentEnrolled, quizRoutes);
 }
 
 // Initialize the application

@@ -114,6 +114,48 @@
                     </div>
                 </section>
 
+                <!-- Quiz Practice Settings -->
+                <section class="settings-section" id="quiz-settings-section">
+                    <h2>Quiz Practice Settings</h2>
+                    <div class="settings-content">
+                        <div class="setting-item">
+                            <div class="setting-info">
+                                <h3>Enable Quiz Practice Page</h3>
+                                <p>When enabled, students can access a self-paced quiz practice page. When disabled, the quiz page is hidden from the student interface.</p>
+                            </div>
+                            <div class="setting-controls">
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="quiz-enabled-toggle" checked>
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                        <div class="setting-item vertical">
+                            <div class="setting-info">
+                                <h3>Testable Units</h3>
+                                <p>Select which published units students can practice. By default, all published units are available.</p>
+                            </div>
+                            <div class="setting-controls full-width-control">
+                                <div id="testable-units-container">
+                                    <p class="loading-text">Loading units...</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="setting-item">
+                            <div class="setting-info">
+                                <h3>Allow Lecture Material Access</h3>
+                                <p>When enabled, students can download lecture materials from units where they answered incorrectly. This helps them review and learn from mistakes.</p>
+                            </div>
+                            <div class="setting-controls">
+                                <label class="toggle-switch">
+                                    <input type="checkbox" id="quiz-material-access-toggle" checked>
+                                    <span class="toggle-slider"></span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
                 <!-- Question Generation Settings (privileged users only) -->
                 <section class="settings-section" id="question-generation-section" style="display: none;">
                     <h2>Question Generation Settings</h2>
@@ -234,6 +276,16 @@
                             </div>
                             <div class="setting-controls full-width-control">
                                 <textarea id="directive-prompt" rows="10" placeholder="Enter directive mode strategy steps..."></textarea>
+                            </div>
+                        </div>
+
+                        <div class="setting-item vertical">
+                            <div class="setting-info">
+                                <h3>Quiz Help Chat Prompt</h3>
+                                <p>Instructions for the inline chat that appears when students answer quiz questions incorrectly. The chat helps students understand why the correct answer is right.</p>
+                            </div>
+                            <div class="setting-controls full-width-control">
+                                <textarea id="quiz-help-prompt" rows="10" placeholder="Enter quiz help chat prompt..."></textarea>
                             </div>
                         </div>
                     </div>

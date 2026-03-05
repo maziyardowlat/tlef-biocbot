@@ -1574,6 +1574,69 @@ async function setApprovedStruggleTopics(db, courseId, topics, updatedById) {
     };
 }
 
+/**
+ * Get quiz practice settings for a course
+ * @param {Object} db - MongoDB database instance
+ * @param {string} courseId - Course identifier
+ * @returns {Promise<Object>} Quiz settings with defaults
+ */
+async function getQuizSettings(db, courseId) {
+    const collection = getCoursesCollection(db);
+    const course = await collection.findOne(
+        { courseId },
+        { projection: { quizSettings: 1 } }
+    );
+
+    if (!course) {
+        return { enabled: true, testableUnits: 'all', allowLectureMaterialAccess: true };
+    }
+
+    const defaults = { enabled: true, testableUnits: 'all', allowLectureMaterialAccess: true };
+    const settings = course.quizSettings || {};
+
+    return {
+        enabled: settings.enabled !== undefined ? settings.enabled : defaults.enabled,
+        testableUnits: settings.testableUnits !== undefined ? settings.testableUnits : defaults.testableUnits,
+        allowLectureMaterialAccess: settings.allowLectureMaterialAccess !== undefined ? settings.allowLectureMaterialAccess : defaults.allowLectureMaterialAccess
+    };
+}
+
+/**
+ * Update quiz practice settings for a course
+ * @param {Object} db - MongoDB database instance
+ * @param {string} courseId - Course identifier
+ * @param {Object} settings - { enabled, testableUnits, allowLectureMaterialAccess }
+ * @param {string} instructorId - ID of the instructor making the change
+ * @returns {Promise<Object>} Update result
+ */
+async function updateQuizSettings(db, courseId, settings, instructorId) {
+    const collection = getCoursesCollection(db);
+    const now = new Date();
+
+    const quizSettings = {
+        enabled: settings.enabled !== undefined ? settings.enabled : true,
+        testableUnits: settings.testableUnits !== undefined ? settings.testableUnits : 'all',
+        allowLectureMaterialAccess: settings.allowLectureMaterialAccess !== undefined ? settings.allowLectureMaterialAccess : true
+    };
+
+    const result = await collection.updateOne(
+        { courseId },
+        {
+            $set: {
+                quizSettings,
+                updatedAt: now,
+                lastUpdatedById: instructorId
+            }
+        }
+    );
+
+    return {
+        success: result.matchedCount > 0,
+        modifiedCount: result.modifiedCount,
+        error: result.matchedCount > 0 ? null : 'Course not found'
+    };
+}
+
 module.exports = {
     getCoursesCollection,
     ensureCourseCodes,
@@ -1612,5 +1675,7 @@ module.exports = {
     updateUnitDisplayName,
     getApprovedStruggleTopics,
     setApprovedStruggleTopics,
-    normalizeTopicList
+    normalizeTopicList,
+    getQuizSettings,
+    updateQuizSettings
 };

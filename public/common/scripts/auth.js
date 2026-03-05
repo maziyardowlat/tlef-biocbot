@@ -49,8 +49,41 @@ function adjustNavigationForRole() {
                 studentHubNav.style.display = 'none';
             }
         }
+        // Check quiz visibility for students
+        if (currentUser.role === 'student') {
+            checkQuizNavVisibility();
+        }
     } catch (e) {
         console.warn('adjustNavigationForRole failed:', e);
+    }
+}
+
+/**
+ * Check if quiz page is enabled and show/hide nav item accordingly
+ */
+async function checkQuizNavVisibility() {
+    const quizNavItem = document.getElementById('quiz-nav-item');
+    if (!quizNavItem) return;
+    try {
+        // getCurrentCourseId may be sync (auth.js) or async (student.js override)
+        let courseId = getCurrentCourseId();
+        if (courseId && typeof courseId.then === 'function') {
+            courseId = await courseId;
+        }
+        if (!courseId) {
+            quizNavItem.style.display = 'none';
+            return;
+        }
+        const response = await fetch(`/api/quiz/status?courseId=${courseId}`);
+        const data = await response.json();
+        if (data.success && data.enabled) {
+            quizNavItem.style.display = '';
+        } else {
+            quizNavItem.style.display = 'none';
+        }
+    } catch (e) {
+        // On error, hide quiz nav
+        quizNavItem.style.display = 'none';
     }
 }
 

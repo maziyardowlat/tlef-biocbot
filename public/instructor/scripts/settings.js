@@ -14,7 +14,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             // Load global config (prompts and additive retrieval)
             await loadGlobalConfig();
-            
+
+            // Load quiz practice settings
+            await loadQuizSettings();
+
             // If user has permission, load global settings (login restriction)
             // and question generation prompts
             if (canManageDB) {
@@ -55,14 +58,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const tutorPromptInput = document.getElementById('tutor-prompt');
                 const explainPromptInput = document.getElementById('explain-prompt');
                 const directivePromptInput = document.getElementById('directive-prompt');
+                const quizHelpPromptInput = document.getElementById('quiz-help-prompt');
                 const additiveToggle = document.getElementById('additive-retrieval-toggle');
                 const idleTimeoutInput = document.getElementById('idle-timeout-input');
-                
+
                 if (basePromptInput) basePromptInput.value = result.prompts.base || '';
                 if (protegePromptInput) protegePromptInput.value = result.prompts.protege || '';
                 if (tutorPromptInput) tutorPromptInput.value = result.prompts.tutor || '';
                 if (explainPromptInput) explainPromptInput.value = result.prompts.explain || '';
                 if (directivePromptInput) directivePromptInput.value = result.prompts.directive || '';
+                if (quizHelpPromptInput) quizHelpPromptInput.value = result.prompts.quizHelp || '';
                 if (additiveToggle) additiveToggle.checked = !!result.prompts.additiveRetrieval;
                 
                 // Convert seconds to minutes for display
@@ -101,6 +106,72 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
     
+    /**
+     * Load quiz practice settings and populate the testable units checkboxes
+     */
+    async function loadQuizSettings() {
+        try {
+            const courseId = await getCurrentCourseId();
+            if (!courseId) return;
+
+            // Fetch quiz settings and course lectures in parallel
+            const [settingsRes, courseRes] = await Promise.all([
+                fetch(`/api/settings/quiz?courseId=${courseId}`),
+                fetch(`/api/courses/${courseId}`)
+            ]);
+
+            const settingsData = await settingsRes.json();
+            const courseData = await courseRes.json();
+
+            // Populate toggles
+            const quizEnabledToggle = document.getElementById('quiz-enabled-toggle');
+            const materialAccessToggle = document.getElementById('quiz-material-access-toggle');
+
+            if (settingsData.success && settingsData.settings) {
+                if (quizEnabledToggle) quizEnabledToggle.checked = settingsData.settings.enabled !== false;
+                if (materialAccessToggle) materialAccessToggle.checked = settingsData.settings.allowLectureMaterialAccess !== false;
+            }
+
+            // Populate testable units checkboxes
+            const container = document.getElementById('testable-units-container');
+            if (!container) return;
+            container.innerHTML = '';
+
+            let publishedLectures = [];
+            if (courseData.success && courseData.data && courseData.data.lectures) {
+                publishedLectures = courseData.data.lectures.filter(l => l.isPublished);
+            }
+
+            if (publishedLectures.length === 0) {
+                container.innerHTML = '<p style="color: var(--text-secondary, #666); font-size: 0.9rem;">No published units yet. Publish units from Course Upload to make them available for quiz practice.</p>';
+                return;
+            }
+
+            const testableUnits = settingsData.success && settingsData.settings
+                ? settingsData.settings.testableUnits
+                : 'all';
+
+            for (const lecture of publishedLectures) {
+                const label = document.createElement('label');
+
+                const checkbox = document.createElement('input');
+                checkbox.type = 'checkbox';
+                checkbox.className = 'testable-unit-checkbox';
+                checkbox.value = lecture.name;
+                checkbox.checked = testableUnits === 'all' || (Array.isArray(testableUnits) && testableUnits.includes(lecture.name));
+
+                const text = document.createElement('span');
+                text.textContent = lecture.displayName || lecture.name;
+
+                label.appendChild(checkbox);
+                label.appendChild(text);
+                container.appendChild(label);
+            }
+        } catch (error) {
+            console.error('Error loading quiz settings:', error);
+        }
+    }
+
     // Handle save button click
     if (saveSettingsBtn) {
         saveSettingsBtn.addEventListener('click', async () => {
@@ -114,6 +185,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const tutor = document.getElementById('tutor-prompt')?.value;
                 const explain = document.getElementById('explain-prompt')?.value;
                 const directive = document.getElementById('directive-prompt')?.value;
+                const quizHelp = document.getElementById('quiz-help-prompt')?.value;
                 const additiveRetrieval = document.getElementById('additive-retrieval-toggle')?.checked;
                 const idleTimeoutInput = document.getElementById('idle-timeout-input');
                 const courseId = await getCurrentCourseId();
@@ -135,6 +207,28 @@ document.addEventListener('DOMContentLoaded', async () => {
                         body: JSON.stringify({ allowLocalLogin })
                     });
                 }
+
+                // Save quiz practice settings
+                const quizEnabled = document.getElementById('quiz-enabled-toggle')?.checked;
+                const materialAccess = document.getElementById('quiz-material-access-toggle')?.checked;
+                const unitCheckboxes = document.querySelectorAll('.testable-unit-checkbox');
+                let testableUnits = 'all';
+                if (unitCheckboxes.length > 0) {
+                    const checkedUnits = Array.from(unitCheckboxes).filter(cb => cb.checked).map(cb => cb.value);
+                    // If all are checked, store 'all'; otherwise store the selected names
+                    testableUnits = checkedUnits.length === unitCheckboxes.length ? 'all' : checkedUnits;
+                }
+
+                await fetch('/api/settings/quiz', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        courseId,
+                        enabled: quizEnabled !== false,
+                        testableUnits,
+                        allowLectureMaterialAccess: materialAccess !== false
+                    })
+                });
 
                 // Save question generation prompts if section is visible (privileged users only)
                 const questionGenSection = document.getElementById('question-generation-section');
@@ -159,7 +253,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                         headers: {
                             'Content-Type': 'application/json'
                         },
-                        body: JSON.stringify({ base, protege, tutor, explain, directive, additiveRetrieval, studentIdleTimeout, courseId })
+                        body: JSON.stringify({ base, protege, tutor, explain, directive, quizHelp, additiveRetrieval, studentIdleTimeout, courseId })
                     });
                     
                     const result = await response.json();
@@ -230,6 +324,20 @@ document.addEventListener('DOMContentLoaded', async () => {
                         if (idleTimeoutInput) idleTimeoutInput.value = 4; // Default 4 mins
                     }
                     
+                    // Reset quiz settings to defaults
+                    const quizEnabledToggle = document.getElementById('quiz-enabled-toggle');
+                    const materialAccessToggle = document.getElementById('quiz-material-access-toggle');
+                    if (quizEnabledToggle) quizEnabledToggle.checked = true;
+                    if (materialAccessToggle) materialAccessToggle.checked = true;
+                    // Check all unit checkboxes
+                    document.querySelectorAll('.testable-unit-checkbox').forEach(cb => { cb.checked = true; });
+                    // Save quiz defaults
+                    await fetch('/api/settings/quiz', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ courseId, enabled: true, testableUnits: 'all', allowLectureMaterialAccess: true })
+                    });
+
                     showNotification('Settings reset to defaults', 'success');
                 } else {
                     showNotification('Failed to reset settings: ' + result.message, 'error');
