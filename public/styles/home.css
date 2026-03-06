@@ -958,6 +958,90 @@
 }
 
 /* ===========================
+   WEEKLY STRUGGLE CHART STYLES
+   =========================== */
+
+.weekly-struggle-chart-container {
+  margin-top: 30px;
+  padding: 20px;
+  background-color: white;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.weekly-struggle-chart-container .chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 15px;
+}
+
+.weekly-struggle-chart-container .chart-header h3 {
+  margin: 0;
+  font-size: 1.4rem;
+  color: var(--text-color);
+}
+
+.chart-nav-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.chart-nav-btn {
+  padding: 6px 14px !important;
+  font-size: 0.85rem !important;
+  border-radius: 6px;
+  min-width: auto;
+}
+
+.chart-nav-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.chart-week-range {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #555;
+  min-width: 140px;
+  text-align: center;
+}
+
+.chart-canvas-wrapper {
+  position: relative;
+  height: 300px;
+  width: 100%;
+}
+
+.chart-legend-note {
+  margin-top: 12px;
+  font-size: 0.85em;
+  color: #666;
+  text-align: right;
+  font-style: italic;
+}
+
+@media (max-width: 768px) {
+  .weekly-struggle-chart-container .chart-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .chart-nav-controls {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .chart-canvas-wrapper {
+    height: 250px;
+  }
+}
+
+/* ===========================
    INFO ICONS & TOOLTIPS
    =========================== */
 .info-icon {

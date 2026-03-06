@@ -14,6 +14,7 @@
     
     <link rel="stylesheet" href="../styles/style.css">
     <link rel="stylesheet" href="../styles/home.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 </head>
 <body>
     <div class="app-container">
@@ -188,6 +189,27 @@
                         <div class="loading-spinner">Loading...</div>
                     </div>
                     
+                    <!-- Weekly Active Struggles Histogram -->
+                    <div class="weekly-struggle-chart-container" id="weekly-struggle-chart-container" style="display: none;">
+                        <div class="chart-header">
+                            <h3>
+                                Weekly Active Struggle Trends
+                                <span class="info-icon tooltip" data-tooltip="Shows the number of students with active struggles each week, broken down by topic. Decreasing bars indicate student improvement.">&#x2139;&#xFE0F;</span>
+                            </h3>
+                            <div class="chart-nav-controls">
+                                <button class="action-btn secondary chart-nav-btn" id="chart-prev-weeks" title="Earlier weeks">&larr; Earlier</button>
+                                <span class="chart-week-range" id="chart-week-range">Loading...</span>
+                                <button class="action-btn secondary chart-nav-btn" id="chart-next-weeks" title="Later weeks">Later &rarr;</button>
+                            </div>
+                        </div>
+                        <div class="chart-canvas-wrapper">
+                            <canvas id="weekly-struggle-chart"></canvas>
+                        </div>
+                        <div class="chart-legend-note">
+                            <span>Each bar shows unique students with active struggles that week, grouped by topic.</span>
+                        </div>
+                    </div>
+
                     <!-- Live Struggle Activity Table -->
                     <div class="live-struggle-table-container" id="live-struggle-container" style="display: none;">
                         <div class="table-header">
