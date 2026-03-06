@@ -95,8 +95,83 @@ async function getActivityByStudent(db, userId, options = {}) {
     return activities;
 }
 
+/**
+ * Get weekly active struggle topics aggregated by ISO week
+ * @param {Object} db - MongoDB database instance
+ * @param {string} courseId - Course identifier
+ * @param {Object} options - Query options
+ * @param {number} options.weeks - Number of weeks to look back (default: 8)
+ * @returns {Promise<Array>} Array of weekly data sorted chronologically
+ */
+async function getWeeklyActiveTopics(db, courseId, options = {}) {
+    const collection = getStruggleActivityCollection(db);
+    const weeks = options.weeks || 8;
+
+    // Calculate start date (beginning of the week, `weeks` weeks ago)
+    const now = new Date();
+    const startDate = new Date(now);
+    startDate.setDate(startDate.getDate() - (weeks * 7));
+    // Snap to Monday of that week
+    const day = startDate.getDay();
+    const diff = day === 0 ? -6 : 1 - day; // Monday = 1
+    startDate.setDate(startDate.getDate() + diff);
+    startDate.setHours(0, 0, 0, 0);
+
+    const pipeline = [
+        {
+            $match: {
+                courseId,
+                state: 'Active',
+                timestamp: { $gte: startDate }
+            }
+        },
+        {
+            $group: {
+                _id: {
+                    weekStart: {
+                        $dateFromParts: {
+                            isoWeekYear: { $isoWeekYear: '$timestamp' },
+                            isoWeek: { $isoWeek: '$timestamp' },
+                            isoDayOfWeek: 1
+                        }
+                    },
+                    topic: { $toLower: '$topic' }
+                },
+                uniqueStudents: { $addToSet: '$userId' }
+            }
+        },
+        {
+            $project: {
+                _id: 0,
+                weekStart: '$_id.weekStart',
+                topic: '$_id.topic',
+                studentCount: { $size: '$uniqueStudents' }
+            }
+        },
+        {
+            $group: {
+                _id: '$weekStart',
+                topics: { $push: { topic: '$topic', studentCount: '$studentCount' } },
+                totalCount: { $sum: '$studentCount' }
+            }
+        },
+        { $sort: { _id: 1 } },
+        {
+            $project: {
+                _id: 0,
+                weekStart: '$_id',
+                topics: 1,
+                totalCount: 1
+            }
+        }
+    ];
+
+    return await collection.aggregate(pipeline).toArray();
+}
+
 module.exports = {
     createActivityEntry,
     getActivityByCourse,
-    getActivityByStudent
+    getActivityByStudent,
+    getWeeklyActiveTopics
 };

@@ -68,8 +68,9 @@ async function initializeHomePage() {
             await loadStruggleTopics();
             await loadApprovedGlobalTopics();
             await loadPersistenceTopics();
+            await loadWeeklyStruggleChart();
         }
-        
+
         // Add event listeners for live struggle table controls
         const filterCheckbox = document.getElementById('filter-active-only');
         if (filterCheckbox) {
@@ -79,6 +80,25 @@ async function initializeHomePage() {
         const downloadCSVBtn = document.getElementById('download-csv-btn');
         if (downloadCSVBtn) {
             downloadCSVBtn.addEventListener('click', downloadStruggleActivityCSV);
+        }
+
+        // Weekly chart navigation
+        const chartPrevBtn = document.getElementById('chart-prev-weeks');
+        if (chartPrevBtn) {
+            chartPrevBtn.addEventListener('click', () => {
+                weeklyChartOffset++;
+                loadWeeklyStruggleChart();
+            });
+        }
+
+        const chartNextBtn = document.getElementById('chart-next-weeks');
+        if (chartNextBtn) {
+            chartNextBtn.addEventListener('click', () => {
+                if (weeklyChartOffset > 0) {
+                    weeklyChartOffset--;
+                    loadWeeklyStruggleChart();
+                }
+            });
         }
     } catch (error) {
         console.error('Error initializing home page:', error);
@@ -742,6 +762,11 @@ let struggleActivityData = []; // Array to store all struggle activity
 const MAX_TABLE_ENTRIES = 100; // Limit stored entries to prevent memory issues
 const POLLING_INTERVAL_MS = 10000; // Poll every 10 seconds
 
+// Weekly struggle chart state
+let weeklyStruggleChart = null;   // Chart.js instance
+let weeklyChartOffset = 0;        // Navigation offset (0 = most recent page)
+const WEEKS_PER_PAGE = 8;         // Weeks shown per page
+
 /**
  * Start polling for struggle activity updates
  * Called when a course is selected
@@ -971,6 +996,221 @@ function downloadStruggleActivityCSV() {
 
 // ===========================
 // END OF LIVE STRUGGLE TABLE
+// ===========================
+
+// ===========================
+// WEEKLY STRUGGLE CHART
+// ===========================
+
+/**
+ * Get the Monday (ISO week start) for a given date
+ * @param {Date} date
+ * @returns {Date} Monday at 00:00:00
+ */
+function getMonday(date) {
+    const d = new Date(date);
+    const day = d.getDay();
+    const diff = day === 0 ? -6 : 1 - day;
+    d.setDate(d.getDate() + diff);
+    d.setHours(0, 0, 0, 0);
+    return d;
+}
+
+/**
+ * Load weekly active struggle data and render chart.
+ * Generates a continuous weekly timeline (no gaps) and merges sparse backend data into it.
+ */
+async function loadWeeklyStruggleChart() {
+    try {
+        const courseId = getSelectedCourseId();
+        if (!courseId) return;
+
+        // Always fetch a generous window so we can paginate client-side
+        const fetchWeeks = Math.max(52, (weeklyChartOffset + 1) * WEEKS_PER_PAGE + WEEKS_PER_PAGE);
+
+        const response = await authenticatedFetch(
+            `/api/struggle-activity/weekly/${courseId}?weeks=${fetchWeeks}`
+        );
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const result = await response.json();
+        const sparseWeeks = result.data || [];
+
+        if (sparseWeeks.length === 0) {
+            renderWeeklyStruggleChart([], 0);
+            return;
+        }
+
+        // Build a lookup map using YYYY-MM-DD date key to avoid timezone mismatches
+        // (backend returns UTC midnight, local getMonday returns local midnight)
+        const toDateKey = (d) => {
+            const dt = new Date(d);
+            return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+        };
+
+        const weekMap = new Map();
+        sparseWeeks.forEach(w => {
+            weekMap.set(toDateKey(w.weekStart), w);
+        });
+
+        // Determine the full range: earliest data week to current week
+        // Use UTC-based Monday calculation to match backend
+        const getMondayUTC = (d) => {
+            const dt = new Date(d);
+            const day = dt.getUTCDay();
+            const diff = day === 0 ? -6 : 1 - day;
+            dt.setUTCDate(dt.getUTCDate() + diff);
+            dt.setUTCHours(0, 0, 0, 0);
+            return dt;
+        };
+
+        const earliestWeek = getMondayUTC(new Date(sparseWeeks[0].weekStart));
+        const currentWeek = getMondayUTC(new Date());
+
+        // Generate continuous weekly timeline
+        const allWeeks = [];
+        const cursor = new Date(earliestWeek);
+        while (cursor <= currentWeek) {
+            const key = toDateKey(cursor);
+            if (weekMap.has(key)) {
+                allWeeks.push(weekMap.get(key));
+            } else {
+                allWeeks.push({ weekStart: new Date(cursor), topics: [], totalCount: 0 });
+            }
+            cursor.setUTCDate(cursor.getUTCDate() + 7);
+        }
+
+        // Paginate: offset 0 = most recent WEEKS_PER_PAGE weeks
+        const endIdx = allWeeks.length - (weeklyChartOffset * WEEKS_PER_PAGE);
+        const sliceStart = Math.max(0, endIdx - WEEKS_PER_PAGE);
+        const pageData = allWeeks.slice(sliceStart, Math.max(endIdx, 0));
+
+        renderWeeklyStruggleChart(pageData, allWeeks.length);
+    } catch (error) {
+        console.error('Error loading weekly struggle chart:', error);
+    }
+}
+
+/**
+ * Render the weekly struggle stacked bar chart
+ * @param {Array} weekData - Array of week objects with topics
+ * @param {number} totalWeeksAvailable - Total weeks of data available
+ */
+function renderWeeklyStruggleChart(weekData, totalWeeksAvailable) {
+    const container = document.getElementById('weekly-struggle-chart-container');
+    const canvas = document.getElementById('weekly-struggle-chart');
+    const rangeLabel = document.getElementById('chart-week-range');
+    const prevBtn = document.getElementById('chart-prev-weeks');
+    const nextBtn = document.getElementById('chart-next-weeks');
+
+    if (!container || !canvas) return;
+
+    if (weekData.length === 0) {
+        container.style.display = 'none';
+        return;
+    }
+
+    container.style.display = 'block';
+
+    // Collect all unique topics across displayed weeks
+    const allTopics = new Set();
+    weekData.forEach(w => w.topics.forEach(t => allTopics.add(t.topic)));
+    const topicList = Array.from(allTopics).sort();
+
+    // Color palette
+    const palette = [
+        '#dc3545', '#4a90e2', '#ffc107', '#28a745', '#6f42c1',
+        '#fd7e14', '#20c997', '#e83e8c', '#17a2b8', '#6c757d',
+        '#8b5cf6', '#f59e0b', '#ef4444', '#10b981', '#3b82f6'
+    ];
+
+    // Build labels (week start dates)
+    const labels = weekData.map(w => {
+        const d = new Date(w.weekStart);
+        return d.toLocaleDateString('en-US', {
+            month: 'short', day: 'numeric',
+            timeZone: 'America/Los_Angeles'
+        });
+    });
+
+    // Build datasets (one per topic, stacked)
+    const datasets = topicList.map((topic, i) => ({
+        label: capitalizeFirst(topic),
+        data: weekData.map(w => {
+            const found = w.topics.find(t => t.topic === topic);
+            return found ? found.studentCount : 0;
+        }),
+        backgroundColor: palette[i % palette.length],
+        borderWidth: 0,
+        borderRadius: 2
+    }));
+
+    // Update range label
+    if (rangeLabel && weekData.length > 0) {
+        const firstDate = new Date(weekData[0].weekStart);
+        const lastDate = new Date(weekData[weekData.length - 1].weekStart);
+        const lastEndDate = new Date(lastDate);
+        lastEndDate.setDate(lastEndDate.getDate() + 6);
+        const fmt = { month: 'short', day: 'numeric', timeZone: 'America/Los_Angeles' };
+        rangeLabel.textContent = `${firstDate.toLocaleDateString('en-US', fmt)} – ${lastEndDate.toLocaleDateString('en-US', fmt)}`;
+    }
+
+    // Update navigation buttons
+    if (prevBtn) {
+        prevBtn.disabled = (weeklyChartOffset + 1) * WEEKS_PER_PAGE >= totalWeeksAvailable;
+    }
+    if (nextBtn) {
+        nextBtn.disabled = weeklyChartOffset === 0;
+    }
+
+    // Destroy previous chart instance
+    if (weeklyStruggleChart) {
+        weeklyStruggleChart.destroy();
+    }
+
+    // Create stacked bar chart
+    weeklyStruggleChart = new Chart(canvas, {
+        type: 'bar',
+        data: { labels, datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: { padding: 15, usePointStyle: true, pointStyle: 'rect' }
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false,
+                    callbacks: {
+                        title: (items) => `Week of ${items[0].label}`,
+                        afterBody: (items) => {
+                            const total = items.reduce((sum, item) => sum + item.raw, 0);
+                            return `\nTotal active: ${total} student${total !== 1 ? 's' : ''}`;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    stacked: true,
+                    grid: { display: false },
+                    title: { display: true, text: 'Week Starting', font: { weight: 'bold' } }
+                },
+                y: {
+                    stacked: true,
+                    beginAtZero: true,
+                    ticks: { stepSize: 1, precision: 0 },
+                    title: { display: true, text: 'Active Students', font: { weight: 'bold' } }
+                }
+            }
+        }
+    });
+}
+
+// ===========================
+// END OF WEEKLY STRUGGLE CHART
 // ===========================
 
 
@@ -1287,9 +1527,13 @@ async function setSelectedCourse(courseId, courseName) {
     
     // Start polling for struggle activity updates
     startPollingStruggleActivity();
-    
+
     // Load initial struggle activity data for the live table
     await loadInitialStruggleActivity();
+
+    // Reset and load weekly struggle chart
+    weeklyChartOffset = 0;
+    await loadWeeklyStruggleChart();
 }
 
 /**
