@@ -1003,20 +1003,6 @@ function downloadStruggleActivityCSV() {
 // ===========================
 
 /**
- * Get the Monday (ISO week start) for a given date
- * @param {Date} date
- * @returns {Date} Monday at 00:00:00
- */
-function getMonday(date) {
-    const d = new Date(date);
-    const day = d.getDay();
-    const diff = day === 0 ? -6 : 1 - day;
-    d.setDate(d.getDate() + diff);
-    d.setHours(0, 0, 0, 0);
-    return d;
-}
-
-/**
  * Load weekly active struggle data and render chart.
  * Generates a continuous weekly timeline (no gaps) and merges sparse backend data into it.
  */
@@ -1041,43 +1027,25 @@ async function loadWeeklyStruggleChart() {
             return;
         }
 
-        // Build a lookup map using YYYY-MM-DD date key to avoid timezone mismatches
-        // (backend returns UTC midnight, local getMonday returns local midnight)
-        const toDateKey = (d) => {
-            const dt = new Date(d);
-            return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
-        };
-
+        // Build lookup by milliseconds. Backend $dateTrunc returns stable timestamps.
         const weekMap = new Map();
         sparseWeeks.forEach(w => {
-            weekMap.set(toDateKey(w.weekStart), w);
+            weekMap.set(new Date(w.weekStart).getTime(), w);
         });
 
-        // Determine the full range: earliest data week to current week
-        // Use UTC-based Monday calculation to match backend
-        const getMondayUTC = (d) => {
-            const dt = new Date(d);
-            const day = dt.getUTCDay();
-            const diff = day === 0 ? -6 : 1 - day;
-            dt.setUTCDate(dt.getUTCDate() + diff);
-            dt.setUTCHours(0, 0, 0, 0);
-            return dt;
-        };
+        // Generate continuous timeline from first backend week to now, stepping +7 days
+        const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+        const firstWeekMs = new Date(sparseWeeks[0].weekStart).getTime();
+        const lastWeekMs = new Date(sparseWeeks[sparseWeeks.length - 1].weekStart).getTime();
+        const endMs = Math.max(lastWeekMs, Date.now());
 
-        const earliestWeek = getMondayUTC(new Date(sparseWeeks[0].weekStart));
-        const currentWeek = getMondayUTC(new Date());
-
-        // Generate continuous weekly timeline
         const allWeeks = [];
-        const cursor = new Date(earliestWeek);
-        while (cursor <= currentWeek) {
-            const key = toDateKey(cursor);
-            if (weekMap.has(key)) {
-                allWeeks.push(weekMap.get(key));
+        for (let ms = firstWeekMs; ms <= endMs; ms += WEEK_MS) {
+            if (weekMap.has(ms)) {
+                allWeeks.push(weekMap.get(ms));
             } else {
-                allWeeks.push({ weekStart: new Date(cursor), topics: [], totalCount: 0 });
+                allWeeks.push({ weekStart: new Date(ms).toISOString(), topics: [], totalCount: 0 });
             }
-            cursor.setUTCDate(cursor.getUTCDate() + 7);
         }
 
         // Paginate: offset 0 = most recent WEEKS_PER_PAGE weeks
