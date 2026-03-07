@@ -49,14 +49,17 @@ async function determineSourceAttribution(searchResults, unitName, sourceDownloa
         }
 
         // Check if search results are relevant enough (low scores indicate poor matches)
-        const avgScore = searchResults.reduce((sum, result) => sum + (result.score || 0), 0) / searchResults.length;
-        const maxScore = Math.max(...searchResults.map(result => result.score || 0));
+        const scores = searchResults.map(result => (result.score || 0));
+        const maxScore = Math.max(...scores);
+        const top3Scores = [...scores].sort((a, b) => b - a).slice(0, 3);
+        const avgTop3Score = top3Scores.length > 0
+            ? top3Scores.reduce((sum, score) => sum + score, 0) / top3Scores.length
+            : 0;
 
-        console.log('🔍 [SOURCE_DEBUG] Search relevance - avgScore:', avgScore, 'maxScore:', maxScore);
+        console.log('🔍 [SOURCE_DEBUG] Search relevance - avgTop3Score:', avgTop3Score, 'maxScore:', maxScore);
 
-        // If scores are too low, treat as GPT (no relevant materials found)
-        // Raised thresholds to reduce false positive attributions.
-        if (avgScore < 0.15 || maxScore < 0.25) {
+        // Treat as GPT only when both max and top-hit average are weak.
+        if (avgTop3Score < 0.10 && maxScore < 0.18) {
             console.log('🔍 [SOURCE_DEBUG] Low relevance scores - treating as GPT');
             return {
                 source: 'GPT',
@@ -69,7 +72,7 @@ async function determineSourceAttribution(searchResults, unitName, sourceDownloa
         }
 
         // Filter for meaningful chunks
-        const relevantChunks = searchResults.filter(result => (result.score || 0) > 0.15);
+        const relevantChunks = searchResults.filter(result => (result.score || 0) > 0.10);
 
         if (relevantChunks.length === 0) {
              return {
