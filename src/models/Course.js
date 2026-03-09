@@ -715,40 +715,6 @@ async function getCourseWithOnboarding(db, courseId) {
 }
 
 /**
- * Update onboarding completion status
- * @param {Object} db - MongoDB database instance
- * @param {string} courseId - Course identifier
- * @param {boolean} isComplete - Whether onboarding is complete
- * @returns {Promise<Object>} Update result
- */
-async function updateOnboardingStatus(db, courseId, isComplete) {
-    const collection = getCoursesCollection(db);
-    
-    const now = new Date();
-    
-    try {
-        const result = await collection.updateOne(
-            { courseId },
-            {
-                $set: {
-                    isOnboardingComplete: isComplete,
-                    updatedAt: now
-                }
-            }
-        );
-        
-        return {
-            success: true,
-            modifiedCount: result.modifiedCount,
-            courseId
-        };
-    } catch (error) {
-        console.error('Error updating onboarding status:', error);
-        throw error;
-    }
-}
-
-/**
  * Delete a unit from a course
  * @param {Object} db - MongoDB database instance
  * @param {string} courseId - Course identifier
@@ -933,116 +899,6 @@ async function addDocumentToUnit(db, courseId, unitName, documentData, instructo
 }
 
 /**
- * Get documents for a specific unit from the course structure
- * @param {Object} db - MongoDB database instance
- * @param {string} courseId - Course identifier
- * @param {string} unitName - Name of the unit
- * @returns {Promise<Array>} Array of documents
- */
-async function getDocumentsForUnit(db, courseId, unitName) {
-    const collection = getCoursesCollection(db);
-    
-    const course = await collection.findOne(
-        { courseId },
-        { projection: { lectures: 1 } }
-    );
-    
-    if (!course || !course.lectures) {
-        return [];
-    }
-    
-    // Find the specific unit and return its documents
-    const unit = course.lectures.find(l => l.name === unitName);
-    return unit ? (unit.documents || []) : [];
-}
-
-/**
- * Remove a document from a specific unit
- * @param {Object} db - MongoDB database instance
- * @param {string} courseId - Course identifier
- * @param {string} unitName - Name of the unit
- * @param {string} documentId - ID of the document to remove
- * @param {string} instructorId - ID of the instructor
- * @returns {Promise<Object>} Removal result
- */
-async function removeDocumentFromUnit(db, courseId, unitName, documentId, instructorId) {
-    const collection = getCoursesCollection(db);
-    
-    const now = new Date();
-    
-    // First, ensure the course exists
-    const course = await collection.findOne({ courseId });
-    if (!course) {
-        console.error(`Course ${courseId} not found for document removal`);
-        return { success: false, error: 'Course not found' };
-    }
-    
-    // Check if the unit already exists
-    const existingUnit = course.lectures ? course.lectures.find(l => l.name === unitName) : null;
-    
-    if (existingUnit) {
-        console.log(`Found unit ${unitName} with ${existingUnit.documents?.length || 0} documents`);
-        console.log(`Looking for document with ID: ${documentId}`);
-        
-        // Check if the document actually exists in this unit
-        const documentExists = existingUnit.documents && existingUnit.documents.some(doc => doc.documentId === documentId);
-        console.log(`Document exists in unit: ${documentExists}`);
-        
-        if (!documentExists) {
-            console.log(`Document ${documentId} not found in unit ${unitName}`);
-            return { success: false, error: 'Document not found in unit' };
-        }
-        
-        // Remove the document from the documents array using a direct approach
-        // First, get the current course to modify it directly
-        const currentCourse = await collection.findOne({ courseId });
-        if (!currentCourse) {
-            return { success: false, error: 'Course not found during update' };
-        }
-        
-        // Find the unit and remove the document
-        let documentRemoved = false;
-        if (currentCourse.lectures) {
-            for (let i = 0; i < currentCourse.lectures.length; i++) {
-                const unit = currentCourse.lectures[i];
-                if (unit.name === unitName && unit.documents) {
-                    const initialLength = unit.documents.length;
-                    unit.documents = unit.documents.filter(doc => doc.documentId !== documentId);
-                    if (unit.documents.length < initialLength) {
-                        documentRemoved = true;
-                        unit.updatedAt = now;
-                    }
-                }
-            }
-        }
-        
-        if (!documentRemoved) {
-            console.log(`Document ${documentId} not found in unit ${unitName}`);
-            return { success: false, error: 'Document not found in unit' };
-        }
-        
-        // Update the course with the modified data
-        const result = await collection.updateOne(
-            { courseId },
-            {
-                $set: {
-                    lectures: currentCourse.lectures,
-                    updatedAt: now,
-                    lastUpdatedById: instructorId
-                }
-            }
-        );
-        
-        console.log(`MongoDB update result:`, result);
-        console.log(`Removed document from ${unitName}`);
-        return { success: true, removedCount: result.modifiedCount, documentId };
-    } else {
-        console.error(`Unit ${unitName} not found in course ${courseId}`);
-        return { success: false, error: 'Unit not found' };
-    }
-}
-
-/**
  * Remove a document from any unit in a course (fallback method)
  * @param {Object} db - MongoDB database instance
  * @param {string} courseId - Course identifier
@@ -1169,53 +1025,7 @@ async function addTAToCourse(db, courseId, taId) {
     return { success: true, modifiedCount: result.modifiedCount };
 }
 
-/**
- * Remove an instructor from a course
- * @param {Object} db - MongoDB database instance
- * @param {string} courseId - Course identifier
- * @param {string} instructorId - ID of the instructor to remove
- * @returns {Promise<Object>} Update result
- */
-async function removeInstructorFromCourse(db, courseId, instructorId) {
-    const collection = getCoursesCollection(db);
-    
-    const now = new Date();
-    
-    const result = await collection.updateOne(
-        { courseId },
-        {
-            $pull: { instructors: instructorId },
-            $set: { updatedAt: now }
-        }
-    );
-    
-    console.log(`Removed instructor ${instructorId} from course ${courseId}`);
-    return { success: true, modifiedCount: result.modifiedCount };
-}
 
-/**
- * Remove a TA from a course
- * @param {Object} db - MongoDB database instance
- * @param {string} courseId - Course identifier
- * @param {string} taId - ID of the TA to remove
- * @returns {Promise<Object>} Update result
- */
-async function removeTAFromCourse(db, courseId, taId) {
-    const collection = getCoursesCollection(db);
-    
-    const now = new Date();
-    
-    const result = await collection.updateOne(
-        { courseId },
-        {
-            $pull: { tas: taId },
-            $set: { updatedAt: now }
-        }
-    );
-    
-    console.log(`Removed TA ${taId} from course ${courseId}`);
-    return { success: true, modifiedCount: result.modifiedCount };
-}
 
 /**
  * Get all courses for a user (instructor or TA)
@@ -1662,19 +1472,14 @@ module.exports = {
     getPassThreshold,
     createCourseFromOnboarding,
     getCourseWithOnboarding,
-    updateOnboardingStatus,
     deleteUnit,
     updateAssessmentQuestions,
     getAssessmentQuestions,
     deleteAssessmentQuestion,
     addDocumentToUnit,
-    getDocumentsForUnit,
-    removeDocumentFromUnit,
     removeDocumentFromAnyUnit,
     addInstructorToCourse,
     addTAToCourse,
-    removeInstructorFromCourse,
-    removeTAFromCourse,
     getCoursesForUser,
     userHasCourseAccess,
     getCourseById,
