@@ -149,11 +149,7 @@ router.get('/questions', async (req, res) => {
                         points: q.points || 1
                     };
 
-                    // MC/TF: include correctAnswer for client-side checking
-                    if (q.questionType === 'multiple-choice' || q.questionType === 'true-false') {
-                        sanitized.correctAnswer = q.correctAnswer;
-                    }
-                    // Short-answer: no correctAnswer sent (AI evaluates server-side)
+                    // correctAnswer is never sent to the client — all checking is server-side
 
                     allQuestions.push(sanitized);
                 }
@@ -209,6 +205,19 @@ router.post('/check-answer', async (req, res) => {
             return res.status(404).json({ success: false, message: 'Question not found' });
         }
 
+        // MC and TF: direct comparison, no LLM needed
+        if (question.questionType === 'multiple-choice' || question.questionType === 'true-false') {
+            const correct = studentAnswer.toLowerCase() === question.correctAnswer.toLowerCase();
+            const feedback = correct
+                ? 'Correct! Well done.'
+                : `Incorrect. The correct answer is ${question.correctAnswer}.`;
+            return res.json({
+                success: true,
+                data: { correct, feedback, correctAnswer: question.correctAnswer }
+            });
+        }
+
+        // Short-answer: AI evaluation
         const llmService = req.app.locals.llm;
         if (!llmService) {
             return res.status(503).json({ success: false, message: 'LLM service not available' });
