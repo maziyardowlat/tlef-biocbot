@@ -283,38 +283,38 @@ document.addEventListener('DOMContentLoaded', async () => {
         let correct = false;
         let feedback = '';
 
+        let serverCorrectAnswer = null;
+
         try {
-            if (q.questionType === 'multiple-choice' || q.questionType === 'true-false') {
-                // Client-side check
-                correct = studentAnswer.toLowerCase() === q.correctAnswer.toLowerCase();
-                feedback = correct ? 'Correct! Well done.' : `Incorrect. The correct answer is ${q.correctAnswer}.`;
-                highlightOptions(q, studentAnswer);
+            // All question types are checked server-side
+            const displayName = (typeof currentUser !== 'undefined' && currentUser)
+                ? (currentUser.displayName || currentUser.username || 'Student')
+                : 'Student';
+
+            const res = await fetch('/api/quiz/check-answer', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    courseId,
+                    questionId: q.questionId,
+                    lectureName: q.lectureName,
+                    studentAnswer,
+                    studentName: displayName
+                })
+            });
+
+            const data = await res.json();
+            if (data.success && data.data) {
+                correct = data.data.correct;
+                feedback = data.data.feedback || (correct ? 'Correct!' : 'Incorrect.');
+                serverCorrectAnswer = data.data.correctAnswer || null;
             } else {
-                // Short-answer: AI evaluation
-                const displayName = (typeof currentUser !== 'undefined' && currentUser)
-                    ? (currentUser.displayName || currentUser.username || 'Student')
-                    : 'Student';
+                feedback = 'Unable to evaluate answer. Please try again.';
+            }
 
-                const res = await fetch('/api/quiz/check-answer', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        courseId,
-                        questionId: q.questionId,
-                        lectureName: q.lectureName,
-                        studentAnswer,
-                        studentName: displayName
-                    })
-                });
-
-                const data = await res.json();
-                if (data.success && data.data) {
-                    correct = data.data.correct;
-                    feedback = data.data.feedback || (correct ? 'Correct!' : 'Incorrect.');
-                } else {
-                    feedback = 'Unable to evaluate answer. Please try again.';
-                }
-
+            if (q.questionType === 'multiple-choice' || q.questionType === 'true-false') {
+                highlightOptions(q, studentAnswer, serverCorrectAnswer);
+            } else {
                 document.getElementById('sa-input').disabled = true;
             }
         } catch (error) {
@@ -366,7 +366,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Open quiz help chat on wrong answer
         if (!correct) {
-            openQuizChat(q, studentAnswer, feedback);
+            openQuizChat(q, studentAnswer, feedback, serverCorrectAnswer);
         }
 
         // Show next button
@@ -380,7 +380,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         displayQuestion();
     }
 
-    function highlightOptions(q, studentAnswer) {
+    function highlightOptions(q, studentAnswer, correctAnswer) {
         const containerSelector = q.questionType === 'multiple-choice' ? '#mc-options' : '#tf-options';
         const labels = document.querySelectorAll(`${containerSelector} .option-label`);
 
@@ -388,7 +388,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const radio = label.querySelector('input[type="radio"]');
             label.classList.add('disabled');
 
-            if (radio.value.toLowerCase() === q.correctAnswer.toLowerCase()) {
+            if (correctAnswer && radio.value.toLowerCase() === correctAnswer.toLowerCase()) {
                 label.classList.add(radio.value.toLowerCase() === studentAnswer.toLowerCase() ? 'correct' : 'was-correct');
             } else if (radio.value.toLowerCase() === studentAnswer.toLowerCase()) {
                 label.classList.add('incorrect');
@@ -499,13 +499,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     /**
      * Open the quiz help chat panel for a wrong answer
      */
-    function openQuizChat(question, studentAnswer, saFeedback) {
+    function openQuizChat(question, studentAnswer, saFeedback, serverCorrectAnswer) {
         // Build the correct answer string based on question type
         let correctAnswerStr = '';
-        if (question.questionType === 'multiple-choice') {
-            correctAnswerStr = `${question.correctAnswer}. ${question.options[question.correctAnswer]}`;
-        } else if (question.questionType === 'true-false') {
-            correctAnswerStr = String(question.correctAnswer);
+        if (question.questionType === 'multiple-choice' && serverCorrectAnswer) {
+            correctAnswerStr = `${serverCorrectAnswer}. ${question.options[serverCorrectAnswer] || ''}`;
+        } else if (question.questionType === 'true-false' && serverCorrectAnswer) {
+            correctAnswerStr = String(serverCorrectAnswer);
         } else if (question.questionType === 'short-answer') {
             // Short-answer correctAnswer is not on the client; server will look it up
             correctAnswerStr = '[evaluated by AI on server]';
