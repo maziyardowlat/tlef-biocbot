@@ -208,29 +208,6 @@ async function deleteOnboarding(db, courseId) {
     }
 }
 
-/**
- * Get onboarding statistics
- * @param {Object} db - MongoDB database instance
- * @returns {Promise<Object>} Statistics object
- */
-async function getOnboardingStats(db) {
-    const collection = getOnboardingCollection(db);
-    
-    try {
-        const totalCourses = await collection.countDocuments();
-        const totalInstructors = await collection.distinct('instructorId');
-        
-        return {
-            totalCourses,
-            totalInstructors: totalInstructors.length,
-            lastUpdated: new Date().toISOString()
-        };
-    } catch (error) {
-        console.error('Error fetching onboarding stats:', error);
-        throw error;
-    }
-}
-
 module.exports = {
     getOnboardingCollection,
     upsertOnboarding,
@@ -238,6 +215,5 @@ module.exports = {
     getOnboardingByInstructor,
     updateOnboardingFields,
     updateUnitFiles,
-    deleteOnboarding,
-    getOnboardingStats
+    deleteOnboarding
 };
