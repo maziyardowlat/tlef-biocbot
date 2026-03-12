@@ -11,7 +11,8 @@ const QuizAttempt = require('../models/QuizAttempt');
 const DocumentModel = require('../models/Document');
 const QdrantService = require('../services/qdrantService');
 const prompts = require('../services/prompts');
-const profanityCleaner = require('profanity-cleaner');
+const BadWordsFilter = require('bad-words');
+const profanityFilter = new BadWordsFilter();
 
 router.use(express.json());
 
@@ -436,9 +437,7 @@ router.post('/chat', async (req, res) => {
         }
 
         // Profanity filter
-        const cleanedMessage = profanityCleaner && typeof profanityCleaner.clean === 'function'
-            ? profanityCleaner.clean(message)
-            : message;
+        const cleanedMessage = profanityFilter.clean(message);
 
         if (cleanedMessage !== message) {
             return res.json({
