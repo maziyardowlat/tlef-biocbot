@@ -70,7 +70,7 @@ EMBEDDING_PROVIDER=ubc-genai-toolkit-llm
 
 # LLM Provider Settings
 LLM_PROVIDER=openai
-LLM_API_KEY=your-openai-api-key
+OPENAI_API_KEY=your-openai-api-key
 OPENAI_MODEL=gpt-4.1-mini
 LLM_EMBEDDING_MODEL=text-embedding-3-small
 ```
