@@ -12,7 +12,8 @@ const QdrantService = require('../services/qdrantService');
 const prompts = require('../services/prompts');
 const CourseModel = require('../models/Course');
 const DocumentModel = require('../models/Document');
-const profanityCleaner = require('profanity-cleaner');
+const BadWordsFilter = require('bad-words');
+const profanityFilter = new BadWordsFilter();
 const TrackerService = require('../services/tracker');
 const User = require('../models/User');
 
@@ -444,9 +445,7 @@ router.post('/', async (req, res) => {
         // If the cleaned text differs from the original, return a warning response
         // Skip for explanation requests (system generated from valid bot content)
         if (!req.body.isExplanationRequest) {
-            const cleanedMessage = profanityCleaner && typeof profanityCleaner.clean === 'function'
-                ? profanityCleaner.clean(message)
-                : message;
+            const cleanedMessage = profanityFilter.clean(message);
 
             if (cleanedMessage !== message) {
             const warningText = 'please watch the language, this is a tool and this data will be used for internal and data analysis';

@@ -17,6 +17,7 @@
   "type": "commonjs",
   "dependencies": {
     "@qdrant/js-client-rest": "^1.15.1",
+    "bad-words": "^3.0.4",
     "bcryptjs": "^2.4.3",
     "connect-mongo": "^5.1.0",
     "cors": "^2.8.5",
@@ -30,7 +31,6 @@
     "passport-local": "^1.0.0",
     "passport-saml": "^3.2.4",
     "passport-ubcshib": "0.1.4",
-    "profanity-cleaner": "^0.0.3",
     "ubc-genai-toolkit-chunking": "^0.1.0",
     "ubc-genai-toolkit-core": "^0.1.0",
     "ubc-genai-toolkit-document-parsing": "^0.1.0",
