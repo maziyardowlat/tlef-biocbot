@@ -30,7 +30,7 @@ BiocBot follows a split architecture with a public frontend and a private backen
 - **Backend**: Node.js (Express 5), built with modular architecture
 - **Database**: MongoDB (documents, user sessions, analytics, quiz attempts)
 - **Vector Database**: Qdrant for semantic search and similarity retrieval
-- **Embeddings**: UBC GenAI Toolkit (Ollama with nomic-embed-text, or UBC LLM Sandbox)
+- **Embeddings**: UBC GenAI Toolkit with OpenAI (text-embedding-3-small)
 - **Authentication**: Passport.js — local strategy + SAML / UBC Shibboleth
 
 ## 🛠️ Setup & Installation
@@ -40,7 +40,7 @@ BiocBot follows a split architecture with a public frontend and a private backen
 - Node.js v18.x or higher
 - MongoDB instance
 - Qdrant vector database (Docker recommended)
-- Ollama with nomic-embed-text model
+- OpenAI API key
 
 ### 1. Clone and Install
 
@@ -68,12 +68,11 @@ QDRANT_API_KEY=super-secret-dev-key
 # Embeddings Provider Configuration
 EMBEDDING_PROVIDER=ubc-genai-toolkit-llm
 
-# LLM Provider Settings (for Embeddings)
-LLM_PROVIDER=ollama
-LLM_API_KEY=nokey
-LLM_ENDPOINT=http://localhost:11434
-LLM_EMBEDDING_MODEL=nomic-embed-text
-LLM_DEFAULT_MODEL=llama3.1
+# LLM Provider Settings
+LLM_PROVIDER=openai
+LLM_API_KEY=your-openai-api-key
+OPENAI_MODEL=gpt-4.1-mini
+LLM_EMBEDDING_MODEL=text-embedding-3-small
 ```
 
 ### 3. Start Services
@@ -81,12 +80,6 @@ LLM_DEFAULT_MODEL=llama3.1
 #### Start Qdrant (Docker)
 ```bash
 docker run -p 6333:6333 qdrant/qdrant
-```
-
-#### Start Ollama with nomic-embed-text
-```bash
-ollama pull nomic-embed-text
-ollama serve
 ```
 
 #### Start BiocBot
