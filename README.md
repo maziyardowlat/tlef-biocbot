@@ -4,13 +4,21 @@ BiocBot is an AI-powered study assistant platform that enables students to inter
 
 ## 🚀 Features
 
-- **Document Management**: Upload and organize course materials
+- **Document Management**: Upload and organize course materials per lecture/unit
 - **Vector Search**: Semantic search across documents using Qdrant
-- **AI Chat Interface**: Student interaction with course content
+- **AI Chat Interface**: RAG-powered student chat with tutor and protege modes
 - **Per-Course Retrieval Mode**: Instructor-controlled additive vs single-unit retrieval for chat
-- **Assessment Questions**: Create and manage course assessments
-- **Course Structure**: Organize content by units/lectures
-- **User Management**: Separate interfaces for instructors and students
+- **Quiz Practice System**: Self-paced AI-graded quizzes with attempt history
+- **Assessment Questions**: Create and manage multiple-choice, true/false, and short-answer questions
+- **Flagging System**: Students flag issues with questions; instructors review and respond
+- **Student Struggle Tracking**: Activity logging to monitor and surface struggling students
+- **Course Structure**: Organize content by units/lectures with publish controls
+- **User Management**: Separate interfaces for instructors, TAs, and students
+- **TA Management**: Instructors promote students to TAs with scoped permissions
+- **Onboarding Wizard**: Guided AI-assisted course setup for instructors
+- **SAML / UBC CWL Auth**: Shibboleth integration alongside local username/password auth
+- **User Agreement**: Modal-gated terms acceptance before platform access
+- **Session Idle Timeout**: Automatic logout after inactivity
 
 ## 🏗️ Architecture
 
@@ -19,11 +27,11 @@ BiocBot follows a split architecture with a public frontend and a private backen
 ### Tech Stack
 
 - **Frontend**: HTML + Vanilla JS (no frameworks), styled via separate CSS files
-- **Backend**: Node.js (Express), built with modular architecture
-- **Database**: MongoDB (for documents, user sessions, analytics)
+- **Backend**: Node.js (Express 5), built with modular architecture
+- **Database**: MongoDB (documents, user sessions, analytics, quiz attempts)
 - **Vector Database**: Qdrant for semantic search and similarity retrieval
-- **Embeddings**: Ollama with nomic-embed-text model
-- **Document Processing**: UBC GenAI Toolkit modules
+- **Embeddings**: UBC GenAI Toolkit (Ollama with nomic-embed-text, or UBC LLM Sandbox)
+- **Authentication**: Passport.js — local strategy + SAML / UBC Shibboleth
 
 ## 🛠️ Setup & Installation
 
@@ -86,91 +94,114 @@ ollama serve
 npm run dev
 ```
 
+## 📚 Usage
+
+### For Instructors
+
+1. **Access**: Navigate to `/instructor`
+2. **Onboarding**: Complete the guided course setup wizard (AI-assisted topic extraction)
+3. **Upload Documents**: Add course materials to units/lectures
+4. **Create Questions**: Build multiple-choice, true/false, and short-answer assessments
+5. **Publish Units**: Make content available to students
+6. **Quiz Settings**: Enable quiz practice, select testable units, and control material access for failed answers
+7. **Retrieval Mode**: On the course Home page, toggle "Use additive retrieval" to allow chat to include earlier published units in addition to the selected unit. When off, chat uses only the selected unit.
+8. **Manage TAs**: Promote students to TAs via the TA Hub; assign course and flag permissions
+9. **Review Flags**: View and respond to student-flagged question issues
+10. **Monitor Students**: Use the Student Hub to review engagement and struggle activity
+
+### For Students
+
+1. **Access**: Navigate to `/student`
+2. **Agreement**: Accept the user agreement on first login
+3. **Course Selection**: Choose your course
+4. **Chat Interface**: Select a unit, then ask questions about course material
+5. **Quiz Practice**: Practice assessment questions with immediate AI feedback and attempt history
+6. **Flag Questions**: Report unclear or incorrect questions for instructor review
+7. **Chat History**: Review past conversations
+
+### For TAs
+
+1. **Access**: Navigate to `/ta`
+2. **Onboarding**: Complete TA onboarding
+3. **Settings**: Configure TA-specific options
+4. **Flagged Questions**: Review and respond to flagged questions (if permitted)
+
 ## 🔍 Qdrant Integration
 
-BiocBot now includes advanced vector search capabilities through Qdrant integration:
+BiocBot uses Qdrant for vector-based semantic search:
 
-### Features
-- **Automatic Document Processing**: Documents are automatically chunked, embedded, and stored
+- **Automatic Document Processing**: Documents are automatically chunked, embedded, and stored on upload
 - **Semantic Search**: Find relevant content using natural language queries
 - **Course-Aware Search**: Filter results by course and lecture
 - **Real-time Indexing**: New documents are immediately searchable
 
 ### API Endpoints
 
-- `GET /api/qdrant/status` - Check Qdrant service status
-- `POST /api/qdrant/process-document` - Process and store document
-- `POST /api/qdrant/search` - Semantic search across documents
-- `DELETE /api/qdrant/document/:id` - Delete document chunks
-- `GET /api/qdrant/collection-stats` - Get collection statistics
+- `GET /api/qdrant/status` — Check Qdrant service status
+- `POST /api/qdrant/process-document` — Process and store a document
+- `POST /api/qdrant/search` — Semantic search across documents
+- `DELETE /api/qdrant/document/:id` — Delete document chunks
+- `GET /api/qdrant/collection-stats` — Get collection statistics
 
-### Testing the Integration
-
-Visit `/qdrant-test` to test the Qdrant functionality:
-- Process test documents
-- Perform semantic searches
-- View collection statistics
-
-## 📚 Usage
-
-### For Instructors
-
-1. **Access**: Navigate to `/instructor`
-2. **Onboarding**: Complete course setup
-3. **Upload Documents**: Add course materials to units
-4. **Create Questions**: Build assessments for students
-5. **Publish Units**: Make content available to students
-6. **Retrieval Mode**: On the course Home page, toggle “Use additive retrieval” to allow chat to include earlier published units in addition to the selected unit. When off, chat uses only the selected unit.
-
-### For Students
-
-1. **Access**: Navigate to `/student`
-2. **Course Selection**: Choose your course
-3. **Assessment**: Complete calibration questions
-4. **Chat Interface**: Select a unit, then ask questions about course material. Chat retrieval respects the course’s retrieval mode.
-5. **Semantic Search**: Find relevant content using natural language
+Visit `/qdrant-test` to test the Qdrant functionality interactively.
 
 ## 🔧 Development
 
 ### Project Structure
+
 ```
 tlef-biocbot/
-├── public/                 # Frontend assets
-│   ├── instructor/        # Instructor interface
-│   ├── student/          # Student interface
-│   └── qdrant-test.html  # Qdrant testing page
-├── src/                   # Backend source
-│   ├── models/           # Data models
-│   ├── routes/           # API routes
-│   ├── services/         # Business logic
-│   └── server.js         # Main server file
-└── documents/            # Course documentation
+├── public/                     # Frontend assets
+│   ├── common/
+│   │   └── scripts/            # Shared scripts (auth, login, idle-timer, etc.)
+│   ├── instructor/             # Instructor interface
+│   │   ├── scripts/            # home, settings, onboarding, ta-hub, student-hub, ...
+│   │   └── *.html
+│   ├── student/                # Student interface
+│   │   ├── scripts/            # dashboard, quiz, history, flagged, ...
+│   │   └── *.html
+│   ├── ta/                     # TA interface
+│   │   ├── scripts/
+│   │   └── *.html
+│   └── qdrant-test.html        # Qdrant testing page
+├── src/                        # Backend source
+│   ├── config/                 # Passport, app config
+│   ├── middleware/             # Auth middleware (requireAuth, requireRole, etc.)
+│   ├── models/                 # MongoDB models
+│   ├── routes/                 # API route handlers
+│   ├── services/               # Business logic (LLM, Qdrant, auth, tracker)
+│   └── server.js               # Main server entry point
+└── documents/                  # Project documentation
 ```
 
-### Key Components
+### Key Models
 
-- **QdrantService**: Handles vector database operations
-- **Document Processing**: Automatic chunking and embedding
-- **Semantic Search**: Vector similarity search
-- **Course Management**: Structured content organization
+| Model | Collection | Purpose |
+|---|---|---|
+| `Course` | `courses` | Course metadata, lecture structure, quiz settings |
+| `User` | `users` | Accounts, roles, preferences, struggle state |
+| `Document` | `documents` | Uploaded files and parsed content |
+| `Question` | embedded in Course | MC, TF, and short-answer questions per lecture |
+| `QuizAttempt` | `quizAttempts` | Per-student quiz attempt records |
+| `FlaggedQuestion` | `flaggedQuestions` | Student-reported question issues |
+| `StruggleActivity` | `struggleActivity` | Student struggle state transitions |
+| `UserAgreement` | `useragreements` | Terms acceptance records |
 
-## 🚧 Current Status
+### Key Services
 
-- ✅ **Phase 1**: Backend pipeline with Qdrant integration
-- ✅ **Document Upload**: File and text document support
-- ✅ **Vector Search**: Semantic document retrieval
-- 🔄 **Assessment System**: Question creation and management
-- 🔄 **Student Interface**: Chat-based learning experience
+- **LLMService** (`src/services/llm.js`): AI chat responses and short-answer evaluation via UBC GenAI Toolkit
+- **QdrantService** (`src/services/qdrantService.js`): Vector DB indexing and semantic search
+- **AuthService** (`src/services/authService.js`): User registration, login, preferences
+- **TrackerService** (`src/services/tracker.js`): Student engagement and struggle tracking
+- **prompts** (`src/services/prompts.js`): System prompt management (base, tutor, protege, quizHelp modes)
 
-## 🤝 Contributing
+### Auth Middleware
 
-This project follows clean architecture principles optimized for clarity, maintainability, and junior developer readability. All code should be:
+- `requireAuth` — Must be logged in
+- `requireStudent` / `requireInstructor` / `requireInstructorOrTA` — Role-based access
+- `requireStudentEnrolled` — Must be enrolled in the requested course
+- `requireTAPermission(permission)` — TA-scoped permission checks
 
-- **Modular**: Single responsibility functions and classes
-- **Documented**: Comprehensive docblocks and inline comments
-- **Accessible**: Clear variable names and logical flow
-- **Secure**: Input validation and error handling
-- New updates as well
 ## 📄 License
 
 ISC License
