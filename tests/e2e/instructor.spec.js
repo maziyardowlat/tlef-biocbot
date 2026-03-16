@@ -1,121 +1,146 @@
 // @ts-check
 require('dotenv').config();
 const { test, expect } = require('@playwright/test');
+const {
+  findPrivilegedInstructorCredentials,
+  getPrimaryInstructorCourse,
+  loginAs,
+  loginViaApi,
+} = require('./helpers/e2e');
 
 /**
  * Instructor feature tests — settings, student hub, downloads.
  * Expects the app to be running on localhost:8085 (npm run dev).
  */
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-async function loginAsInstructor(page) {
-  await page.goto('/login');
-  await page.fill('#username', process.env.inst_username);
-  await page.fill('#password', process.env.inst_password);
-  await page.click('#login-btn');
+/**
+ * @param {import('@playwright/test').Page} page
+ * @param {{ username?: string, password?: string }} [credentials]
+ */
+async function openInstructorSettings(page, credentials = {}) {
+  await loginAs(page, 'instructor', credentials);
   await page.waitForURL('**/instructor**', { timeout: 10000 });
+  await page.goto('/instructor/settings');
+  await page.waitForLoadState('networkidle');
 }
-
-async function apiLoginAs(request, role) {
-  const creds = {
-    instructor: { username: process.env.inst_username, password: process.env.inst_password },
-  };
-  const { username, password } = creds[role];
-  const response = await request.post('/api/auth/login', {
-    data: { username, password },
-  });
-  expect(response.ok()).toBeTruthy();
-  return response;
-}
-
-// ── Settings page ────────────────────────────────────────────────────────────
 
 test.describe('Instructor settings page', () => {
   test.beforeEach(async ({ page }) => {
-    await loginAsInstructor(page);
-    await page.goto('/instructor/settings');
-    await page.waitForLoadState('networkidle');
+    await openInstructorSettings(page);
   });
 
   test('settings page loads with correct heading', async ({ page }) => {
     await expect(page.locator('h1')).toHaveText('Settings');
   });
 
-  test('has login restrictions section with toggle', async ({ page }) => {
-    const toggle = page.locator('#allow-local-login-toggle');
-    await expect(toggle).toBeAttached();
+  test('shows student idle timeout setting', async ({ page }) => {
+    await expect(page.locator('#idle-timeout-input')).toBeVisible();
   });
 
-  test('has student idle timeout setting', async ({ page }) => {
-    const input = page.locator('#idle-timeout-input');
-    await expect(input).toBeAttached();
+  test('shows quiz settings for the current course', async ({ page }) => {
+    await expect(page.getByRole('heading', { name: 'Enable Quiz Practice Page' })).toBeVisible();
+    await expect(page.locator('label.toggle-switch:has(#quiz-enabled-toggle)')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Enable Source Attribution Downloads' })).toBeVisible();
+    await expect(page.locator('label.toggle-switch:has(#source-attribution-download-toggle)')).toBeVisible();
   });
 
-  test('has quiz settings section', async ({ page }) => {
-    const quizToggle = page.locator('#quiz-enabled-toggle');
-    await expect(quizToggle).toBeAttached();
+  test('shows save and reset buttons', async ({ page }) => {
+    await expect(page.locator('#save-settings')).toBeVisible();
+    await expect(page.locator('#reset-settings')).toBeVisible();
   });
 
-  test('has source attribution download toggle', async ({ page }) => {
-    const toggle = page.locator('#source-attribution-download-toggle');
-    await expect(toggle).toBeAttached();
+  test('shows AI persona settings with prompt textareas', async ({ page }) => {
+    await expect(page.locator('#base-prompt')).toBeVisible();
+    await expect(page.locator('#tutor-prompt')).toBeVisible();
+    await expect(page.locator('#protege-prompt')).toBeVisible();
   });
 
-  test('has save and reset buttons', async ({ page }) => {
-    const saveBtn = page.locator('#save-settings');
-    const resetBtn = page.locator('#reset-settings');
-    await expect(saveBtn).toBeAttached();
-    await expect(resetBtn).toBeAttached();
-  });
-
-  test('has AI persona settings with prompt textareas', async ({ page }) => {
-    const basePrompt = page.locator('#base-prompt');
-    const tutorPrompt = page.locator('#tutor-prompt');
-    const protegePrompt = page.locator('#protege-prompt');
-
-    await expect(basePrompt).toBeAttached();
-    await expect(tutorPrompt).toBeAttached();
-    await expect(protegePrompt).toBeAttached();
+  test('hides privileged sections for instructors outside the delete-all allow list', async ({ page }) => {
+    await expect(page.locator('#database-management-section')).toBeHidden();
+    await expect(page.locator('#login-restriction-section')).toBeHidden();
+    await expect(page.locator('#question-generation-section')).toBeHidden();
   });
 });
-
-// ── Settings API ─────────────────────────────────────────────────────────────
 
 test.describe('Settings API', () => {
-  test('can load prompt settings', async ({ request }) => {
-    await apiLoginAs(request, 'instructor');
+  test('can load prompt settings for the current instructor course', async ({ request }) => {
+    await loginViaApi(request, 'instructor');
+    const course = await getPrimaryInstructorCourse(request);
 
-    const res = await request.get('/api/settings/prompts');
+    test.skip(!course, 'Need an instructor course to load prompt settings.');
+
+    const res = await request.get(`/api/settings/prompts?courseId=${encodeURIComponent(course.id)}`);
     const body = await res.json();
 
-    expect(body).toHaveProperty('success');
+    expect(body.success).toBeTruthy();
+    expect(body.prompts).toBeDefined();
   });
 
-  test('can load quiz settings', async ({ request }) => {
-    await apiLoginAs(request, 'instructor');
+  test('can load quiz settings for the current instructor course', async ({ request }) => {
+    await loginViaApi(request, 'instructor');
+    const course = await getPrimaryInstructorCourse(request);
 
-    const res = await request.get('/api/settings/quiz');
+    test.skip(!course, 'Need an instructor course to load quiz settings.');
+
+    const res = await request.get(`/api/settings/quiz?courseId=${encodeURIComponent(course.id)}`);
     const body = await res.json();
 
-    expect(body).toHaveProperty('success');
+    expect(body.success).toBeTruthy();
+    expect(body.settings).toBeDefined();
   });
 
-  test('can load global settings', async ({ request }) => {
-    await apiLoginAs(request, 'instructor');
+  test('blocks global settings for instructors without delete-all permission', async ({ request }) => {
+    await loginViaApi(request, 'instructor');
 
     const res = await request.get('/api/settings/global');
-    const body = await res.json();
+    expect(res.status()).toBe(403);
 
-    expect(body).toHaveProperty('success');
+    const body = await res.json();
+    expect(body.success).toBeFalsy();
   });
 });
 
-// ── Student Hub page ─────────────────────────────────────────────────────────
+test.describe('Privileged settings access', () => {
+  test('privileged instructors can see the delete-all and admin sections', async ({ page, request }) => {
+    const privilegedCredentials = await findPrivilegedInstructorCredentials(request);
+    if (!privilegedCredentials) {
+      test.skip(true, 'Need a seeded privileged instructor account for delete-all tests.');
+      return;
+    }
+
+    await openInstructorSettings(page, privilegedCredentials);
+
+    await expect(page.locator('#database-management-section')).toBeVisible();
+    await expect(page.locator('#delete-collection')).toBeVisible();
+    await expect(page.locator('#login-restriction-section')).toBeVisible();
+    await expect(page.locator('#question-generation-section')).toBeVisible();
+  });
+
+  test('privileged instructors can access the admin-only settings APIs', async ({ request }) => {
+    const privilegedCredentials = await findPrivilegedInstructorCredentials(request);
+    if (!privilegedCredentials) {
+      test.skip(true, 'Need a seeded privileged instructor account for delete-all tests.');
+      return;
+    }
+
+    await loginViaApi(request, null, privilegedCredentials);
+
+    const permissionRes = await request.get('/api/settings/can-delete-all');
+    const permissionBody = await permissionRes.json();
+    expect(permissionBody.success).toBeTruthy();
+    expect(permissionBody.canDeleteAll).toBe(true);
+
+    const globalRes = await request.get('/api/settings/global');
+    expect(globalRes.ok()).toBeTruthy();
+    const globalBody = await globalRes.json();
+    expect(globalBody.success).toBeTruthy();
+  });
+});
 
 test.describe('Instructor student hub page', () => {
   test.beforeEach(async ({ page }) => {
-    await loginAsInstructor(page);
+    await loginAs(page, 'instructor');
+    await page.waitForURL('**/instructor**', { timeout: 10000 });
     await page.goto('/instructor/student-hub');
     await page.waitForLoadState('networkidle');
   });
@@ -125,8 +150,7 @@ test.describe('Instructor student hub page', () => {
   });
 
   test('has students container', async ({ page }) => {
-    const container = page.locator('#students-container');
-    await expect(container).toBeAttached();
+    await expect(page.locator('#students-container')).toBeAttached();
   });
 
   test('shows either students or empty state after loading', async ({ page }) => {
@@ -135,17 +159,15 @@ test.describe('Instructor student hub page', () => {
     const studentCards = await page.locator('.student-card').count();
     const body = await page.locator('body').innerText();
 
-    // Either there are student cards or the page shows some content
     expect(studentCards >= 0).toBeTruthy();
     expect(body.length).toBeGreaterThan(0);
   });
 });
 
-// ── Downloads page ───────────────────────────────────────────────────────────
-
 test.describe('Instructor downloads page', () => {
   test.beforeEach(async ({ page }) => {
-    await loginAsInstructor(page);
+    await loginAs(page, 'instructor');
+    await page.waitForURL('**/instructor**', { timeout: 10000 });
     await page.goto('/instructor/downloads');
     await page.waitForLoadState('networkidle');
   });
@@ -156,8 +178,7 @@ test.describe('Instructor downloads page', () => {
   });
 
   test('has students container for download cards', async ({ page }) => {
-    const container = page.locator('#students-container');
-    await expect(container).toBeAttached();
+    await expect(page.locator('#students-container')).toBeAttached();
   });
 
   test('shows loading, content, or empty state', async ({ page }) => {
@@ -167,16 +188,13 @@ test.describe('Instructor downloads page', () => {
     const emptyVisible = await page.locator('#empty-state').isVisible().catch(() => false);
     const studentCards = await page.locator('.student-card').count();
 
-    // One of these states should be true
     expect(loadingVisible || emptyVisible || studentCards >= 0).toBeTruthy();
   });
 });
 
-// ── Courses API ──────────────────────────────────────────────────────────────
-
 test.describe('Courses API', () => {
   test('instructor can list courses', async ({ request }) => {
-    await apiLoginAs(request, 'instructor');
+    await loginViaApi(request, 'instructor');
 
     const res = await request.get('/api/courses');
     const body = await res.json();

@@ -1,71 +1,87 @@
 // @ts-check
 require('dotenv').config();
 const { test, expect } = require('@playwright/test');
+const {
+  clearBrowserState,
+  getAssessmentUnitCourse,
+  getChatReadyCourse,
+  getNonEnrolledStudentCourse,
+  loginAs,
+  loginViaApi,
+  selectStudentCourse,
+  selectUnit,
+} = require('./helpers/e2e');
 
 /**
  * Chat feature tests — API + UI for the student chat interface.
  * Expects the app to be running on localhost:8085 (npm run dev).
  */
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+async function completeAssessmentIfNeeded(page) {
+  const chatInput = page.locator('#chat-input');
 
-async function loginAsStudent(page) {
-  await page.goto('/login');
-  await page.fill('#username', process.env.student_username);
-  await page.fill('#password', process.env.student_password);
-  await page.click('#login-btn');
-  await page.waitForURL('**/student**', { timeout: 10000 });
-}
+  if (await chatInput.isVisible().catch(() => false)) {
+    return;
+  }
 
-/**
- * After student login, if a course-selection prompt appears, pick the first course.
- * Then wait for the page to settle.
- */
-async function selectCourseIfNeeded(page) {
-  await page.waitForLoadState('networkidle');
-  await page.waitForTimeout(1500);
-
-  // Check for course selection dropdown
-  const courseSelect = page.locator('select').filter({ hasText: 'Choose a course' });
-  const isVisible = await courseSelect.isVisible().catch(() => false);
-
-  if (isVisible) {
-    const optionCount = await courseSelect.locator('option').count();
-    if (optionCount > 1) {
-      await courseSelect.selectOption({ index: 1 });
-      await page.waitForTimeout(1500);
-      await page.waitForLoadState('networkidle');
+  for (let attempt = 0; attempt < 10; attempt += 1) {
+    if (await chatInput.isVisible().catch(() => false)) {
+      return;
     }
+
+    const shortAnswerInput = page.locator('.calibration-question .calibration-answer-input').last();
+    if (await shortAnswerInput.isVisible().catch(() => false)) {
+      await shortAnswerInput.fill('Playwright assessment answer with enough detail to complete the setup flow.');
+      await page.locator('.calibration-question .calibration-submit-btn').last().click();
+      await page.waitForTimeout(3000);
+      continue;
+    }
+
+    const optionButton = page.locator('.calibration-question .calibration-option:not([disabled])').first();
+    if (await optionButton.isVisible().catch(() => false)) {
+      await optionButton.click();
+      await page.waitForTimeout(800);
+      continue;
+    }
+
+    await page.waitForTimeout(1000);
   }
+
+  await expect(chatInput).toBeVisible({ timeout: 20000 });
 }
 
-async function apiLoginAs(request, role) {
-  const creds = {
-    student: { username: process.env.student_username, password: process.env.student_password },
-    instructor: { username: process.env.inst_username, password: process.env.inst_password },
-  };
-  const { username, password } = creds[role];
-  const response = await request.post('/api/auth/login', {
-    data: { username, password },
-  });
-  expect(response.ok()).toBeTruthy();
-  return response;
-}
+async function openStudentChat(page, request, options = {}) {
+  const { requireAssessment = false } = options;
 
-async function getInstructorCourseId(request) {
-  const coursesRes = await request.get('/api/courses');
-  const coursesBody = await coursesRes.json();
-  if (coursesBody.success && coursesBody.data?.length > 0) {
-    return coursesBody.data[0].id;
+  await loginViaApi(request, 'student');
+  const context = requireAssessment
+    ? await getAssessmentUnitCourse(request)
+    : (await getChatReadyCourse(request)) || await getAssessmentUnitCourse(request);
+
+  test.skip(!context, 'Need an enrolled student course with published units for chat tests.');
+
+  await loginAs(page, 'student');
+  await page.waitForURL('**/student**', { timeout: 10000 });
+
+  await clearBrowserState(page);
+  await page.goto('/student');
+  await page.waitForLoadState('networkidle');
+  await selectStudentCourse(page, context.course.courseId);
+  await expect(page.locator('.course-name')).toHaveText(context.course.courseName, { timeout: 15000 });
+  await expect(page.locator('#unit-selection-container')).toBeVisible({ timeout: 15000 });
+  await selectUnit(page, context.unitName);
+  await page.waitForTimeout(1000);
+
+  if (!requireAssessment) {
+    await completeAssessmentIfNeeded(page);
   }
-  return null;
-}
 
-// ── Chat API tests ───────────────────────────────────────────────────────────
+  return context;
+}
 
 test.describe('Chat API', () => {
   test('chat status endpoint responds with connection info', async ({ request }) => {
-    await apiLoginAs(request, 'student');
+    await loginViaApi(request, 'student');
 
     const res = await request.get('/api/chat/status');
     const body = await res.json();
@@ -76,7 +92,7 @@ test.describe('Chat API', () => {
   });
 
   test('chat test endpoint confirms LLM connection', async ({ request }) => {
-    await apiLoginAs(request, 'student');
+    await loginViaApi(request, 'student');
 
     const res = await request.post('/api/chat/test');
     const body = await res.json();
@@ -85,7 +101,7 @@ test.describe('Chat API', () => {
   });
 
   test('chat models endpoint returns available models', async ({ request }) => {
-    await apiLoginAs(request, 'student');
+    await loginViaApi(request, 'student');
 
     const res = await request.get('/api/chat/models');
     const body = await res.json();
@@ -93,63 +109,72 @@ test.describe('Chat API', () => {
     expect(body).toHaveProperty('success');
   });
 
-  test('sending a chat message returns a response', async ({ request }) => {
-    // Login as instructor first to get a valid courseId
-    await apiLoginAs(request, 'instructor');
-    const courseId = await getInstructorCourseId(request);
+  test('sending a chat message returns a response for an enrolled course', async ({ request }) => {
+    await loginViaApi(request, 'student');
+    const chatContext = (await getChatReadyCourse(request)) || await getAssessmentUnitCourse(request);
 
-    if (!courseId) {
-      test.skip();
-      return;
-    }
-
-    // Login as student and send message
-    await apiLoginAs(request, 'student');
+    test.skip(!chatContext, 'Need an enrolled student course with a published unit.');
 
     const res = await request.post('/api/chat', {
       data: {
         message: 'What is the purpose of this course?',
-        courseId: courseId,
-        unitName: 'General',
+        courseId: chatContext.course.courseId,
+        unitName: chatContext.unitName,
         mode: 'tutor',
       },
       timeout: 30000,
     });
 
+    expect(res.ok()).toBeTruthy();
     const body = await res.json();
 
-    expect(body).toHaveProperty('success');
-    if (body.success) {
-      expect(body).toHaveProperty('message');
-      expect(typeof body.message).toBe('string');
-      expect(body.message.length).toBeGreaterThan(0);
-    }
+    expect(body.success).toBeTruthy();
+    expect(typeof body.message).toBe('string');
+    expect(body.message.length).toBeGreaterThan(0);
+  });
+
+  test('chat rejects messages for a course the student is not enrolled in', async ({ request }) => {
+    await loginViaApi(request, 'student');
+    const blockedCourse = await getNonEnrolledStudentCourse(request);
+
+    test.skip(!blockedCourse, 'Need a course the student is not enrolled in.');
+
+    const res = await request.post('/api/chat', {
+      data: {
+        message: 'Should not be allowed',
+        courseId: blockedCourse.courseId,
+        unitName: 'Unit 1',
+        mode: 'tutor',
+      },
+    });
+
+    expect(res.status()).toBe(403);
+    const body = await res.json();
+
+    expect(body.success).toBeFalsy();
+    expect(body.message).toContain('disabled');
   });
 });
 
-// ── Chat page UI tests ──────────────────────────────────────────────────────
-
 test.describe('Chat page UI', () => {
-  test.beforeEach(async ({ page }) => {
-    await loginAsStudent(page);
-    await selectCourseIfNeeded(page);
+  test.beforeEach(async ({ page, request }) => {
+    await openStudentChat(page, request);
   });
 
   test('chat page loads with correct heading', async ({ page }) => {
     await expect(page.locator('h1')).toHaveText('Chat with BiocBot');
   });
 
-  test('chat input exists on the page', async ({ page }) => {
-    // The input exists in the DOM even if hidden during assessment mode
-    await expect(page.locator('#chat-input')).toBeAttached();
-    await expect(page.locator('#send-button')).toBeAttached();
+  test('chat input is available after course and unit setup is complete', async ({ page }) => {
+    await expect(page.locator('#chat-input')).toBeVisible();
+    await expect(page.locator('#send-button')).toBeVisible();
   });
 
-  test('mode toggle exists on the page', async ({ page }) => {
-    // Mode toggle may be hidden during assessment, but should be in the DOM
+  test('mode toggle is visible after setup', async ({ page }) => {
     await expect(page.locator('#mode-toggle-checkbox')).toBeAttached();
-    await expect(page.locator('.protege-label')).toBeAttached();
-    await expect(page.locator('.tutor-label')).toBeAttached();
+    await expect(page.locator('.mode-toggle-container')).toBeVisible();
+    await expect(page.locator('.protege-label')).toBeVisible();
+    await expect(page.locator('.tutor-label')).toBeVisible();
   });
 
   test('new session button exists', async ({ page }) => {
@@ -163,64 +188,50 @@ test.describe('Chat page UI', () => {
   });
 
   test('chat disclaimer exists on the page', async ({ page }) => {
-    await expect(page.locator('.chat-disclaimer')).toBeAttached();
+    await expect(page.locator('.chat-disclaimer')).toBeVisible();
   });
 
   test('unit selection is available after course is selected', async ({ page }) => {
-    const unitSelect = page.locator('#unit-select');
-    await expect(unitSelect).toBeAttached();
+    await expect(page.locator('#unit-select')).toBeVisible();
   });
 });
 
-// ── Chat interaction (send message via UI) ───────────────────────────────────
+test.describe('Chat assessment gating', () => {
+  test.beforeEach(async ({ page, request }) => {
+    await openStudentChat(page, request, { requireAssessment: true });
+  });
+
+  test('assessment questions appear before freeform chat for gated units', async ({ page }) => {
+    await expect(page.locator('.calibration-question').first()).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('#chat-input')).toBeHidden();
+    await expect(page.locator('.mode-result')).toHaveCount(0);
+  });
+});
 
 test.describe('Chat interaction', () => {
+  test.beforeEach(async ({ page, request }) => {
+    await openStudentChat(page, request);
+  });
+
   test('sending a message shows it in the chat and gets a bot response', async ({ page }) => {
-    await loginAsStudent(page);
-    await selectCourseIfNeeded(page);
-
-    await page.waitForTimeout(2000);
-
-    // If chat input is hidden (assessment mode), click "New Session" to reset
     const chatInput = page.locator('#chat-input');
-    const inputVisible = await chatInput.isVisible().catch(() => false);
 
-    if (!inputVisible) {
-      const newSessionBtn = page.locator('#new-session-btn');
-      const btnVisible = await newSessionBtn.isVisible().catch(() => false);
-
-      if (btnVisible) {
-        await newSessionBtn.click();
-        await page.waitForTimeout(2000);
-        await page.waitForLoadState('networkidle');
-
-        // Re-select course if needed after new session
-        await selectCourseIfNeeded(page);
-        await page.waitForTimeout(1500);
-      }
-    }
-
-    // After new session, input should be visible
     await expect(chatInput).toBeVisible({ timeout: 10000 });
-
     await chatInput.fill('Hello, this is a test message from Playwright');
     await page.locator('#send-button').click();
 
-    // The user message should appear in the chat
     const userMessage = page.locator('.message.user-message').last();
     await expect(userMessage).toBeVisible({ timeout: 5000 });
 
-    // Wait for bot response (may take time due to LLM call)
     const botMessage = page.locator('.message.bot-message').last();
     await expect(botMessage).toBeVisible({ timeout: 30000 });
   });
 });
 
-// ── Chat history page UI ─────────────────────────────────────────────────────
-
 test.describe('Chat history page', () => {
   test.beforeEach(async ({ page }) => {
-    await loginAsStudent(page);
+    await loginAs(page, 'student');
+    await page.waitForURL('**/student**', { timeout: 10000 });
     await page.goto('/student/history');
     await page.waitForLoadState('networkidle');
   });

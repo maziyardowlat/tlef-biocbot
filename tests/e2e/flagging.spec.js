@@ -1,6 +1,7 @@
 // @ts-check
 require('dotenv').config();
 const { test, expect } = require('@playwright/test');
+const { getEnrolledStudentCourse } = require('./helpers/e2e');
 
 /**
  * Flagging feature tests — API + UI for student, instructor, and TA roles.
@@ -53,22 +54,18 @@ async function getInstructorCourseId(request) {
 
 test.describe('Flagging API', () => {
   test('student can create a flag via API', async ({ request }) => {
-    // First login as instructor to get a real courseId
-    await apiLoginAs(request, 'instructor');
-    const courseId = await getInstructorCourseId(request);
+    await apiLoginAs(request, 'student');
+    const enrolledCourse = await getEnrolledStudentCourse(request);
 
-    if (!courseId) {
+    if (!enrolledCourse) {
       test.skip();
       return;
     }
 
-    // Now login as student and create the flag
-    await apiLoginAs(request, 'student');
-
     const flagRes = await request.post('/api/flags', {
       data: {
         questionId: `test_q_${Date.now()}`,
-        courseId: courseId,
+        courseId: enrolledCourse.courseId,
         unitName: 'Test Unit',
         flagReason: 'incorrect',
         flagDescription: 'E2E test flag — this content appears incorrect',

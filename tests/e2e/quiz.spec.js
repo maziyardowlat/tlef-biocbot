@@ -1,167 +1,143 @@
 // @ts-check
 require('dotenv').config();
 const { test, expect } = require('@playwright/test');
+const {
+  getDisabledQuizCourse,
+  getNonEnrolledStudentCourse,
+  getQuizReadyCourse,
+  loginAs,
+  loginViaApi,
+  prepareStudentCourse,
+} = require('./helpers/e2e');
 
 /**
  * Quiz practice feature tests — API + UI.
  * Expects the app to be running on localhost:8085 (npm run dev).
  */
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-async function loginAsStudent(page) {
-  await page.goto('/login');
-  await page.fill('#username', process.env.student_username);
-  await page.fill('#password', process.env.student_password);
-  await page.click('#login-btn');
-  await page.waitForURL('**/student**', { timeout: 10000 });
-}
-
-async function apiLoginAs(request, role) {
-  const creds = {
-    student: { username: process.env.student_username, password: process.env.student_password },
-    instructor: { username: process.env.inst_username, password: process.env.inst_password },
-  };
-  const { username, password } = creds[role];
-  const response = await request.post('/api/auth/login', {
-    data: { username, password },
-  });
-  expect(response.ok()).toBeTruthy();
-  return response;
-}
-
-async function getInstructorCourseId(request) {
-  const coursesRes = await request.get('/api/courses');
-  const coursesBody = await coursesRes.json();
-  if (coursesBody.success && coursesBody.data?.length > 0) {
-    return coursesBody.data[0].id;
-  }
-  return null;
-}
-
-// ── Quiz API tests ───────────────────────────────────────────────────────────
-
 test.describe('Quiz API', () => {
-  test('quiz status endpoint responds', async ({ request }) => {
-    await apiLoginAs(request, 'student');
+  test('quiz status endpoint reflects an enrolled course with quiz enabled', async ({ request }) => {
+    await loginViaApi(request, 'student');
+    const quizContext = await getQuizReadyCourse(request);
 
-    // Need a courseId for quiz status
-    await apiLoginAs(request, 'instructor');
-    const courseId = await getInstructorCourseId(request);
-    await apiLoginAs(request, 'student');
+    test.skip(!quizContext, 'Need an enrolled student course with quiz enabled and questions.');
 
-    if (!courseId) {
-      test.skip();
-      return;
-    }
-
-    const res = await request.get(`/api/quiz/status?courseId=${courseId}`);
+    const res = await request.get(`/api/quiz/status?courseId=${encodeURIComponent(quizContext.course.courseId)}`);
     const body = await res.json();
 
-    expect(body).toHaveProperty('success');
+    expect(body.success).toBeTruthy();
+    expect(body.enabled).toBe(true);
   });
 
-  test('quiz questions endpoint responds', async ({ request }) => {
-    await apiLoginAs(request, 'instructor');
-    const courseId = await getInstructorCourseId(request);
-    await apiLoginAs(request, 'student');
+  test('quiz status endpoint reflects an enrolled course with quiz disabled', async ({ request }) => {
+    await loginViaApi(request, 'student');
+    const disabledCourse = await getDisabledQuizCourse(request);
 
-    if (!courseId) {
-      test.skip();
-      return;
-    }
+    test.skip(!disabledCourse, 'Need an enrolled student course with quiz disabled.');
 
-    const res = await request.get(`/api/quiz/questions?courseId=${courseId}`);
+    const res = await request.get(`/api/quiz/status?courseId=${encodeURIComponent(disabledCourse.courseId)}`);
     const body = await res.json();
 
-    expect(body).toHaveProperty('success');
+    expect(body.success).toBeTruthy();
+    expect(body.enabled).toBe(false);
   });
 
-  test('quiz history endpoint responds', async ({ request }) => {
-    await apiLoginAs(request, 'instructor');
-    const courseId = await getInstructorCourseId(request);
-    await apiLoginAs(request, 'student');
+  test('quiz questions endpoint returns questions for an enrolled course with quiz enabled', async ({ request }) => {
+    await loginViaApi(request, 'student');
+    const quizContext = await getQuizReadyCourse(request);
 
-    if (!courseId) {
-      test.skip();
-      return;
-    }
+    test.skip(!quizContext, 'Need an enrolled student course with quiz enabled and questions.');
 
-    const res = await request.get(`/api/quiz/history?courseId=${courseId}`);
+    const res = await request.get(`/api/quiz/questions?courseId=${encodeURIComponent(quizContext.course.courseId)}`);
     const body = await res.json();
 
-    expect(body).toHaveProperty('success');
+    expect(body.success).toBeTruthy();
+    expect(Array.isArray(body.questions)).toBeTruthy();
+    expect(body.questions.length).toBeGreaterThan(0);
+  });
+
+  test('quiz history endpoint responds for an enrolled course', async ({ request }) => {
+    await loginViaApi(request, 'student');
+    const quizContext = await getQuizReadyCourse(request);
+
+    test.skip(!quizContext, 'Need an enrolled student course for quiz history.');
+
+    const res = await request.get(`/api/quiz/history?courseId=${encodeURIComponent(quizContext.course.courseId)}`);
+    const body = await res.json();
+
+    expect(body.success).toBeTruthy();
+    expect(body.stats).toBeDefined();
+  });
+
+  test('quiz endpoints reject a course the student is not enrolled in', async ({ request }) => {
+    await loginViaApi(request, 'student');
+    const blockedCourse = await getNonEnrolledStudentCourse(request);
+
+    test.skip(!blockedCourse, 'Need a course the student is not enrolled in.');
+
+    const res = await request.get(`/api/quiz/questions?courseId=${encodeURIComponent(blockedCourse.courseId)}`);
+    expect(res.status()).toBe(403);
+
+    const body = await res.json();
+    expect(body.success).toBeFalsy();
+    expect(body.message).toContain('disabled');
   });
 });
 
-// ── Quiz page UI tests ───────────────────────────────────────────────────────
-
 test.describe('Quiz page UI', () => {
-  test.beforeEach(async ({ page }) => {
-    await loginAsStudent(page);
+  test.beforeEach(async ({ page, request }) => {
+    await loginViaApi(request, 'student');
+    const quizContext = await getQuizReadyCourse(request);
+
+    test.skip(!quizContext, 'Need an enrolled student course with quiz enabled and questions.');
+
+    await loginAs(page, 'student');
+    await page.waitForURL('**/student**', { timeout: 10000 });
+    await prepareStudentCourse(page, quizContext.course);
     await page.goto('/student/quiz');
     await page.waitForLoadState('networkidle');
   });
 
   test('quiz page loads with correct heading', async ({ page }) => {
-    // Quiz page may redirect to login or show "Quiz not enabled" if disabled
-    const url = page.url();
-
-    if (url.includes('/login')) {
-      // Quiz not enabled — page redirected
-      expect(url).toContain('/login');
-      return;
-    }
-
-    // If quiz is enabled, check for the heading
-    const heading = page.locator('h1');
-    if (await heading.isVisible().catch(() => false)) {
-      await expect(heading).toHaveText('Quiz Practice');
-    }
+    await expect(page.locator('h1')).toHaveText('Quiz Practice');
   });
 
   test('quiz page has stats cards', async ({ page }) => {
-    if (page.url().includes('/login')) return;
-
-    const totalStat = page.locator('#stat-total');
-    const correctStat = page.locator('#stat-correct');
-    const accuracyStat = page.locator('#stat-accuracy');
-
-    if (await totalStat.count() > 0) {
-      await expect(totalStat).toBeVisible();
-      await expect(correctStat).toBeVisible();
-      await expect(accuracyStat).toBeVisible();
-    }
+    await expect(page.locator('#stat-total')).toBeVisible();
+    await expect(page.locator('#stat-correct')).toBeVisible();
+    await expect(page.locator('#stat-accuracy')).toBeVisible();
   });
 
   test('quiz page has filter controls', async ({ page }) => {
-    if (page.url().includes('/login')) return;
-
-    const unitFilter = page.locator('#unit-filter');
-    const typeFilter = page.locator('#type-filter');
-
-    if (await unitFilter.count() > 0) {
-      await expect(unitFilter).toBeVisible();
-      await expect(typeFilter).toBeVisible();
-    }
+    await expect(page.locator('#unit-filter')).toBeVisible();
+    await expect(page.locator('#type-filter')).toBeVisible();
   });
 
-  test('quiz page has question card area', async ({ page }) => {
-    if (page.url().includes('/login')) return;
-
-    const questionCard = page.locator('#question-card');
-    if (await questionCard.count() > 0) {
-      await expect(questionCard).toBeVisible();
-    }
+  test('quiz page shows a question card for an enabled quiz course', async ({ page }) => {
+    await expect(page.locator('#question-card')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('#question-text')).not.toHaveText('');
   });
 
-  test('quiz page has submit and navigation buttons', async ({ page }) => {
-    if (page.url().includes('/login')) return;
+  test('quiz page has submit and navigation buttons when a question is loaded', async ({ page }) => {
+    await expect(page.locator('#submit-btn')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('#next-btn')).toBeHidden();
+  });
+});
 
-    const submitBtn = page.locator('#submit-btn');
-    if (await submitBtn.count() > 0) {
-      await expect(submitBtn).toBeVisible();
-      await expect(page.locator('#next-btn')).toBeVisible();
-    }
+test.describe('Quiz access gating', () => {
+  test('quiz page shows the disabled state when the selected course has quiz turned off', async ({ page, request }) => {
+    await loginViaApi(request, 'student');
+    const disabledCourse = await getDisabledQuizCourse(request);
+
+    test.skip(!disabledCourse, 'Need an enrolled student course with quiz disabled.');
+
+    await loginAs(page, 'student');
+    await page.waitForURL('**/student**', { timeout: 10000 });
+    await prepareStudentCourse(page, disabledCourse);
+    await page.goto('/student/quiz');
+    await page.waitForLoadState('networkidle');
+
+    await expect(page.locator('#quiz-disabled')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('#question-card')).toBeHidden();
   });
 });
