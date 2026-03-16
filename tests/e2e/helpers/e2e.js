@@ -41,13 +41,33 @@ function getRoleCredentials(role, overrides = {}) {
 
 async function loginAs(page, role, overrides = {}) {
   const credentials = getRoleCredentials(role, overrides);
+  let lastError = null;
 
-  await page.goto('/login');
-  await page.fill('#username', credentials.username);
-  await page.fill('#password', credentials.password);
-  await page.click('#login-btn');
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await page.goto('/login');
+    await page.fill('#username', credentials.username);
+    await page.fill('#password', credentials.password);
 
-  return credentials;
+    const loginResponsePromise = page.waitForResponse((response) => {
+      return response.url().includes('/api/auth/login') && response.request().method() === 'POST';
+    });
+
+    await page.click('#login-btn');
+
+    const loginResponse = await loginResponsePromise;
+    const responseBody = await loginResponse.json().catch(() => null);
+
+    if (loginResponse.ok() && responseBody && responseBody.success) {
+      return credentials;
+    }
+
+    lastError = new Error(
+      `Login failed for "${credentials.username}": ${responseBody && responseBody.error ? responseBody.error : loginResponse.status()}`
+    );
+    await page.waitForTimeout(500);
+  }
+
+  throw lastError || new Error(`Login failed for "${credentials.username}"`);
 }
 
 async function loginViaApi(request, role, overrides = {}) {

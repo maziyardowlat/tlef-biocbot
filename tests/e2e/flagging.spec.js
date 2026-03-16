@@ -1,41 +1,16 @@
 // @ts-check
 require('dotenv').config();
 const { test, expect } = require('@playwright/test');
-const { getEnrolledStudentCourse } = require('./helpers/e2e');
+const {
+  getEnrolledStudentCourse,
+  loginAs,
+  loginViaApi,
+} = require('./helpers/e2e');
 
 /**
  * Flagging feature tests — API + UI for student, instructor, and TA roles.
  * Expects the app to be running on localhost:8085 (npm run dev).
  */
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-async function loginAs(page, role) {
-  const creds = {
-    student: { username: process.env.student_username, password: process.env.student_password },
-    instructor: { username: process.env.inst_username, password: process.env.inst_password },
-    ta: { username: process.env.ta_username, password: process.env.ta_password },
-  };
-  const { username, password } = creds[role];
-  await page.goto('/login');
-  await page.fill('#username', username);
-  await page.fill('#password', password);
-  await page.click('#login-btn');
-}
-
-async function apiLoginAs(request, role) {
-  const creds = {
-    student: { username: process.env.student_username, password: process.env.student_password },
-    instructor: { username: process.env.inst_username, password: process.env.inst_password },
-    ta: { username: process.env.ta_username, password: process.env.ta_password },
-  };
-  const { username, password } = creds[role];
-  const response = await request.post('/api/auth/login', {
-    data: { username, password },
-  });
-  expect(response.ok()).toBeTruthy();
-  return response;
-}
 
 /**
  * Get a valid courseId. For instructor, uses /api/courses.
@@ -54,7 +29,7 @@ async function getInstructorCourseId(request) {
 
 test.describe('Flagging API', () => {
   test('student can create a flag via API', async ({ request }) => {
-    await apiLoginAs(request, 'student');
+    await loginViaApi(request, 'student');
     const enrolledCourse = await getEnrolledStudentCourse(request);
 
     if (!enrolledCourse) {
@@ -86,7 +61,7 @@ test.describe('Flagging API', () => {
   });
 
   test('student can view their own flags', async ({ request }) => {
-    await apiLoginAs(request, 'student');
+    await loginViaApi(request, 'student');
 
     const res = await request.get('/api/flags/my');
     const body = await res.json();
@@ -98,7 +73,7 @@ test.describe('Flagging API', () => {
   });
 
   test('instructor can view flags for a course', async ({ request }) => {
-    await apiLoginAs(request, 'instructor');
+    await loginViaApi(request, 'instructor');
     const courseId = await getInstructorCourseId(request);
 
     if (!courseId) {
@@ -114,7 +89,7 @@ test.describe('Flagging API', () => {
   });
 
   test('instructor can view flag stats for a course', async ({ request }) => {
-    await apiLoginAs(request, 'instructor');
+    await loginViaApi(request, 'instructor');
     const courseId = await getInstructorCourseId(request);
 
     if (!courseId) {
@@ -133,7 +108,7 @@ test.describe('Flagging API', () => {
   });
 
   test('can filter flags by status', async ({ request }) => {
-    await apiLoginAs(request, 'instructor');
+    await loginViaApi(request, 'instructor');
 
     const res = await request.get('/api/flags/status/pending');
     const body = await res.json();
