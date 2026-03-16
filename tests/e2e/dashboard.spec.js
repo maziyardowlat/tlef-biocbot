@@ -1,6 +1,13 @@
 // @ts-check
 require('dotenv').config();
 const { test, expect } = require('@playwright/test');
+const {
+  clearBrowserState,
+  getEnrolledStudentCourse,
+  loginAs,
+  loginViaApi,
+  prepareStudentCourse,
+} = require('./helpers/e2e');
 
 /**
  * Student dashboard (topic performance) tests.
@@ -9,19 +16,12 @@ const { test, expect } = require('@playwright/test');
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-async function loginAsStudent(page) {
-  await page.goto('/login');
-  await page.fill('#username', process.env.student_username);
-  await page.fill('#password', process.env.student_password);
-  await page.click('#login-btn');
-  await page.waitForURL('**/student**', { timeout: 10000 });
-}
-
 // ── Dashboard UI tests ───────────────────────────────────────────────────────
 
 test.describe('Student dashboard page', () => {
   test.beforeEach(async ({ page }) => {
-    await loginAsStudent(page);
+    await loginAs(page, 'student');
+    await page.waitForURL('**/student**', { timeout: 10000 });
     await page.goto('/student/dashboard.html');
     await page.waitForLoadState('networkidle');
   });
@@ -60,5 +60,66 @@ test.describe('Student dashboard page', () => {
     await expect(page.locator('nav.main-nav a[href="/student"]')).toBeVisible();
     await expect(page.locator('nav.main-nav a[href="/student/history"]')).toBeVisible();
     await expect(page.locator('nav.main-nav a[href="/student/dashboard.html"]')).toBeVisible();
+  });
+
+  test('reset all button opens the confirmation modal and cancel closes it', async ({ page }) => {
+    await page.locator('#reset-all-btn').click();
+
+    await expect(page.locator('#confirm-modal')).toBeVisible();
+    await expect(page.locator('#modal-title')).toHaveText('Reset All Topics?');
+    await expect(page.locator('#modal-confirm-btn')).toHaveText('Reset All');
+
+    await page.locator('#modal-cancel-btn').click();
+    await expect(page.locator('#confirm-modal')).toBeHidden();
+  });
+
+  test('shows the selected course name in the sidebar after course setup', async ({ page, request }) => {
+    await loginViaApi(request, 'student');
+    const enrolledCourse = await getEnrolledStudentCourse(request);
+
+    test.skip(!enrolledCourse, 'Need an enrolled student course for dashboard course context.');
+
+    await prepareStudentCourse(page, enrolledCourse);
+    await page.goto('/student/dashboard.html');
+    await page.waitForLoadState('networkidle');
+
+    await expect(page.locator('.user-role')).toContainText(enrolledCourse.courseName);
+  });
+});
+
+test.describe('Student dashboard API', () => {
+  test('student struggle endpoint returns the current state structure', async ({ request }) => {
+    await loginViaApi(request, 'student');
+
+    const response = await request.get('/api/student/struggle');
+    const body = await response.json();
+
+    expect(response.ok()).toBeTruthy();
+    expect(body.success).toBeTruthy();
+    expect(body.struggleState).toBeDefined();
+    expect(Array.isArray(body.struggleState.topics)).toBeTruthy();
+  });
+
+  test('student struggle reset validates that a topic is provided', async ({ request }) => {
+    await loginViaApi(request, 'student');
+
+    const response = await request.post('/api/student/struggle/reset', {
+      data: {},
+    });
+    expect(response.status()).toBe(400);
+
+    const body = await response.json();
+    expect(body.success).toBeFalsy();
+    expect(body.message).toContain('Topic is required');
+  });
+
+  test('dashboard shows the empty-course prompt when no course is selected', async ({ page }) => {
+    await loginAs(page, 'student');
+    await page.waitForURL('**/student**', { timeout: 10000 });
+    await clearBrowserState(page);
+    await page.goto('/student/dashboard.html');
+    await page.waitForLoadState('networkidle');
+
+    await expect(page.locator('#topics-list-container')).toContainText('Please select a course');
   });
 });

@@ -61,7 +61,7 @@ test.describe('Login page', () => {
 
 test.describe('Student login', () => {
   test('logs in and redirects to /student', async ({ page }) => {
-    login(page, student_username, student_password);
+    await login(page, student_username, student_password);
 
     // Should redirect to the student dashboard
     await page.waitForURL('**/student**', { timeout: 10000 });
@@ -69,7 +69,7 @@ test.describe('Student login', () => {
   });
 
   test('shows student page content after login', async ({ page }) => {
-    login(page, student_username, student_password);
+    await login(page, student_username, student_password);
     await page.waitForURL('**/student**', { timeout: 10000 });
 
     // The page should have loaded (check for body or a known element)
@@ -79,7 +79,7 @@ test.describe('Student login', () => {
 
 test.describe('Instructor login', () => {
   test('logs in and redirects to /instructor', async ({ page }) => {
-    login(page, inst_username, inst_password);
+    await login(page, inst_username, inst_password);
 
     // Instructor redirects to /instructor/home
     await page.waitForURL('**/instructor**', { timeout: 10000 });
@@ -89,7 +89,7 @@ test.describe('Instructor login', () => {
 
 test.describe('TA login', () => {
   test('logs in and redirects to /ta', async ({ page }) => {
-    login(page, ta_username, ta_password);
+    await login(page, ta_username, ta_password);
 
     await page.waitForURL('**/ta**', { timeout: 10000 });
     expect(page.url()).toContain('/ta');
@@ -101,7 +101,7 @@ test.describe('TA login', () => {
 test.describe('Logout', () => {
   test('can log out and return to login page', async ({ page }) => {
     // Log in first
-    login(page, student_username, student_password);
+    await login(page, student_username, student_password);
     await page.waitForURL('**/student**', { timeout: 10000 });
 
     // Call the logout API directly (the UI logout varies by page)
@@ -111,6 +111,49 @@ test.describe('Logout', () => {
     // Navigate to a protected page — should redirect to login
     await page.goto('/student');
     await page.waitForURL('**/login**', { timeout: 10000 });
+  });
+});
+
+test.describe('Auth API', () => {
+  test('auth methods endpoint returns configured method flags', async ({ request }) => {
+    const response = await request.get('/api/auth/methods');
+    const body = await response.json();
+
+    expect(response.ok()).toBeTruthy();
+    expect(body.success).toBeTruthy();
+    expect(body.methods).toHaveProperty('local');
+    expect(body.methods).toHaveProperty('saml');
+    expect(body.methods).toHaveProperty('ubcshib');
+    expect(body.methods).toHaveProperty('allowLocalLogin');
+  });
+
+  test('auth/me returns the logged-in student profile', async ({ request }) => {
+    const loginResponse = await request.post('/api/auth/login', {
+      data: { username: student_username, password: student_password },
+    });
+    expect(loginResponse.ok()).toBeTruthy();
+
+    const response = await request.get('/api/auth/me');
+    const body = await response.json();
+
+    expect(body.success).toBeTruthy();
+    expect(body.user.role).toBe('student');
+    expect(body.user.username).toBe(student_username);
+    expect(body.user.displayName).toBeTruthy();
+  });
+
+  test('auth/me returns the logged-in TA profile', async ({ request }) => {
+    const loginResponse = await request.post('/api/auth/login', {
+      data: { username: ta_username, password: ta_password },
+    });
+    expect(loginResponse.ok()).toBeTruthy();
+
+    const response = await request.get('/api/auth/me');
+    const body = await response.json();
+
+    expect(body.success).toBeTruthy();
+    expect(body.user.role).toBe('ta');
+    expect(body.user.username).toBe(ta_username);
   });
 });
 

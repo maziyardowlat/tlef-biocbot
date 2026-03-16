@@ -81,6 +81,16 @@ async function loginViaApi(request, role, overrides = {}) {
   return { response, credentials };
 }
 
+async function getCurrentUser(request) {
+  const response = await request.get('/api/auth/me');
+  expect(response.ok()).toBeTruthy();
+
+  const body = await response.json();
+  expect(body.success).toBeTruthy();
+
+  return body.user;
+}
+
 async function getInstructorCourses(request) {
   const response = await request.get('/api/courses');
   expect(response.ok()).toBeTruthy();
@@ -94,6 +104,35 @@ async function getInstructorCourses(request) {
 async function getPrimaryInstructorCourse(request) {
   const courses = await getInstructorCourses(request);
   return courses[0] || null;
+}
+
+async function getTACourses(request, taId) {
+  const resolvedTaId = taId || (await getCurrentUser(request)).userId;
+  const response = await request.get(`/api/courses/ta/${encodeURIComponent(resolvedTaId)}`);
+  expect(response.ok()).toBeTruthy();
+
+  const body = await response.json();
+  expect(body.success).toBeTruthy();
+
+  return body.data || [];
+}
+
+async function getAssignedTACourse(request) {
+  const courses = await getTACourses(request);
+  return courses[0] || null;
+}
+
+async function getTAPermissions(request, courseId, taId) {
+  const resolvedTaId = taId || (await getCurrentUser(request)).userId;
+  const response = await request.get(
+    `/api/courses/${encodeURIComponent(courseId)}/ta-permissions/${encodeURIComponent(resolvedTaId)}`
+  );
+  expect(response.ok()).toBeTruthy();
+
+  const body = await response.json();
+  expect(body.success).toBeTruthy();
+
+  return body.data.permissions;
 }
 
 async function getStudentAvailableCourses(request) {
@@ -359,14 +398,18 @@ module.exports = {
   getAssessmentUnitCourse,
   getChatReadyCourse,
   getCourseDetails,
+  getCurrentUser,
   getDisabledQuizCourse,
   getEnrolledStudentCourse,
+  getAssignedTACourse,
   getInstructorCourses,
   getNonEnrolledStudentCourse,
   getPrimaryInstructorCourse,
   getQuizReadyCourse,
   getQuizStatus,
   getStudentAvailableCourses,
+  getTACourses,
+  getTAPermissions,
   loginAs,
   loginViaApi,
   prepareStudentCourse,

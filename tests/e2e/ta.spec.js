@@ -1,6 +1,12 @@
 // @ts-check
 require('dotenv').config();
 const { test, expect } = require('@playwright/test');
+const {
+  getAssignedTACourse,
+  getCurrentUser,
+  getTAPermissions,
+  loginViaApi,
+} = require('./helpers/e2e');
 
 /**
  * TA feature tests — home, settings, onboarding pages.
@@ -55,6 +61,32 @@ test.describe('TA home page', () => {
     await expect(userName).toBeVisible();
     const nameText = await userName.innerText();
     expect(nameText.length).toBeGreaterThan(0);
+  });
+
+  test('quick course action opens the assigned course documents page', async ({ page, request }) => {
+    await apiLoginAsTA(request);
+    const assignedCourse = await getAssignedTACourse(request);
+
+    test.skip(!assignedCourse, 'Need a seeded TA course assignment.');
+
+    await page.waitForLoadState('networkidle');
+    await expect(page.locator('.course-card').first()).toBeVisible({ timeout: 15000 });
+    await page.locator('#quick-courses-link').click();
+
+    await page.waitForURL(`**/instructor/documents?courseId=${assignedCourse.courseId}`, { timeout: 15000 });
+  });
+
+  test('quick support action opens the assigned course flagged page', async ({ page, request }) => {
+    await apiLoginAsTA(request);
+    const assignedCourse = await getAssignedTACourse(request);
+
+    test.skip(!assignedCourse, 'Need a seeded TA course assignment.');
+
+    await page.waitForLoadState('networkidle');
+    await expect(page.locator('.course-card').first()).toBeVisible({ timeout: 15000 });
+    await page.locator('#quick-support-link').click();
+
+    await page.waitForURL(`**/instructor/flagged?courseId=${assignedCourse.courseId}`, { timeout: 15000 });
   });
 });
 
@@ -132,5 +164,30 @@ test.describe('TA API', () => {
 
     expect(body.success).toBeTruthy();
     expect(body.user.role).toBe('ta');
+  });
+
+  test('TA can list assigned courses', async ({ request }) => {
+    await loginViaApi(request, 'ta');
+    const currentUser = await getCurrentUser(request);
+
+    const response = await request.get(`/api/courses/ta/${encodeURIComponent(currentUser.userId)}`);
+    const body = await response.json();
+
+    expect(response.ok()).toBeTruthy();
+    expect(body.success).toBeTruthy();
+    expect(Array.isArray(body.data)).toBeTruthy();
+    expect(body.data.length).toBeGreaterThan(0);
+  });
+
+  test('TA can view their permission set for an assigned course', async ({ request }) => {
+    await loginViaApi(request, 'ta');
+    const assignedCourse = await getAssignedTACourse(request);
+
+    test.skip(!assignedCourse, 'Need a seeded TA course assignment.');
+
+    const permissions = await getTAPermissions(request, assignedCourse.courseId);
+
+    expect(permissions).toHaveProperty('canAccessCourses');
+    expect(permissions).toHaveProperty('canAccessFlags');
   });
 });
