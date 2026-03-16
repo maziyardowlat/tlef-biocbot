@@ -181,26 +181,27 @@ test.describe('Chat interaction', () => {
 
     await page.waitForTimeout(2000);
 
-    // The chat input might be hidden if in assessment mode.
+    // If chat input is hidden (assessment mode), click "New Session" to reset
     const chatInput = page.locator('#chat-input');
     const inputVisible = await chatInput.isVisible().catch(() => false);
 
     if (!inputVisible) {
-      // Assessment mode — try answering the assessment question to get to free chat
-      const answerBtn = page.locator('.message button').first();
-      const btnVisible = await answerBtn.isVisible().catch(() => false);
+      const newSessionBtn = page.locator('#new-session-btn');
+      const btnVisible = await newSessionBtn.isVisible().catch(() => false);
 
       if (btnVisible) {
-        await answerBtn.click();
-        await page.waitForTimeout(3000);
-      }
+        await newSessionBtn.click();
+        await page.waitForTimeout(2000);
+        await page.waitForLoadState('networkidle');
 
-      const nowVisible = await chatInput.isVisible().catch(() => false);
-      if (!nowVisible) {
-        test.skip();
-        return;
+        // Re-select course if needed after new session
+        await selectCourseIfNeeded(page);
+        await page.waitForTimeout(1500);
       }
     }
+
+    // After new session, input should be visible
+    await expect(chatInput).toBeVisible({ timeout: 10000 });
 
     await chatInput.fill('Hello, this is a test message from Playwright');
     await page.locator('#send-button').click();
