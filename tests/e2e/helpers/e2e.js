@@ -318,11 +318,9 @@ async function registerUser(request, userData) {
 }
 
 async function findPrivilegedInstructorCredentials(request) {
-  const password = process.env.privileged_inst_password || process.env.inst_password;
+  const password = process.env.inst_password;
   const candidates = [
     process.env.privileged_inst_username,
-    'maz_stag2',
-    'maz_inst22',
   ].filter(Boolean);
 
   for (const username of Array.from(new Set(candidates))) {

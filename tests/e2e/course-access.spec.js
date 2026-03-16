@@ -30,7 +30,7 @@ test.describe('Student course joining', () => {
     test.skip(!courseDetails.courseCode, 'Need a course code to test student joins.');
 
     const username = buildUniqueUsername('e2e_student');
-    const password = process.env.student_password || 'donda1234';
+    const password = process.env.student_password;
     const registration = await registerUser(request, {
       username,
       password,
