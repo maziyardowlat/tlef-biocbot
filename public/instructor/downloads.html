@@ -83,9 +83,15 @@
                         <div class="students-stats">
                             <span id="total-students">0</span> students with saved chats
                         </div>
-                        <button class="btn-primary" id="download-course-btn" onclick="downloadAllCourseSessions()">
-                            Download All Course Data
-                        </button>
+                        <div class="download-dropdown">
+                            <button class="btn-primary download-dropdown-toggle" id="download-course-btn" onclick="toggleDownloadMenu(event, 'course-all')">
+                                Download All Course Data &#9662;
+                            </button>
+                            <div class="download-dropdown-menu" id="download-menu-course-all">
+                                <button onclick="downloadAllCourseSessions('json')">Download JSON</button>
+                                <button onclick="downloadAllCourseSessions('txt')">Download TXT</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -125,9 +131,15 @@
             <div class="modal-footer">
                 <div class="modal-actions">
                     <button class="btn-secondary" onclick="closeStudentModal()">Close</button>
-                    <button class="btn-primary" onclick="downloadAllSessions()" id="download-all-btn" style="display: none;">
-                        Download All Sessions
-                    </button>
+                    <div class="download-dropdown" id="download-all-btn" style="display: none;">
+                        <button class="btn-primary download-dropdown-toggle" onclick="toggleDownloadMenu(event, 'student-all')">
+                            Download All Sessions &#9662;
+                        </button>
+                        <div class="download-dropdown-menu" id="download-menu-student-all">
+                            <button onclick="downloadAllSessions('json')">Download JSON</button>
+                            <button onclick="downloadAllSessions('txt')">Download TXT</button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

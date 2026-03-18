@@ -391,9 +391,10 @@ function displayStudents(students) {
 /**
  * Download all chat sessions for all students in the course
  */
-async function downloadAllCourseSessions() {
+async function downloadAllCourseSessions(format = 'json') {
     try {
-        console.log('Downloading all course sessions...');
+        console.log(`Downloading all course sessions as ${format}...`);
+        document.querySelectorAll('.download-dropdown-menu.open').forEach(menu => menu.classList.remove('open'));
         
         if (currentStudents.length === 0) {
             alert('No students found to download.');
@@ -473,9 +474,13 @@ async function downloadAllCourseSessions() {
             updateDownloadProgress(processedStudents, currentStudents.length);
         }
         
-        // Download combined JSON
-        const fileName = `BiocBot_Course_${currentCourseId}_AllSessions_${new Date().toISOString().split('T')[0]}.json`;
-        downloadJSON(allCourseData, fileName);
+        // Download in chosen format
+        const baseFileName = `BiocBot_Course_${currentCourseId}_AllSessions_${new Date().toISOString().split('T')[0]}`;
+        if (format === 'txt') {
+            downloadTXT(allCourseData, `${baseFileName}.txt`);
+        } else {
+            downloadJSON(allCourseData, `${baseFileName}.json`);
+        }
         
         // Hide progress modal
         hideDownloadProgress();
@@ -645,76 +650,226 @@ function showStudentModal(studentName, studentUsername, courseName, sessions) {
  */
 function createSessionElement(session) {
     const sessionDiv = document.createElement('div');
-    sessionDiv.className = 'session-item';
-    
+    sessionDiv.className = 'session-item-wrapper';
+
     const savedDate = session.savedAt ? new Date(session.savedAt).toLocaleDateString() : 'Unknown date';
     const savedTime = session.savedAt ? new Date(session.savedAt).toLocaleTimeString() : 'Unknown time';
-    
+    const previewId = `preview-${session.sessionId}`;
+
     sessionDiv.innerHTML = `
-        <div class="session-info">
-            <h4 class="session-title">${session.title}</h4>
-            <p class="session-details">
-                Unit: ${session.unitName} | 
-                Messages: ${session.messageCount} | 
-                Duration: ${session.duration}
-            </p>
-            <p class="session-date">Saved: ${savedDate} at ${savedTime}</p>
+        <div class="session-item">
+            <div class="session-info">
+                <h4 class="session-title">${session.title}</h4>
+                <p class="session-details">
+                    Unit: ${session.unitName} |
+                    Messages: ${session.messageCount} |
+                    Duration: ${session.duration}
+                </p>
+                <p class="session-date">Saved: ${savedDate} at ${savedTime}</p>
+            </div>
+            <div class="session-actions">
+                <button class="btn-outline" onclick="toggleChatPreview('${session.sessionId}', '${session.studentId}')">
+                    Preview Chat
+                </button>
+                <div class="download-dropdown">
+                    <button class="btn-secondary download-dropdown-toggle" onclick="toggleDownloadMenu(event, '${session.sessionId}')">
+                        Download &#9662;
+                    </button>
+                    <div class="download-dropdown-menu" id="download-menu-${session.sessionId}">
+                        <button onclick="downloadSession('${session.sessionId}', 'json')">Download JSON</button>
+                        <button onclick="downloadSession('${session.sessionId}', 'txt')">Download TXT</button>
+                    </div>
+                </div>
+            </div>
         </div>
-        <div class="session-actions">
-            <button class="btn-secondary" onclick="downloadSession('${session.sessionId}')">
-                Download
-            </button>
+        <div class="chat-preview" id="${previewId}" style="display: none;">
+            <div class="chat-preview-loading">Loading chat preview...</div>
         </div>
     `;
-    
+
     return sessionDiv;
+}
+
+/**
+ * Toggle download dropdown menu
+ */
+function toggleDownloadMenu(event, sessionId) {
+    event.stopPropagation();
+    // Close all other open menus
+    document.querySelectorAll('.download-dropdown-menu.open').forEach(menu => {
+        if (menu.id !== `download-menu-${sessionId}`) {
+            menu.classList.remove('open');
+        }
+    });
+    const menu = document.getElementById(`download-menu-${sessionId}`);
+    if (menu) menu.classList.toggle('open');
+}
+
+// Close dropdown menus when clicking outside
+document.addEventListener('click', () => {
+    document.querySelectorAll('.download-dropdown-menu.open').forEach(menu => {
+        menu.classList.remove('open');
+    });
+});
+
+/**
+ * Toggle inline chat preview for a session
+ */
+async function toggleChatPreview(sessionId, studentId) {
+    const previewDiv = document.getElementById(`preview-${sessionId}`);
+    if (!previewDiv) return;
+
+    // If already visible, collapse it
+    if (previewDiv.style.display !== 'none') {
+        previewDiv.style.display = 'none';
+        return;
+    }
+
+    // Show and load if not yet loaded
+    previewDiv.style.display = 'block';
+
+    if (previewDiv.dataset.loaded === 'true') return;
+
+    try {
+        const response = await fetch(`/api/students/${currentCourseId}/${studentId}/sessions/${sessionId}`, {
+            method: 'GET',
+            credentials: 'include'
+        });
+
+        if (!response.ok) throw new Error(`Failed to load session: ${response.status}`);
+
+        const result = await response.json();
+        if (!result.success) throw new Error(result.message || 'Failed to load session');
+
+        const sessionData = result.data;
+        const messages = sessionData.chatData?.messages || sessionData.chatData || sessionData.messages || [];
+        const msgArray = Array.isArray(messages) ? messages : [];
+        const previewMessages = msgArray.slice(0, 20);
+
+        if (previewMessages.length === 0) {
+            previewDiv.innerHTML = '<p class="chat-preview-empty">No messages in this session.</p>';
+        } else {
+            let html = '<div class="chat-preview-messages">';
+            previewMessages.forEach(msg => {
+                const role = getMsgRole(msg);
+                const displayRole = role === 'bot' ? 'BiocBot' : 'Student';
+                const roleClass = role === 'bot' ? 'bot' : 'user';
+                const rawContent = msg.content || msg.text || msg.message || '';
+                const cleanContent = stripHtml(rawContent);
+                html += `
+                    <div class="chat-preview-msg ${roleClass}">
+                        <span class="chat-preview-role">${displayRole}</span>
+                        <p class="chat-preview-content">${escapeHtml(cleanContent)}</p>
+                    </div>
+                `;
+            });
+            if (msgArray.length > 20) {
+                html += `<p class="chat-preview-more">Showing 20 of ${msgArray.length} messages. Download for full chat.</p>`;
+            }
+            html += '</div>';
+            previewDiv.innerHTML = html;
+        }
+
+        previewDiv.dataset.loaded = 'true';
+
+    } catch (error) {
+        console.error('Error loading chat preview:', error);
+        previewDiv.innerHTML = '<p class="chat-preview-error">Failed to load chat preview.</p>';
+    }
+}
+
+/**
+ * Escape HTML to prevent XSS
+ */
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+/**
+ * Strip HTML tags from a string and return plain text
+ */
+function stripHtml(html) {
+    const div = document.createElement('div');
+    div.innerHTML = html;
+    return div.textContent || div.innerText || '';
+}
+
+/**
+ * Get display role from a message object
+ * Messages use `type` field with values 'user' or 'bot'
+ */
+function getMsgRole(msg) {
+    const t = msg.type || msg.role || msg.sender || 'unknown';
+    if (t === 'bot' || t === 'assistant') return 'bot';
+    if (t === 'user') return 'user';
+    return 'unknown';
+}
+
+/**
+ * Strip HTML for plain text export
+ */
+function stripHtmlForText(html) {
+    // Server-side safe: no DOM available in some contexts, but this runs in browser
+    const div = document.createElement('div');
+    div.innerHTML = html;
+    return (div.textContent || div.innerText || '').trim();
 }
 
 /**
  * Download a specific session
  * @param {string} sessionId - Session ID to download
+ * @param {string} format - Download format: 'json' or 'txt'
  */
-async function downloadSession(sessionId) {
+async function downloadSession(sessionId, format = 'json') {
     try {
-        console.log(`Downloading session: ${sessionId}`);
-        
+        console.log(`Downloading session: ${sessionId} as ${format}`);
+
+        // Close any open dropdown menus
+        document.querySelectorAll('.download-dropdown-menu.open').forEach(menu => {
+            menu.classList.remove('open');
+        });
+
         if (!currentCourseId) {
             console.error('No course selected');
             return;
         }
-        
+
         // Find the student ID from current sessions
         const session = currentStudentSessions.find(s => s.sessionId === sessionId);
         if (!session) {
             console.error('Session not found for sessionId:', sessionId);
             return;
         }
-        
+
         const response = await fetch(`/api/students/${currentCourseId}/${session.studentId}/sessions/${sessionId}`, {
             method: 'GET',
             credentials: 'include'
         });
-        
+
         if (!response.ok) {
             throw new Error(`Failed to download session: ${response.status}`);
         }
-        
+
         const result = await response.json();
-        
+
         if (!result.success) {
             throw new Error(result.message || 'Failed to download session');
         }
-        
+
         const sessionData = result.data;
-        
-        // Create and download JSON file
         const chatData = sessionData.chatData;
-        const fileName = `BiocBot_Chat_${sessionData.courseId}_${sessionData.studentName}_${new Date(sessionData.savedAt).toISOString().split('T')[0]}.json`;
-        
-        downloadJSON(chatData, fileName);
-        
-        console.log(`Downloaded session: ${fileName}`);
-        
+        const baseFileName = `BiocBot_Chat_${sessionData.courseId}_${sessionData.studentName}_${new Date(sessionData.savedAt).toISOString().split('T')[0]}`;
+
+        if (format === 'txt') {
+            downloadTXT(chatData, `${baseFileName}.txt`);
+        } else {
+            downloadJSON(chatData, `${baseFileName}.json`);
+        }
+
+        console.log(`Downloaded session: ${baseFileName}.${format}`);
+
     } catch (error) {
         console.error('Error downloading session:', error);
         alert('Failed to download session. Please try again.');
@@ -724,9 +879,10 @@ async function downloadSession(sessionId) {
 /**
  * Download all sessions for the current student
  */
-async function downloadAllSessions() {
+async function downloadAllSessions(format = 'json') {
     try {
-        console.log('Downloading all sessions for current student');
+        console.log(`Downloading all sessions for current student as ${format}`);
+        document.querySelectorAll('.download-dropdown-menu.open').forEach(menu => menu.classList.remove('open'));
         
         if (currentStudentSessions.length === 0) {
             alert('No sessions to download.');
@@ -772,9 +928,13 @@ async function downloadAllSessions() {
             sessions: allSessionsData
         };
         
-        const fileName = `BiocBot_AllSessions_${currentCourseId}_${combinedData.studentName}_${new Date().toISOString().split('T')[0]}.json`;
-        
-        downloadJSON(combinedData, fileName);
+        const baseFileName = `BiocBot_AllSessions_${currentCourseId}_${combinedData.studentName}_${new Date().toISOString().split('T')[0]}`;
+
+        if (format === 'txt') {
+            downloadTXT(combinedData, `${baseFileName}.txt`);
+        } else {
+            downloadJSON(combinedData, `${baseFileName}.json`);
+        }
         
         // Hide progress modal
         hideDownloadProgress();
@@ -797,10 +957,130 @@ function downloadJSON(data, fileName) {
     const jsonString = JSON.stringify(data, null, 2);
     const blob = new Blob([jsonString], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
-    
+
     const a = document.createElement('a');
     a.href = url;
     a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+/**
+ * Format chat data as readable plain text
+ * @param {Object} data - Chat session data (single session or combined)
+ * @returns {string} Formatted text
+ */
+function formatChatAsText(data) {
+    let lines = [];
+
+    // If it's a course-wide export with multiple students
+    if (data.students) {
+        lines.push(`Course Chat Export - ${data.courseId}`);
+        lines.push(`Export Date: ${new Date(data.exportDate).toLocaleString()}`);
+        lines.push(`Total Students: ${data.totalStudents}`);
+        lines.push('='.repeat(60));
+        lines.push('');
+
+        data.students.forEach(student => {
+            lines.push(`Student: ${student.studentName}`);
+            lines.push(`Student ID: ${student.studentId}`);
+            lines.push('-'.repeat(40));
+
+            student.sessions.forEach(session => {
+                lines.push(...formatSingleSessionText(session));
+                lines.push('');
+            });
+
+            lines.push('='.repeat(60));
+            lines.push('');
+        });
+
+        return lines.join('\n');
+    }
+
+    // If it's a combined export for one student (multiple sessions)
+    if (data.sessions && Array.isArray(data.sessions)) {
+        lines.push(`Student: ${data.studentName}`);
+        lines.push(`Course: ${data.courseId}`);
+        lines.push(`Export Date: ${new Date(data.exportDate).toLocaleString()}`);
+        lines.push(`Total Sessions: ${data.totalSessions}`);
+        lines.push('='.repeat(60));
+        lines.push('');
+
+        data.sessions.forEach(session => {
+            lines.push(...formatSingleSessionText(session));
+            lines.push('');
+        });
+
+        return lines.join('\n');
+    }
+
+    // Single session chat data (just messages)
+    if (data.messages || Array.isArray(data)) {
+        const messages = data.messages || data;
+        lines.push(`Chat Session`);
+        lines.push('-'.repeat(40));
+        messages.forEach(msg => {
+            const role = getMsgRole(msg) === 'bot' ? 'BIOCBOT' : 'STUDENT';
+            const timestamp = msg.timestamp ? ` [${new Date(msg.timestamp).toLocaleString()}]` : '';
+            const rawContent = msg.content || msg.text || msg.message || '';
+            lines.push(`${role}${timestamp}:`);
+            lines.push(stripHtmlForText(rawContent));
+            lines.push('');
+        });
+        return lines.join('\n');
+    }
+
+    // Fallback: just stringify
+    return JSON.stringify(data, null, 2);
+}
+
+/**
+ * Format a single session object as text lines
+ * @param {Object} session - Session object with chatData/messages
+ * @returns {string[]} Array of text lines
+ */
+function formatSingleSessionText(session) {
+    const lines = [];
+    const title = session.title || session.sessionTitle || 'Untitled Session';
+    const unit = session.unitName || session.unit || '';
+    const savedAt = session.savedAt ? new Date(session.savedAt).toLocaleString() : 'Unknown';
+
+    lines.push(`  Session: ${title}`);
+    if (unit) lines.push(`  Unit: ${unit}`);
+    lines.push(`  Saved: ${savedAt}`);
+    lines.push('  ' + '-'.repeat(36));
+
+    const messages = session.chatData?.messages || session.chatData || session.messages || [];
+    const msgArray = Array.isArray(messages) ? messages : [];
+
+    msgArray.forEach(msg => {
+        const role = getMsgRole(msg) === 'bot' ? 'BIOCBOT' : 'STUDENT';
+        const timestamp = msg.timestamp ? ` [${new Date(msg.timestamp).toLocaleString()}]` : '';
+        const rawContent = msg.content || msg.text || msg.message || '';
+        lines.push(`  ${role}${timestamp}:`);
+        lines.push(`  ${stripHtmlForText(rawContent)}`);
+        lines.push('');
+    });
+
+    return lines;
+}
+
+/**
+ * Download data as a TXT file
+ * @param {Object} data - Data to format and download
+ * @param {string} fileName - Name of the file (will replace .json with .txt)
+ */
+function downloadTXT(data, fileName) {
+    const textContent = formatChatAsText(data);
+    const blob = new Blob([textContent], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName.replace(/\.json$/, '.txt');
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -925,3 +1205,5 @@ window.downloadSession = downloadSession;
 window.downloadAllSessions = downloadAllSessions;
 window.downloadAllCourseSessions = downloadAllCourseSessions;
 window.closeStudentModal = closeStudentModal;
+window.toggleDownloadMenu = toggleDownloadMenu;
+window.toggleChatPreview = toggleChatPreview;
