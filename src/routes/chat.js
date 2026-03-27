@@ -480,64 +480,8 @@ router.post('/', async (req, res) => {
     }
         
         
-        // Safety/Wellness Check
-        const safetyKeywords = ['suicide', 'kill myself', 'want to die', 'end my life', 'ending it all'];
-        const lowerMessage = message.toLowerCase();
-        if (safetyKeywords.some(keyword => lowerMessage.includes(keyword))) {
-            console.log('⚠️ [CHAT_API] Safety keyword detected. Returning wellness resource.');
-
-            // Fire-and-forget: create a high concern mental health flag for safety keywords
-            const db = req.app.locals.db;
-            if (db && req.user) {
-                const convMessages = (req.body.conversationContext && req.body.conversationContext.conversationMessages) || [];
-                const allMsgs = convMessages.length > 0
-                    ? convMessages
-                    : [{ role: 'user', content: message }];
-                // Trim to last 2 student messages + last bot message
-                const studentMsgs = allMsgs.filter(m => m.role === 'user').slice(-2);
-                const botMsg = [...allMsgs].reverse().find(m => m.role === 'assistant');
-                const trimmed = [];
-                if (botMsg) trimmed.push(botMsg);
-                trimmed.push(...studentMsgs);
-
-                MentalHealthFlag.createMentalHealthFlag(db, {
-                    studentId: req.user.userId,
-                    studentName: req.user.displayName || req.user.username || 'Unknown',
-                    courseId,
-                    unitName,
-                    message,
-                    conversationContext: trimmed,
-                    concernLevel: 'high concern',
-                    llmReason: 'Safety keyword detected: explicit self-harm language'
-                }).catch(err => console.error('Error creating safety keyword MH flag:', err));
-            }
-
-            return res.json({
-                success: true,
-                message: "I'm very sorry you're feeling this way. I'm an AI study assistant and not equipped to provide the support you need, but please reach out for help. The UBC Wellness Centre is available for you: http://students.ubc.ca/health/wellness-centre/",
-                model: 'system',
-                usage: { tokens: 0 },
-                timestamp: new Date().toISOString(),
-                mode: mode || 'default',
-                citations: [],
-                sourceAttribution: {
-                    source: 'system',
-                    description: 'Wellness Resource',
-                    unitName: null,
-                    documentType: null,
-                    downloadsEnabled: false,
-                    documents: []
-                },
-                debug: {
-                    safetyTriggered: true
-                },
-                retrieval: {
-                    mode: 'n/a',
-                    lectureNames: []
-                },
-                struggleState: null
-            });
-        }
+        // Mental health detection is handled by the parallel LLM detection (fire-and-forget)
+        // The chat bot's mode prompts include SAFETY PROTOCOL to provide the wellness link directly
 
         // Load course early (used by both struggle mapping and retrieval config)
         const coursesCol = db.collection('courses');
