@@ -614,4 +614,105 @@ router.post('/anonymize-students', async (req, res) => {
     }
 });
 
+/**
+ * GET /api/settings/mental-health-prompt
+ * Get mental health detection prompt for a course (or default)
+ */
+router.get('/mental-health-prompt', async (req, res) => {
+    try {
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({ success: false, message: 'Database connection not available' });
+        }
+
+        const courseId = req.query.courseId;
+
+        if (!courseId) {
+            return res.json({
+                success: true,
+                prompt: prompts.DEFAULT_MENTAL_HEALTH_DETECTION_PROMPT,
+                isCourseSpecific: false
+            });
+        }
+
+        const course = await db.collection('courses').findOne({ courseId });
+        const prompt = (course && course.mentalHealthDetectionPrompt) || prompts.DEFAULT_MENTAL_HEALTH_DETECTION_PROMPT;
+
+        res.json({
+            success: true,
+            prompt,
+            isCourseSpecific: !!(course && course.mentalHealthDetectionPrompt),
+            courseId
+        });
+    } catch (error) {
+        console.error('Error fetching mental health detection prompt:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch mental health detection prompt' });
+    }
+});
+
+/**
+ * POST /api/settings/mental-health-prompt
+ * Save custom mental health detection prompt for a course
+ */
+router.post('/mental-health-prompt', async (req, res) => {
+    try {
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({ success: false, message: 'Database connection not available' });
+        }
+
+        const { prompt, courseId } = req.body;
+
+        if (!courseId) {
+            return res.status(400).json({ success: false, message: 'courseId is required' });
+        }
+        if (typeof prompt !== 'string') {
+            return res.status(400).json({ success: false, message: 'Invalid prompt format' });
+        }
+
+        await db.collection('courses').updateOne(
+            { courseId },
+            { $set: { mentalHealthDetectionPrompt: prompt, updatedAt: new Date() } }
+        );
+
+        res.json({ success: true, message: 'Mental health detection prompt saved', courseId });
+    } catch (error) {
+        console.error('Error saving mental health detection prompt:', error);
+        res.status(500).json({ success: false, message: 'Failed to save mental health detection prompt' });
+    }
+});
+
+/**
+ * POST /api/settings/mental-health-prompt/reset
+ * Reset mental health detection prompt to default for a course
+ */
+router.post('/mental-health-prompt/reset', async (req, res) => {
+    try {
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({ success: false, message: 'Database connection not available' });
+        }
+
+        const { courseId } = req.body;
+        if (!courseId) {
+            return res.status(400).json({ success: false, message: 'courseId is required' });
+        }
+
+        await db.collection('courses').updateOne(
+            { courseId },
+            { $unset: { mentalHealthDetectionPrompt: '' } }
+        );
+
+        res.json({
+            success: true,
+            message: 'Mental health detection prompt reset to default',
+            prompt: prompts.DEFAULT_MENTAL_HEALTH_DETECTION_PROMPT,
+            courseId
+        });
+    } catch (error) {
+        console.error('Error resetting mental health detection prompt:', error);
+        res.status(500).json({ success: false, message: 'Failed to reset mental health detection prompt' });
+    }
+});
+
 module.exports = router;

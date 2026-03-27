@@ -16,6 +16,7 @@ const BadWordsFilter = require('bad-words');
 const profanityFilter = new BadWordsFilter();
 const TrackerService = require('../services/tracker');
 const User = require('../models/User');
+const MentalHealthFlag = require('../models/MentalHealthFlag');
 
 // Initialize services
 // Initialize services lazily
@@ -484,6 +485,31 @@ router.post('/', async (req, res) => {
         const lowerMessage = message.toLowerCase();
         if (safetyKeywords.some(keyword => lowerMessage.includes(keyword))) {
             console.log('⚠️ [CHAT_API] Safety keyword detected. Returning wellness resource.');
+
+            // Fire-and-forget: create a high concern mental health flag for safety keywords
+            const db = req.app.locals.db;
+            if (db && req.user) {
+                const convMessages = (req.body.conversationContext && req.body.conversationContext.conversationMessages) || [];
+                const allMsgs = [...convMessages, { role: 'user', content: message }];
+                // Trim to last 2 student messages + last bot message
+                const studentMsgs = allMsgs.filter(m => m.role === 'user').slice(-2);
+                const botMsg = [...allMsgs].reverse().find(m => m.role === 'assistant');
+                const trimmed = [];
+                if (botMsg) trimmed.push(botMsg);
+                trimmed.push(...studentMsgs);
+
+                MentalHealthFlag.createMentalHealthFlag(db, {
+                    studentId: req.user.userId,
+                    studentName: req.user.displayName || req.user.username || 'Unknown',
+                    courseId,
+                    unitName,
+                    message,
+                    conversationContext: trimmed,
+                    concernLevel: 'high concern',
+                    llmReason: 'Safety keyword detected: explicit self-harm language'
+                }).catch(err => console.error('Error creating safety keyword MH flag:', err));
+            }
+
             return res.json({
                 success: true,
                 message: "I'm very sorry you're feeling this way. I'm an AI study assistant and not equipped to provide the support you need, but please reach out for help. The UBC Wellness Centre is available for you: http://students.ubc.ca/health/wellness-centre/",
@@ -613,6 +639,43 @@ router.post('/', async (req, res) => {
             if (!localTrackerService) console.warn('⚠️ [CHAT_API_DEBUG] localTrackerService is MISSING. LLM service might not be ready.');
         }
 
+
+        // Fire-and-forget: parallel mental health detection LLM call
+        // Only send trimmed context: most recent bot message + 2 most recent student messages
+        const appLLMForMH = req.app.locals.llm;
+        if (appLLMForMH && req.user) {
+            (async () => {
+                try {
+                    const detectionPrompt = course.mentalHealthDetectionPrompt || prompts.DEFAULT_MENTAL_HEALTH_DETECTION_PROMPT;
+                    const convMessages = (conversationContext && conversationContext.conversationMessages) || [];
+                    const allMessages = [...convMessages, { role: 'user', content: message }];
+
+                    // Trim to last 2 student messages + last bot message
+                    const recentStudentMsgs = allMessages.filter(m => m.role === 'user').slice(-2);
+                    const recentBotMsg = [...allMessages].reverse().find(m => m.role === 'assistant');
+                    const trimmedHistory = [];
+                    if (recentBotMsg) trimmedHistory.push(recentBotMsg);
+                    trimmedHistory.push(...recentStudentMsgs);
+
+                    const result = await appLLMForMH.analyzeMentalHealth(trimmedHistory, detectionPrompt);
+
+                    if (result.concernLevel !== 'no concern') {
+                        await MentalHealthFlag.createMentalHealthFlag(db, {
+                            studentId: req.user.userId,
+                            studentName: req.user.displayName || req.user.username || 'Unknown',
+                            courseId,
+                            unitName,
+                            message,
+                            conversationContext: trimmedHistory,
+                            concernLevel: result.concernLevel,
+                            llmReason: result.reason
+                        });
+                    }
+                } catch (err) {
+                    console.error('Mental health detection error (non-blocking):', err);
+                }
+            })();
+        }
 
         // Initialize Qdrant
         let qdrant;

@@ -211,6 +211,10 @@ document.addEventListener('DOMContentLoaded', async function() {
     initializeFilters();
     loadFlaggedContent();
     loadFlagStats();
+
+    // Load mental health flags section
+    loadMentalHealthFlags();
+    initMHEventListeners();
 });
 
 /**
@@ -1549,4 +1553,252 @@ async function updateTANavigationBasedOnPermissions() {
     }
     
     console.log('🔍 [PERMISSIONS] Navigation updated based on TA permissions');
+}
+
+// ===================================================================
+// MENTAL HEALTH FLAGS SECTION
+// ===================================================================
+
+const mhState = {
+    flags: [],
+    filteredFlags: [],
+    isAdmin: false,
+    currentFilter: 'pending'
+};
+
+/**
+ * Initialize event listeners for the mental health flags section
+ */
+function initMHEventListeners() {
+    const statusFilter = document.getElementById('mh-status-filter');
+    if (statusFilter) {
+        statusFilter.addEventListener('change', () => {
+            mhState.currentFilter = statusFilter.value;
+            applyMHFilters();
+            renderMHFlags();
+        });
+    }
+
+    const refreshBtn = document.getElementById('refresh-mh-flags');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', () => loadMentalHealthFlags());
+    }
+}
+
+/**
+ * Load mental health flags from API
+ */
+async function loadMentalHealthFlags() {
+    const loading = document.getElementById('mh-loading');
+    const empty = document.getElementById('mh-empty');
+    const list = document.getElementById('mh-flags-list');
+
+    if (loading) loading.style.display = 'block';
+    if (empty) empty.style.display = 'none';
+    if (list) list.innerHTML = '';
+
+    try {
+        const courseId = await getCurrentCourseId();
+        if (!courseId) return;
+
+        const response = await fetch(`/api/mental-health-flags/course/${courseId}`);
+        const result = await response.json();
+
+        if (result.success) {
+            mhState.flags = result.flags || [];
+            mhState.isAdmin = result.isAdmin || false;
+
+            // Update total badge
+            const totalCount = document.getElementById('mh-total-count');
+            if (totalCount) {
+                const pendingCount = mhState.flags.filter(f => f.status === 'pending').length;
+                const escalatedCount = mhState.flags.filter(f => f.status === 'escalated').length;
+                totalCount.textContent = pendingCount + escalatedCount;
+            }
+
+            applyMHFilters();
+            renderMHFlags();
+        }
+    } catch (error) {
+        console.error('Error loading mental health flags:', error);
+    } finally {
+        if (loading) loading.style.display = 'none';
+    }
+}
+
+/**
+ * Apply filters to mental health flags
+ */
+function applyMHFilters() {
+    if (mhState.currentFilter === 'all') {
+        mhState.filteredFlags = [...mhState.flags];
+    } else {
+        mhState.filteredFlags = mhState.flags.filter(f => f.status === mhState.currentFilter);
+    }
+}
+
+/**
+ * Render mental health flag cards
+ */
+function renderMHFlags() {
+    const list = document.getElementById('mh-flags-list');
+    const empty = document.getElementById('mh-empty');
+    if (!list) return;
+
+    list.innerHTML = '';
+
+    if (mhState.filteredFlags.length === 0) {
+        if (empty) empty.style.display = 'block';
+        return;
+    }
+    if (empty) empty.style.display = 'none';
+
+    mhState.filteredFlags.forEach(flag => {
+        const card = createMHFlagCard(flag);
+        list.appendChild(card);
+    });
+}
+
+/**
+ * Format a timestamp to PDT string
+ */
+function formatTimestampPDT(timestamp) {
+    if (!timestamp) return 'Unknown';
+    try {
+        const date = new Date(timestamp);
+        return date.toLocaleString('en-US', {
+            timeZone: 'America/Los_Angeles',
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true
+        }) + ' PDT';
+    } catch (e) {
+        return 'Invalid date';
+    }
+}
+
+/**
+ * Create a DOM element for a single mental health flag card
+ */
+function createMHFlagCard(flag) {
+    const card = document.createElement('div');
+    const concernClass = flag.concernLevel === 'high concern' ? 'concern-high' : 'concern-low';
+    const concernLabel = flag.concernLevel === 'high concern' ? 'High Concern' : 'Low Concern';
+    const badgeClass = flag.concernLevel === 'high concern' ? 'high' : 'low';
+
+    card.className = `mh-flag-card ${concernClass}`;
+    card.setAttribute('data-mh-flag-id', flag.flagId);
+
+    // Header
+    let headerHtml = `
+        <div class="mh-flag-card-header">
+            <span class="mh-concern-badge ${badgeClass}">${concernLabel}</span>
+            <div class="mh-flag-meta">
+                <span class="mh-flag-date">${formatTimestampPDT(flag.createdAt)}</span>
+                <span class="mh-flag-status ${flag.status}">${flag.status.toUpperCase()}</span>
+            </div>
+        </div>
+    `;
+
+    // Body
+    let bodyHtml = '<div class="mh-flag-card-body">';
+
+    // Student name (only for admins on escalated flags)
+    if (mhState.isAdmin && flag.studentName && flag.studentName !== 'Anonymous Student') {
+        bodyHtml += `<div class="mh-flag-student-info">Student: ${escapeHtml(flag.studentName)}</div>`;
+    }
+
+    // Course & unit context
+    bodyHtml += `<div style="font-size: 0.8rem; color: #64748b; margin-bottom: 0.5rem;">
+        Course: ${escapeHtml(flag.courseId || 'N/A')} &bull; Unit: ${escapeHtml(flag.unitName || 'N/A')}
+    </div>`;
+
+    // LLM reason
+    if (flag.llmReason) {
+        bodyHtml += `<div class="mh-flag-reason">Detection reason: ${escapeHtml(flag.llmReason)}</div>`;
+    }
+
+    // The flagged message
+    bodyHtml += `<div class="mh-flag-message">${escapeHtml(flag.message || 'No message content')}</div>`;
+
+    // Conversation context toggle
+    if (flag.conversationContext && flag.conversationContext.length > 0) {
+        const contextId = `mh-ctx-${flag.flagId}`;
+        bodyHtml += `<button class="mh-flag-context-toggle" onclick="toggleMHContext('${contextId}')">Show conversation context</button>`;
+        bodyHtml += `<div id="${contextId}" class="mh-flag-context" style="display: none;">`;
+        flag.conversationContext.forEach(msg => {
+            const role = msg.role === 'user' ? 'Student' : 'Bot';
+            bodyHtml += `<div class="ctx-msg"><span class="ctx-role">${role}:</span> ${escapeHtml(msg.content)}</div>`;
+        });
+        bodyHtml += '</div>';
+    }
+
+    bodyHtml += '</div>';
+
+    // Footer with actions
+    let footerHtml = '<div class="mh-flag-card-footer">';
+    footerHtml += createMHActionButtons(flag);
+    footerHtml += '</div>';
+
+    card.innerHTML = headerHtml + bodyHtml + footerHtml;
+    return card;
+}
+
+/**
+ * Create action buttons based on flag status and user role
+ */
+function createMHActionButtons(flag) {
+    if (flag.status === 'pending') {
+        return `
+            <button class="mh-action-btn mh-escalate-btn" onclick="handleMHAction('${flag.flagId}', 'escalate')">Escalate</button>
+            <button class="mh-action-btn mh-dismiss-btn" onclick="handleMHAction('${flag.flagId}', 'dismiss')">Dismiss</button>
+        `;
+    }
+    if (flag.status === 'escalated' && mhState.isAdmin) {
+        return `
+            <button class="mh-action-btn mh-resolve-btn" onclick="handleMHAction('${flag.flagId}', 'resolve')">Resolved</button>
+            <button class="mh-action-btn mh-disregard-btn" onclick="handleMHAction('${flag.flagId}', 'disregard')">Disregard</button>
+        `;
+    }
+    return `<span style="font-size: 0.8rem; color: #64748b;">Status: ${flag.status}</span>`;
+}
+
+/**
+ * Toggle conversation context visibility
+ */
+function toggleMHContext(contextId) {
+    const el = document.getElementById(contextId);
+    if (el) {
+        const isVisible = el.style.display !== 'none';
+        el.style.display = isVisible ? 'none' : 'block';
+        // Update button text
+        const btn = el.previousElementSibling;
+        if (btn) btn.textContent = isVisible ? 'Show conversation context' : 'Hide conversation context';
+    }
+}
+
+/**
+ * Handle a mental health flag action (escalate, dismiss, resolve, disregard)
+ */
+async function handleMHAction(flagId, action) {
+    try {
+        const response = await fetch(`/api/mental-health-flags/${flagId}/${action}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        const result = await response.json();
+
+        if (result.success) {
+            showSuccessMessage(`Flag ${action}${action.endsWith('e') ? 'd' : 'ed'} successfully`);
+            await loadMentalHealthFlags();
+        } else {
+            showErrorMessage(result.message || `Failed to ${action} flag`);
+        }
+    } catch (error) {
+        console.error(`Error ${action} MH flag:`, error);
+        showErrorMessage(`Failed to ${action} flag. Please try again.`);
+    }
 }

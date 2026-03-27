@@ -420,6 +420,56 @@ Return ONLY a JSON object with the following structure:
     }
 
     /**
+     * Analyze a conversation for mental health concerns
+     * @param {Array} conversationHistory - Array of {role, content} messages
+     * @param {string} detectionPrompt - The detection system prompt
+     * @returns {Promise<Object>} { concernLevel: string, reason: string }
+     */
+    async analyzeMentalHealth(conversationHistory, detectionPrompt) {
+        try {
+            if (!this.isInitialized) {
+                await this._performInitialization();
+            }
+
+            // Serialize the conversation into a single string for the user message
+            const conversationText = conversationHistory
+                .map(msg => `[${msg.role}]: ${msg.content}`)
+                .join('\n\n');
+
+            const response = await this.llm.sendMessage(conversationText, {
+                systemPrompt: detectionPrompt,
+                temperature: 0.1,
+                max_tokens: 256
+            });
+
+            if (!response || !response.content) {
+                return { concernLevel: 'no concern', reason: 'No response from detection model' };
+            }
+
+            // Parse JSON from response
+            try {
+                const jsonStart = response.content.indexOf('{');
+                const jsonEnd = response.content.lastIndexOf('}') + 1;
+                if (jsonStart !== -1 && jsonEnd > 0) {
+                    const parsed = JSON.parse(response.content.substring(jsonStart, jsonEnd));
+                    return {
+                        concernLevel: parsed.concernLevel || 'no concern',
+                        reason: parsed.reason || ''
+                    };
+                }
+            } catch (e) {
+                console.error('Failed to parse mental health detection JSON:', e);
+            }
+
+            return { concernLevel: 'no concern', reason: 'Failed to parse detection response' };
+
+        } catch (error) {
+            console.error('Error in mental health analysis:', error.message);
+            return { concernLevel: 'no concern', reason: 'Detection error: ' + error.message };
+        }
+    }
+
+    /**
      * Regenerate an assessment question with instructor feedback
      * @param {string} questionType - Type of question to regenerate
      * @param {string} courseMaterialContent - Course material content

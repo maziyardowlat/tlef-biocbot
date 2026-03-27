@@ -225,6 +225,26 @@
                     </div>
                 </section>
 
+                <!-- Mental Health Detection Settings -->
+                <section class="settings-section" id="mental-health-detection-section">
+                    <h2>Mental Health Detection Settings</h2>
+                    <p class="section-description">Configure the AI prompt used to silently detect mental health concerns in student conversations. The detection runs in parallel and does not affect the student's chat experience. Flags appear on the Flagged Content page.</p>
+                    <div class="settings-content">
+                        <div class="setting-item vertical">
+                            <div class="setting-info">
+                                <h3>Detection Prompt</h3>
+                                <p>This prompt instructs the AI on how to analyze conversations for mental health concerns. The AI outputs a concern level (no concern, low concern, high concern) for each student message.</p>
+                            </div>
+                            <div class="setting-controls full-width-control">
+                                <textarea id="mental-health-detection-prompt" rows="12" placeholder="Enter mental health detection prompt..."></textarea>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="settings-actions" style="margin-top: 1rem;">
+                        <button id="reset-mh-prompt" class="secondary-button">Reset Detection Prompt to Default</button>
+                    </div>
+                </section>
+
                 <!-- Chat Retrieval Settings -->
                 <section class="settings-section">
                     <h2>Chat Retrieval Settings</h2>

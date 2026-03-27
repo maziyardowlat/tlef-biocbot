@@ -26,6 +26,7 @@ const settingsRoutes = require('./routes/settings');
 const quizRoutes = require('./routes/quiz');
 const studentTrackerRoutes = require('./routes/student-tracker');
 const struggleActivityRoutes = require('./routes/struggle-activity');
+const mentalHealthFlagsRoutes = require('./routes/mentalHealthFlags');
 const LLMService = require('./services/llm');
 const AuthService = require('./services/authService');
 const createAuthMiddleware = require('./middleware/auth');
@@ -494,6 +495,7 @@ function setupAPIRoutes() {
     app.use('/api/student/struggle', authMiddleware.requireAuth, authMiddleware.populateUser, studentTrackerRoutes);
     app.use('/api/struggle-activity', authMiddleware.requireAuth, struggleActivityRoutes);
     app.use('/api/quiz', authMiddleware.requireAuth, authMiddleware.populateUser, authMiddleware.requireStudentEnrolled, quizRoutes);
+    app.use('/api/mental-health-flags', authMiddleware.requireAuth, authMiddleware.populateUser, mentalHealthFlagsRoutes);
 }
 
 // Initialize the application
