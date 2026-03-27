@@ -21,6 +21,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             // Load privacy settings (anonymize students)
             await loadAnonymizeStudentsSetting();
 
+            // Load mental health detection prompt
+            await loadMentalHealthDetectionPrompt();
+
             // If user has permission, load global settings (login restriction)
             // and question generation prompts
             if (canManageDB) {
@@ -192,6 +195,45 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    async function loadMentalHealthDetectionPrompt() {
+        try {
+            const courseId = await getCurrentCourseId();
+            const response = await fetch(`/api/settings/mental-health-prompt?courseId=${courseId}`);
+            const result = await response.json();
+            if (result.success) {
+                const textarea = document.getElementById('mental-health-detection-prompt');
+                if (textarea) textarea.value = result.prompt || '';
+            }
+        } catch (error) {
+            console.error('Error loading mental health detection prompt:', error);
+        }
+    }
+
+    // Handle mental health prompt reset button
+    const resetMHPromptBtn = document.getElementById('reset-mh-prompt');
+    if (resetMHPromptBtn) {
+        resetMHPromptBtn.addEventListener('click', async () => {
+            if (!confirm('Reset the mental health detection prompt to the default?')) return;
+            try {
+                const courseId = await getCurrentCourseId();
+                const response = await fetch('/api/settings/mental-health-prompt/reset', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ courseId })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    const textarea = document.getElementById('mental-health-detection-prompt');
+                    if (textarea) textarea.value = result.prompt || '';
+                    showNotification('Detection prompt reset to default', 'success');
+                }
+            } catch (error) {
+                console.error('Error resetting MH detection prompt:', error);
+                showNotification('Failed to reset detection prompt', 'error');
+            }
+        });
+    }
+
     // Handle save button click
     if (saveSettingsBtn) {
         saveSettingsBtn.addEventListener('click', async () => {
@@ -251,6 +293,16 @@ document.addEventListener('DOMContentLoaded', async () => {
                         allowSourceAttributionDownloads: sourceAttributionDownloads === true
                     })
                 });
+
+                // Save mental health detection prompt
+                const mhDetectionPrompt = document.getElementById('mental-health-detection-prompt')?.value;
+                if (mhDetectionPrompt) {
+                    await fetch('/api/settings/mental-health-prompt', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ prompt: mhDetectionPrompt, courseId })
+                    });
+                }
 
                 // Save anonymize students setting
                 const anonymizeStudents = document.getElementById('anonymize-students-toggle')?.checked;
@@ -517,18 +569,21 @@ document.addEventListener('DOMContentLoaded', async () => {
             const databaseSection = document.getElementById('database-management-section');
             const loginRestrictionSection = document.getElementById('login-restriction-section');
             const questionGenerationSection = document.getElementById('question-generation-section');
-            
+            const mhDetectionSection = document.getElementById('mental-health-detection-section');
+
             if (result.success && result.canDeleteAll) {
                 // User has permission, ensure the sections are visible
                 if (databaseSection) databaseSection.style.display = '';
                 if (loginRestrictionSection) loginRestrictionSection.style.display = '';
                 if (questionGenerationSection) questionGenerationSection.style.display = '';
+                if (mhDetectionSection) mhDetectionSection.style.display = '';
                 return true;
             } else {
                 // User doesn't have permission, hide the sections
                 if (databaseSection) databaseSection.style.display = 'none';
                 if (loginRestrictionSection) loginRestrictionSection.style.display = 'none';
                 if (questionGenerationSection) questionGenerationSection.style.display = 'none';
+                if (mhDetectionSection) mhDetectionSection.style.display = 'none';
                 return false;
             }
         } catch (error) {
@@ -537,9 +592,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             const databaseSection = document.getElementById('database-management-section');
             const loginRestrictionSection = document.getElementById('login-restriction-section');
             const questionGenerationSection = document.getElementById('question-generation-section');
+            const mhDetectionSection = document.getElementById('mental-health-detection-section');
             if (databaseSection) databaseSection.style.display = 'none';
             if (loginRestrictionSection) loginRestrictionSection.style.display = 'none';
             if (questionGenerationSection) questionGenerationSection.style.display = 'none';
+            if (mhDetectionSection) mhDetectionSection.style.display = 'none';
             return false;
         }
     }
