@@ -490,7 +490,9 @@ router.post('/', async (req, res) => {
             const db = req.app.locals.db;
             if (db && req.user) {
                 const convMessages = (req.body.conversationContext && req.body.conversationContext.conversationMessages) || [];
-                const allMsgs = [...convMessages, { role: 'user', content: message }];
+                const allMsgs = convMessages.length > 0
+                    ? convMessages
+                    : [{ role: 'user', content: message }];
                 // Trim to last 2 student messages + last bot message
                 const studentMsgs = allMsgs.filter(m => m.role === 'user').slice(-2);
                 const botMsg = [...allMsgs].reverse().find(m => m.role === 'assistant');
@@ -648,7 +650,11 @@ router.post('/', async (req, res) => {
                 try {
                     const detectionPrompt = course.mentalHealthDetectionPrompt || prompts.DEFAULT_MENTAL_HEALTH_DETECTION_PROMPT;
                     const convMessages = (conversationContext && conversationContext.conversationMessages) || [];
-                    const allMessages = [...convMessages, { role: 'user', content: message }];
+                    // convMessages from frontend already includes the current message,
+                    // so only append it if the history is empty (first message in chat)
+                    const allMessages = convMessages.length > 0
+                        ? convMessages
+                        : [{ role: 'user', content: message }];
 
                     // Trim to last 2 student messages + last bot message
                     const recentStudentMsgs = allMessages.filter(m => m.role === 'user').slice(-2);
