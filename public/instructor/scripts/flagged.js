@@ -1608,6 +1608,14 @@ async function loadMentalHealthFlags() {
             mhState.flags = result.flags || [];
             mhState.isAdmin = result.isAdmin || false;
 
+            // Default admins to "escalated" filter on first load
+            if (mhState.isAdmin && !mhState.filterInitialized) {
+                mhState.currentFilter = 'escalated';
+                const statusFilter = document.getElementById('mh-status-filter');
+                if (statusFilter) statusFilter.value = 'escalated';
+                mhState.filterInitialized = true;
+            }
+
             // Update total badge
             const totalCount = document.getElementById('mh-total-count');
             if (totalCount) {
