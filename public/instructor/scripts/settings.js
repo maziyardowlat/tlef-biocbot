@@ -569,18 +569,21 @@ document.addEventListener('DOMContentLoaded', async () => {
             const databaseSection = document.getElementById('database-management-section');
             const loginRestrictionSection = document.getElementById('login-restriction-section');
             const questionGenerationSection = document.getElementById('question-generation-section');
-            
+            const mhDetectionSection = document.getElementById('mental-health-detection-section');
+
             if (result.success && result.canDeleteAll) {
                 // User has permission, ensure the sections are visible
                 if (databaseSection) databaseSection.style.display = '';
                 if (loginRestrictionSection) loginRestrictionSection.style.display = '';
                 if (questionGenerationSection) questionGenerationSection.style.display = '';
+                if (mhDetectionSection) mhDetectionSection.style.display = '';
                 return true;
             } else {
                 // User doesn't have permission, hide the sections
                 if (databaseSection) databaseSection.style.display = 'none';
                 if (loginRestrictionSection) loginRestrictionSection.style.display = 'none';
                 if (questionGenerationSection) questionGenerationSection.style.display = 'none';
+                if (mhDetectionSection) mhDetectionSection.style.display = 'none';
                 return false;
             }
         } catch (error) {
@@ -589,9 +592,11 @@ document.addEventListener('DOMContentLoaded', async () => {
             const databaseSection = document.getElementById('database-management-section');
             const loginRestrictionSection = document.getElementById('login-restriction-section');
             const questionGenerationSection = document.getElementById('question-generation-section');
+            const mhDetectionSection = document.getElementById('mental-health-detection-section');
             if (databaseSection) databaseSection.style.display = 'none';
             if (loginRestrictionSection) loginRestrictionSection.style.display = 'none';
             if (questionGenerationSection) questionGenerationSection.style.display = 'none';
+            if (mhDetectionSection) mhDetectionSection.style.display = 'none';
             return false;
         }
     }
