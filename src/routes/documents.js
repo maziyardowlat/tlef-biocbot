@@ -8,6 +8,19 @@ const DocumentModel = require('../models/Document');
 const CourseModel = require('../models/Course');
 const QdrantService = require('../services/qdrantService');
 const { QUESTION_EXTRACTION_SYSTEM_PROMPT, buildQuestionExtractionPrompt } = require('../services/prompts');
+const { encodingForModel } = require('js-tiktoken');
+
+// Token encoder using cl100k_base (same as tokencounter.space)
+const tokenEncoder = encodingForModel('gpt-4o');
+
+/**
+ * Count tokens accurately using tiktoken (cl100k_base encoding)
+ * @param {string} text - Text to count tokens for
+ * @returns {number} Token count
+ */
+function countTokens(text) {
+    return tokenEncoder.encode(text).length;
+}
 
 // Import UBC GenAI Toolkit document parsing module
 const { DocumentParsingModule } = require('ubc-genai-toolkit-document-parsing');
@@ -751,7 +764,7 @@ router.post('/:documentId/extract-questions', async (req, res) => {
 
         const TOKEN_LIMIT = 32000;
         const content = typeof document.content === 'string' ? document.content : '';
-        const estimatedTokens = Math.ceil(content.length / 3);
+        const estimatedTokens = content.length > 0 ? countTokens(content) : 0;
 
         let extractedQuestions = [];
 
@@ -870,7 +883,7 @@ function groupChunksIntoBatches(chunks, tokenLimit) {
     let currentTokens = 0;
 
     for (const chunk of chunks) {
-        const chunkTokens = Math.ceil(chunk.length / 3);
+        const chunkTokens = countTokens(chunk);
         if (currentTokens + chunkTokens > tokenLimit && currentBatch.length > 0) {
             batches.push(currentBatch);
             currentBatch = [];
