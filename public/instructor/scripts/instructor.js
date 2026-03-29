@@ -5245,10 +5245,23 @@ function showDocumentModal(documentData) {
                 
                 <div class="modal-footer" style="
                     margin-top: 20px;
-                    text-align: right;
+                    display: flex;
+                    justify-content: flex-end;
+                    gap: 10px;
                     border-top: 1px solid #eee;
                     padding-top: 10px;
                 ">
+                    ${(documentData.documentType === 'practice-quiz' || documentData.documentType === 'practice_q_tutorials') ? `
+                    <button onclick="extractAssessmentQuestions('${documentData.documentId}', '${(documentData.lectureName || '').replace(/'/g, "\\'")}', '${documentData.courseId || ''}')" style="
+                        background: #2563eb;
+                        color: white;
+                        border: none;
+                        padding: 8px 16px;
+                        border-radius: 4px;
+                        cursor: pointer;
+                        font-weight: 500;
+                    ">Find Assessment Questions</button>
+                    ` : ''}
                     <button onclick="closeDocumentModal()" style="
                         background: #6c757d;
                         color: white;
@@ -5282,6 +5295,399 @@ function closeDocumentModal() {
     if (modal) {
         modal.remove();
     }
+}
+
+/**
+ * Extract assessment questions from a practice quiz document via LLM
+ */
+async function extractAssessmentQuestions(documentId, lectureName, courseId) {
+    // Replace the document modal footer with a loading state
+    const footer = document.querySelector('.document-modal .modal-footer');
+    if (footer) {
+        footer.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 10px; width: 100%; justify-content: center; padding: 8px 0;">
+                <div class="spinner" style="
+                    width: 20px; height: 20px;
+                    border: 3px solid #e5e7eb;
+                    border-top: 3px solid #2563eb;
+                    border-radius: 50%;
+                    animation: spin 0.8s linear infinite;
+                "></div>
+                <span style="color: #555; font-size: 14px;">Scanning for assessment questions...</span>
+            </div>
+            <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+        `;
+    }
+
+    try {
+        const response = await fetch(`/api/documents/${documentId}/extract-questions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+            throw new Error(result.message || 'Failed to extract questions');
+        }
+
+        const questions = result.data.questions || [];
+        if (questions.length === 0) {
+            showNotification('No questions found in this document.', 'info');
+            closeDocumentModal();
+            return;
+        }
+
+        // Close document modal and open review modal
+        closeDocumentModal();
+        showQuestionReviewModal(questions, lectureName, courseId, result.data.wasChunked);
+
+    } catch (error) {
+        console.error('Error extracting questions:', error);
+        showNotification(`Error: ${error.message}`, 'error');
+        closeDocumentModal();
+    }
+}
+
+/**
+ * Show the question review modal with extracted questions
+ */
+function showQuestionReviewModal(questions, lectureName, courseId, wasChunked) {
+    // Remove existing review modal if any
+    const existing = document.querySelector('.question-review-modal');
+    if (existing) existing.remove();
+
+    const questionsHTML = questions.map((q, i) => {
+        const missingAnswer = !q.hasAnswer;
+        const borderColor = missingAnswer ? '#f59e0b' : '#e5e7eb';
+        const warningHTML = missingAnswer ? `
+            <div style="
+                background: #fef3c7; border: 1px solid #f59e0b; border-radius: 4px;
+                padding: 6px 10px; margin-top: 8px; font-size: 12px; color: #92400e;
+                display: flex; align-items: center; gap: 6px;
+            ">
+                <span style="font-size: 16px;">&#9888;</span>
+                <span>No correct answer found — cannot be saved. Please provide an answer to include this question.</span>
+            </div>
+        ` : '';
+
+        let answerPreview = '';
+        if (q.questionType === 'multiple-choice' && q.options) {
+            const optionsStr = Object.entries(q.options).map(([k, v]) => `<strong>${k}.</strong> ${v}`).join(' &nbsp; ');
+            answerPreview = `<div style="margin-top: 6px; font-size: 13px; color: #555;">${optionsStr}</div>`;
+            if (q.correctAnswer) {
+                answerPreview += `<div style="margin-top: 4px; font-size: 13px; color: #059669;"><strong>Answer:</strong> ${q.correctAnswer}</div>`;
+            }
+        } else if (q.questionType === 'true-false') {
+            answerPreview = q.correctAnswer ? `<div style="margin-top: 6px; font-size: 13px; color: #059669;"><strong>Answer:</strong> ${q.correctAnswer}</div>` : '';
+        } else if (q.questionType === 'short-answer') {
+            answerPreview = q.correctAnswer ? `<div style="margin-top: 6px; font-size: 13px; color: #059669;"><strong>Expected answer:</strong> ${q.correctAnswer}</div>` : '';
+        }
+
+        const typeLabel = q.questionType === 'multiple-choice' ? 'MC' : q.questionType === 'true-false' ? 'T/F' : 'SA';
+        const typeBg = q.questionType === 'multiple-choice' ? '#dbeafe' : q.questionType === 'true-false' ? '#fce7f3' : '#d1fae5';
+        const typeColor = q.questionType === 'multiple-choice' ? '#1e40af' : q.questionType === 'true-false' ? '#9d174d' : '#065f46';
+
+        return `
+            <div class="question-review-item" data-index="${i}" data-selected="${missingAnswer ? 'false' : 'true'}" style="
+                border: 2px solid ${borderColor};
+                border-radius: 8px;
+                padding: 14px;
+                margin-bottom: 10px;
+                transition: border-color 0.2s, opacity 0.2s;
+                ${missingAnswer ? 'opacity: 0.7;' : ''}
+            ">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 10px;">
+                    <div style="flex: 1;">
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+                            <span style="
+                                background: ${typeBg}; color: ${typeColor};
+                                padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;
+                            ">${typeLabel}</span>
+                            <span style="font-size: 13px; color: #888;">Q${i + 1}</span>
+                        </div>
+                        <div style="font-size: 14px; color: #1f2937; line-height: 1.5;">${escapeHTML(q.question)}</div>
+                        ${answerPreview}
+                        ${q.explanation ? `<div style="margin-top: 4px; font-size: 12px; color: #6b7280;"><em>Explanation: ${escapeHTML(q.explanation)}</em></div>` : ''}
+                        ${warningHTML}
+                        ${missingAnswer ? `
+                            <div style="margin-top: 8px;">
+                                <input type="text" class="missing-answer-input" data-index="${i}" placeholder="Enter the correct answer..." style="
+                                    width: 100%; padding: 8px 10px; border: 1px solid #f59e0b; border-radius: 4px;
+                                    font-size: 13px; box-sizing: border-box;
+                                " />
+                            </div>
+                        ` : ''}
+                    </div>
+                    <div style="display: flex; gap: 6px; flex-shrink: 0;">
+                        <button class="qr-yes-btn" data-index="${i}" onclick="toggleQuestionSelection(${i}, true)" style="
+                            padding: 6px 14px; border-radius: 4px; border: 2px solid #059669;
+                            background: ${missingAnswer ? 'white' : '#059669'}; color: ${missingAnswer ? '#059669' : 'white'};
+                            cursor: pointer; font-weight: 600; font-size: 13px;
+                            ${missingAnswer ? 'opacity: 0.5; pointer-events: none;' : ''}
+                        ">Yes</button>
+                        <button class="qr-no-btn" data-index="${i}" onclick="toggleQuestionSelection(${i}, false)" style="
+                            padding: 6px 14px; border-radius: 4px; border: 2px solid #dc2626;
+                            background: ${missingAnswer ? '#dc2626' : 'white'}; color: ${missingAnswer ? 'white' : '#dc2626'};
+                            cursor: pointer; font-weight: 600; font-size: 13px;
+                        ">No</button>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    const chunkedWarning = wasChunked ? `
+        <div style="
+            background: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px;
+            padding: 10px 14px; margin-bottom: 14px; font-size: 13px; color: #92400e;
+        ">
+            <strong>Note:</strong> This document was large and had to be processed in chunks.
+            For better results, consider uploading smaller files.
+        </div>
+    ` : '';
+
+    const selectedCount = questions.filter(q => q.hasAnswer).length;
+
+    const modalHTML = `
+        <div class="question-review-modal" style="
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.6);
+            display: flex; justify-content: center; align-items: center;
+            z-index: 1100;
+        ">
+            <div style="
+                background: white; border-radius: 10px;
+                width: 90%; max-width: 750px; max-height: 85vh;
+                display: flex; flex-direction: column;
+                box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            ">
+                <div style="
+                    padding: 18px 20px; border-bottom: 1px solid #e5e7eb;
+                    display: flex; justify-content: space-between; align-items: center;
+                ">
+                    <div>
+                        <h2 style="margin: 0; font-size: 18px; color: #1f2937;">Review Extracted Questions</h2>
+                        <p style="margin: 4px 0 0; font-size: 13px; color: #6b7280;">${lectureName} — ${questions.length} question${questions.length === 1 ? '' : 's'} found</p>
+                    </div>
+                    <button onclick="closeQuestionReviewModal()" style="
+                        background: none; border: none; font-size: 24px;
+                        cursor: pointer; color: #666; line-height: 1;
+                    ">&times;</button>
+                </div>
+
+                <div style="padding: 18px 20px; overflow-y: auto; flex: 1;">
+                    ${chunkedWarning}
+                    <p style="margin: 0 0 14px; font-size: 13px; color: #6b7280;">
+                        Select which questions to add to the assessments for <strong>${escapeHTML(lectureName)}</strong>.
+                        Questions without a correct answer (marked in yellow) need an answer before they can be saved.
+                    </p>
+                    <div id="question-review-list">
+                        ${questionsHTML}
+                    </div>
+                </div>
+
+                <div style="
+                    padding: 14px 20px; border-top: 1px solid #e5e7eb;
+                    display: flex; justify-content: space-between; align-items: center;
+                ">
+                    <span id="qr-selected-count" style="font-size: 13px; color: #6b7280;">
+                        ${selectedCount} question${selectedCount === 1 ? '' : 's'} selected
+                    </span>
+                    <div style="display: flex; gap: 10px;">
+                        <button onclick="closeQuestionReviewModal()" style="
+                            background: #6c757d; color: white; border: none;
+                            padding: 8px 18px; border-radius: 4px; cursor: pointer;
+                        ">Cancel</button>
+                        <button id="qr-save-btn" onclick="saveSelectedQuestions('${(lectureName || '').replace(/'/g, "\\'")}', '${courseId}')" style="
+                            background: #2563eb; color: white; border: none;
+                            padding: 8px 18px; border-radius: 4px; cursor: pointer; font-weight: 600;
+                        ">Save Selected</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+
+    // Store questions data for saving
+    window._extractedQuestions = questions;
+    window._extractedLectureName = lectureName;
+    window._extractedCourseId = courseId;
+
+    // Attach listeners for missing answer inputs
+    document.querySelectorAll('.missing-answer-input').forEach(input => {
+        input.addEventListener('input', function() {
+            const idx = parseInt(this.dataset.index);
+            const item = document.querySelector(`.question-review-item[data-index="${idx}"]`);
+            const yesBtn = document.querySelector(`.qr-yes-btn[data-index="${idx}"]`);
+            if (this.value.trim()) {
+                window._extractedQuestions[idx].correctAnswer = this.value.trim();
+                window._extractedQuestions[idx].hasAnswer = true;
+                item.style.borderColor = '#e5e7eb';
+                item.style.opacity = '1';
+                yesBtn.style.opacity = '1';
+                yesBtn.style.pointerEvents = 'auto';
+                // Auto-select when answer is provided
+                toggleQuestionSelection(idx, true);
+            } else {
+                window._extractedQuestions[idx].correctAnswer = null;
+                window._extractedQuestions[idx].hasAnswer = false;
+                item.style.borderColor = '#f59e0b';
+                item.style.opacity = '0.7';
+                yesBtn.style.opacity = '0.5';
+                yesBtn.style.pointerEvents = 'none';
+                toggleQuestionSelection(idx, false);
+            }
+        });
+    });
+
+    // Click outside to close
+    const modal = document.querySelector('.question-review-modal');
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeQuestionReviewModal();
+    });
+}
+
+/**
+ * Escape HTML to prevent XSS
+ */
+function escapeHTML(str) {
+    const div = document.createElement('div');
+    div.textContent = str || '';
+    return div.innerHTML;
+}
+
+/**
+ * Toggle a question's selection state (Yes/No)
+ */
+function toggleQuestionSelection(index, selected) {
+    const item = document.querySelector(`.question-review-item[data-index="${index}"]`);
+    if (!item) return;
+
+    const q = window._extractedQuestions[index];
+    // Don't allow selecting questions without answers
+    if (selected && !q.hasAnswer) return;
+
+    item.dataset.selected = selected ? 'true' : 'false';
+
+    const yesBtn = document.querySelector(`.qr-yes-btn[data-index="${index}"]`);
+    const noBtn = document.querySelector(`.qr-no-btn[data-index="${index}"]`);
+
+    if (selected) {
+        item.style.borderColor = '#059669';
+        yesBtn.style.background = '#059669';
+        yesBtn.style.color = 'white';
+        noBtn.style.background = 'white';
+        noBtn.style.color = '#dc2626';
+    } else {
+        item.style.borderColor = q.hasAnswer ? '#e5e7eb' : '#f59e0b';
+        yesBtn.style.background = 'white';
+        yesBtn.style.color = '#059669';
+        noBtn.style.background = '#dc2626';
+        noBtn.style.color = 'white';
+    }
+
+    updateSelectedCount();
+}
+
+/**
+ * Update the selected question count display
+ */
+function updateSelectedCount() {
+    const items = document.querySelectorAll('.question-review-item');
+    let count = 0;
+    items.forEach(item => {
+        if (item.dataset.selected === 'true') count++;
+    });
+    const countEl = document.getElementById('qr-selected-count');
+    if (countEl) {
+        countEl.textContent = `${count} question${count === 1 ? '' : 's'} selected`;
+    }
+}
+
+/**
+ * Save selected questions to the assessment
+ */
+async function saveSelectedQuestions(lectureName, courseId) {
+    const items = document.querySelectorAll('.question-review-item');
+    const selectedQuestions = [];
+
+    items.forEach(item => {
+        if (item.dataset.selected === 'true') {
+            const idx = parseInt(item.dataset.index);
+            const q = window._extractedQuestions[idx];
+            if (q && q.hasAnswer) {
+                selectedQuestions.push(q);
+            }
+        }
+    });
+
+    if (selectedQuestions.length === 0) {
+        showNotification('No questions selected. Please select at least one question.', 'warning');
+        return;
+    }
+
+    // Disable save button
+    const saveBtn = document.getElementById('qr-save-btn');
+    if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Saving...';
+        saveBtn.style.opacity = '0.6';
+    }
+
+    try {
+        const instructorId = currentUser?.userId || currentUser?._id || 'unknown';
+
+        const response = await fetch('/api/questions/bulk', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                courseId,
+                lectureName,
+                instructorId,
+                questions: selectedQuestions
+            })
+        });
+
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+            throw new Error(result.message || 'Failed to save questions');
+        }
+
+        // Close all modals
+        closeQuestionReviewModal();
+        closeDocumentModal();
+
+        showNotification(`${result.data.addedCount} question${result.data.addedCount === 1 ? '' : 's'} added to the assessments of ${lectureName}.`, 'success');
+
+        // Refresh the page content to show updated assessment questions
+        if (typeof loadCourseData === 'function') {
+            loadCourseData();
+        }
+
+    } catch (error) {
+        console.error('Error saving questions:', error);
+        showNotification(`Error saving questions: ${error.message}`, 'error');
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.textContent = 'Save Selected';
+            saveBtn.style.opacity = '1';
+        }
+    }
+}
+
+/**
+ * Close the question review modal
+ */
+function closeQuestionReviewModal() {
+    const modal = document.querySelector('.question-review-modal');
+    if (modal) modal.remove();
+    window._extractedQuestions = null;
+    window._extractedLectureName = null;
+    window._extractedCourseId = null;
 }
 
 /**

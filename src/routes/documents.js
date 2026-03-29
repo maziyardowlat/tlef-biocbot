@@ -7,6 +7,7 @@ const fs = require('fs');
 const DocumentModel = require('../models/Document');
 const CourseModel = require('../models/Course');
 const QdrantService = require('../services/qdrantService');
+const { QUESTION_EXTRACTION_SYSTEM_PROMPT, buildQuestionExtractionPrompt } = require('../services/prompts');
 
 // Import UBC GenAI Toolkit document parsing module
 const { DocumentParsingModule } = require('ubc-genai-toolkit-document-parsing');
@@ -724,5 +725,166 @@ router.post('/cleanup-orphans', async (req, res) => {
         });
     }
 });
+
+/**
+ * POST /api/documents/:documentId/extract-questions
+ * Extract assessment questions from a practice quiz document using LLM
+ */
+router.post('/:documentId/extract-questions', async (req, res) => {
+    try {
+        const { documentId } = req.params;
+        const db = req.app.locals.db;
+        const llm = req.app.locals.llm;
+
+        if (!db) {
+            return res.status(503).json({ success: false, message: 'Database connection not available' });
+        }
+        if (!llm || typeof llm.sendMessage !== 'function') {
+            return res.status(503).json({ success: false, message: 'LLM service not available' });
+        }
+
+        // Fetch the document
+        const document = await DocumentModel.getDocumentById(db, documentId);
+        if (!document) {
+            return res.status(404).json({ success: false, message: 'Document not found' });
+        }
+
+        const TOKEN_LIMIT = 32000;
+        const content = typeof document.content === 'string' ? document.content : '';
+        const estimatedTokens = Math.ceil(content.length / 3);
+
+        let extractedQuestions = [];
+
+        if (estimatedTokens <= TOKEN_LIMIT && content.length > 0) {
+            // Content fits in one call
+            const result = await extractQuestionsFromText(llm, content);
+            extractedQuestions = result;
+        } else if (content.length > 0) {
+            // Content too large — use Qdrant chunks
+            console.log(`Document ${documentId} exceeds token limit (${estimatedTokens} est. tokens). Using Qdrant chunks.`);
+            try {
+                const qdrantService = new QdrantService();
+                if (!qdrantService.client) {
+                    await qdrantService.initialize();
+                }
+                const chunks = await qdrantService.getDocumentChunks(documentId);
+
+                if (chunks.length === 0) {
+                    return res.status(400).json({
+                        success: false,
+                        message: 'Document is too large and no chunks were found. Please try uploading a smaller file.'
+                    });
+                }
+
+                // Group chunks into batches that fit under the token limit
+                const batches = groupChunksIntoBatches(chunks, TOKEN_LIMIT);
+                console.log(`Processing ${chunks.length} chunks in ${batches.length} batch(es)`);
+
+                for (const batch of batches) {
+                    const batchText = batch.join('\n\n');
+                    const batchQuestions = await extractQuestionsFromText(llm, batchText);
+                    extractedQuestions.push(...batchQuestions);
+                }
+            } catch (qdrantError) {
+                console.error('Error retrieving chunks from Qdrant:', qdrantError);
+                return res.status(400).json({
+                    success: false,
+                    message: 'Document is too large to process in one call and chunk retrieval failed. Please try uploading a smaller file.'
+                });
+            }
+        } else {
+            return res.status(400).json({
+                success: false,
+                message: 'No text content found in document. Please ensure the file contains readable text.'
+            });
+        }
+
+        res.json({
+            success: true,
+            data: {
+                documentId,
+                lectureName: document.lectureName,
+                courseId: document.courseId,
+                questions: extractedQuestions,
+                totalFound: extractedQuestions.length,
+                wasChunked: estimatedTokens > TOKEN_LIMIT
+            }
+        });
+
+    } catch (error) {
+        console.error('Error extracting questions from document:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while extracting questions'
+        });
+    }
+});
+
+/**
+ * Send text to LLM and extract assessment questions
+ */
+async function extractQuestionsFromText(llm, text) {
+    const prompt = buildQuestionExtractionPrompt(text);
+
+    const response = await llm.sendMessage(prompt, {
+        temperature: 0.1,
+        maxTokens: 4096,
+        systemPrompt: QUESTION_EXTRACTION_SYSTEM_PROMPT
+    });
+
+    const parsed = extractFirstJSONObject(response?.content || '');
+    if (parsed && Array.isArray(parsed.questions)) {
+        return parsed.questions.map(q => ({
+            questionType: q.questionType || 'short-answer',
+            question: q.question || '',
+            options: q.options || {},
+            correctAnswer: q.correctAnswer || null,
+            explanation: q.explanation || '',
+            hasAnswer: q.correctAnswer !== null && q.correctAnswer !== undefined && q.correctAnswer !== ''
+        }));
+    }
+    return [];
+}
+
+/**
+ * Extract the first JSON object from a string (handles LLM responses with extra text)
+ */
+function extractFirstJSONObject(str) {
+    try {
+        return JSON.parse(str);
+    } catch {
+        const match = str.match(/\{[\s\S]*\}/);
+        if (match) {
+            try { return JSON.parse(match[0]); } catch { return null; }
+        }
+        return null;
+    }
+}
+
+/**
+ * Group text chunks into batches that fit under a token limit
+ */
+function groupChunksIntoBatches(chunks, tokenLimit) {
+    const batches = [];
+    let currentBatch = [];
+    let currentTokens = 0;
+
+    for (const chunk of chunks) {
+        const chunkTokens = Math.ceil(chunk.length / 3);
+        if (currentTokens + chunkTokens > tokenLimit && currentBatch.length > 0) {
+            batches.push(currentBatch);
+            currentBatch = [];
+            currentTokens = 0;
+        }
+        currentBatch.push(chunk);
+        currentTokens += chunkTokens;
+    }
+
+    if (currentBatch.length > 0) {
+        batches.push(currentBatch);
+    }
+
+    return batches;
+}
 
 module.exports = router;

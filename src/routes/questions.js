@@ -1028,4 +1028,73 @@ router.post('/generate-ai', async (req, res) => {
     }
 });
 
+/**
+ * POST /api/questions/bulk
+ * Save multiple assessment questions at once (from LLM extraction)
+ */
+router.post('/bulk', async (req, res) => {
+    try {
+        const { courseId, lectureName, instructorId, questions } = req.body;
+
+        if (!courseId || !lectureName || !instructorId || !Array.isArray(questions) || questions.length === 0) {
+            return res.status(400).json({
+                success: false,
+                message: 'Missing required fields: courseId, lectureName, instructorId, questions (array)'
+            });
+        }
+
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({ success: false, message: 'Database connection not available' });
+        }
+
+        const results = [];
+        let successCount = 0;
+
+        for (const q of questions) {
+            if (!q.question || !q.questionType || !q.correctAnswer) continue;
+
+            const questionData = {
+                questionType: q.questionType,
+                question: q.question,
+                options: q.options || {},
+                correctAnswer: q.correctAnswer,
+                explanation: q.explanation || '',
+                difficulty: q.difficulty || 'medium',
+                tags: q.tags || [],
+                points: q.points || 1,
+                metadata: {
+                    source: 'ai-extracted',
+                    aiGenerated: true,
+                    reviewStatus: 'approved',
+                    extractedFrom: q.extractedFrom || null
+                }
+            };
+
+            const result = await CourseModel.updateAssessmentQuestions(
+                db, courseId, lectureName, questionData, instructorId
+            );
+
+            if (result.success) {
+                successCount++;
+                results.push({ questionId: result.questionId, question: q.question });
+            }
+        }
+
+        res.json({
+            success: true,
+            message: `${successCount} question${successCount === 1 ? '' : 's'} added to assessments`,
+            data: { addedCount: successCount, questions: results }
+        });
+
+    } catch (error) {
+        console.error('Error bulk saving questions:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error while saving questions',
+            error: error.message
+        });
+    }
+});
+
 module.exports = router;
