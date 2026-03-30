@@ -847,14 +847,41 @@ async function extractQuestionsFromText(llm, text) {
 
     const parsed = extractFirstJSONObject(response?.content || '');
     if (parsed && Array.isArray(parsed.questions)) {
-        return parsed.questions.map(q => ({
-            questionType: q.questionType || 'short-answer',
-            question: q.question || '',
-            options: q.options || {},
-            correctAnswer: q.correctAnswer || null,
-            explanation: q.explanation || '',
-            hasAnswer: q.correctAnswer !== null && q.correctAnswer !== undefined && q.correctAnswer !== ''
-        }));
+        return parsed.questions.map(q => {
+            // Normalize MC options to uppercase A, B, C, D keys
+            let options = q.options || {};
+            if (q.questionType === 'multiple-choice' && Object.keys(options).length > 0) {
+                const normalized = {};
+                const letters = ['A', 'B', 'C', 'D', 'E', 'F'];
+                const entries = Object.entries(options);
+                entries.forEach(([key, val], idx) => {
+                    const normalizedKey = letters[idx] || key.toUpperCase();
+                    normalized[normalizedKey] = val;
+                });
+                options = normalized;
+            }
+
+            // Normalize correctAnswer for MC to uppercase letter
+            let correctAnswer = q.correctAnswer || null;
+            if (correctAnswer && q.questionType === 'multiple-choice' && typeof correctAnswer === 'string') {
+                correctAnswer = correctAnswer.trim().toUpperCase().charAt(0);
+            }
+            // Normalize T/F answers
+            if (correctAnswer && q.questionType === 'true-false' && typeof correctAnswer === 'string') {
+                const lower = correctAnswer.trim().toLowerCase();
+                if (lower === 'true' || lower === 't') correctAnswer = 'True';
+                else if (lower === 'false' || lower === 'f') correctAnswer = 'False';
+            }
+
+            return {
+                questionType: q.questionType || 'short-answer',
+                question: q.question || '',
+                options,
+                correctAnswer,
+                explanation: q.explanation || '',
+                hasAnswer: correctAnswer !== null && correctAnswer !== undefined && correctAnswer !== ''
+            };
+        });
     }
     return [];
 }

@@ -5350,6 +5350,54 @@ async function extractAssessmentQuestions(documentId, lectureName, courseId) {
 }
 
 /**
+ * Build the appropriate missing-answer input based on question type
+ * - MC: dropdown of the options (A, B, C, D...)
+ * - T/F: dropdown with True / False
+ * - SA: text input
+ */
+function buildMissingAnswerInput(q, index) {
+    const selectStyle = `
+        width: 100%; padding: 8px 10px; border: 1px solid #f59e0b; border-radius: 4px;
+        font-size: 13px; box-sizing: border-box; background: white; cursor: pointer;
+    `;
+    const inputStyle = `
+        width: 100%; padding: 8px 10px; border: 1px solid #f59e0b; border-radius: 4px;
+        font-size: 13px; box-sizing: border-box;
+    `;
+
+    if (q.questionType === 'multiple-choice' && q.options && Object.keys(q.options).length > 0) {
+        const optionEntries = Object.entries(q.options).map(([k, v]) =>
+            `<option value="${k.toUpperCase()}">${k.toUpperCase()}. ${escapeHTML(v)}</option>`
+        ).join('');
+        return `
+            <div style="margin-top: 8px;">
+                <select class="missing-answer-input" data-index="${index}" style="${selectStyle}">
+                    <option value="">-- Select the correct answer --</option>
+                    ${optionEntries}
+                </select>
+            </div>
+        `;
+    } else if (q.questionType === 'true-false') {
+        return `
+            <div style="margin-top: 8px;">
+                <select class="missing-answer-input" data-index="${index}" style="${selectStyle}">
+                    <option value="">-- Select the correct answer --</option>
+                    <option value="True">True</option>
+                    <option value="False">False</option>
+                </select>
+            </div>
+        `;
+    } else {
+        // Short answer — keep as text input
+        return `
+            <div style="margin-top: 8px;">
+                <input type="text" class="missing-answer-input" data-index="${index}" placeholder="Enter the correct answer..." style="${inputStyle}" />
+            </div>
+        `;
+    }
+}
+
+/**
  * Show the question review modal with extracted questions
  */
 function showQuestionReviewModal(questions, lectureName, courseId, wasChunked) {
@@ -5410,14 +5458,7 @@ function showQuestionReviewModal(questions, lectureName, courseId, wasChunked) {
                         ${answerPreview}
                         ${q.explanation ? `<div style="margin-top: 4px; font-size: 12px; color: #6b7280;"><em>Explanation: ${escapeHTML(q.explanation)}</em></div>` : ''}
                         ${warningHTML}
-                        ${missingAnswer ? `
-                            <div style="margin-top: 8px;">
-                                <input type="text" class="missing-answer-input" data-index="${i}" placeholder="Enter the correct answer..." style="
-                                    width: 100%; padding: 8px 10px; border: 1px solid #f59e0b; border-radius: 4px;
-                                    font-size: 13px; box-sizing: border-box;
-                                " />
-                            </div>
-                        ` : ''}
+                        ${missingAnswer ? buildMissingAnswerInput(q, i) : ''}
                     </div>
                     <div style="display: flex; gap: 6px; flex-shrink: 0;">
                         <button class="qr-yes-btn" data-index="${i}" onclick="toggleQuestionSelection(${i}, true)" style="
@@ -5516,20 +5557,21 @@ function showQuestionReviewModal(questions, lectureName, courseId, wasChunked) {
     window._extractedLectureName = lectureName;
     window._extractedCourseId = courseId;
 
-    // Attach listeners for missing answer inputs
-    document.querySelectorAll('.missing-answer-input').forEach(input => {
-        input.addEventListener('input', function() {
+    // Attach listeners for missing answer inputs (selects and text inputs)
+    document.querySelectorAll('.missing-answer-input').forEach(el => {
+        const eventType = el.tagName === 'SELECT' ? 'change' : 'input';
+        el.addEventListener(eventType, function() {
             const idx = parseInt(this.dataset.index);
             const item = document.querySelector(`.question-review-item[data-index="${idx}"]`);
             const yesBtn = document.querySelector(`.qr-yes-btn[data-index="${idx}"]`);
-            if (this.value.trim()) {
-                window._extractedQuestions[idx].correctAnswer = this.value.trim();
+            const val = this.value.trim();
+            if (val) {
+                window._extractedQuestions[idx].correctAnswer = val;
                 window._extractedQuestions[idx].hasAnswer = true;
                 item.style.borderColor = '#e5e7eb';
                 item.style.opacity = '1';
                 yesBtn.style.opacity = '1';
                 yesBtn.style.pointerEvents = 'auto';
-                // Auto-select when answer is provided
                 toggleQuestionSelection(idx, true);
             } else {
                 window._extractedQuestions[idx].correctAnswer = null;
