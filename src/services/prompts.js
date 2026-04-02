@@ -487,6 +487,63 @@ IMPORTANT: Return your response in JSON format following this exact schema:
 Generate your question following this exact JSON format.`
 };
 
+// Prompt for extracting assessment questions from practice quiz documents
+const QUESTION_EXTRACTION_SYSTEM_PROMPT = 'You extract assessment questions from educational content. Return strict JSON only.';
+
+/**
+ * Build the prompt for extracting questions from practice quiz text.
+ * @param {string} text - The document text to extract questions from
+ * @returns {string} The formatted prompt
+ */
+function buildQuestionExtractionPrompt(text) {
+    return `You are an expert assessment question extractor. Read the following practice quiz / tutorial content and extract ALL questions you can find.
+
+For each question, determine:
+1. The question type: "multiple-choice", "true-false", or "short-answer"
+2. The question text
+3. For multiple-choice: the options (as an object with keys A, B, C, D, etc.) and the correct answer letter
+4. For true-false: the correct answer ("True" or "False")
+5. For short-answer: the expected correct answer/response
+6. An explanation if one is provided in the source material
+
+IMPORTANT:
+- If the correct answer is NOT clearly indicated in the source material, set "correctAnswer" to null.
+- Extract questions exactly as they appear. Do not invent or modify questions.
+- Return JSON ONLY, no other text.
+
+JSON format:
+{
+  "questions": [
+    {
+      "questionType": "multiple-choice",
+      "question": "What is the primary function of...",
+      "options": { "A": "Option 1", "B": "Option 2", "C": "Option 3", "D": "Option 4" },
+      "correctAnswer": "B",
+      "explanation": "Because..."
+    },
+    {
+      "questionType": "true-false",
+      "question": "Enzymes are proteins.",
+      "options": { "A": "True", "B": "False" },
+      "correctAnswer": "True",
+      "explanation": ""
+    },
+    {
+      "questionType": "short-answer",
+      "question": "Describe the process of...",
+      "correctAnswer": "The process involves...",
+      "explanation": ""
+    }
+  ]
+}
+
+Content to extract questions from:
+"""
+${text}
+"""
+`;
+}
+
 module.exports = {
     BASE_SYSTEM_PROMPT,
     EXPLAIN_SYSTEM_PROMPT,
@@ -496,5 +553,7 @@ module.exports = {
     createQuestionGenerationSystemPrompt,
     QUESTION_GENERATION_PROMPT_TEMPLATE,
     DEFAULT_PROMPTS,
-    DEFAULT_QUESTION_PROMPTS
+    DEFAULT_QUESTION_PROMPTS,
+    QUESTION_EXTRACTION_SYSTEM_PROMPT,
+    buildQuestionExtractionPrompt
 };

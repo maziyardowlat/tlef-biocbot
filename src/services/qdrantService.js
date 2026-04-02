@@ -595,6 +595,59 @@ class QdrantService {
     }
 
     /**
+     * Retrieve all chunks for a specific document, ordered by chunkIndex
+     * @param {string} documentId - Document ID to retrieve chunks for
+     * @returns {Promise<Array>} Array of chunk texts in order
+     */
+    async getDocumentChunks(documentId) {
+        try {
+            console.log(`Retrieving chunks for document: ${documentId}`);
+
+            const filter = {
+                must: [
+                    { key: 'documentId', match: { value: documentId } }
+                ]
+            };
+
+            const allChunks = [];
+            let nextOffset = null;
+            let loopCount = 0;
+            const MAX_LOOPS = 100;
+
+            do {
+                loopCount++;
+                const scrollResult = await this.client.scroll(this.collectionName, {
+                    filter: filter,
+                    limit: 1000,
+                    with_payload: true,
+                    offset: nextOffset
+                });
+
+                const points = scrollResult.points || [];
+                nextOffset = scrollResult.next_page_offset;
+
+                for (const point of points) {
+                    allChunks.push({
+                        chunkIndex: point.payload.chunkIndex,
+                        chunkText: point.payload.chunkText
+                    });
+                }
+
+                if (points.length === 0 || loopCount >= MAX_LOOPS) break;
+            } while (nextOffset);
+
+            // Sort by chunkIndex to maintain document order
+            allChunks.sort((a, b) => a.chunkIndex - b.chunkIndex);
+
+            console.log(`Retrieved ${allChunks.length} chunks for document: ${documentId}`);
+            return allChunks.map(c => c.chunkText);
+        } catch (error) {
+            console.error('Error retrieving document chunks:', error);
+            throw error;
+        }
+    }
+
+    /**
      * Delete all chunks for a specific document
      * @param {string} documentId - Document ID to delete
      * @param {string} [courseId] - Optional course ID to scope the deletion
