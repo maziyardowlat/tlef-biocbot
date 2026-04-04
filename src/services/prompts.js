@@ -544,6 +544,43 @@ ${text}
 `;
 }
 
+/**
+ * Build the prompt for generating a practice question from seed assessment questions.
+ * @param {string} seedText - Formatted seed questions with answers
+ * @param {string|null} topic - The detected topic the student is studying
+ * @returns {string} The formatted generation prompt
+ */
+function buildPracticeQuestionPrompt(seedText, topic = null) {
+    const topicHint = topic
+        ? `The student is currently studying the topic: "${topic}". Try to generate a question related to this topic if the seed questions cover it.\n\n`
+        : '';
+
+    return `You are a biology course question generator. Based on the following sample assessment questions from a unit, generate ONE new practice question for the student.
+
+${topicHint}RULES:
+- The question must be ONE of these types: multiple-choice, true-false, or short-answer.
+- For multiple-choice, provide exactly 4 options (A, B, C, D) with one correct answer.
+- For true-false, the answer must be "True" or "False".
+- For short-answer, provide a concise expected answer.
+- You MAY reuse a question from the samples but with changed numbers, values, or slight rewording.
+- The question should be at a similar difficulty level to the samples.
+- Return ONLY a JSON object, no other text.
+
+JSON format:
+{
+    "questionType": "multiple-choice" | "true-false" | "short-answer",
+    "question": "The question text",
+    "options": { "A": "...", "B": "...", "C": "...", "D": "..." },
+    "correctAnswer": "The correct answer (letter for MCQ, True/False for TF, text for short-answer)",
+    "explanation": "Brief explanation of the correct answer"
+}
+
+Note: "options" should ONLY be included for multiple-choice questions.
+
+SAMPLE QUESTIONS FROM THIS UNIT:
+${seedText}`;
+}
+
 module.exports = {
     BASE_SYSTEM_PROMPT,
     EXPLAIN_SYSTEM_PROMPT,
@@ -555,5 +592,6 @@ module.exports = {
     DEFAULT_PROMPTS,
     DEFAULT_QUESTION_PROMPTS,
     QUESTION_EXTRACTION_SYSTEM_PROMPT,
-    buildQuestionExtractionPrompt
+    buildQuestionExtractionPrompt,
+    buildPracticeQuestionPrompt
 };
