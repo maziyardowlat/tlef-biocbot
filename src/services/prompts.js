@@ -546,6 +546,7 @@ ${text}
 
 /**
  * Build the prompt for generating a practice question from seed assessment questions.
+ * The question type is randomly selected to ensure variety.
  * @param {string} seedText - Formatted seed questions with answers
  * @param {string|null} topic - The detected topic the student is studying
  * @returns {string} The formatted generation prompt
@@ -555,27 +556,54 @@ function buildPracticeQuestionPrompt(seedText, topic = null) {
         ? `The student is currently studying the topic: "${topic}". Try to generate a question related to this topic if the seed questions cover it.\n\n`
         : '';
 
-    return `You are a biology course question generator. Based on the following sample assessment questions from a unit, generate ONE new practice question for the student.
+    // Randomly pick the question type to ensure variety
+    const questionTypes = ['multiple-choice', 'true-false', 'short-answer'];
+    const selectedType = questionTypes[Math.floor(Math.random() * questionTypes.length)];
+
+    let typeSpecificRules = '';
+    let typeSpecificJson = '';
+
+    if (selectedType === 'multiple-choice') {
+        typeSpecificRules = `- Provide exactly 4 options (A, B, C, D) with one correct answer.
+- The "correctAnswer" must be the letter of the correct option (e.g. "C").`;
+        typeSpecificJson = `{
+    "questionType": "multiple-choice",
+    "question": "The question text",
+    "options": { "A": "...", "B": "...", "C": "...", "D": "..." },
+    "correctAnswer": "C",
+    "explanation": "Brief explanation of the correct answer"
+}`;
+    } else if (selectedType === 'true-false') {
+        typeSpecificRules = `- The "correctAnswer" must be exactly "True" or "False".
+- Do NOT include an "options" field.`;
+        typeSpecificJson = `{
+    "questionType": "true-false",
+    "question": "A clear statement that is either true or false",
+    "correctAnswer": "True",
+    "explanation": "Brief explanation of why the statement is true or false"
+}`;
+    } else {
+        typeSpecificRules = `- The "correctAnswer" should be a concise expected answer (1-3 sentences).
+- Do NOT include an "options" field.`;
+        typeSpecificJson = `{
+    "questionType": "short-answer",
+    "question": "The question text",
+    "correctAnswer": "The expected answer text",
+    "explanation": "Brief explanation of what constitutes a correct answer"
+}`;
+    }
+
+    return `You are a biology course question generator. Based on the following sample assessment questions from a unit, generate ONE new **${selectedType}** practice question for the student.
 
 ${topicHint}RULES:
-- The question must be ONE of these types: multiple-choice, true-false, or short-answer.
-- For multiple-choice, provide exactly 4 options (A, B, C, D) with one correct answer.
-- For true-false, the answer must be "True" or "False".
-- For short-answer, provide a concise expected answer.
+- You MUST generate a **${selectedType}** question. Do not use a different question type.
+${typeSpecificRules}
 - You MAY reuse a question from the samples but with changed numbers, values, or slight rewording.
 - The question should be at a similar difficulty level to the samples.
 - Return ONLY a JSON object, no other text.
 
 JSON format:
-{
-    "questionType": "multiple-choice" | "true-false" | "short-answer",
-    "question": "The question text",
-    "options": { "A": "...", "B": "...", "C": "...", "D": "..." },
-    "correctAnswer": "The correct answer (letter for MCQ, True/False for TF, text for short-answer)",
-    "explanation": "Brief explanation of the correct answer"
-}
-
-Note: "options" should ONLY be included for multiple-choice questions.
+${typeSpecificJson}
 
 SAMPLE QUESTIONS FROM THIS UNIT:
 ${seedText}`;
