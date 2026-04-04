@@ -4239,6 +4239,13 @@ function showNoQuestionsForUnitMessage(unitName) {
     // Enable chat since questions are available for this unit
     enableChatInput();
 
+    // Clear existing chat messages so old assessment questions don't persist
+    const chatMessages = document.getElementById('chat-messages');
+    if (chatMessages) {
+        chatMessages.innerHTML = '';
+    }
+    clearCurrentChatData();
+
     // Add message to chat
     const noQuestionsMessage = document.createElement('div');
     noQuestionsMessage.classList.add('message', 'bot-message');
@@ -4267,7 +4274,6 @@ function showNoQuestionsForUnitMessage(unitName) {
     noQuestionsMessage.appendChild(contentDiv);
 
     // Add to chat
-    const chatMessages = document.getElementById('chat-messages');
     chatMessages.appendChild(noQuestionsMessage);
 
     // Scroll to bottom
@@ -4320,21 +4326,10 @@ function startAssessmentWithQuestions(questions, passThreshold = 0) {
         return;
     }
 
-    // Only clear chat data if this is a new session (not auto-continued)
-    // Check if chat was auto-continued before clearing
+    // Clear chat when starting a new assessment (not auto-continued)
     if (!window.autoContinued) {
-        // Clear any existing messages except the welcome message and unit selection dropdown
-        const welcomeMessage = chatMessages.querySelector('.message:not(.calibration-question):not(.mode-result):not(.unit-selection-welcome)');
-        if (welcomeMessage) {
-            chatMessages.innerHTML = '';
-            chatMessages.appendChild(welcomeMessage);
-
-            // Clear auto-save data when starting assessment - this is a new session
-
-            clearCurrentChatData();
-        }
-    } else {
-
+        chatMessages.innerHTML = '';
+        clearCurrentChatData();
     }
 
     // Add message about starting assessment for the selected unit

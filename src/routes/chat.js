@@ -876,9 +876,12 @@ ${conversationHistory}`;
             const fr = (extractFinishReason(resp) + '').toLowerCase();
             if (fr.includes('length') || fr.includes('token')) return true;
             if (!content) return false;
-            const tail = content.slice(-60);
-            const endsClean = /([\.\!\?]|\(Unit\s+[^)]+\))\s*$/i.test(tail);
-            return !endsClean && content.length > 300;
+            const tail = content.trim().slice(-60);
+            // Check for clean sentence endings: punctuation, parenthetical unit refs, or emoji
+            const endsClean = /([\.\!\?\)\u2026]|\(Unit\s+[^)]+\))\s*$/i.test(tail);
+            // Only consider truncated if very long AND no clean ending AND finish reason wasn't 'stop'
+            if (fr === 'stop' || fr === 'end_turn') return false;
+            return !endsClean && content.length > 800;
         }
 
         const MAX_CONTINUATIONS = 2;
