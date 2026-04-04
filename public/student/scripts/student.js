@@ -1187,7 +1187,7 @@ function renderPracticeQuestion(questionData) {
 
     // Build question HTML
     let html = `<div class="practice-question-container" data-practice-id="${practiceId}" data-question-type="${questionType}">`;
-    html += `<div class="practice-question-header">📝 Practice Question</div>`;
+    html += `<div class="practice-question-header">Practice Question</div>`;
     html += `<div class="practice-question-text">${question}</div>`;
 
     if (questionType === 'multiple-choice' && options) {
@@ -1262,7 +1262,8 @@ async function submitPracticeAnswer(practiceId) {
     submitBtn.textContent = 'Checking...';
 
     try {
-        const displayName = (window.currentUser && (window.currentUser.displayName || window.currentUser.name)) || 'Student';
+        const currentUserObj = (typeof getCurrentUser === 'function') ? getCurrentUser() : window.currentUser;
+        const displayName = (currentUserObj && (currentUserObj.displayName || currentUserObj.name || currentUserObj.username)) || 'Student';
         const response = await fetch('/api/chat/check-practice-answer', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1289,7 +1290,7 @@ async function submitPracticeAnswer(practiceId) {
         // Build static completed HTML that persists through save/reload
         const questionText = container.querySelector('.practice-question-text').textContent;
         let completedHtml = `<div class="practice-question-container practice-completed">`;
-        completedHtml += `<div class="practice-question-header">📝 Practice Question</div>`;
+        completedHtml += `<div class="practice-question-header">Practice Question</div>`;
         completedHtml += `<div class="practice-question-text">${questionText}</div>`;
 
         // Show options with correct/incorrect highlighting (static)
@@ -1526,8 +1527,9 @@ function addMessage(content, sender, withSource = false, skipAutoSave = false, s
         flagContainer.classList.add('message-flag-container');
 
         // Add Explain Button
-        // Only if message has content and is not the typing indicator
-        if (content && !content.includes('<div class="dots">')) {
+        // Only if message has content, is not the typing indicator, and is not a practice question
+        const isPracticeQuestion = content && (content.includes('practice-question-container') || content.includes('struggle-gate-question'));
+        if (content && !content.includes('<div class="dots">') && !isPracticeQuestion) {
             const explainButton = document.createElement('button');
             explainButton.classList.add('message-action-btn');
             explainButton.innerHTML = 'Explain';
@@ -1543,7 +1545,7 @@ function addMessage(content, sender, withSource = false, skipAutoSave = false, s
             if (detectedTopic) {
                 const practiceBtn = document.createElement('button');
                 practiceBtn.classList.add('message-action-btn', 'practice-question-btn');
-                practiceBtn.innerHTML = '📝 Ask me a question';
+                practiceBtn.innerHTML = 'Ask me a question';
                 practiceBtn.title = `Practice a question on ${detectedTopic}`;
                 practiceBtn.style.marginRight = '8px';
                 practiceBtn.onclick = () => handlePracticeQuestion(detectedTopic);
@@ -1574,20 +1576,20 @@ function addMessage(content, sender, withSource = false, skipAutoSave = false, s
         flagContainer.appendChild(flagMenu);
         rightContainer.appendChild(flagContainer);
 
-        // Add Struggle Reset Button if active topic exists
+        // Add "I'm done struggling" button if active topic exists
+        // This triggers a practice question — if answered correctly, resets the struggle state
         if (activeStruggleTopic) {
             const resetBtn = document.createElement('button');
             resetBtn.className = 'message-action-btn struggle-reset-btn';
             resetBtn.style.marginLeft = '8px';
-            resetBtn.style.color = '#dc3545'; // bootstrap danger color
+            resetBtn.style.color = '#dc3545';
             resetBtn.style.borderColor = '#dc3545';
-            
-            // Simple inline capitalization since helper might not be available
+
             const displayTopic = activeStruggleTopic.charAt(0).toUpperCase() + activeStruggleTopic.slice(1);
             resetBtn.textContent = `I understand ${displayTopic} now`;
-            
-            resetBtn.title = `Turn off Directive Mode for ${activeStruggleTopic}`;
-            resetBtn.onclick = () => resetStruggleTopic(activeStruggleTopic);
+
+            resetBtn.title = `Answer a question to turn off Directive Mode for ${activeStruggleTopic}`;
+            resetBtn.onclick = () => handleStruggleResetQuestion(activeStruggleTopic);
             rightContainer.appendChild(resetBtn);
         }
     }
@@ -1882,47 +1884,260 @@ function getCurrentSessionId(chatData) {
  * Reset a struggle topic
  * @param {string} topic - The topic to reset
  */
-async function resetStruggleTopic(topic) {
-    if (!confirm(`Are you sure you want to turn off Directive Mode for "${topic}"? This will reset your struggle history for this topic.`)) {
+/**
+ * Handle "I understand X now" click — generates a practice question as a gate.
+ * If the student answers correctly, their struggle state is reset.
+ * If incorrect, they stay in directive mode with encouragement.
+ * @param {string} topic - The struggle topic to potentially reset
+ */
+async function handleStruggleResetQuestion(topic) {
+    // Prevent multiple simultaneous requests
+    const existingTyping = document.getElementById('typing-indicator');
+    if (existingTyping) return;
+
+    const courseId = localStorage.getItem('selectedCourseId');
+    const unitName = localStorage.getItem('selectedUnitName') || getCurrentUnitName();
+
+    if (!courseId || !unitName) {
+        addMessage('Please select a course and unit first.', 'bot', false, true, null);
         return;
     }
 
-    const courseId = localStorage.getItem('selectedCourseId');
+    showTypingIndicator();
+
+    try {
+        const response = await fetch('/api/chat/practice-question', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ courseId, unitName, topic })
+        });
+
+        removeTypingIndicator();
+        const result = await response.json();
+
+        if (!result.success) {
+            addMessage(result.message || 'Failed to generate a question.', 'bot', false, true, null);
+            return;
+        }
+
+        if (result.noQuestions) {
+            // No questions available — fall back to instant reset
+            if (confirm(`No practice questions available. Reset Directive Mode for "${topic}" anyway?`)) {
+                await performStruggleReset(topic, courseId);
+            }
+            return;
+        }
+
+        // Render the question with the struggle-reset flag
+        renderStruggleResetQuestion(result.data, topic);
+
+    } catch (error) {
+        removeTypingIndicator();
+        console.error('Struggle reset question error:', error);
+        addMessage('Sorry, I encountered an error. Please try again.', 'bot', false, true, null);
+    }
+}
+
+/**
+ * Render a practice question that gates struggle reset.
+ * Similar to renderPracticeQuestion but on correct answer, resets struggle state.
+ * @param {Object} questionData - { practiceId, questionType, question, options }
+ * @param {string} topic - The struggle topic to reset on correct answer
+ */
+function renderStruggleResetQuestion(questionData, topic) {
+    const { practiceId, questionType, question, options } = questionData;
+
+    let html = `<div class="practice-question-container struggle-gate-question" data-practice-id="${practiceId}" data-question-type="${questionType}" data-struggle-topic="${topic}">`;
+    html += `<div class="practice-question-header" style="color:#dc3545;">Directive Mode Challenge</div>`;
+    html += `<div class="practice-question-text" style="margin-bottom:6px;">${question}</div>`;
+    html += `<div style="font-size:12px;color:#666;margin-bottom:14px;">Answer correctly to turn off Directive Mode for <strong>${topic.charAt(0).toUpperCase() + topic.slice(1)}</strong>.</div>`;
+
+    if (questionType === 'multiple-choice' && options) {
+        html += `<div class="practice-options">`;
+        for (const [key, value] of Object.entries(options)) {
+            html += `<label class="practice-option-label" data-value="${key}">
+                <input type="radio" name="practice-${practiceId}" value="${key}">
+                <span class="practice-option-text"><strong>${key}.</strong> ${value}</span>
+            </label>`;
+        }
+        html += `</div>`;
+    } else if (questionType === 'true-false') {
+        html += `<div class="practice-options">`;
+        html += `<label class="practice-option-label" data-value="True">
+            <input type="radio" name="practice-${practiceId}" value="True">
+            <span class="practice-option-text"><strong>True</strong></span>
+        </label>`;
+        html += `<label class="practice-option-label" data-value="False">
+            <input type="radio" name="practice-${practiceId}" value="False">
+            <span class="practice-option-text"><strong>False</strong></span>
+        </label>`;
+        html += `</div>`;
+    } else if (questionType === 'short-answer') {
+        html += `<div class="practice-sa-container">
+            <textarea class="practice-sa-input" rows="3" placeholder="Type your answer here..."></textarea>
+        </div>`;
+    }
+
+    html += `<button class="practice-submit-btn" onclick="submitStruggleResetAnswer('${practiceId}')">Submit Answer</button>`;
+    html += `<div class="practice-feedback" style="display:none;"></div>`;
+    html += `</div>`;
+
+    addMessage(html, 'bot', false, false, null, true);
+}
+
+/**
+ * Submit answer for a struggle-reset practice question.
+ * If correct → reset struggle state. If incorrect → encourage and keep directive mode.
+ * @param {string} practiceId - The practice question ID
+ */
+async function submitStruggleResetAnswer(practiceId) {
+    const container = document.querySelector(`.struggle-gate-question[data-practice-id="${practiceId}"]`);
+    if (!container) return;
+
+    const questionType = container.dataset.questionType;
+    const topic = container.dataset.struggleTopic;
+    const submitBtn = container.querySelector('.practice-submit-btn');
+    const feedbackDiv = container.querySelector('.practice-feedback');
+    let studentAnswer = '';
+
+    if (questionType === 'multiple-choice' || questionType === 'true-false') {
+        const selected = container.querySelector(`input[name="practice-${practiceId}"]:checked`);
+        if (!selected) {
+            feedbackDiv.style.display = 'block';
+            feedbackDiv.className = 'practice-feedback practice-feedback-error';
+            feedbackDiv.textContent = 'Please select an answer.';
+            return;
+        }
+        studentAnswer = selected.value;
+    } else if (questionType === 'short-answer') {
+        const textarea = container.querySelector('.practice-sa-input');
+        studentAnswer = textarea ? textarea.value.trim() : '';
+        if (!studentAnswer) {
+            feedbackDiv.style.display = 'block';
+            feedbackDiv.className = 'practice-feedback practice-feedback-error';
+            feedbackDiv.textContent = 'Please type your answer.';
+            return;
+        }
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Checking...';
+
+    try {
+        const currentUserObj = (typeof getCurrentUser === 'function') ? getCurrentUser() : window.currentUser;
+        const displayName = (currentUserObj && (currentUserObj.displayName || currentUserObj.name || currentUserObj.username)) || 'Student';
+        const response = await fetch('/api/chat/check-practice-answer', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ practiceId, studentAnswer, studentName: displayName })
+        });
+
+        const result = await response.json();
+
+        if (!result.success) {
+            feedbackDiv.style.display = 'block';
+            feedbackDiv.className = 'practice-feedback practice-feedback-error';
+            feedbackDiv.textContent = result.message || 'Error checking answer.';
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Submit Answer';
+            return;
+        }
+
+        const { correct, feedback, correctAnswer } = result.data;
+        const courseId = localStorage.getItem('selectedCourseId');
+
+        // Build static completed HTML
+        const questionText = container.querySelector('.practice-question-text').textContent;
+        let completedHtml = `<div class="practice-question-container practice-completed struggle-gate-question">`;
+        completedHtml += `<div class="practice-question-header" style="color:#dc3545;">Directive Mode Challenge</div>`;
+        completedHtml += `<div class="practice-question-text">${questionText}</div>`;
+
+        if (questionType === 'multiple-choice' || questionType === 'true-false') {
+            completedHtml += `<div class="practice-options">`;
+            const labels = container.querySelectorAll('.practice-option-label');
+            labels.forEach(label => {
+                const radio = label.querySelector('input[type="radio"]');
+                const optionText = label.querySelector('.practice-option-text').innerHTML;
+                const value = radio.value;
+                const wasSelected = radio.checked;
+                const isCorrectAnswer = correctAnswer && value.toLowerCase() === correctAnswer.trim().toLowerCase();
+
+                let extraClass = 'practice-option-disabled';
+                if (isCorrectAnswer && wasSelected) extraClass += ' practice-option-correct';
+                else if (isCorrectAnswer) extraClass += ' practice-option-was-correct';
+                else if (wasSelected) extraClass += ' practice-option-incorrect';
+
+                const checkMark = wasSelected ? '●' : '○';
+                completedHtml += `<div class="practice-option-label ${extraClass}">
+                    <span style="flex-shrink:0;width:16px;text-align:center;font-size:12px;">${checkMark}</span>
+                    <span class="practice-option-text">${optionText}</span>
+                </div>`;
+            });
+            completedHtml += `</div>`;
+        } else if (questionType === 'short-answer') {
+            const saText = container.querySelector('.practice-sa-input').value;
+            completedHtml += `<div class="practice-sa-container">
+                <div class="practice-sa-input" style="background:#f5f5f5;padding:10px 12px;border:2px solid #e0e0e0;border-radius:8px;font-size:13px;white-space:pre-wrap;">${saText}</div>
+            </div>`;
+        }
+
+        if (correct) {
+            // Correct! Reset the struggle state
+            completedHtml += `<div class="practice-feedback practice-feedback-correct" style="display:block;">${feedback}<br><strong>Directive Mode has been turned off for ${topic.charAt(0).toUpperCase() + topic.slice(1)}.</strong></div>`;
+            completedHtml += `</div>`;
+            container.outerHTML = completedHtml;
+
+            // Actually reset the struggle state
+            await performStruggleReset(topic, courseId);
+        } else {
+            // Incorrect — keep in directive mode, encourage them
+            completedHtml += `<div class="practice-feedback practice-feedback-incorrect" style="display:block;">${feedback}<br>Directive Mode remains active. Keep studying and try again when you're ready!</div>`;
+            completedHtml += `</div>`;
+            container.outerHTML = completedHtml;
+        }
+
+        // Update auto-save
+        updatePracticeQuestionInAutoSave(practiceId, completedHtml);
+
+    } catch (error) {
+        console.error('Struggle reset answer error:', error);
+        feedbackDiv.style.display = 'block';
+        feedbackDiv.className = 'practice-feedback practice-feedback-error';
+        feedbackDiv.textContent = 'Error connecting to server. Please try again.';
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Submit Answer';
+    }
+}
+
+/**
+ * Perform the actual struggle state reset (shared by direct reset and quiz-gated reset).
+ * @param {string} topic - The topic to reset
+ * @param {string} courseId - The course ID
+ */
+async function performStruggleReset(topic, courseId) {
     try {
         const response = await fetch('/api/student/struggle/reset', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ 
-                topic: topic,
-                courseId: courseId 
-            })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ topic, courseId })
         });
 
         const result = await response.json();
 
         if (result.success) {
-            alert('Directive Mode turned off.');
-            // Update UI without reload
-            
-            // 1. Clear global active topic
+            // Update UI
             lastActiveStruggleTopic = null;
-            
-            // 2. Remove the "Directive Mode Active" indicator
+
             const indicator = document.getElementById('directive-mode-indicator');
             if (indicator) indicator.remove();
-            
-            // 3. Remove all reset buttons to prevent double-clicking
+
             const buttons = document.querySelectorAll('.struggle-reset-btn');
             buttons.forEach(btn => btn.remove());
-            
         } else {
-            alert('Failed to reset: ' + result.message);
+            console.error('Failed to reset struggle state:', result.message);
         }
     } catch (error) {
-        console.error('Error resetting topic:', error);
-        alert('Error connecting to server.');
+        console.error('Error resetting struggle state:', error);
     }
 }
 
@@ -2638,7 +2853,8 @@ function toggleFlagMenu(button) {
 function flagMessage(button, flagType) {
     const menu = button.closest('.flag-menu');
     const messageContent = menu.closest('.message-content');
-    const messageText = messageContent.querySelector('p').textContent;
+    const textEl = messageContent.querySelector('p') || messageContent.querySelector('div');
+    const messageText = textEl ? textEl.textContent : messageContent.textContent;
 
     // Close the menu
     menu.classList.remove('show');
@@ -2728,8 +2944,8 @@ async function submitFlag(messageText, flagType) {
  * @param {string} flagType - The type of flag that was submitted (now flagReason)
  */
 function replaceMessageWithThankYou(messageContent, flagType) {
-    // Get the paragraph element
-    const paragraph = messageContent.querySelector('p');
+    // Get the paragraph element (could be <p> or <div> for HTML messages)
+    const paragraph = messageContent.querySelector('p') || messageContent.querySelector('div');
 
     // Map flag types to user-friendly descriptions
     const flagTypeDescriptions = {
@@ -6100,7 +6316,7 @@ function loadChatData(chatData) {
             document.querySelectorAll('.practice-question-container:not(.practice-completed)').forEach(container => {
                 const questionText = container.querySelector('.practice-question-text')?.textContent || '';
                 container.outerHTML = `<div class="practice-question-container practice-completed">
-                    <div class="practice-question-header">📝 Practice Question</div>
+                    <div class="practice-question-header">Practice Question</div>
                     <div class="practice-question-text">${questionText}</div>
                     <div class="practice-feedback practice-feedback-error" style="display:block;">This practice question has expired. Click "Ask me a question" to generate a new one.</div>
                 </div>`;

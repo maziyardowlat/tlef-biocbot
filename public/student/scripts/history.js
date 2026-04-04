@@ -876,7 +876,7 @@ function createPreviewMessage(messageData) {
         paragraph.querySelectorAll('.practice-question-container:not(.practice-completed)').forEach(container => {
             const questionText = container.querySelector('.practice-question-text')?.textContent || '';
             container.outerHTML = `<div class="practice-question-container practice-completed">
-                <div class="practice-question-header">📝 Practice Question</div>
+                <div class="practice-question-header">Practice Question</div>
                 <div class="practice-question-text">${questionText}</div>
                 <div class="practice-feedback practice-feedback-error" style="display:block;">This practice question was not answered during the session.</div>
             </div>`;
