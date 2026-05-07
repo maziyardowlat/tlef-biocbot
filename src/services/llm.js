@@ -8,13 +8,132 @@ const { LLMModule } = require('ubc-genai-toolkit-llm');
 const config = require('./config');
 const prompts = require('./prompts');
 
+const ALLOWED_LLM_MODELS = ['gpt-4.1-mini', 'gpt-5-nano', 'gpt-5.4-nano'];
+const ALLOWED_REASONING_EFFORTS = ['minimal', 'low', 'medium', 'high'];
+const MODEL_SETTINGS_TTL_MS = 30 * 1000; // Re-read at most every 30 seconds
+
 class LLMService {
     constructor() {
         this.llm = null;
         this.isInitialized = false;
         this.llmConfig = null;
+        this._dbAccessor = null;
+        this._modelSettingsCache = null;
+        this._modelSettingsCacheAt = 0;
 
         console.log(`🔧 Creating LLM service...`);
+    }
+
+    /**
+     * Provide a function returning the active MongoDB instance so the
+     * service can look up the current LLM settings on demand.
+     */
+    setDbAccessor(fn) {
+        this._dbAccessor = typeof fn === 'function' ? fn : null;
+    }
+
+    invalidateModelSettingsCache() {
+        this._modelSettingsCache = null;
+        this._modelSettingsCacheAt = 0;
+    }
+
+    /**
+     * Look up the configured model + reasoning effort from MongoDB.
+     * Falls back to the env-configured default if no override is stored.
+     */
+    async _getModelSettings() {
+        const now = Date.now();
+        if (this._modelSettingsCache && (now - this._modelSettingsCacheAt) < MODEL_SETTINGS_TTL_MS) {
+            return this._modelSettingsCache;
+        }
+
+        const envDefault = (this.llmConfig && this.llmConfig.defaultModel) || process.env.OPENAI_MODEL || 'gpt-4.1-mini';
+        let model = ALLOWED_LLM_MODELS.includes(envDefault) ? envDefault : 'gpt-4.1-mini';
+        let reasoningEffort = 'minimal';
+
+        try {
+            const db = this._dbAccessor ? this._dbAccessor() : null;
+            if (db) {
+                const doc = await db.collection('settings').findOne({ _id: 'llm' });
+                if (doc) {
+                    if (ALLOWED_LLM_MODELS.includes(doc.model)) {
+                        model = doc.model;
+                    }
+                    if (ALLOWED_REASONING_EFFORTS.includes(doc.reasoningEffort)) {
+                        reasoningEffort = doc.reasoningEffort;
+                    }
+                }
+            }
+        } catch (error) {
+            console.warn('⚠️ Could not load LLM settings from DB, using defaults:', error.message);
+        }
+
+        this._modelSettingsCache = { model, reasoningEffort };
+        this._modelSettingsCacheAt = now;
+        return this._modelSettingsCache;
+    }
+
+    _isGpt5Family(model) {
+        return typeof model === 'string' && model.startsWith('gpt-5');
+    }
+
+    /**
+     * Different gpt-5 variants accept different reasoning_effort values.
+     * Returns the requested effort if supported, otherwise the closest fallback.
+     * gpt-5-nano:    minimal, low, medium, high
+     * gpt-5.4-nano:  none,    low, medium, high, xhigh   (no "minimal")
+     */
+    _coerceReasoningEffort(model, requested) {
+        const supportedByModel = {
+            'gpt-5-nano': ['minimal', 'low', 'medium', 'high'],
+            'gpt-5.4-nano': ['none', 'low', 'medium', 'high', 'xhigh']
+        };
+        const supported = supportedByModel[model];
+        if (!supported) return requested; // Unknown model — pass through
+        if (supported.includes(requested)) return requested;
+        // Map requested → closest supported value
+        if (requested === 'minimal' && supported.includes('low')) return 'low';
+        if (requested === 'xhigh' && supported.includes('high')) return 'high';
+        return supported[0]; // Fallback to first supported
+    }
+
+    /**
+     * Adjust an outgoing LLM options object based on the configured model.
+     * - Forces the active model.
+     * - For gpt-5 family models, drops temperature (unsupported), translates
+     *   max_tokens to max_completion_tokens, and adds reasoning_effort.
+     */
+    async _applyModelOptions(options = {}) {
+        const settings = await this._getModelSettings();
+        const result = { ...options, model: settings.model };
+
+        if (this._isGpt5Family(settings.model)) {
+            delete result.temperature;
+            if (result.max_tokens !== undefined) {
+                result.max_completion_tokens = result.max_tokens;
+                delete result.max_tokens;
+            }
+            if (result.maxTokens !== undefined) {
+                // Toolkit-known key, also translate for safety
+                result.max_completion_tokens = result.max_completion_tokens || result.maxTokens;
+                delete result.maxTokens;
+            }
+            // Reasoning models consume tokens internally before producing output.
+            // Enforce a floor so small caller-supplied budgets don't get fully eaten
+            // by reasoning, leaving an empty/truncated response.
+            const REASONING_FLOOR = 2000;
+            if (!result.max_completion_tokens || result.max_completion_tokens < REASONING_FLOOR) {
+                result.max_completion_tokens = REASONING_FLOOR;
+            }
+            const requestedEffort = settings.reasoningEffort || 'minimal';
+            const coercedEffort = this._coerceReasoningEffort(settings.model, requestedEffort);
+            if (coercedEffort !== requestedEffort) {
+                console.warn(`⚠️ [LLM] reasoning_effort "${requestedEffort}" not supported by ${settings.model}; coerced to "${coercedEffort}"`);
+            }
+            result.reasoning_effort = coercedEffort;
+        }
+
+        return result;
     }
 
     /**
@@ -76,9 +195,10 @@ class LLMService {
                 ...this._getProviderSpecificOptions(),
                 ...options
             };
-            console.log('🔍 [LLM_OPTIONS] Default options:', defaultOptions);
+            const finalOptions = await this._applyModelOptions(defaultOptions);
+            console.log('🔍 [LLM_OPTIONS] Final options:', finalOptions);
 
-            const response = await this.llm.sendMessage(message, defaultOptions);
+            const response = await this.llm.sendMessage(message, finalOptions);
 
             console.log(`✅ LLM response received (${response.content.length} characters)`);
             return response;
@@ -167,9 +287,10 @@ class LLMService {
                 ...this._getProviderSpecificOptions(),
                 ...options
             };
+            const finalOptions = await this._applyModelOptions(defaultOptions);
 
             // Send message and get response
-            const response = await conversation.send(defaultOptions);
+            const response = await conversation.send(finalOptions);
 
             console.log(`💬 Conversation response received (${response.content.length} characters)`);
             return response;
@@ -305,11 +426,11 @@ class LLMService {
             // Set specific options for question generation - provider-aware
             // Use higher temperature (0.7) for more creative question generation
             // Note: timeout is handled via Promise.race() below, not as an LLM option
-            const generationOptions = {
+            const generationOptions = await this._applyModelOptions({
                 temperature: 0.7,
                 systemPrompt: systemPrompt,
                 ...this._getProviderSpecificOptions()
-            };
+            });
 
             // Log prompt length and content for debugging
             console.log(`🤖 [LLM_REQUEST] Sending prompt to LLM (${prompt.length} chars)`);
@@ -436,11 +557,12 @@ Return ONLY a JSON object with the following structure:
                 .map(msg => `[${msg.role}]: ${msg.content}`)
                 .join('\n\n');
 
-            const response = await this.llm.sendMessage(conversationText, {
+            const mhOptions = await this._applyModelOptions({
                 systemPrompt: detectionPrompt,
                 temperature: 0.1,
                 max_tokens: 256
             });
+            const response = await this.llm.sendMessage(conversationText, mhOptions);
 
             if (!response || !response.content) {
                 return { concernLevel: 'no concern', reason: 'No response from detection model' };
@@ -508,11 +630,11 @@ Return ONLY a JSON object with the following structure:
             // Set specific options for question regeneration - provider-aware
             // Use lower temperature (0.5) for more focused improvements based on feedback
             // Note: timeout is handled via Promise.race() below, not as an LLM option
-            const generationOptions = {
+            const generationOptions = await this._applyModelOptions({
                 temperature: 0.5,  // Lower temperature for more focused regeneration
                 systemPrompt: systemPrompt,
                 ...this._getProviderSpecificOptions()
-            };
+            });
 
             // Log prompt length and content for debugging
             console.log(`🔄 [LLM_REGENERATE] Sending regeneration prompt to LLM (${prompt.length} chars)`);

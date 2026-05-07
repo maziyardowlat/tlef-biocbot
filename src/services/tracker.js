@@ -61,7 +61,16 @@ Rules:
 
             console.log(`🕵️ [TRACKER_DEBUG] LLM Raw Response:`, response.content);
 
-            const content = response.content.replace(/```json/g, '').replace(/```/g, '').trim();
+            const rawContent = (response.content || '').replace(/```json/g, '').replace(/```/g, '').trim();
+            if (!rawContent) {
+                console.warn('⚠️ [TRACKER] Empty LLM response — likely token budget consumed by reasoning. Treating as no struggle.');
+                return { isStruggling: false, topic: 'unmapped', isMapped: false, reason: 'Empty LLM response' };
+            }
+
+            // Extract the JSON object even if the model wrapped it in extra prose
+            const jsonStart = rawContent.indexOf('{');
+            const jsonEnd = rawContent.lastIndexOf('}') + 1;
+            const content = (jsonStart !== -1 && jsonEnd > 0) ? rawContent.substring(jsonStart, jsonEnd) : rawContent;
             const result = JSON.parse(content);
             
             console.log(`🕵️ [TRACKER_DEBUG] Parsed Result:`, result);

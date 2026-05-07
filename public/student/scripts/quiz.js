@@ -570,6 +570,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         msgDiv.className = `quiz-chat-msg ${role}`;
         msgDiv.textContent = text;
         quizChatMessages.appendChild(msgDiv);
+        if (role === 'bot' && typeof window.applyLLMTagClassesToElement === 'function') {
+            window.applyLLMTagClassesToElement(msgDiv);
+        }
         quizChatMessages.scrollTop = quizChatMessages.scrollHeight;
     }
 
@@ -621,6 +624,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             quizChatTyping.style.display = 'none';
 
             if (data.success) {
+                if (typeof window.applyLLMBodyTag === 'function') {
+                    await window.applyLLMBodyTag();
+                }
                 const botMessage = data.message;
                 addQuizChatMessage(botMessage, data.source === 'system' ? 'system' : 'bot');
                 quizChatHistory.push({ role: 'assistant', content: botMessage });

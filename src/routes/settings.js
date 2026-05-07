@@ -386,6 +386,172 @@ router.post('/global', async (req, res) => {
     }
 });
 
+const ALLOWED_LLM_MODELS = ['gpt-4.1-mini', 'gpt-5-nano', 'gpt-5.4-nano'];
+const ALLOWED_REASONING_EFFORTS = ['minimal', 'low', 'medium', 'high'];
+
+function isGpt5Family(model) {
+    return typeof model === 'string' && model.startsWith('gpt-5');
+}
+
+// Obfuscated index maps for the body-class debug tag.
+// Numbers are intentionally meaningless to end users; only the dev team
+// knows that e.g. "llm-2 reasoning-1" = gpt-5-nano + minimal.
+// Non-reasoning models (gpt-4.1-mini) intentionally omit reasoning-*.
+const LLM_TAG_INDEX = {
+    'gpt-4.1-mini': 1,
+    'gpt-5-nano': 2,
+    'gpt-5.4-nano': 3
+};
+const REASONING_TAG_INDEX = {
+    minimal: 1,
+    low: 2,
+    medium: 3,
+    high: 4
+};
+
+/**
+ * GET /api/settings/llm-tag
+ * Public endpoint returning obfuscated indices for the active LLM model
+ * and reasoning effort. Used by the frontend to add hidden body classes
+ * (llm-N and, when supported, reasoning-N) so the dev team can identify
+ * the active config from DevTools without exposing model names to end users.
+ */
+router.get('/llm-tag', async (req, res) => {
+    try {
+        const db = req.app.locals.db;
+        const envDefault = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
+        const fallbackModel = ALLOWED_LLM_MODELS.includes(envDefault) ? envDefault : 'gpt-4.1-mini';
+
+        let model = fallbackModel;
+        let reasoningEffort = 'minimal';
+
+        if (db) {
+            const settingsDoc = await db.collection('settings').findOne({ _id: 'llm' });
+            if (settingsDoc) {
+                if (ALLOWED_LLM_MODELS.includes(settingsDoc.model)) model = settingsDoc.model;
+                if (ALLOWED_REASONING_EFFORTS.includes(settingsDoc.reasoningEffort)) {
+                    reasoningEffort = settingsDoc.reasoningEffort;
+                }
+            }
+        }
+
+        res.json({
+            success: true,
+            llmIndex: LLM_TAG_INDEX[model] || 0,
+            reasoningIndex: isGpt5Family(model) ? (REASONING_TAG_INDEX[reasoningEffort] || 0) : 0
+        });
+    } catch (error) {
+        console.error('Error fetching LLM tag:', error);
+        res.status(500).json({ success: false });
+    }
+});
+
+/**
+ * GET /api/settings/llm
+ * Get the global LLM model settings (system admins only)
+ */
+router.get('/llm', async (req, res) => {
+    try {
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({ success: false, message: 'Database connection not available' });
+        }
+
+        if (!requireSystemAdmin(req, res)) {
+            return;
+        }
+
+        const settingsDoc = await db.collection('settings').findOne({ _id: 'llm' });
+        const envDefault = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
+        const fallbackModel = ALLOWED_LLM_MODELS.includes(envDefault) ? envDefault : 'gpt-4.1-mini';
+
+        const model = (settingsDoc && ALLOWED_LLM_MODELS.includes(settingsDoc.model))
+            ? settingsDoc.model
+            : fallbackModel;
+        const reasoningEffort = (settingsDoc && ALLOWED_REASONING_EFFORTS.includes(settingsDoc.reasoningEffort))
+            ? settingsDoc.reasoningEffort
+            : 'minimal';
+
+        res.json({
+            success: true,
+            settings: {
+                model,
+                reasoningEffort,
+                supportsReasoning: isGpt5Family(model),
+                allowedModels: ALLOWED_LLM_MODELS,
+                allowedReasoningEfforts: ALLOWED_REASONING_EFFORTS
+            }
+        });
+    } catch (error) {
+        console.error('Error fetching LLM settings:', error);
+        res.status(500).json({ success: false, error: 'Failed to fetch LLM settings' });
+    }
+});
+
+/**
+ * POST /api/settings/llm
+ * Update the global LLM model settings (system admins only)
+ */
+router.post('/llm', async (req, res) => {
+    try {
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({ success: false, message: 'Database connection not available' });
+        }
+
+        if (!requireSystemAdmin(req, res)) {
+            return;
+        }
+
+        const { model, reasoningEffort } = req.body || {};
+
+        if (!ALLOWED_LLM_MODELS.includes(model)) {
+            return res.status(400).json({
+                success: false,
+                error: `Invalid model. Allowed: ${ALLOWED_LLM_MODELS.join(', ')}`
+            });
+        }
+
+        const update = {
+            model,
+            updatedAt: new Date(),
+            updatedBy: normalizeEmail(req.user.email)
+        };
+
+        if (isGpt5Family(model)) {
+            const effort = ALLOWED_REASONING_EFFORTS.includes(reasoningEffort) ? reasoningEffort : 'minimal';
+            update.reasoningEffort = effort;
+        } else {
+            update.reasoningEffort = 'minimal';
+        }
+
+        await db.collection('settings').updateOne(
+            { _id: 'llm' },
+            { $set: update },
+            { upsert: true }
+        );
+
+        // Invalidate the LLM service cache so the next call picks up the new settings
+        const llmService = req.app.locals.llm;
+        if (llmService && typeof llmService.invalidateModelSettingsCache === 'function') {
+            llmService.invalidateModelSettingsCache();
+        }
+
+        res.json({
+            success: true,
+            message: 'LLM settings updated',
+            settings: {
+                model: update.model,
+                reasoningEffort: update.reasoningEffort,
+                supportsReasoning: isGpt5Family(update.model)
+            }
+        });
+    } catch (error) {
+        console.error('Error updating LLM settings:', error);
+        res.status(500).json({ success: false, error: 'Failed to update LLM settings' });
+    }
+});
+
 /**
  * GET /api/settings/question-prompts
  * Get question generation prompts for a specific course

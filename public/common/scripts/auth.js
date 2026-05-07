@@ -4,12 +4,88 @@
  */
 
 let currentUser = null;
+let currentLLMTagClasses = [];
+
+const LLM_TAG_CLASS_PATTERN = /^(llm|reasoning)-\d+$/;
+const LLM_TAG_TARGET_SELECTOR = 'body, .chat-container, #chat-messages, .quiz-chat-container, #quiz-chat-messages';
+const LLM_TAG_COMMENT_PREFIX = 'LLM tag map:';
+const LLM_TAG_COMMENT_TEXT = 'LLM tag map: llm-1 = gpt-4.1-mini; llm-2 = gpt-5-nano; llm-3 = gpt-5.4-nano; reasoning-* applies to GPT-5 models only; reasoning-1 = minimal; reasoning-2 = low; reasoning-3 = medium; reasoning-4 = high';
+
+function stripLLMTagClasses(element) {
+    if (!element || !element.classList) return;
+
+    Array.from(element.classList)
+        .filter(className => LLM_TAG_CLASS_PATTERN.test(className))
+        .forEach(className => element.classList.remove(className));
+}
+
+function applyLLMTagClassesToElement(element, tagClasses = currentLLMTagClasses) {
+    if (!element || !element.classList) return;
+
+    stripLLMTagClasses(element);
+    tagClasses.forEach(className => element.classList.add(className));
+    if (tagClasses.length > 0) {
+        ensureLLMTagComment(element);
+    }
+}
+
+function applyLLMTagClasses(tagClasses = currentLLMTagClasses) {
+    document
+        .querySelectorAll(LLM_TAG_TARGET_SELECTOR)
+        .forEach(element => applyLLMTagClassesToElement(element, tagClasses));
+}
+
+function getCurrentLLMTagClasses() {
+    return currentLLMTagClasses.slice();
+}
+
+function ensureLLMTagComment(element) {
+    const parent = element.parentNode;
+    if (!parent) return;
+
+    const previousNode = element.previousSibling;
+    if (
+        previousNode &&
+        previousNode.nodeType === Node.COMMENT_NODE &&
+        previousNode.nodeValue.trim().startsWith(LLM_TAG_COMMENT_PREFIX)
+    ) {
+        previousNode.nodeValue = ` ${LLM_TAG_COMMENT_TEXT} `;
+        return;
+    }
+
+    parent.insertBefore(document.createComment(` ${LLM_TAG_COMMENT_TEXT} `), element);
+}
 
 /**
- * Initialize authentication for the page
+ * Tag the chat DOM with obfuscated classes (e.g. "llm-2 reasoning-1") and a
+ * nearby HTML comment mapping those classes for anyone inspecting DevTools.
  */
+async function applyLLMBodyTag() {
+    try {
+        const response = await fetch('/api/settings/llm-tag');
+        const result = await response.json();
+        if (!result || !result.success) return;
+        const { llmIndex, reasoningIndex } = result;
+        currentLLMTagClasses = [
+            llmIndex ? `llm-${llmIndex}` : null,
+            reasoningIndex ? `reasoning-${reasoningIndex}` : null
+        ].filter(Boolean);
+        applyLLMTagClasses();
+    } catch (e) {
+        // Non-critical: tag is for internal debugging only
+        console.warn('applyLLMBodyTag failed', e);
+    }
+}
+
+window.applyLLMBodyTag = applyLLMBodyTag;
+window.applyLLMTagClassesToElement = applyLLMTagClassesToElement;
+window.getCurrentLLMTagClasses = getCurrentLLMTagClasses;
+
 async function initAuth() {
     try {
+        // Apply the hidden LLM debug tag in parallel with auth check
+        applyLLMBodyTag();
+
         // Get current user information
         const response = await fetch('/api/auth/me');
         const result = await response.json();

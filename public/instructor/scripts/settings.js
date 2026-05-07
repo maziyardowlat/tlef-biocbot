@@ -54,6 +54,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             // and question generation prompts
             if (canManageDB) {
                 await loadAdminSettings();
+                await loadLLMSettings();
                 await loadQuestionPrompts();
                 await loadSystemAdmins();
             }
@@ -62,6 +63,56 @@ document.addEventListener('DOMContentLoaded', async () => {
         } catch (error) {
             console.error('Error loading settings:', error);
             showNotification('Failed to load settings', 'error');
+        }
+    }
+
+    function isGpt5Family(model) {
+        return typeof model === 'string' && model.startsWith('gpt-5');
+    }
+
+    function updateReasoningVisibility() {
+        const modelSelect = document.getElementById('llm-model-select');
+        const reasoningItem = document.getElementById('llm-reasoning-item');
+        const reasoningSelect = document.getElementById('llm-reasoning-select');
+        if (!modelSelect || !reasoningItem) return;
+
+        reasoningItem.style.display = isGpt5Family(modelSelect.value) ? '' : 'none';
+
+        // gpt-5.4-nano does not support "minimal"; hide it and bump to "low".
+        if (reasoningSelect) {
+            const minimalOption = reasoningSelect.querySelector('option[value="minimal"]');
+            if (minimalOption) {
+                if (modelSelect.value === 'gpt-5.4-nano') {
+                    minimalOption.hidden = true;
+                    minimalOption.disabled = true;
+                    if (reasoningSelect.value === 'minimal') reasoningSelect.value = 'low';
+                } else {
+                    minimalOption.hidden = false;
+                    minimalOption.disabled = false;
+                }
+            }
+        }
+    }
+
+    async function loadLLMSettings() {
+        try {
+            const response = await fetch('/api/settings/llm', { credentials: 'include' });
+            const result = await response.json();
+            if (!result.success || !result.settings) return;
+
+            const modelSelect = document.getElementById('llm-model-select');
+            const reasoningSelect = document.getElementById('llm-reasoning-select');
+            if (modelSelect) {
+                modelSelect.value = result.settings.model;
+                modelSelect.removeEventListener('change', updateReasoningVisibility);
+                modelSelect.addEventListener('change', updateReasoningVisibility);
+            }
+            if (reasoningSelect) {
+                reasoningSelect.value = result.settings.reasoningEffort || 'minimal';
+            }
+            updateReasoningVisibility();
+        } catch (error) {
+            console.error('Error loading LLM settings:', error);
         }
     }
 
@@ -854,12 +905,26 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const loginRestrictionSection = document.getElementById('login-restriction-section');
                 if (loginRestrictionSection && loginRestrictionSection.style.display !== 'none') {
                     const allowLocalLogin = document.getElementById('allow-local-login-toggle')?.checked;
-                    
+
                     await fetch('/api/settings/global', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ allowLocalLogin })
                     });
+                }
+
+                // Save LLM model settings if section is visible (system admins only)
+                const llmModelSection = document.getElementById('llm-model-section');
+                if (llmModelSection && llmModelSection.style.display !== 'none') {
+                    const model = document.getElementById('llm-model-select')?.value;
+                    const reasoningEffort = document.getElementById('llm-reasoning-select')?.value || 'minimal';
+                    if (model) {
+                        await fetch('/api/settings/llm', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ model, reasoningEffort })
+                        });
+                    }
                 }
 
                 // Save quiz practice settings
@@ -1250,6 +1315,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             const questionGenerationSection = document.getElementById('question-generation-section');
             const mhDetectionSection = document.getElementById('mental-health-detection-section');
             const adminSection = document.getElementById('system-admin-section');
+            const llmModelSection = document.getElementById('llm-model-section');
 
             if (result.success && result.canDeleteAll) {
                 // User has permission, ensure the sections are visible
@@ -1258,6 +1324,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (questionGenerationSection) questionGenerationSection.style.display = '';
                 if (mhDetectionSection) mhDetectionSection.style.display = '';
                 if (adminSection) adminSection.style.display = '';
+                if (llmModelSection) llmModelSection.style.display = '';
                 return true;
             } else {
                 // User doesn't have permission, hide the sections
@@ -1266,6 +1333,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (questionGenerationSection) questionGenerationSection.style.display = 'none';
                 if (mhDetectionSection) mhDetectionSection.style.display = 'none';
                 if (adminSection) adminSection.style.display = 'none';
+                if (llmModelSection) llmModelSection.style.display = 'none';
                 return false;
             }
         } catch (error) {
@@ -1276,11 +1344,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             const questionGenerationSection = document.getElementById('question-generation-section');
             const mhDetectionSection = document.getElementById('mental-health-detection-section');
             const adminSection = document.getElementById('system-admin-section');
+            const llmModelSection = document.getElementById('llm-model-section');
             if (databaseSection) databaseSection.style.display = 'none';
             if (loginRestrictionSection) loginRestrictionSection.style.display = 'none';
             if (questionGenerationSection) questionGenerationSection.style.display = 'none';
             if (mhDetectionSection) mhDetectionSection.style.display = 'none';
             if (adminSection) adminSection.style.display = 'none';
+            if (llmModelSection) llmModelSection.style.display = 'none';
             return false;
         }
     }
