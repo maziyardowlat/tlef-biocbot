@@ -396,6 +396,7 @@ function isGpt5Family(model) {
 // Obfuscated index maps for the body-class debug tag.
 // Numbers are intentionally meaningless to end users; only the dev team
 // knows that e.g. "llm-2 reasoning-1" = gpt-5-nano + minimal.
+// Non-reasoning models (gpt-4.1-mini) intentionally omit reasoning-*.
 const LLM_TAG_INDEX = {
     'gpt-4.1-mini': 1,
     'gpt-5-nano': 2,
@@ -412,8 +413,8 @@ const REASONING_TAG_INDEX = {
  * GET /api/settings/llm-tag
  * Public endpoint returning obfuscated indices for the active LLM model
  * and reasoning effort. Used by the frontend to add hidden body classes
- * (llm-N reasoning-N) so the dev team can identify the active config from
- * DevTools without exposing model names to end users.
+ * (llm-N and, when supported, reasoning-N) so the dev team can identify
+ * the active config from DevTools without exposing model names to end users.
  */
 router.get('/llm-tag', async (req, res) => {
     try {
@@ -437,7 +438,7 @@ router.get('/llm-tag', async (req, res) => {
         res.json({
             success: true,
             llmIndex: LLM_TAG_INDEX[model] || 0,
-            reasoningIndex: REASONING_TAG_INDEX[reasoningEffort] || 0
+            reasoningIndex: isGpt5Family(model) ? (REASONING_TAG_INDEX[reasoningEffort] || 0) : 0
         });
     } catch (error) {
         console.error('Error fetching LLM tag:', error);

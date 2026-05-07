@@ -312,6 +312,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 throw new Error(data.message || 'Failed to get response from LLM');
             }
 
+            if (typeof window.applyLLMBodyTag === 'function') {
+                await window.applyLLMBodyTag();
+            }
+
             // Don't clear the continuing chat flags - we need them for the entire conversation
             // The flags will be cleared when starting a new chat session or explicitly clearing chat
             // This ensures the conversation context is maintained throughout the chat session
@@ -905,6 +909,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         typingDiv.appendChild(dotsDiv);
 
         chatMessages.appendChild(typingDiv);
+        applyCurrentLLMTagClasses(typingDiv);
 
         // Scroll to bottom
         chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -1432,6 +1437,12 @@ function renderSourceAttribution(sourceDiv, sourceAttribution) {
  * @param {string} activeStruggleTopic - The currently active struggle topic (for Reset button)
  * @param {string} detectedTopic - The topic detected in this message (for Explain button)
  */
+function applyCurrentLLMTagClasses(element) {
+    if (typeof window.applyLLMTagClassesToElement === 'function') {
+        window.applyLLMTagClassesToElement(element);
+    }
+}
+
 function addMessage(content, sender, withSource = false, skipAutoSave = false, sourceAttribution = null, isHtml = false, activeStruggleTopic = null, detectedTopic = null) {
 
 
@@ -1601,6 +1612,9 @@ function addMessage(content, sender, withSource = false, skipAutoSave = false, s
     messageDiv.appendChild(contentDiv);
 
     chatMessages.appendChild(messageDiv);
+    if (sender === 'bot') {
+        applyCurrentLLMTagClasses(messageDiv);
+    }
 
     // Scroll to bottom
     chatMessages.scrollTop = chatMessages.scrollHeight;
