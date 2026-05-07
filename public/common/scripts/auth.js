@@ -8,8 +8,35 @@ let currentUser = null;
 /**
  * Initialize authentication for the page
  */
+/**
+ * Tag the <body> with obfuscated classes (e.g. "llm-2 reasoning-1") so the
+ * dev team can identify the active LLM model and reasoning effort from
+ * DevTools. Numbers are intentionally meaningless to end users.
+ */
+async function applyLLMBodyTag() {
+    try {
+        const response = await fetch('/api/settings/llm-tag');
+        const result = await response.json();
+        if (!result || !result.success) return;
+        const { llmIndex, reasoningIndex } = result;
+        // Strip any previous llm-* / reasoning-* classes before re-applying
+        document.body.className = document.body.className
+            .split(/\s+/)
+            .filter(c => c && !/^llm-\d+$/.test(c) && !/^reasoning-\d+$/.test(c))
+            .join(' ');
+        if (llmIndex) document.body.classList.add(`llm-${llmIndex}`);
+        if (reasoningIndex) document.body.classList.add(`reasoning-${reasoningIndex}`);
+    } catch (e) {
+        // Non-critical: tag is for internal debugging only
+        console.warn('applyLLMBodyTag failed', e);
+    }
+}
+
 async function initAuth() {
     try {
+        // Apply the hidden LLM debug tag in parallel with auth check
+        applyLLMBodyTag();
+
         // Get current user information
         const response = await fetch('/api/auth/me');
         const result = await response.json();

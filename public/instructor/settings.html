@@ -77,6 +77,41 @@
                     </div>
                 </section>
 
+                <!-- LLM Model Section (system admins only) -->
+                <section class="settings-section" id="llm-model-section" style="display: none;">
+                    <h2>LLM Model</h2>
+                    <p class="section-description">Pick the OpenAI model used for all chat, question generation, and analysis across courses. Reasoning effort only applies to gpt-5 family models.</p>
+                    <div class="settings-content">
+                        <div class="setting-item">
+                            <div class="setting-info">
+                                <h3>Model</h3>
+                                <p>Course-wide selection. gpt-4.1-mini uses temperature; gpt-5 family models use reasoning instead.</p>
+                            </div>
+                            <div class="setting-controls">
+                                <select id="llm-model-select" class="number-input">
+                                    <option value="gpt-4.1-mini">gpt-4.1-mini</option>
+                                    <option value="gpt-5-nano">gpt-5-nano</option>
+                                    <option value="gpt-5.4-nano">gpt-5.4-nano</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="setting-item" id="llm-reasoning-item" style="display: none;">
+                            <div class="setting-info">
+                                <h3>Reasoning Effort</h3>
+                                <p>Only applies to gpt-5 family models. Defaults to minimal.</p>
+                            </div>
+                            <div class="setting-controls">
+                                <select id="llm-reasoning-select" class="number-input">
+                                    <option value="minimal">minimal</option>
+                                    <option value="low">low</option>
+                                    <option value="medium">medium</option>
+                                    <option value="high">high</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
                 <!-- Login Restriction Section -->
                 <section class="settings-section" id="login-restriction-section" style="display: none;">
                     <h2>Login Restrictions</h2>

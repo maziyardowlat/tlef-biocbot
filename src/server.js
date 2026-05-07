@@ -68,6 +68,11 @@ async function initializeLLM() {
     try {
         console.log('🤖 Starting LLM service initialization...');
         llmService = await LLMService.create();
+        // Allow the LLM service to look up the active model/reasoning settings
+        // from the global settings collection on demand.
+        if (typeof llmService.setDbAccessor === 'function') {
+            llmService.setDbAccessor(() => app.locals.db);
+        }
         app.locals.llm = llmService;
     } catch (error) {
         console.error('❌ Failed to initialize LLM service:', error.message);
