@@ -177,13 +177,14 @@
 
                 <!-- Persistence Topics Section (All-Time) -->
                 <section class="home-section persistence-topics-section" id="persistence-topics-section" style="display: none;">
-                    <div class="section-header clickable" onclick="toggleSection(this)">
+                    <div class="section-header clickable" onclick="toggleSection(this)" style="display: flex; align-items: center; flex-wrap: wrap;">
                         <h2>
                             <span class="section-toggle-icon">▼</span>
                             📈 Cumulative Struggle Topics
                             <span class="info-icon tooltip" data-tooltip="Total unique students who have struggled with this topic at any point during the course term. This helps identify long-term pain points.">ℹ️</span>
                         </h2>
                         <span style="font-size: 0.85em; color: #666; font-weight: normal; margin-left: 10px;">(All Unique Students)</span>
+                        <button type="button" id="download-persistence-topics-btn" onclick="event.stopPropagation(); downloadPersistenceTopics();" title="Download topics as .txt file" style="margin-left: auto; padding: 6px 14px; font-size: 0.9em; background: var(--primary-color, #0070f3); color: white; border: none; border-radius: 6px; cursor: pointer;">⬇ Download</button>
                     </div>
                     <div class="persistence-topics-content" id="persistence-topics-content">
                         <!-- Persistence topics will be populated by JavaScript -->
