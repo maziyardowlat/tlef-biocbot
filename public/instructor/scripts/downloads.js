@@ -1055,10 +1055,12 @@ function formatSingleSessionText(session) {
     const title = session.title || session.sessionTitle || 'Untitled Session';
     const unit = session.unitName || session.unit || '';
     const savedAt = session.savedAt ? new Date(session.savedAt).toLocaleString() : 'Unknown';
+    const duration = session.duration || '';
 
     lines.push(`  Session: ${title}`);
     if (unit) lines.push(`  Unit: ${unit}`);
     lines.push(`  Saved: ${savedAt}`);
+    if (duration) lines.push(`  Duration: ${duration}`);
     lines.push('  ' + '-'.repeat(36));
 
     const messages = session.chatData?.messages || session.chatData || session.messages || [];
