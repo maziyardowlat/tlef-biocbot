@@ -124,7 +124,8 @@
     letter-spacing: 0.05em;
 }
 
-.form-group select {
+.form-group select,
+.form-group input {
     width: 100%;
     padding: 16px 20px;
     border: 2px solid #e2e8f0;
@@ -134,6 +135,9 @@
     color: #1a202c;
     background-color: #fff;
     transition: all 0.2s ease;
+}
+
+.form-group select {
     cursor: pointer;
     appearance: none;
     background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a0aec0' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
@@ -142,6 +146,11 @@
     background-size: 1.5em;
 }
 
+.form-group input {
+    margin-bottom: 20px;
+}
+
+.form-group input:focus,
 .form-group select:focus {
     outline: none;
     border-color: #4299e1;
