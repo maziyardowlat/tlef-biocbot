@@ -2540,6 +2540,55 @@ function renderPersistenceTopics(topics, courseId = getSelectedCourseId(), appro
     });
 }
 
+/**
+ * Download cumulative (persistence) topics as a .txt file
+ */
+async function downloadPersistenceTopics() {
+    const courseId = getSelectedCourseId();
+    if (!courseId) {
+        showNotification?.('No course selected', 'error');
+        return;
+    }
+
+    const topics = window.persistenceTopics || [];
+    if (topics.length === 0) {
+        showNotification?.('No cumulative topics to download', 'info');
+        return;
+    }
+
+    const courseNameEl = document.getElementById('course-name-display');
+    const courseName = (courseNameEl?.textContent || courseId).trim();
+
+    const sorted = [...topics].sort((a, b) => b.studentCount - a.studentCount);
+
+    const lines = [];
+    lines.push(`Course: ${courseName}`);
+    lines.push(`Course ID: ${courseId}`);
+    lines.push(`Generated: ${new Date().toISOString()}`);
+    lines.push(`Total Topics: ${sorted.length}`);
+    lines.push('');
+    lines.push('Cumulative Struggle Topics (All Unique Students)');
+    lines.push('='.repeat(50));
+    sorted.forEach(t => {
+        const topicLabel = t.topic.charAt(0).toUpperCase() + t.topic.slice(1);
+        lines.push(`${topicLabel}\t${t.studentCount} student${t.studentCount === 1 ? '' : 's'}`);
+    });
+
+    const content = lines.join('\n');
+    const safeName = courseName.replace(/[^a-z0-9_\-]+/gi, '_');
+    const filename = `${safeName}_cumulative_topics.txt`;
+
+    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
 function ensureTopicUnitAssignmentModal() {
     let modal = document.getElementById('topic-unit-assignment-modal');
     if (modal) return modal;
