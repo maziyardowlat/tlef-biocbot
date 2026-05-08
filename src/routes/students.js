@@ -508,10 +508,13 @@ router.get('/:courseId/:studentId/sessions/:sessionId', async (req, res) => {
         }
         
         console.log(`Retrieved chat session ${sessionId} for student ${studentId}`);
-        
+
         res.json({
             success: true,
-            data: session
+            data: {
+                ...session,
+                duration: calculateDurationFromSessionData(session)
+            }
         });
         
     } catch (error) {
