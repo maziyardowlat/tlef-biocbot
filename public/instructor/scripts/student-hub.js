@@ -154,6 +154,8 @@ function renderStudents(courseId) {
     container.innerHTML = currentStudents.map(s => {
         const enrolled = dirtyEnrollment.has(s.userId) ? dirtyEnrollment.get(s.userId) : !!s.enrolled;
         const isTA = !!s.isTA;
+        const hasPendingTAInvite = !isTA && s.role === 'ta' && Array.isArray(s.invitedCourses) && s.invitedCourses.includes(courseId);
+        const taInviteButtonLabel = s.role === 'ta' ? 'Invite to TA Course' : 'Promote to TA';
         const struggleTopicsSection = anonymizeStudentsEnabled ? '' : `
                     <div class="struggle-topics-section" style="margin-top: 15px; border-top: 1px solid #eee; padding-top: 10px;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
@@ -198,13 +200,13 @@ function renderStudents(courseId) {
                         <button class="btn-small btn-danger" onclick="demoteFromTA('${s.userId}', '${escapeHTML(s.displayName || s.username)}')">
                             Demote from TA
                         </button>
-                    ` : s.role === 'ta' ? `
+                    ` : hasPendingTAInvite ? `
                          <button class="btn-small btn-secondary" disabled style="opacity: 0.7; cursor: default;">
                             Pending TA joining course
                         </button>
                     ` : `
                         <button class="btn-small btn-primary" onclick="promoteToTA('${s.userId}', '${escapeHTML(s.displayName || s.username)}', '${courseId}')">
-                            Promote to TA
+                            ${taInviteButtonLabel}
                         </button>
                     `}
                 </div>
@@ -218,7 +220,12 @@ window.promoteToTA = async function(studentId, studentName, courseId) {
         courseId = localStorage.getItem('selectedCourseId');
     }
 
-    if (!confirm(`Are you sure you want to promote ${studentName} to a Teaching Assistant? This will give them TA permissions.`)) {
+    const isExistingTA = currentStudents.some(s => s.userId === studentId && s.role === 'ta');
+    const confirmMessage = isExistingTA
+        ? `Invite ${studentName} to join this course as a Teaching Assistant?`
+        : `Are you sure you want to promote ${studentName} to a Teaching Assistant? This will give them TA permissions.`;
+
+    if (!confirm(confirmMessage)) {
         return;
     }
 
@@ -234,7 +241,7 @@ window.promoteToTA = async function(studentId, studentName, courseId) {
             throw new Error(errorData.message || `HTTP ${resp.status}`);
         }
 
-        showNotification(`Successfully promoted ${studentName} to TA`, 'success');
+        showNotification(isExistingTA ? `Successfully invited ${studentName} to join this course as TA` : `Successfully promoted ${studentName} to TA`, 'success');
         
         // Reload students list to reflect changes (promoted student should ideally disappear or be marked)
         // Since this view shows "students", a TA might not show up here anymore depending on backend logic, 
@@ -252,13 +259,19 @@ window.promoteToTA = async function(studentId, studentName, courseId) {
 };
 
 window.demoteFromTA = async function(studentId, studentName) {
-    if (!confirm(`Are you sure you want to demote ${studentName} from Teaching Assistant? They will lose TA permissions.`)) {
+    const selectedCourseId = localStorage.getItem('selectedCourseId');
+
+    if (!selectedCourseId) {
+        showNotification('No course selected. Please select a course first.', 'error');
+        return;
+    }
+
+    if (!confirm(`Remove ${studentName} as a Teaching Assistant from this course? They will stay a TA in any other courses.`)) {
         return;
     }
 
     try {
-        // Using the same endpoint as TA Hub to remove TA
-        const resp = await authenticatedFetch(`/api/auth/tas/${studentId}`, {
+        const resp = await authenticatedFetch(`/api/courses/${selectedCourseId}/tas/${studentId}`, {
             method: 'DELETE'
         });
 
@@ -267,10 +280,9 @@ window.demoteFromTA = async function(studentId, studentName) {
             throw new Error(errorData.message || `HTTP ${resp.status}`);
         }
 
-        showNotification(`Successfully demoted ${studentName} from TA`, 'success');
+        showNotification(`Successfully removed ${studentName} as TA from this course`, 'success');
         
         // Reload students list
-        const selectedCourseId = localStorage.getItem('selectedCourseId');
         if (selectedCourseId) {
             await loadStudents(selectedCourseId);
         }
@@ -431,4 +443,3 @@ window.downloadStruggleReport = function(studentId, studentName) {
 function capitalize(str) {
     return str.charAt(0).toUpperCase() + str.slice(1);
 }
-

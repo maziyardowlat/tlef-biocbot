@@ -117,6 +117,14 @@ function generateDistinctCourseCode(existingCodes = []) {
     return code;
 }
 
+function normalizeCourseCode(code) {
+    if (typeof code !== 'string') {
+        return '';
+    }
+
+    return code.trim().toUpperCase();
+}
+
 async function userCanBypassCourseCodes(db, user) {
     if (!user) {
         return false;
@@ -1930,30 +1938,35 @@ router.get('/available/all', async (req, res) => {
             availableCourses = availableCourses.filter(course => hasInstructorAccess(course, user.userId));
         }
 
-        if (user && (user.role === 'student' || user.role === 'ta')) {
+        if (user && user.role === 'student') {
             availableCourses = availableCourses.filter(course => (course.status || 'active') === 'active');
         }
 
-        // Restriction for TAs: Only show courses they are invited to or already assigned to
+        // TAs can always see their assigned/invited courses, and can join active courses with a student code.
         if (user && user.role === 'ta') {
             console.log(`Filtering courses for TA ${user.userId}`);
             
-            const invitedCourses = user.invitedCourses || [];
+            const invitedCourses = new Set(user.invitedCourses || []);
             
             availableCourses = courses.filter(course => {
-                const isInvited = invitedCourses.includes(course.courseId);
+                const isInvited = invitedCourses.has(course.courseId);
                 const isAssigned = course.tas && course.tas.includes(user.userId);
-                return isInvited || isAssigned;
+                const isActive = (course.status || 'active') === 'active';
+
+                return isInvited || isAssigned || isActive;
             });
             console.log(`TA ${user.userId} sees ${availableCourses.length} courses (from total ${courses.length})`);
         }
         
         availableCourses = sortCoursesWithInactiveLast(availableCourses);
+        const canBypassCourseCodes = await userCanBypassCourseCodes(db, user);
 
         // Transform the data to match expected format for both sides
         // For students, check enrollment status
         const transformedCourses = await Promise.all(availableCourses.map(async (course) => {
             let isEnrolled = false;
+            const isTAAssigned = !!(user && user.role === 'ta' && course.tas && course.tas.includes(user.userId));
+            const isTAInvited = !!(user && user.role === 'ta' && Array.isArray(user.invitedCourses) && user.invitedCourses.includes(course.courseId));
             
             // If user is student, check explicit enrollment
             if (user && user.role === 'student') {
@@ -1969,7 +1982,12 @@ router.get('/available/all', async (req, res) => {
                 tas: course.tas || [],
                 status: course.status || 'active',
                 createdAt: course.createdAt?.toISOString() || new Date().toISOString(),
-                isEnrolled: isEnrolled
+                isEnrolled: isEnrolled,
+                isTAAssigned,
+                isTAInvited,
+                requiresCode: user && user.role === 'ta'
+                    ? !isTAAssigned && !isTAInvited && !canBypassCourseCodes
+                    : false
             };
         }));
         
@@ -2112,6 +2130,39 @@ router.post('/:courseId/join', async (req, res) => {
                 });
             }
 
+            const invitedCourses = Array.isArray(user.invitedCourses) ? user.invitedCourses : [];
+            const isInvited = invitedCourses.includes(courseId);
+            const isAssigned = Array.isArray(course.tas) && course.tas.includes(user.userId);
+            const canJoinWithoutCode = isInvited || isAssigned || canBypassCourseCodes;
+
+            if (!canJoinWithoutCode) {
+                if (!code) {
+                    return res.status(400).json({
+                        success: false,
+                        message: 'Course code is required'
+                    });
+                }
+
+                if (course.status === 'inactive' || course.status === 'deleted') {
+                    return res.status(403).json({
+                        success: false,
+                        message: 'Course is deactivated by the instructor'
+                    });
+                }
+
+                if (normalizeCourseCode(course.courseCode) !== normalizeCourseCode(code)) {
+                    return res.status(403).json({
+                        success: false,
+                        message: 'Invalid course code'
+                    });
+                }
+            } else if (code && !canBypassCourseCodes && normalizeCourseCode(course.courseCode) !== normalizeCourseCode(code)) {
+                return res.status(403).json({
+                    success: false,
+                    message: 'Invalid course code'
+                });
+            }
+
             // Add TA to course using Course model
             const result = await CourseModel.addTAToCourse(db, courseId, user.userId);
             
@@ -2121,6 +2172,14 @@ router.post('/:courseId/join', async (req, res) => {
                     message: result.error || 'Failed to join course'
                 });
             }
+
+            await db.collection('users').updateOne(
+                { userId: user.userId },
+                {
+                    $pull: { invitedCourses: courseId },
+                    $set: { updatedAt: new Date() }
+                }
+            );
             
             console.log(`TA ${user.userId} joined course ${courseId}`);
             
@@ -2325,6 +2384,130 @@ router.post('/:courseId/tas', async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Internal server error while adding TA to course'
+        });
+    }
+});
+
+/**
+ * DELETE /api/courses/:courseId/tas/:taId
+ * Remove a TA from one course only
+ */
+router.delete('/:courseId/tas/:taId', async (req, res) => {
+    try {
+        const { courseId, taId } = req.params;
+
+        const user = req.user;
+        if (!user) {
+            return res.status(401).json({
+                success: false,
+                message: 'Authentication required'
+            });
+        }
+
+        if (user.role !== 'instructor') {
+            return res.status(403).json({
+                success: false,
+                message: 'Only instructors can remove TAs from courses'
+            });
+        }
+
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
+
+        const coursesCollection = db.collection('courses');
+        const course = await coursesCollection.findOne({ courseId });
+
+        if (!course || course.status === 'deleted') {
+            return res.status(404).json({
+                success: false,
+                message: 'Course not found'
+            });
+        }
+
+        if (!hasInstructorAccess(course, user.userId)) {
+            return res.status(403).json({
+                success: false,
+                message: 'Access denied. You can only remove TAs from your own courses.'
+            });
+        }
+
+        const result = await coursesCollection.updateOne(
+            { courseId },
+            {
+                $pull: { tas: taId },
+                $unset: { [`taPermissions.${taId}`]: '' },
+                $set: { updatedAt: new Date() }
+            }
+        );
+
+        const usersCollection = db.collection('users');
+        await usersCollection.updateOne(
+            { userId: taId },
+            {
+                $pull: { invitedCourses: courseId },
+                $set: { updatedAt: new Date() }
+            }
+        );
+
+        const [remainingCourseCount, refreshedTA] = await Promise.all([
+            coursesCollection.countDocuments({
+                tas: taId,
+                status: { $ne: 'deleted' }
+            }),
+            usersCollection.findOne(
+                { userId: taId },
+                { projection: { invitedCourses: 1, role: 1 } }
+            )
+        ]);
+
+        const hasPendingInvites = Array.isArray(refreshedTA?.invitedCourses) && refreshedTA.invitedCourses.length > 0;
+        const shouldRemainTA = remainingCourseCount > 0 || hasPendingInvites;
+
+        if (refreshedTA && shouldRemainTA && refreshedTA.role !== 'ta') {
+            await usersCollection.updateOne(
+                { userId: taId },
+                {
+                    $set: {
+                        role: 'ta',
+                        updatedAt: new Date()
+                    }
+                }
+            );
+        } else if (refreshedTA && refreshedTA.role === 'ta' && !shouldRemainTA) {
+            await usersCollection.updateOne(
+                { userId: taId },
+                {
+                    $set: {
+                        role: 'student',
+                        updatedAt: new Date()
+                    }
+                }
+            );
+        }
+
+        console.log(`Removed TA ${taId} from course ${courseId}`);
+
+        return res.json({
+            success: true,
+            message: 'TA removed from course successfully',
+            data: {
+                courseId,
+                taId,
+                modifiedCount: result.modifiedCount,
+                remainingCourseCount,
+                role: shouldRemainTA ? 'ta' : 'student'
+            }
+        });
+    } catch (error) {
+        console.error('Error removing TA from course:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Internal server error while removing TA from course'
         });
     }
 });
@@ -2685,7 +2868,7 @@ router.get('/:courseId/students', async (req, res) => {
 
         const [prefStudents, chatStudents, courseDoc] = await Promise.all([
             usersCol.find({ role: 'student', 'preferences.courseId': courseId, isActive: true })
-                .project({ userId: 1, username: 1, email: 1, displayName: 1, role: 1, createdAt: 1, lastLogin: 1, struggleState: 1 })
+                .project({ userId: 1, username: 1, email: 1, displayName: 1, role: 1, invitedCourses: 1, createdAt: 1, lastLogin: 1, struggleState: 1 })
                 .toArray(),
             chatCol.distinct('studentId', { courseId }),
             coursesCol.findOne({ courseId }, { projection: { studentEnrollment: 1, courseName: 1 } })
@@ -2695,7 +2878,7 @@ router.get('/:courseId/students', async (req, res) => {
 
         const chatStudentUsers = chatStudents.length > 0
             ? await usersCol.find({ userId: { $in: chatStudents }, role: 'student', isActive: true })
-                .project({ userId: 1, username: 1, email: 1, displayName: 1, role: 1, createdAt: 1, lastLogin: 1, struggleState: 1 })
+                .project({ userId: 1, username: 1, email: 1, displayName: 1, role: 1, invitedCourses: 1, createdAt: 1, lastLogin: 1, struggleState: 1 })
                 .toArray()
             : [];
 
@@ -2711,7 +2894,7 @@ router.get('/:courseId/students', async (req, res) => {
         if (missingIds.length > 0) {
             // Fetch details for these users regardless of role
             const additionalUsers = await usersCol.find({ userId: { $in: missingIds } })
-                .project({ userId: 1, username: 1, email: 1, displayName: 1, role: 1, createdAt: 1, lastLogin: 1, struggleState: 1 })
+                .project({ userId: 1, username: 1, email: 1, displayName: 1, role: 1, invitedCourses: 1, createdAt: 1, lastLogin: 1, struggleState: 1 })
                 .toArray();
                 
             additionalUsers.forEach(s => {
@@ -2739,6 +2922,7 @@ router.get('/:courseId/students', async (req, res) => {
             email: s.email,
             displayName: s.displayName,
             role: s.role,
+            invitedCourses: s.invitedCourses || [],
             lastLogin: s.lastLogin,
             createdAt: s.createdAt,
             // Default enrolled=true if no override exists

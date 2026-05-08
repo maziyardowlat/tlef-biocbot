@@ -4,6 +4,7 @@
  */
 
 let taCourses = [];
+let availableTACourses = [];
 let taPermissions = {};
 let selectedTACourseId = null;
 
@@ -22,12 +23,48 @@ function getCourseDisplayName(course = {}) {
     return isCourseInactive(course) ? `${courseName} (Inactive)` : courseName;
 }
 
-function getCourseById(courseId) {
+function dedupeCourses(courses = []) {
+    const byId = new Map();
+
+    courses.forEach(course => {
+        if (!course || !course.courseId) {
+            return;
+        }
+
+        byId.set(course.courseId, {
+            ...(byId.get(course.courseId) || {}),
+            ...course
+        });
+    });
+
+    return Array.from(byId.values());
+}
+
+function getAssignedCourseById(courseId) {
     return taCourses.find(course => course.courseId === courseId) || null;
 }
 
+function getPickerCourses() {
+    return dedupeCourses([...availableTACourses, ...taCourses]);
+}
+
+function getCourseById(courseId) {
+    return getAssignedCourseById(courseId) ||
+        getPickerCourses().find(course => course.courseId === courseId) ||
+        null;
+}
+
+function isAssignedTACourse(course = {}) {
+    if (course.isTAAssigned === true) {
+        return true;
+    }
+
+    const taId = typeof getCurrentInstructorId === 'function' ? getCurrentInstructorId() : null;
+    return !!(taId && Array.isArray(course.tas) && course.tas.includes(taId));
+}
+
 function getSelectedTACourse() {
-    return getCourseById(selectedTACourseId);
+    return getAssignedCourseById(selectedTACourseId);
 }
 
 function getInitialSelectedCourseId() {
@@ -38,7 +75,7 @@ function getInitialSelectedCourseId() {
         getCurrentUser()?.preferences?.courseId
     ];
 
-    return candidates.find(courseId => courseId && getCourseById(courseId)) || taCourses[0]?.courseId || null;
+    return candidates.find(courseId => courseId && getAssignedCourseById(courseId)) || taCourses[0]?.courseId || null;
 }
 
 function buildCourseUrl(path, courseId) {
@@ -58,7 +95,7 @@ function updateTAHomeUrl(courseId) {
 }
 
 function getCoursePermission(courseId, feature) {
-    if (!courseId || !getCourseById(courseId)) {
+    if (!courseId || !getAssignedCourseById(courseId)) {
         return false;
     }
 
@@ -137,7 +174,7 @@ async function initializeCoursePicker() {
         return;
     }
 
-    if (taCourses.length === 0) {
+    if (getPickerCourses().length === 0) {
         pickerSection.style.display = 'none';
         selectedTACourseId = null;
         updateTAHomeUrl(null);
@@ -156,7 +193,7 @@ async function initializeCoursePicker() {
         await setSelectedTACourse(courseId, { showMessage: true });
     });
 
-    await setSelectedTACourse(getInitialSelectedCourseId(), { showMessage: false });
+    await setSelectedTACourse(getInitialSelectedCourseId(), { showMessage: false, allowJoin: false });
 }
 
 function populateCourseDropdown(courseSelect) {
@@ -167,32 +204,59 @@ function populateCourseDropdown(courseSelect) {
     placeholder.textContent = 'Choose a course...';
     courseSelect.appendChild(placeholder);
 
-    appendCourseOptions(courseSelect, 'Active Courses', taCourses.filter(course => !isCourseInactive(course)));
-    appendCourseOptions(courseSelect, 'Inactive Courses', taCourses.filter(isCourseInactive));
-}
-
-function appendCourseOptions(courseSelect, label, courses) {
-    if (courses.length === 0) {
-        return;
-    }
-
-    const group = document.createElement('optgroup');
-    group.label = label;
-
-    courses.forEach(course => {
+    getPickerCourses().forEach(course => {
         const option = document.createElement('option');
+        const assigned = isAssignedTACourse(course);
+        const requiresCode = course.requiresCode === true || course.requiresCode === 'true';
+
         option.value = course.courseId;
         option.textContent = getCourseDisplayName(course);
-        group.appendChild(option);
-    });
+        option.dataset.assigned = assigned ? 'true' : 'false';
+        option.dataset.requiresCode = requiresCode ? 'true' : 'false';
 
-    courseSelect.appendChild(group);
+        if (!assigned) {
+            option.textContent += requiresCode ? ' (enter code to join)' : ' (join invite)';
+        }
+
+        courseSelect.appendChild(option);
+    });
 }
 
 async function setSelectedTACourse(courseId, options = {}) {
-    const course = getCourseById(courseId);
+    const { allowJoin = true } = options;
+    let course = getCourseById(courseId);
+
     if (!course) {
+        syncCourseSelectToSelection();
         return;
+    }
+
+    if (!isAssignedTACourse(course)) {
+        if (!allowJoin) {
+            syncCourseSelectToSelection();
+            return;
+        }
+
+        const joined = await joinTACourseFromPicker(course);
+        if (!joined) {
+            syncCourseSelectToSelection();
+            return;
+        }
+
+        await loadTACourses();
+        await loadTAPermissions();
+
+        const courseSelect = document.getElementById('ta-course-select');
+        if (courseSelect) {
+            populateCourseDropdown(courseSelect);
+        }
+
+        course = getAssignedCourseById(courseId);
+        if (!course) {
+            showNotification('Course joined, but it could not be loaded yet. Please refresh and try again.', 'warning');
+            syncCourseSelectToSelection();
+            return;
+        }
     }
 
     selectedTACourseId = course.courseId;
@@ -216,6 +280,47 @@ async function setSelectedTACourse(courseId, options = {}) {
 
     if (options.showMessage) {
         showNotification(`Selected ${getCourseDisplayName(course)}`, 'success');
+    }
+}
+
+function syncCourseSelectToSelection() {
+    const courseSelect = document.getElementById('ta-course-select');
+    if (courseSelect) {
+        courseSelect.value = selectedTACourseId || '';
+    }
+}
+
+async function joinTACourseFromPicker(course) {
+    const requiresCode = course.requiresCode === true || course.requiresCode === 'true';
+    let code = '';
+
+    if (requiresCode) {
+        code = prompt(`Enter the student course code for ${getCourseDisplayName(course)}:`);
+        if (!code) {
+            return false;
+        }
+    }
+
+    try {
+        const response = await authenticatedFetch(`/api/courses/${course.courseId}/join`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ code })
+        });
+
+        const result = await response.json().catch(() => ({}));
+
+        if (!response.ok || !result.success) {
+            showNotification(result.message || 'Failed to join course. Please check the course code.', 'error');
+            return false;
+        }
+
+        showNotification(`Joined ${getCourseDisplayName(course)}`, 'success');
+        return true;
+    } catch (error) {
+        console.error('Error joining TA course:', error);
+        showNotification('Error joining course. Please try again.', 'error');
+        return false;
     }
 }
 
@@ -333,7 +438,7 @@ function navigateToSelectedCourse(feature, targetPath, featureName) {
     const course = getSelectedTACourse();
 
     if (taCourses.length === 0) {
-        showNotification('No courses assigned. Contact an instructor to be added to a course.', 'warning');
+        showNotification('Join or select a course first.', 'warning');
         return;
     }
 
@@ -364,22 +469,38 @@ async function loadTACourses() {
 
         console.log(`Loading courses for TA: ${taId}`);
 
-        const response = await authenticatedFetch(`/api/courses/ta/${taId}`);
+        const [assignedResponse, availableResponse] = await Promise.all([
+            authenticatedFetch(`/api/courses/ta/${taId}`),
+            authenticatedFetch('/api/courses/available/all')
+        ]);
 
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+        if (!assignedResponse.ok) {
+            throw new Error(`HTTP error! status: ${assignedResponse.status}`);
         }
 
-        const result = await response.json();
+        const assignedResult = await assignedResponse.json();
 
-        if (!result.success) {
-            throw new Error(result.message || 'Failed to fetch TA courses');
+        if (!assignedResult.success) {
+            throw new Error(assignedResult.message || 'Failed to fetch TA courses');
         }
 
-        taCourses = result.data || [];
+        taCourses = (assignedResult.data || []).map(course => ({
+            ...course,
+            isTAAssigned: true,
+            requiresCode: false
+        }));
+
+        if (availableResponse.ok) {
+            const availableResult = await availableResponse.json();
+            availableTACourses = availableResult.success ? (availableResult.data || []) : [];
+        } else {
+            availableTACourses = taCourses;
+        }
+
         console.log('TA courses loaded:', taCourses);
     } catch (error) {
         console.error('Error loading TA courses:', error);
+        availableTACourses = taCourses;
         showNotification('Error loading courses. Please try again.', 'error');
     }
 }
@@ -398,8 +519,8 @@ function displayTACourses() {
     if (taCourses.length === 0) {
         coursesContainer.innerHTML = `
             <div class="no-courses-message">
-                <h3>No courses assigned</h3>
-                <p>You haven't been assigned to any courses yet. Contact an instructor to be added to a course.</p>
+                <h3>No courses joined</h3>
+                <p>Use the course dropdown above to join a course with an invite or student course code.</p>
                 <a href="/ta/onboarding" class="btn-primary">Join a Course</a>
             </div>
         `;

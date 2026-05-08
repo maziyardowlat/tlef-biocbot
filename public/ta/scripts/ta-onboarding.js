@@ -37,8 +37,10 @@ function appendCourseGroup(selectElement, label, courses) {
     courses.forEach(course => {
         const option = document.createElement('option');
         option.value = course.courseId;
-        option.textContent = getCourseDisplayName(course);
+        const requiresCode = course.requiresCode === true || course.requiresCode === 'true';
+        option.textContent = `${getCourseDisplayName(course)}${requiresCode ? ' (Code required)' : ''}`;
         option.dataset.status = course.status || 'active';
+        option.dataset.requiresCode = requiresCode ? 'true' : 'false';
         optgroup.appendChild(option);
     });
 
@@ -54,6 +56,23 @@ function populateAvailableCourses(selectElement, courses, placeholderText) {
 
     appendCourseGroup(selectElement, 'Active Courses', activeCourses);
     appendCourseGroup(selectElement, 'Inactive Courses', inactiveCourses);
+}
+
+function updateCourseCodeRequirement() {
+    const courseSelect = document.getElementById('ta-course-select');
+    const codeInput = document.getElementById('ta-course-code');
+
+    if (!courseSelect || !codeInput) {
+        return;
+    }
+
+    const selectedOption = courseSelect.options[courseSelect.selectedIndex];
+    const requiresCode = !!courseSelect.value && selectedOption?.dataset.requiresCode === 'true';
+
+    codeInput.required = requiresCode;
+    codeInput.placeholder = requiresCode
+        ? 'Required for this course'
+        : 'Optional for invited courses';
 }
 
 document.addEventListener('DOMContentLoaded', async function() {
@@ -87,6 +106,11 @@ function initializeFormHandlers() {
     if (courseSelectionForm) {
         courseSelectionForm.addEventListener('submit', handleCourseSelection);
     }
+
+    const courseSelect = document.getElementById('ta-course-select');
+    if (courseSelect) {
+        courseSelect.addEventListener('change', updateCourseCodeRequirement);
+    }
 }
 
 /**
@@ -103,10 +127,20 @@ async function handleCourseSelection(event) {
     const form = event.target;
     const submitButton = form.querySelector('button[type="submit"]');
     const courseSelect = document.getElementById('ta-course-select');
+    const codeInput = document.getElementById('ta-course-code');
     
     // Validate form
     if (!courseSelect.value) {
         showNotification('Please select a course to join.', 'error');
+        return;
+    }
+
+    const selectedOption = courseSelect.options[courseSelect.selectedIndex];
+    const requiresCode = selectedOption?.dataset.requiresCode === 'true';
+    const courseCode = codeInput ? codeInput.value.trim() : '';
+
+    if (requiresCode && !courseCode) {
+        showNotification('Please enter the student course code for this course.', 'error');
         return;
     }
     
@@ -117,7 +151,7 @@ async function handleCourseSelection(event) {
     
     try {
         // Join the selected course
-        const result = await joinCourse(courseSelect.value);
+        const result = await joinCourse(courseSelect.value, courseCode);
         
         if (result.success) {
             taOnboardingState.selectedCourse = result.course;
@@ -140,7 +174,7 @@ async function handleCourseSelection(event) {
 /**
  * Join a course as a TA
  */
-async function joinCourse(courseId) {
+async function joinCourse(courseId, courseCode = '') {
     try {
         console.log('🚀 [TA_ONBOARDING] Starting course joining process...');
         console.log('📋 [TA_ONBOARDING] Course ID:', courseId);
@@ -157,7 +191,8 @@ async function joinCourse(courseId) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-            }
+            },
+            body: JSON.stringify({ code: courseCode })
         });
         
         console.log(`📡 [MONGODB] API response status: ${response.status} ${response.statusText}`);
@@ -165,7 +200,14 @@ async function joinCourse(courseId) {
         if (!response.ok) {
             const errorText = await response.text();
             console.error(`❌ [MONGODB] API error response: ${response.status} ${errorText}`);
-            throw new Error(`Failed to join course: ${response.status} ${errorText}`);
+            let message = `Failed to join course: ${response.status}`;
+            try {
+                const errorData = JSON.parse(errorText);
+                message = errorData.message || message;
+            } catch (parseError) {
+                message = errorText || message;
+            }
+            return { success: false, message };
         }
         
         const result = await response.json();
@@ -262,6 +304,7 @@ async function loadAvailableCourses() {
         console.log('Available courses for TA:', courses);
 
         populateAvailableCourses(courseSelect, courses, 'Choose a course to join...');
+        updateCourseCodeRequirement();
         
         console.log('Available courses loaded for TA:', dedupeCourses(courses).length);
         
