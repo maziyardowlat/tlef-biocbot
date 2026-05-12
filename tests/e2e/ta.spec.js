@@ -15,6 +15,10 @@ const OTHER_COURSE_NAME = 'BIOC E2E TA Test (Unassigned)';
 const TA_JOIN_COURSE_ID = 'BIOC-E2E-TA-JOIN';
 const TA_JOIN_COURSE_NAME = 'BIOC E2E TA Join Test';
 const TA_JOIN_COURSE_CODE = 'TAJOIN';
+const TA_INVITED_COURSE_ID = 'BIOC-E2E-TA-INVITED';
+const TA_INVITED_COURSE_NAME = 'BIOC E2E TA Invited Test';
+const TA_INVITED_COURSE_CODE = 'TAINVITE';
+const TEST_COURSE_IDS = [COURSE_ID, OTHER_COURSE_ID, TA_JOIN_COURSE_ID, TA_INVITED_COURSE_ID];
 const LECTURE_FIXTURE = path.join(__dirname, 'fixtures', 'sample-lecture.txt');
 
 let password;
@@ -126,10 +130,10 @@ async function seedCourseWithTA(overrides = {}) {
     await withDb(async (db) => {
         await resetTAUserState(db, taId);
         await db.collection('courses').deleteMany({
-            courseId: { $in: [COURSE_ID, OTHER_COURSE_ID, TA_JOIN_COURSE_ID] },
+            courseId: { $in: TEST_COURSE_IDS },
         });
         await db.collection('flaggedQuestions').deleteMany({
-            courseId: { $in: [COURSE_ID, OTHER_COURSE_ID, TA_JOIN_COURSE_ID] },
+            courseId: { $in: TEST_COURSE_IDS },
         });
         await db.collection('courses').insertOne(
             buildCourseDoc({
@@ -150,10 +154,10 @@ async function seedTwoCourses() {
     await withDb(async (db) => {
         await resetTAUserState(db, taId);
         await db.collection('courses').deleteMany({
-            courseId: { $in: [COURSE_ID, OTHER_COURSE_ID, TA_JOIN_COURSE_ID] },
+            courseId: { $in: TEST_COURSE_IDS },
         });
         await db.collection('flaggedQuestions').deleteMany({
-            courseId: { $in: [COURSE_ID, OTHER_COURSE_ID, TA_JOIN_COURSE_ID] },
+            courseId: { $in: TEST_COURSE_IDS },
         });
         await db.collection('courses').insertMany([
             buildCourseDoc({
@@ -180,10 +184,10 @@ async function seedTwoAssignedCoursesWithDifferentPermissions() {
     await withDb(async (db) => {
         await resetTAUserState(db, taId);
         await db.collection('courses').deleteMany({
-            courseId: { $in: [COURSE_ID, OTHER_COURSE_ID, TA_JOIN_COURSE_ID] },
+            courseId: { $in: TEST_COURSE_IDS },
         });
         await db.collection('flaggedQuestions').deleteMany({
-            courseId: { $in: [COURSE_ID, OTHER_COURSE_ID, TA_JOIN_COURSE_ID] },
+            courseId: { $in: TEST_COURSE_IDS },
         });
         await db.collection('courses').insertMany([
             buildCourseDoc({
@@ -225,16 +229,51 @@ async function seedJoinableCourseForTA() {
     await withDb(async (db) => {
         await resetTAUserState(db, taId);
         await db.collection('courses').deleteMany({
-            courseId: { $in: [COURSE_ID, OTHER_COURSE_ID, TA_JOIN_COURSE_ID] },
+            courseId: { $in: TEST_COURSE_IDS },
         });
         await db.collection('flaggedQuestions').deleteMany({
-            courseId: { $in: [COURSE_ID, OTHER_COURSE_ID, TA_JOIN_COURSE_ID] },
+            courseId: { $in: TEST_COURSE_IDS },
         });
         await db.collection('courses').insertOne(
             buildCourseDoc({
                 courseId: TA_JOIN_COURSE_ID,
                 courseName: TA_JOIN_COURSE_NAME,
                 courseCode: TA_JOIN_COURSE_CODE,
+                instructorId,
+                tas: [],
+            })
+        );
+    });
+}
+
+async function seedInvitedCourseForTA() {
+    const instructorId = await getUserIdByUsername(instructorUser.username);
+    const taId = await getUserIdByUsername(user.username);
+
+    await withDb(async (db) => {
+        await resetTAUserState(db, taId);
+        await db.collection('courses').deleteMany({
+            courseId: { $in: TEST_COURSE_IDS },
+        });
+        await db.collection('flaggedQuestions').deleteMany({
+            courseId: { $in: TEST_COURSE_IDS },
+        });
+        await db.collection('users').updateOne(
+            { userId: taId },
+            {
+                $set: {
+                    role: 'ta',
+                    isActive: true,
+                    invitedCourses: [TA_INVITED_COURSE_ID],
+                    updatedAt: new Date(),
+                },
+            }
+        );
+        await db.collection('courses').insertOne(
+            buildCourseDoc({
+                courseId: TA_INVITED_COURSE_ID,
+                courseName: TA_INVITED_COURSE_NAME,
+                courseCode: TA_INVITED_COURSE_CODE,
                 instructorId,
                 tas: [],
             })
@@ -603,7 +642,10 @@ test.describe('TA course joining', () => {
 
         await page.locator('#ta-course-selection-form button[type="submit"]').click();
         await expect(page.locator('#ta-onboarding-complete')).toBeHidden();
-        expect(await courseCodeInput.evaluate((input) => !input.checkValidity())).toBe(true);
+        expect(await courseCodeInput.evaluate((input) => {
+            const element = /** @type {HTMLInputElement} */ (input);
+            return !element.checkValidity();
+        })).toBe(true);
 
         const notJoinedCourse = await withDb((db) =>
             db.collection('courses').findOne({ courseId: TA_JOIN_COURSE_ID })
@@ -624,5 +666,188 @@ test.describe('TA course joining', () => {
             db.collection('courses').findOne({ courseId: TA_JOIN_COURSE_ID })
         );
         expect(joinedCourse.tas).toContain(taId);
+    });
+});
+
+test.describe('TA dashboard course picker joins', () => {
+    test('TA can accept an instructor invite from the dashboard picker without a course code prompt', async ({ page }) => {
+        const taId = await getUserIdByUsername(user.username);
+        await seedInvitedCourseForTA();
+        await loginViaUI(page);
+
+        let promptCount = 0;
+        page.on('dialog', async (dialog) => {
+            promptCount += 1;
+            await dialog.dismiss();
+        });
+
+        await page.goto('/ta');
+        const courseSelect = page.locator('#ta-course-select');
+        await expect(courseSelect.locator(`option[value="${TA_INVITED_COURSE_ID}"]`)).toContainText(
+            '(join invite)',
+            { timeout: 15_000 }
+        );
+
+        await courseSelect.selectOption(TA_INVITED_COURSE_ID);
+        await expect(page.locator('#selected-course-id')).toHaveText(TA_INVITED_COURSE_ID, {
+            timeout: 15_000,
+        });
+        await expect(page.locator('.notification.success').last()).toContainText(TA_INVITED_COURSE_NAME);
+        expect(promptCount).toBe(0);
+
+        const { joinedCourse, refreshedTA } = await withDb(async (db) => ({
+            joinedCourse: await db.collection('courses').findOne({ courseId: TA_INVITED_COURSE_ID }),
+            refreshedTA: await db.collection('users').findOne({ userId: taId }),
+        }));
+        expect(joinedCourse.tas).toContain(taId);
+        expect(refreshedTA.invitedCourses || []).not.toContain(TA_INVITED_COURSE_ID);
+    });
+
+    test('TA dashboard requires a valid student code before joining an unassigned active course', async ({ page }) => {
+        const taId = await getUserIdByUsername(user.username);
+        await seedJoinableCourseForTA();
+        await loginViaUI(page);
+
+        const promptResponses = ['WRONG1', TA_JOIN_COURSE_CODE];
+        page.on('dialog', async (dialog) => {
+            await dialog.accept(promptResponses.shift() || '');
+        });
+
+        await page.goto('/ta');
+        const courseSelect = page.locator('#ta-course-select');
+        await expect(courseSelect.locator(`option[value="${TA_JOIN_COURSE_ID}"]`)).toContainText(
+            '(enter code to join)',
+            { timeout: 15_000 }
+        );
+
+        await courseSelect.selectOption(TA_JOIN_COURSE_ID);
+        await expect(page.locator('.notification.error').last()).toContainText('Invalid course code', {
+            timeout: 10_000,
+        });
+        const notJoinedCourse = await withDb((db) =>
+            db.collection('courses').findOne({ courseId: TA_JOIN_COURSE_ID })
+        );
+        expect(notJoinedCourse.tas || []).not.toContain(taId);
+
+        await courseSelect.selectOption(TA_JOIN_COURSE_ID);
+        await expect(page.locator('#selected-course-id')).toHaveText(TA_JOIN_COURSE_ID, {
+            timeout: 15_000,
+        });
+
+        const joinedCourse = await withDb((db) =>
+            db.collection('courses').findOne({ courseId: TA_JOIN_COURSE_ID })
+        );
+        expect(joinedCourse.tas).toContain(taId);
+    });
+});
+
+test.describe('TA settings and inactive course display', () => {
+    test('TA dashboard marks an assigned inactive course while preserving permitted actions', async ({ page }) => {
+        const taId = await getUserIdByUsername(user.username);
+        await seedCourseWithTA({
+            status: 'inactive',
+            taPermissions: {
+                [taId]: {
+                    canAccessCourses: true,
+                    canAccessFlags: true,
+                    updatedAt: new Date(),
+                },
+            },
+        });
+
+        await loginViaUI(page);
+        await page.goto('/ta');
+
+        await expect(page.locator('#selected-course-name')).toHaveText(`${COURSE_NAME} (Inactive)`, {
+            timeout: 15_000,
+        });
+        await expect(page.locator('#selected-course-status')).toHaveText('Inactive');
+        const card = page.locator(`.course-card[data-course-id="${COURSE_ID}"]`);
+        await expect(card).toContainText('Inactive');
+        await expect(card).toContainText('Course Upload: Allowed');
+        await expect(card).toContainText('Flags: Allowed');
+        await expect(page.locator('#my-courses-link')).toBeVisible();
+        await expect(page.locator('#student-support-link')).toBeVisible();
+    });
+
+    test('TA settings displays account details and permission status', async ({ page }) => {
+        const taId = await getUserIdByUsername(user.username);
+        await seedCourseWithTA({
+            taPermissions: {
+                [taId]: {
+                    canAccessCourses: true,
+                    canAccessFlags: false,
+                    updatedAt: new Date(),
+                },
+            },
+        });
+
+        await loginViaUI(page);
+        await page.goto(`/ta/settings?courseId=${COURSE_ID}`);
+
+        await expect(page.locator('#ta-id')).toHaveValue(taId, { timeout: 15_000 });
+        await expect(page.locator('#ta-email')).toHaveValue(user.email);
+        await expect(page.locator('#permissions-status')).toContainText('Course Access');
+        await expect(page.locator('#permissions-status')).toContainText('Allowed');
+        await expect(page.locator('#permissions-status')).toContainText('Student Support');
+        await expect(page.locator('#permissions-status')).toContainText('Denied');
+        await expect(page.locator('#ta-my-courses-link')).toBeVisible();
+        await expect(page.locator('#ta-student-support-link')).toBeHidden();
+    });
+});
+
+test.describe('TA instructor-only guardrails', () => {
+    test('authorized TA visiting instructor TA management hub is routed to shared course upload page', async ({ page }) => {
+        await seedCourseWithTA();
+        await loginViaUI(page);
+
+        await page.goto('/instructor/ta-hub');
+        await page.waitForLoadState('domcontentloaded');
+
+        await expect(page).toHaveURL(/\/instructor\/documents/);
+    });
+
+    test('TA cannot spoof an instructorId to mutate instructor-only course settings or units', async ({ baseURL }) => {
+        const instructorId = await getUserIdByUsername(instructorUser.username);
+        const taId = await getUserIdByUsername(user.username);
+        await seedCourseWithTA({
+            taPermissions: {
+                [taId]: {
+                    canAccessCourses: false,
+                    canAccessFlags: false,
+                    updatedAt: new Date(),
+                },
+            },
+        });
+
+        const apiCtx = await request.newContext({ baseURL });
+        await apiCtx.post('/api/auth/login', {
+            data: { username: user.username, password },
+        });
+
+        const updateRes = await apiCtx.put(`/api/courses/${COURSE_ID}`, {
+            data: {
+                instructorId,
+                name: 'TA Spoofed Course Name',
+                status: 'inactive',
+            },
+            failOnStatusCode: false,
+        });
+        expect.soft(updateRes.status()).toBe(403);
+
+        const addUnitRes = await apiCtx.post(`/api/courses/${COURSE_ID}/units`, {
+            data: { instructorId },
+            failOnStatusCode: false,
+        });
+        expect.soft(addUnitRes.status()).toBe(403);
+
+        const courseAfterAttempts = await withDb((db) =>
+            db.collection('courses').findOne({ courseId: COURSE_ID })
+        );
+        expect.soft(courseAfterAttempts.courseName).toBe(COURSE_NAME);
+        expect.soft(courseAfterAttempts.status).toBe('active');
+        expect.soft(courseAfterAttempts.lectures).toHaveLength(1);
+
+        await apiCtx.dispose();
     });
 });
