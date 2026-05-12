@@ -11,10 +11,13 @@
     "diagnose": "node diagnose.js",
     "grant:system-admin": "node scripts/grant-system-admin.js",
     "test": "playwright test",
+    "test:monocart": "playwright test",
+    "test:monocart:chat-rag": "playwright test tests/e2e/chat-rag-documents.spec.js",
     "test:headed": "playwright test --headed",
     "test:ui": "playwright test --ui",
     "test:report": "playwright show-report",
-    "test:report:monocart": "monocart show-report monocart-report/index.html"
+    "test:report:monocart": "monocart show-report monocart-report/index.html",
+    "test:report:coverage": "monocart show-report coverage-reports/e2e/index.html"
   },
   "keywords": [],
   "author": "",

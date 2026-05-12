@@ -32,6 +32,17 @@ const RAG_CONTENT = [
     'This seeded note exists only for Playwright chat retrieval tests.'
 ].join(' ');
 
+const QDRANT_DELETE_DOC_ID = 'doc_e2e_qdrant_delete_guard';
+const QDRANT_DELETE_SENTINEL = 'QDRANT-DELETE-GUARD-517';
+const COURSE_A_DOC_ID = 'doc_e2e_qdrant_course_a';
+const COURSE_B_DOC_ID = 'doc_e2e_qdrant_course_b';
+const COURSE_A_SENTINEL = 'QDRANT-COURSE-A-731';
+const COURSE_B_SENTINEL = 'QDRANT-COURSE-B-842';
+const ADD_UNIT1_DOC_ID = 'doc_e2e_chat_additive_unit1';
+const ADD_UNIT2_DOC_ID = 'doc_e2e_chat_additive_unit2';
+const ADD_UNIT1_SENTINEL = 'ADDITIVE-UNIT-ONE-317';
+const ADD_UNIT2_SENTINEL = 'ADDITIVE-UNIT-TWO-629';
+
 let instructorId;
 let studentId;
 
@@ -49,7 +60,7 @@ async function cleanupSeededRows() {
     await withDb(async (db) => {
         await db.collection('documents').deleteMany({
             $or: [
-                { documentId: { $in: [RAG_DOC_ID, 'doc_e2e_doc_api_seed', 'doc_e2e_student_visible'] } },
+                { documentId: /^doc_e2e_/ },
                 { courseId: { $in: [STU_COURSE_ID, STU_OTHER_COURSE_ID] }, 'metadata.e2e': 'chat-rag-documents' },
                 { courseId: STU_COURSE_ID, originalName: /^E2E student forged document/ },
                 { courseId: STU_COURSE_ID, filename: /^E2E student forged document/ },
@@ -176,6 +187,64 @@ async function seedDocumentForDocumentApi(documentId = 'doc_e2e_doc_api_seed') {
     });
 }
 
+async function seedDocumentRecord({
+    documentId,
+    courseId = STU_COURSE_ID,
+    lectureName = 'Unit 1',
+    fileName = `${documentId}.txt`,
+    originalName = `${documentId}.txt`,
+    content,
+}) {
+    const size = Buffer.byteLength(content, 'utf8');
+    await withDb(async (db) => {
+        await db.collection('documents').deleteMany({ documentId });
+        await db.collection('documents').insertOne({
+            documentId,
+            courseId,
+            lectureName,
+            instructorId,
+            documentType: 'lecture-notes',
+            type: 'lecture_notes',
+            contentType: 'text',
+            filename: fileName,
+            originalName,
+            content,
+            mimeType: 'text/plain',
+            size,
+            status: 'parsed',
+            uploadDate: new Date(),
+            lastModified: new Date(),
+            metadata: { e2e: 'chat-rag-documents' },
+        });
+        await db.collection('courses').updateOne(
+            { courseId, 'lectures.name': lectureName },
+            {
+                $set: { 'lectures.$.isPublished': true },
+                $pull: { 'lectures.$.documents': { documentId } },
+            }
+        );
+        await db.collection('courses').updateOne(
+            { courseId, 'lectures.name': lectureName },
+            {
+                $push: {
+                    'lectures.$.documents': {
+                        documentId,
+                        documentType: 'lecture-notes',
+                        filename: fileName,
+                        originalName,
+                        mimeType: 'text/plain',
+                        size,
+                        status: 'parsed',
+                        metadata: { e2e: 'chat-rag-documents' },
+                        createdAt: new Date(),
+                        updatedAt: new Date(),
+                    },
+                },
+            }
+        );
+    });
+}
+
 async function isServiceReady(api, url) {
     const res = await api.get(url, { timeout: 20_000 });
     return res.ok();
@@ -183,11 +252,66 @@ async function isServiceReady(api, url) {
 
 async function cleanupQdrantOrphans(browser) {
     const instructorCtx = await browser.newContext({ storageState: storageStatePath('instructor') });
-    await instructorCtx.request.post('/api/qdrant/cleanup-vectors', {
-        data: { courseId: STU_COURSE_ID },
-        timeout: 60_000,
-    }).catch(() => {});
+    for (const courseId of [STU_COURSE_ID, STU_OTHER_COURSE_ID]) {
+        await instructorCtx.request.post('/api/qdrant/cleanup-vectors', {
+            data: { courseId },
+            timeout: 60_000,
+        }).catch(() => {});
+    }
     await instructorCtx.close();
+}
+
+async function processQdrantDocument(context, {
+    courseId = STU_COURSE_ID,
+    lectureName = 'Unit 1',
+    documentId,
+    content,
+    fileName = `${documentId}.txt`,
+}) {
+    const res = await context.request.post('/api/qdrant/process-document', {
+        data: {
+            courseId,
+            lectureName,
+            documentId,
+            content,
+            fileName,
+            mimeType: 'text/plain',
+        },
+        timeout: 90_000,
+    });
+    expect(res.ok()).toBeTruthy();
+    const body = await res.json();
+    expect(body.data.chunksStored).toBeGreaterThan(0);
+}
+
+/**
+ * @param {any} context
+ * @param {Object} options
+ * @param {string} options.query
+ * @param {string} [options.courseId]
+ * @param {string} [options.lectureName]
+ * @param {string[]} [options.lectureNames]
+ * @param {number} [options.limit]
+ */
+async function searchQdrant(context, {
+    query,
+    courseId = STU_COURSE_ID,
+    lectureName = undefined,
+    lectureNames = undefined,
+    limit = 8,
+}) {
+    /** @type {{ query: string, courseId?: string, lectureName?: string, lectureNames?: string[], limit: number }} */
+    const data = { query, courseId, limit };
+    if (lectureName) data.lectureName = lectureName;
+    if (lectureNames) data.lectureNames = lectureNames;
+
+    const res = await context.request.post('/api/qdrant/search', {
+        data,
+        timeout: 60_000,
+    });
+    expect(res.ok()).toBeTruthy();
+    const body = await res.json();
+    return body.data.results || [];
 }
 
 // ----------------------------------------------------------------------------
@@ -335,10 +459,152 @@ test.describe('POST /api/chat — RAG answer and source attribution', () => {
 });
 
 // ----------------------------------------------------------------------------
+// Chat retrieval mode. These prove selected-course settings change the actual
+// retrieval scope instead of only changing UI labels.
+// ----------------------------------------------------------------------------
+test.describe('POST /api/chat — single vs additive RAG retrieval', () => {
+    test.use({ storageState: storageStatePath('student') });
+    test.setTimeout(180_000);
+
+    test.beforeEach(async ({ browser }) => {
+        await resetStudentChatData({ instructorId });
+        await cleanupSeededRows();
+        await cleanupQdrantOrphans(browser);
+    });
+
+    test.afterEach(async ({ browser }) => {
+        const instructorCtx = await browser.newContext({ storageState: storageStatePath('instructor') });
+        for (const documentId of [ADD_UNIT1_DOC_ID, ADD_UNIT2_DOC_ID]) {
+            await instructorCtx.request.delete(`/api/qdrant/document/${documentId}`).catch(() => {});
+        }
+        await instructorCtx.close();
+        await cleanupSeededRows();
+    });
+
+    async function seedAdditiveRetrievalVectors(browser, isAdditiveRetrieval) {
+        const unit1Content = [
+            'E2E additive retrieval Unit 1 notes.',
+            `The earlier-unit marker is ${ADD_UNIT1_SENTINEL}.`,
+            'Unit 1 explains catalase as an enzyme that breaks down hydrogen peroxide.',
+        ].join(' ');
+        const unit2Content = [
+            'E2E additive retrieval Unit 2 notes.',
+            `The selected-unit marker is ${ADD_UNIT2_SENTINEL}.`,
+            'Unit 2 discusses peroxisomes and how enzymes support cellular detoxification.',
+        ].join(' ');
+
+        await withDb((db) =>
+            db.collection('courses').updateOne(
+                { courseId: STU_COURSE_ID },
+                { $set: { isAdditiveRetrieval } }
+            )
+        );
+        await seedDocumentRecord({
+            documentId: ADD_UNIT1_DOC_ID,
+            lectureName: 'Unit 1',
+            fileName: 'e2e-additive-unit1.txt',
+            originalName: 'E2E Additive Unit 1.txt',
+            content: unit1Content,
+        });
+        await seedDocumentRecord({
+            documentId: ADD_UNIT2_DOC_ID,
+            lectureName: 'Unit 2',
+            fileName: 'e2e-additive-unit2.txt',
+            originalName: 'E2E Additive Unit 2.txt',
+            content: unit2Content,
+        });
+
+        const instructorCtx = await browser.newContext({ storageState: storageStatePath('instructor') });
+        await processQdrantDocument(instructorCtx, {
+            documentId: ADD_UNIT1_DOC_ID,
+            lectureName: 'Unit 1',
+            content: unit1Content,
+            fileName: 'e2e-additive-unit1.txt',
+        });
+        await processQdrantDocument(instructorCtx, {
+            documentId: ADD_UNIT2_DOC_ID,
+            lectureName: 'Unit 2',
+            content: unit2Content,
+            fileName: 'e2e-additive-unit2.txt',
+        });
+        await instructorCtx.close();
+    }
+
+    test('single retrieval for Unit 2 does not cite earlier-unit source chunks', async ({ request: api, browser }) => {
+        test.skip(!(await isServiceReady(api, '/api/qdrant/status')), 'Qdrant is not reachable in this environment.');
+        test.skip(!(await isServiceReady(api, '/api/chat/status')), 'LLM service is not reachable in this environment.');
+
+        await seedAdditiveRetrievalVectors(browser, false);
+
+        const res = await api.post('/api/chat', {
+            data: {
+                message: `Compare ${ADD_UNIT1_SENTINEL} with ${ADD_UNIT2_SENTINEL}.`,
+                courseId: STU_COURSE_ID,
+                unitName: 'Unit 2',
+                mode: 'tutor',
+            },
+            timeout: 120_000,
+        });
+        expect(res.ok()).toBeTruthy();
+
+        const body = await res.json();
+        expect(body.retrieval).toMatchObject({
+            mode: 'single',
+            lectureNames: ['Unit 2'],
+        });
+        expect(body.debug.searchResultsCount).toBeGreaterThan(0);
+        expect(body.citations.every((citation) => citation.lectureName === 'Unit 2')).toBe(true);
+        expect(body.citations.some((citation) => citation.fileName === 'e2e-additive-unit1.txt')).toBe(false);
+    });
+
+    test('additive retrieval for Unit 2 can cite both Unit 1 and Unit 2 source chunks', async ({ request: api, browser }) => {
+        test.skip(!(await isServiceReady(api, '/api/qdrant/status')), 'Qdrant is not reachable in this environment.');
+        test.skip(!(await isServiceReady(api, '/api/chat/status')), 'LLM service is not reachable in this environment.');
+
+        await seedAdditiveRetrievalVectors(browser, true);
+
+        const res = await api.post('/api/chat', {
+            data: {
+                message: `Use the notes to explain ${ADD_UNIT1_SENTINEL} and ${ADD_UNIT2_SENTINEL}.`,
+                courseId: STU_COURSE_ID,
+                unitName: 'Unit 2',
+                mode: 'tutor',
+            },
+            timeout: 120_000,
+        });
+        expect(res.ok()).toBeTruthy();
+
+        const body = await res.json();
+        expect(body.retrieval).toMatchObject({
+            mode: 'additive',
+            lectureNames: ['Unit 1', 'Unit 2'],
+        });
+        expect(body.debug.searchResultsCount).toBeGreaterThan(0);
+
+        const citedLectures = new Set(body.citations.map((citation) => citation.lectureName));
+        expect(citedLectures.has('Unit 1')).toBe(true);
+        expect(citedLectures.has('Unit 2')).toBe(true);
+    });
+});
+
+// ----------------------------------------------------------------------------
 // Chat service metadata endpoints.
 // ----------------------------------------------------------------------------
 test.describe('Chat service metadata endpoints', () => {
     test.use({ storageState: storageStatePath('student') });
+
+    test('GET /api/chat/status returns provider status shape', async ({ request: api }) => {
+        const res = await api.get('/api/chat/status', { timeout: 30_000 });
+        expect([200, 500, 503]).toContain(res.status());
+
+        const body = await res.json();
+        if (res.ok()) {
+            expect(body).toMatchObject({ success: true });
+            expect(body.data).toEqual(expect.any(Object));
+        } else {
+            expect(body.success).toBe(false);
+        }
+    });
 
     test('GET /api/chat/models returns provider/model shape when the LLM service is ready', async ({ request: api }) => {
         const res = await api.get('/api/chat/models', { timeout: 30_000 });
@@ -467,8 +733,9 @@ test.describe('Document API permission boundaries for students', () => {
 });
 
 // ----------------------------------------------------------------------------
-// Qdrant/vector route authorization. These assertions use missing-field bodies
-// so they do not depend on a running Qdrant instance.
+// Qdrant/vector route authorization. Missing-field requests should still be
+// denied before validation, and valid requests should not let students read or
+// mutate vector data through direct API access.
 // ----------------------------------------------------------------------------
 test.describe('Qdrant API permission boundaries for students', () => {
     test.use({ storageState: storageStatePath('student') });
@@ -485,6 +752,13 @@ test.describe('Qdrant API permission boundaries for students', () => {
 
     test('POST /api/qdrant/cleanup-vectors is not available to students via direct API access', async ({ request: api }) => {
         const res = await api.post('/api/qdrant/cleanup-vectors', { data: {} });
+        expect(res.status()).toBe(403);
+    });
+
+    test('GET /api/qdrant/collection-stats is not available to students', async ({ request: api }) => {
+        test.skip(!(await isServiceReady(api, '/api/qdrant/status')), 'Qdrant is not reachable in this environment.');
+
+        const res = await api.get('/api/qdrant/collection-stats', { timeout: 60_000 });
         expect(res.status()).toBe(403);
     });
 
@@ -524,6 +798,109 @@ test.describe('Qdrant API permission boundaries for students', () => {
         await instructorCtx.close();
 
         expect(res.status()).toBe(403);
+    });
+
+    test('DELETE /api/qdrant/document/:documentId must not let a student delete vector chunks', async ({ request: api, browser }) => {
+        test.skip(!(await isServiceReady(api, '/api/qdrant/status')), 'Qdrant is not reachable in this environment.');
+
+        await resetStudentChatData({ instructorId });
+        await cleanupQdrantOrphans(browser);
+
+        const content = [
+            'E2E Qdrant deletion guard document.',
+            `The deletion guard marker is ${QDRANT_DELETE_SENTINEL}.`,
+            'The vector chunk must remain searchable after an unauthorized student delete attempt.',
+        ].join(' ');
+
+        const instructorCtx = await browser.newContext({ storageState: storageStatePath('instructor') });
+        try {
+            await processQdrantDocument(instructorCtx, {
+                documentId: QDRANT_DELETE_DOC_ID,
+                content,
+                fileName: 'e2e-qdrant-delete-guard.txt',
+            });
+
+            const before = await searchQdrant(instructorCtx, {
+                query: QDRANT_DELETE_SENTINEL,
+                courseId: STU_COURSE_ID,
+                lectureName: 'Unit 1',
+            });
+            expect(before.some((result) => result.documentId === QDRANT_DELETE_DOC_ID)).toBe(true);
+
+            const res = await api.delete(`/api/qdrant/document/${QDRANT_DELETE_DOC_ID}`, {
+                timeout: 60_000,
+            });
+            expect.soft(res.status()).toBe(403);
+
+            const after = await searchQdrant(instructorCtx, {
+                query: QDRANT_DELETE_SENTINEL,
+                courseId: STU_COURSE_ID,
+                lectureName: 'Unit 1',
+            });
+            expect(after.some((result) => result.documentId === QDRANT_DELETE_DOC_ID)).toBe(true);
+        } finally {
+            await instructorCtx.request.delete(`/api/qdrant/document/${QDRANT_DELETE_DOC_ID}`).catch(() => {});
+            await instructorCtx.close();
+        }
+    });
+
+    test('POST /api/qdrant/search keeps results scoped to the requested course', async ({ request: api, browser }) => {
+        test.skip(!(await isServiceReady(api, '/api/qdrant/status')), 'Qdrant is not reachable in this environment.');
+
+        await resetStudentChatData({ instructorId });
+        await cleanupQdrantOrphans(browser);
+
+        const courseAContent = [
+            'E2E Qdrant course A notes about catalase.',
+            `The course A marker is ${COURSE_A_SENTINEL}.`,
+            'This content belongs only to the primary student-chat course.',
+        ].join(' ');
+        const courseBContent = [
+            'E2E Qdrant course B notes about catalase.',
+            `The course B marker is ${COURSE_B_SENTINEL}.`,
+            'This content belongs only to the separate student-chat course.',
+        ].join(' ');
+
+        const instructorCtx = await browser.newContext({ storageState: storageStatePath('instructor') });
+        try {
+            await processQdrantDocument(instructorCtx, {
+                courseId: STU_COURSE_ID,
+                documentId: COURSE_A_DOC_ID,
+                content: courseAContent,
+                fileName: 'e2e-course-a-qdrant.txt',
+            });
+            await processQdrantDocument(instructorCtx, {
+                courseId: STU_OTHER_COURSE_ID,
+                documentId: COURSE_B_DOC_ID,
+                content: courseBContent,
+                fileName: 'e2e-course-b-qdrant.txt',
+            });
+
+            const courseAResults = await searchQdrant(instructorCtx, {
+                query: `${COURSE_A_SENTINEL} catalase`,
+                courseId: STU_COURSE_ID,
+                lectureName: 'Unit 1',
+                limit: 10,
+            });
+            expect(courseAResults.some((result) => result.documentId === COURSE_A_DOC_ID)).toBe(true);
+            expect(courseAResults.every((result) => result.courseId === STU_COURSE_ID)).toBe(true);
+            expect(courseAResults.some((result) => result.documentId === COURSE_B_DOC_ID)).toBe(false);
+
+            const courseBResults = await searchQdrant(instructorCtx, {
+                query: `${COURSE_B_SENTINEL} catalase`,
+                courseId: STU_OTHER_COURSE_ID,
+                lectureName: 'Unit 1',
+                limit: 10,
+            });
+            expect(courseBResults.some((result) => result.documentId === COURSE_B_DOC_ID)).toBe(true);
+            expect(courseBResults.every((result) => result.courseId === STU_OTHER_COURSE_ID)).toBe(true);
+            expect(courseBResults.some((result) => result.documentId === COURSE_A_DOC_ID)).toBe(false);
+        } finally {
+            for (const documentId of [COURSE_A_DOC_ID, COURSE_B_DOC_ID]) {
+                await instructorCtx.request.delete(`/api/qdrant/document/${documentId}`).catch(() => {});
+            }
+            await instructorCtx.close();
+        }
     });
 
     test('DELETE /api/qdrant/delete-all-collections remains system-admin only', async ({ request: api }) => {

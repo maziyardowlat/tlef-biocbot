@@ -35,6 +35,7 @@ module.exports = defineConfig({
                 name: 'BiocBot E2E Coverage',
                 outputDir: './coverage-reports/e2e',
                 reports: ['v8', 'v8-json', 'json-summary', 'lcovonly', 'console-summary'],
+                inline: true,
                 lcov: true,
                 entryFilter: (entry) => {
                     const url = entry && entry.url;
