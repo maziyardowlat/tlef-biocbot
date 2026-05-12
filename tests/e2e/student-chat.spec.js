@@ -51,6 +51,11 @@ async function loginAsStudent(page) {
     });
 }
 
+async function isChatServiceReady(api) {
+    const res = await api.get('/api/chat/status', { timeout: 20_000 });
+    return res.ok();
+}
+
 // ----------------------------------------------------------------------------
 // /api/user-agreement — agreement persistence
 // ----------------------------------------------------------------------------
@@ -876,6 +881,79 @@ test.describe('Practice question API (LLM-backed)', () => {
         expect(res.ok()).toBeTruthy();
         const body = await res.json();
         expect(body).toMatchObject({ success: true, noQuestions: true });
+    });
+
+    test('generates a practice question without leaking the correct answer, then checks an answer', async ({ request: api }) => {
+        test.skip(!(await isChatServiceReady(api)), 'LLM service is not reachable in this environment.');
+
+        await withDb((db) =>
+            db.collection('courses').updateOne(
+                { courseId: STU_COURSE_ID, 'lectures.name': 'Unit 1' },
+                {
+                    $set: {
+                        'lectures.$.assessmentQuestions': [
+                            {
+                                questionId: 'q_e2e_chat_practice_mc',
+                                questionType: 'multiple-choice',
+                                question: 'Which molecule is the main energy currency of the cell?',
+                                options: { A: 'ATP', B: 'DNA', C: 'Cellulose', D: 'Cholesterol' },
+                                correctAnswer: 'A',
+                                explanation: 'ATP hydrolysis is commonly coupled to cellular work.',
+                                difficulty: 'easy',
+                                isActive: true,
+                            },
+                        ],
+                    },
+                }
+            )
+        );
+
+        const generated = await api.post('/api/chat/practice-question', {
+            data: { courseId: STU_COURSE_ID, unitName: 'Unit 1', topic: 'cellular energy' },
+            timeout: 120_000,
+        });
+        expect(generated.ok()).toBeTruthy();
+
+        const generatedBody = await generated.json();
+        expect(generatedBody).toMatchObject({
+            success: true,
+            data: {
+                practiceId: expect.any(String),
+                questionType: expect.any(String),
+                question: expect.any(String),
+            },
+        });
+        expect(generatedBody.noQuestions).toBeFalsy();
+        expect(generatedBody.data.correctAnswer).toBeUndefined();
+        expect(generatedBody.data.explanation).toBeUndefined();
+
+        let studentAnswer = 'ATP';
+        if (generatedBody.data.questionType === 'multiple-choice' && generatedBody.data.options) {
+            studentAnswer = Object.keys(generatedBody.data.options)[0];
+        } else if (generatedBody.data.questionType === 'true-false') {
+            studentAnswer = 'true';
+        }
+
+        const checked = await api.post('/api/chat/check-practice-answer', {
+            data: {
+                practiceId: generatedBody.data.practiceId,
+                studentAnswer,
+                studentName: 'E2E Student',
+            },
+            timeout: 120_000,
+        });
+        expect(checked.ok()).toBeTruthy();
+
+        const checkedBody = await checked.json();
+        expect(checkedBody).toMatchObject({
+            success: true,
+            data: {
+                correct: expect.any(Boolean),
+                feedback: expect.any(String),
+                correctAnswer: expect.any(String),
+            },
+        });
+        expect(checkedBody.data.correctAnswer.length).toBeGreaterThan(0);
     });
 
     test('check-practice-answer with an unknown practiceId returns 404', async ({ request: api }) => {
