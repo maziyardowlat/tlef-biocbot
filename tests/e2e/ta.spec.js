@@ -20,6 +20,9 @@ const TA_INVITED_COURSE_NAME = 'BIOC E2E TA Invited Test';
 const TA_INVITED_COURSE_CODE = 'TAINVITE';
 const TEST_COURSE_IDS = [COURSE_ID, OTHER_COURSE_ID, TA_JOIN_COURSE_ID, TA_INVITED_COURSE_ID];
 const LECTURE_FIXTURE = path.join(__dirname, 'fixtures', 'sample-lecture.txt');
+const TA_UPDATE_QUESTION_ID = 'e2e-ta-update-question';
+const TA_DELETE_QUESTION_ID = 'e2e-ta-delete-question';
+const TA_SEEDED_DOCUMENT_ID = 'e2e-ta-seeded-document';
 
 let password;
 
@@ -60,6 +63,8 @@ async function getUserIdByUsername(username) {
  *   taPermissions?: Record<string, { canAccessCourses: boolean, canAccessFlags: boolean, updatedAt: Date }> | null,
  *   courseCode?: string,
  *   status?: string,
+ *   approvedStruggleTopics?: Array<string|Record<string, any>>,
+ *   assessmentQuestions?: Array<Record<string, any>>,
  *   now?: Date,
  * }} args
  */
@@ -71,6 +76,8 @@ function buildCourseDoc({
     taPermissions = null,
     courseCode = `${courseId}-S`,
     status = 'active',
+    approvedStruggleTopics = [],
+    assessmentQuestions = [],
     now = new Date(),
 }) {
     /** @type {Record<string, any>} */
@@ -85,7 +92,7 @@ function buildCourseDoc({
         courseDescription: '',
         assessmentCriteria: '',
         courseMaterials: [],
-        approvedStruggleTopics: [],
+        approvedStruggleTopics,
         courseStructure: { weeks: 1, lecturesPerWeek: 1, totalUnits: 1 },
         isOnboardingComplete: true,
         status,
@@ -98,7 +105,7 @@ function buildCourseDoc({
                 createdAt: now,
                 updatedAt: now,
                 documents: [],
-                assessmentQuestions: [],
+                assessmentQuestions,
             },
         ],
         createdAt: now,
@@ -135,6 +142,9 @@ async function seedCourseWithTA(overrides = {}) {
         await db.collection('flaggedQuestions').deleteMany({
             courseId: { $in: TEST_COURSE_IDS },
         });
+        await db.collection('documents').deleteMany({
+            courseId: { $in: TEST_COURSE_IDS },
+        });
         await db.collection('courses').insertOne(
             buildCourseDoc({
                 courseId: COURSE_ID,
@@ -143,8 +153,27 @@ async function seedCourseWithTA(overrides = {}) {
                 tas: [taId],
                 taPermissions: overrides.taPermissions || null,
                 status: overrides.status || 'active',
+                approvedStruggleTopics: overrides.approvedStruggleTopics || [],
+                assessmentQuestions: overrides.assessmentQuestions || [],
             })
         );
+    });
+}
+
+async function seedNoCoursesForTA() {
+    const taId = await getUserIdByUsername(user.username);
+
+    await withDb(async (db) => {
+        await resetTAUserState(db, taId);
+        await db.collection('courses').deleteMany({
+            courseId: { $in: TEST_COURSE_IDS },
+        });
+        await db.collection('flaggedQuestions').deleteMany({
+            courseId: { $in: TEST_COURSE_IDS },
+        });
+        await db.collection('documents').deleteMany({
+            courseId: { $in: TEST_COURSE_IDS },
+        });
     });
 }
 
@@ -157,6 +186,9 @@ async function seedTwoCourses() {
             courseId: { $in: TEST_COURSE_IDS },
         });
         await db.collection('flaggedQuestions').deleteMany({
+            courseId: { $in: TEST_COURSE_IDS },
+        });
+        await db.collection('documents').deleteMany({
             courseId: { $in: TEST_COURSE_IDS },
         });
         await db.collection('courses').insertMany([
@@ -187,6 +219,9 @@ async function seedTwoAssignedCoursesWithDifferentPermissions() {
             courseId: { $in: TEST_COURSE_IDS },
         });
         await db.collection('flaggedQuestions').deleteMany({
+            courseId: { $in: TEST_COURSE_IDS },
+        });
+        await db.collection('documents').deleteMany({
             courseId: { $in: TEST_COURSE_IDS },
         });
         await db.collection('courses').insertMany([
@@ -234,6 +269,9 @@ async function seedJoinableCourseForTA() {
         await db.collection('flaggedQuestions').deleteMany({
             courseId: { $in: TEST_COURSE_IDS },
         });
+        await db.collection('documents').deleteMany({
+            courseId: { $in: TEST_COURSE_IDS },
+        });
         await db.collection('courses').insertOne(
             buildCourseDoc({
                 courseId: TA_JOIN_COURSE_ID,
@@ -256,6 +294,9 @@ async function seedInvitedCourseForTA() {
             courseId: { $in: TEST_COURSE_IDS },
         });
         await db.collection('flaggedQuestions').deleteMany({
+            courseId: { $in: TEST_COURSE_IDS },
+        });
+        await db.collection('documents').deleteMany({
             courseId: { $in: TEST_COURSE_IDS },
         });
         await db.collection('users').updateOne(
@@ -281,15 +322,17 @@ async function seedInvitedCourseForTA() {
     });
 }
 
-async function seedFlaggedQuestion(courseId = COURSE_ID) {
+async function seedFlaggedQuestion(courseId = COURSE_ID, options = {}) {
     const studentId = await getUserIdByUsername(studentUser.username);
-    const flagId = `e2e-ta-flag-${Date.now()}`;
+    const flagId = options.flagId || `e2e-ta-flag-${Date.now()}`;
 
     await withDb(async (db) => {
-        await db.collection('flaggedQuestions').deleteMany({
-            courseId,
-            flagId: /^e2e-ta-flag-/,
-        });
+        if (options.cleanupExisting !== false) {
+            await db.collection('flaggedQuestions').deleteMany({
+                courseId,
+                flagId: /^e2e-ta-flag-/,
+            });
+        }
         await db.collection('flaggedQuestions').insertOne({
             flagId,
             questionId: 'e2e-ta-question',
@@ -315,6 +358,66 @@ async function seedFlaggedQuestion(courseId = COURSE_ID) {
     return flagId;
 }
 
+async function seedDocumentInCourse(courseId = COURSE_ID) {
+    const instructorId = await getUserIdByUsername(instructorUser.username);
+    const now = new Date();
+    const document = {
+        documentId: TA_SEEDED_DOCUMENT_ID,
+        courseId,
+        lectureName: 'Unit 1',
+        documentType: 'lecture-notes',
+        type: 'lecture_notes',
+        instructorId,
+        contentType: 'text',
+        filename: 'Seeded TA Protected Document.txt',
+        originalName: 'Seeded TA Protected Document',
+        content: 'Seeded content that a denied TA must not delete.',
+        mimeType: 'text/plain',
+        size: 47,
+        status: 'uploaded',
+        metadata: {
+            description: 'Seeded document for TA delete authorization coverage',
+            tags: [],
+            learningObjectives: [],
+        },
+        uploadDate: now,
+        lastModified: now,
+    };
+
+    await withDb(async (db) => {
+        await db.collection('documents').deleteMany({ documentId: TA_SEEDED_DOCUMENT_ID });
+        await db.collection('courses').updateOne(
+            { courseId, 'lectures.name': 'Unit 1' },
+            {
+                $pull: {
+                    'lectures.$.documents': { documentId: TA_SEEDED_DOCUMENT_ID },
+                },
+            }
+        );
+        await db.collection('documents').insertOne(document);
+        await db.collection('courses').updateOne(
+            { courseId, 'lectures.name': 'Unit 1' },
+            {
+                $push: {
+                    'lectures.$.documents': {
+                        documentId: TA_SEEDED_DOCUMENT_ID,
+                        documentType: document.documentType,
+                        filename: document.filename,
+                        originalName: document.originalName,
+                        mimeType: document.mimeType,
+                        size: document.size,
+                        status: document.status,
+                        metadata: document.metadata,
+                    },
+                },
+                $set: { updatedAt: now },
+            }
+        );
+    });
+
+    return TA_SEEDED_DOCUMENT_ID;
+}
+
 async function loginViaUI(page) {
     await page.goto('/');
     await page.locator('#auth-form input#username').fill(user.username);
@@ -323,6 +426,15 @@ async function loginViaUI(page) {
     await page.waitForURL((url) => url.pathname !== '/' && url.pathname !== '/login', {
         timeout: 10_000,
     });
+}
+
+async function loginViaAPI(baseURL) {
+    const apiCtx = await request.newContext({ baseURL });
+    const loginRes = await apiCtx.post('/api/auth/login', {
+        data: { username: user.username, password },
+    });
+    expect(loginRes.ok()).toBeTruthy();
+    return apiCtx;
 }
 
 test.describe('TA authentication and course access', () => {
@@ -796,7 +908,553 @@ test.describe('TA settings and inactive course display', () => {
     });
 });
 
+test.describe('TA empty, revoked, and settings-context flows', () => {
+    test('TA with no assigned courses sees an empty dashboard state and no course actions', async ({ page }) => {
+        await seedNoCoursesForTA();
+        await loginViaUI(page);
+
+        await page.goto('/ta');
+
+        await expect(page.locator('#selected-course-name')).toHaveText('No course selected', {
+            timeout: 15_000,
+        });
+        await expect(page.locator('#selected-course-id')).toHaveText('-');
+        await expect(page.locator('#courses-container')).toContainText('No courses joined');
+        await expect(page.locator('#courses-container')).toContainText('Join a Course');
+        await expect(page.locator('#quick-courses-link')).toBeHidden();
+        await expect(page.locator('#quick-support-link')).toBeHidden();
+    });
+
+    test('TA assignment revocation blocks stale selected-course access', async ({ page }) => {
+        const taId = await getUserIdByUsername(user.username);
+        await seedCourseWithTA({
+            taPermissions: {
+                [taId]: {
+                    canAccessCourses: true,
+                    canAccessFlags: true,
+                    updatedAt: new Date(),
+                },
+            },
+        });
+        await loginViaUI(page);
+
+        await page.goto(`/ta?courseId=${COURSE_ID}`);
+        await expect(page.locator('#selected-course-id')).toHaveText(COURSE_ID, { timeout: 15_000 });
+
+        await withDb(async (db) => {
+            await db.collection('courses').updateOne(
+                { courseId: COURSE_ID },
+                {
+                    $pull: { tas: taId },
+                    $unset: { [`taPermissions.${taId}`]: '' },
+                    $set: { updatedAt: new Date() },
+                }
+            );
+        });
+
+        const response = await page.goto(`/instructor/documents?courseId=${COURSE_ID}`);
+        if (!response) throw new Error('Expected a navigation response for stale TA course access');
+        expect(response.status()).toBe(403);
+
+        await page.goto('/ta');
+        await expect(page.locator('#selected-course-id')).toHaveText('-', { timeout: 15_000 });
+        await expect(page.locator('#courses-container')).toContainText('No courses joined');
+        await expect(page.locator('#quick-courses-link')).toBeHidden();
+        await expect(page.locator('#quick-support-link')).toBeHidden();
+    });
+
+    test('TA settings navigation respects the selected course permission context', async ({ page }) => {
+        await seedTwoAssignedCoursesWithDifferentPermissions();
+        await loginViaUI(page);
+
+        await page.goto(`/ta/settings?courseId=${COURSE_ID}`);
+        await expect(page.locator('#ta-id')).not.toHaveValue('', { timeout: 15_000 });
+        await expect.soft(page.locator('#ta-my-courses-link')).toBeVisible();
+        expect.soft(await page.locator('#ta-my-courses-link').evaluate((node) => getComputedStyle(node).display)).not.toBe('none');
+        await expect.soft(page.locator('#ta-student-support-link')).toBeHidden();
+
+        await page.locator('#ta-my-courses-link').click();
+        await page.waitForURL((url) =>
+            url.pathname === '/instructor/documents' &&
+            url.searchParams.get('courseId') === COURSE_ID,
+            { timeout: 10_000 }
+        );
+
+        await page.goto(`/ta/settings?courseId=${OTHER_COURSE_ID}`);
+        await expect(page.locator('#ta-id')).not.toHaveValue('', { timeout: 15_000 });
+        await expect.soft(page.locator('#ta-my-courses-link')).toBeHidden();
+        await expect.soft(page.locator('#ta-student-support-link')).toBeVisible();
+        expect.soft(await page.locator('#ta-student-support-link').evaluate((node) => getComputedStyle(node).display)).not.toBe('none');
+
+        await page.locator('#ta-student-support-link').click();
+        await page.waitForURL((url) =>
+            url.pathname === '/instructor/flagged' &&
+            url.searchParams.get('courseId') === OTHER_COURSE_ID,
+            { timeout: 10_000 }
+        );
+    });
+});
+
+test.describe('TA direct API authorization for course content', () => {
+    test('TA with canAccessCourses=false cannot mutate topics or unit structure by direct API', async ({ baseURL }) => {
+        const instructorId = await getUserIdByUsername(instructorUser.username);
+        const taId = await getUserIdByUsername(user.username);
+        await seedCourseWithTA({
+            taPermissions: {
+                [taId]: {
+                    canAccessCourses: false,
+                    canAccessFlags: false,
+                    updatedAt: new Date(),
+                },
+            },
+            approvedStruggleTopics: ['Original topic'],
+        });
+
+        const apiCtx = await loginViaAPI(baseURL);
+
+        const topicUnitRes = await apiCtx.patch(`/api/courses/${COURSE_ID}/approved-topics/unit`, {
+            data: { topic: 'Original topic', unitId: 'Unit 1' },
+            failOnStatusCode: false,
+        });
+        expect.soft(topicUnitRes.status()).toBe(403);
+
+        const topicsRes = await apiCtx.put(`/api/courses/${COURSE_ID}/approved-topics`, {
+            data: { topics: ['TA injected topic'] },
+            failOnStatusCode: false,
+        });
+        expect.soft(topicsRes.status()).toBe(403);
+
+        const renameUnitRes = await apiCtx.put(
+            `/api/courses/${COURSE_ID}/units/${encodeURIComponent('Unit 1')}/rename`,
+            {
+                data: { displayName: 'TA renamed Unit', instructorId },
+                failOnStatusCode: false,
+            }
+        );
+        expect.soft(renameUnitRes.status()).toBe(403);
+
+        const deleteUnitRes = await apiCtx.delete(
+            `/api/courses/${COURSE_ID}/units/${encodeURIComponent('Unit 1')}`,
+            {
+                data: { instructorId },
+                failOnStatusCode: false,
+            }
+        );
+        expect.soft(deleteUnitRes.status()).toBe(403);
+
+        const courseAfterAttempts = await withDb((db) =>
+            db.collection('courses').findOne({ courseId: COURSE_ID })
+        );
+        const unitOne = courseAfterAttempts.lectures.find((lecture) => lecture.name === 'Unit 1');
+        expect.soft(courseAfterAttempts.approvedStruggleTopics).toEqual(['Original topic']);
+        expect.soft(unitOne).toBeTruthy();
+        expect.soft(unitOne?.displayName || '').not.toBe('TA renamed Unit');
+        expect.soft(courseAfterAttempts.lectures).toHaveLength(1);
+
+        await apiCtx.dispose();
+    });
+
+    test('TA with canAccessCourses=false cannot create, update, or delete assessment questions by direct API', async ({ baseURL }) => {
+        const instructorId = await getUserIdByUsername(instructorUser.username);
+        const taId = await getUserIdByUsername(user.username);
+        await seedCourseWithTA({
+            taPermissions: {
+                [taId]: {
+                    canAccessCourses: false,
+                    canAccessFlags: false,
+                    updatedAt: new Date(),
+                },
+            },
+            assessmentQuestions: [
+                {
+                    questionId: TA_UPDATE_QUESTION_ID,
+                    questionType: 'short-answer',
+                    question: 'Original update-protected question',
+                    correctAnswer: 'Original answer',
+                    explanation: 'Original explanation',
+                    difficulty: 'medium',
+                    points: 1,
+                },
+                {
+                    questionId: TA_DELETE_QUESTION_ID,
+                    questionType: 'short-answer',
+                    question: 'Original delete-protected question',
+                    correctAnswer: 'Original answer',
+                    explanation: 'Original explanation',
+                    difficulty: 'medium',
+                    points: 1,
+                },
+            ],
+        });
+
+        const apiCtx = await loginViaAPI(baseURL);
+
+        const createQuestionText = 'TA injected direct question';
+        const createRes = await apiCtx.post('/api/questions', {
+            data: {
+                courseId: COURSE_ID,
+                lectureName: 'Unit 1',
+                instructorId,
+                questionType: 'short-answer',
+                question: createQuestionText,
+                correctAnswer: 'Injected answer',
+            },
+            failOnStatusCode: false,
+        });
+        expect.soft(createRes.status()).toBe(403);
+
+        const updateRes = await apiCtx.put(`/api/questions/${TA_UPDATE_QUESTION_ID}`, {
+            data: {
+                courseId: COURSE_ID,
+                lectureName: 'Unit 1',
+                instructorId,
+                questionType: 'short-answer',
+                question: 'TA edited protected question',
+                correctAnswer: 'Edited answer',
+            },
+            failOnStatusCode: false,
+        });
+        expect.soft(updateRes.status()).toBe(403);
+
+        const deleteRes = await apiCtx.delete(`/api/questions/${TA_DELETE_QUESTION_ID}`, {
+            data: {
+                instructorId,
+                courseId: COURSE_ID,
+                lectureName: 'Unit 1',
+            },
+            failOnStatusCode: false,
+        });
+        expect.soft(deleteRes.status()).toBe(403);
+
+        const courseAfterAttempts = await withDb((db) =>
+            db.collection('courses').findOne({ courseId: COURSE_ID })
+        );
+        const questions = courseAfterAttempts.lectures[0].assessmentQuestions || [];
+        const updateQuestion = questions.find((question) => question.questionId === TA_UPDATE_QUESTION_ID);
+        const deleteQuestion = questions.find((question) => question.questionId === TA_DELETE_QUESTION_ID);
+
+        expect.soft(questions.some((question) => question.question === createQuestionText)).toBe(false);
+        expect.soft(updateQuestion?.question).toBe('Original update-protected question');
+        expect.soft(deleteQuestion).toBeTruthy();
+
+        await apiCtx.dispose();
+    });
+});
+
+test.describe('TA direct API authorization for flags', () => {
+    test('TA with canAccessFlags=false cannot respond, status-update, or delete flags by direct API', async ({ baseURL }) => {
+        const taId = await getUserIdByUsername(user.username);
+        await seedCourseWithTA({
+            taPermissions: {
+                [taId]: {
+                    canAccessCourses: true,
+                    canAccessFlags: false,
+                    updatedAt: new Date(),
+                },
+            },
+        });
+        const responseFlagId = await seedFlaggedQuestion(COURSE_ID, {
+            flagId: 'e2e-ta-flag-response',
+        });
+        const statusFlagId = await seedFlaggedQuestion(COURSE_ID, {
+            flagId: 'e2e-ta-flag-status',
+            cleanupExisting: false,
+        });
+        const deleteFlagId = await seedFlaggedQuestion(COURSE_ID, {
+            flagId: 'e2e-ta-flag-delete',
+            cleanupExisting: false,
+        });
+
+        const apiCtx = await loginViaAPI(baseURL);
+
+        const responseRes = await apiCtx.put(`/api/flags/${responseFlagId}/response`, {
+            data: {
+                response: 'TA should not be able to answer this flag',
+                flagStatus: 'resolved',
+            },
+            failOnStatusCode: false,
+        });
+        expect.soft(responseRes.status()).toBe(403);
+
+        const statusRes = await apiCtx.put(`/api/flags/${statusFlagId}/status`, {
+            data: { status: 'dismissed' },
+            failOnStatusCode: false,
+        });
+        expect.soft(statusRes.status()).toBe(403);
+
+        const deleteRes = await apiCtx.delete(`/api/flags/${deleteFlagId}`, {
+            failOnStatusCode: false,
+        });
+        expect.soft(deleteRes.status()).toBe(403);
+
+        const flagsAfterAttempts = await withDb((db) =>
+            db.collection('flaggedQuestions').find({
+                flagId: { $in: [responseFlagId, statusFlagId, deleteFlagId] },
+            }).toArray()
+        );
+        const flagById = new Map(flagsAfterAttempts.map((flag) => [flag.flagId, flag]));
+
+        expect.soft(flagById.get(responseFlagId)?.instructorResponse).toBeUndefined();
+        expect.soft(flagById.get(responseFlagId)?.flagStatus).toBe('pending');
+        expect.soft(flagById.get(statusFlagId)?.flagStatus).toBe('pending');
+        expect.soft(flagById.has(deleteFlagId)).toBe(true);
+
+        await apiCtx.dispose();
+    });
+});
+
+test.describe('TA direct API authorization for documents and settings', () => {
+    test('TA with canAccessCourses=false cannot create, upload, or delete course documents by direct API', async ({ baseURL }) => {
+        const instructorId = await getUserIdByUsername(instructorUser.username);
+        const taId = await getUserIdByUsername(user.username);
+        await seedCourseWithTA({
+            taPermissions: {
+                [taId]: {
+                    canAccessCourses: false,
+                    canAccessFlags: false,
+                    updatedAt: new Date(),
+                },
+            },
+        });
+        const seededDocumentId = await seedDocumentInCourse();
+
+        const apiCtx = await loginViaAPI(baseURL);
+
+        const textTitle = 'TA Direct Text Document';
+        const textRes = await apiCtx.post('/api/documents/text', {
+            data: {
+                courseId: COURSE_ID,
+                lectureName: 'Unit 1',
+                documentType: 'lecture-notes',
+                instructorId,
+                content: 'A denied TA should not be able to create this text document.',
+                title: textTitle,
+            },
+            failOnStatusCode: false,
+        });
+        expect.soft(textRes.status()).toBe(403);
+
+        const uploadRes = await apiCtx.post('/api/documents/upload', {
+            multipart: {
+                courseId: COURSE_ID,
+                lectureName: 'Unit 1',
+                documentType: 'lecture-notes',
+                instructorId,
+                title: 'TA Direct Uploaded Document',
+                file: {
+                    name: 'ta-direct-upload.txt',
+                    mimeType: 'text/plain',
+                    buffer: Buffer.from('A denied TA should not upload this file.'),
+                },
+            },
+            failOnStatusCode: false,
+        });
+        expect.soft(uploadRes.status()).toBe(403);
+
+        const deleteRes = await apiCtx.delete(`/api/documents/${seededDocumentId}`, {
+            data: { instructorId },
+            failOnStatusCode: false,
+        });
+        expect.soft(deleteRes.status()).toBe(403);
+
+        const documentState = await withDb(async (db) => {
+            const documents = await db.collection('documents').find({
+                courseId: COURSE_ID,
+                $or: [
+                    { documentId: seededDocumentId },
+                    { originalName: textTitle },
+                    { originalName: 'TA Direct Uploaded Document' },
+                    { filename: 'TA Direct Uploaded Document' },
+                    { filename: `${textTitle}.txt` },
+                ],
+            }).toArray();
+            const course = await db.collection('courses').findOne({ courseId: COURSE_ID });
+            return { documents, course };
+        });
+        const documentIds = documentState.documents.map((document) => document.documentId);
+        const documentNames = documentState.documents.map((document) => document.originalName || document.filename);
+        const unitDocuments = documentState.course.lectures[0].documents || [];
+
+        expect.soft(documentIds).toContain(seededDocumentId);
+        expect.soft(unitDocuments.some((document) => document.documentId === seededDocumentId)).toBe(true);
+        expect.soft(documentNames).not.toContain(textTitle);
+        expect.soft(documentNames).not.toContain('TA Direct Uploaded Document');
+
+        await apiCtx.dispose();
+    });
+
+    test('TA cannot mutate instructor settings APIs even when course upload permission is allowed', async ({ baseURL }) => {
+        const taId = await getUserIdByUsername(user.username);
+        await seedCourseWithTA({
+            taPermissions: {
+                [taId]: {
+                    canAccessCourses: true,
+                    canAccessFlags: true,
+                    updatedAt: new Date(),
+                },
+            },
+        });
+
+        const apiCtx = await loginViaAPI(baseURL);
+
+        const promptsRes = await apiCtx.post('/api/settings/prompts', {
+            data: {
+                courseId: COURSE_ID,
+                base: 'TA injected base prompt',
+                protege: 'TA injected protege prompt',
+                tutor: 'TA injected tutor prompt',
+                explain: 'TA injected explain prompt',
+                directive: 'TA injected directive prompt',
+                quizHelp: 'TA injected quiz help prompt',
+                additiveRetrieval: false,
+                studentIdleTimeout: 60,
+            },
+            failOnStatusCode: false,
+        });
+        expect.soft(promptsRes.status()).toBe(403);
+
+        const quizRes = await apiCtx.post('/api/settings/quiz', {
+            data: {
+                courseId: COURSE_ID,
+                enabled: true,
+                testableUnits: ['Unit 1'],
+                allowLectureMaterialAccess: false,
+                allowSourceAttributionDownloads: true,
+            },
+            failOnStatusCode: false,
+        });
+        expect.soft(quizRes.status()).toBe(403);
+
+        const anonymizeRes = await apiCtx.post('/api/settings/anonymize-students', {
+            data: {
+                courseId: COURSE_ID,
+                enabled: false,
+            },
+            failOnStatusCode: false,
+        });
+        expect.soft(anonymizeRes.status()).toBe(403);
+
+        const adminPromptRes = await apiCtx.post('/api/settings/question-prompts', {
+            data: {
+                courseId: COURSE_ID,
+                systemPrompt: 'TA injected system prompt',
+                trueFalse: 'TA injected true false prompt',
+                multipleChoice: 'TA injected multiple choice prompt',
+                shortAnswer: 'TA injected short answer prompt',
+            },
+            failOnStatusCode: false,
+        });
+        expect.soft(adminPromptRes.status()).toBe(403);
+
+        const mentalHealthRes = await apiCtx.post('/api/settings/mental-health-prompt', {
+            data: {
+                courseId: COURSE_ID,
+                prompt: 'TA injected mental health prompt',
+            },
+            failOnStatusCode: false,
+        });
+        expect.soft(mentalHealthRes.status()).toBe(403);
+
+        const courseAfterAttempts = await withDb((db) =>
+            db.collection('courses').findOne({ courseId: COURSE_ID })
+        );
+        expect.soft(courseAfterAttempts.prompts).toBeUndefined();
+        expect.soft(courseAfterAttempts.quizSettings).toBeUndefined();
+        expect.soft(courseAfterAttempts.anonymizeStudents?.[taId]).toBeUndefined();
+        expect.soft(courseAfterAttempts.questionPrompts).toBeUndefined();
+        expect.soft(courseAfterAttempts.mentalHealthDetectionPrompt).toBeUndefined();
+
+        await apiCtx.dispose();
+    });
+});
+
+test.describe('TA cross-course API scoping', () => {
+    test('TA permissions are scoped to the requested course, not any course with that permission', async ({ baseURL }) => {
+        await seedTwoAssignedCoursesWithDifferentPermissions();
+        await seedFlaggedQuestion(COURSE_ID);
+        await withDb(async (db) => {
+            await db.collection('courses').updateOne(
+                { courseId: OTHER_COURSE_ID },
+                { $set: { approvedStruggleTopics: ['Other original topic'] } }
+            );
+        });
+
+        const apiCtx = await loginViaAPI(baseURL);
+
+        const flagsRes = await apiCtx.get(`/api/flags/course/${COURSE_ID}`, {
+            failOnStatusCode: false,
+        });
+        expect.soft(flagsRes.status()).toBe(403);
+
+        const statsRes = await apiCtx.get(`/api/flags/stats/${COURSE_ID}`, {
+            failOnStatusCode: false,
+        });
+        expect.soft(statsRes.status()).toBe(403);
+
+        const updateOtherTopicsRes = await apiCtx.put(`/api/courses/${OTHER_COURSE_ID}/approved-topics`, {
+            data: { topics: ['TA cross-course injected topic'] },
+            failOnStatusCode: false,
+        });
+        expect.soft(updateOtherTopicsRes.status()).toBe(403);
+
+        const otherCourseAfterAttempts = await withDb((db) =>
+            db.collection('courses').findOne({ courseId: OTHER_COURSE_ID })
+        );
+        expect.soft(otherCourseAfterAttempts.approvedStruggleTopics).toEqual(['Other original topic']);
+
+        await apiCtx.dispose();
+    });
+
+    test('TA with canAccessFlags=false cannot use non-course-scoped flag APIs', async ({ baseURL }) => {
+        const taId = await getUserIdByUsername(user.username);
+        await seedCourseWithTA({
+            taPermissions: {
+                [taId]: {
+                    canAccessCourses: true,
+                    canAccessFlags: false,
+                    updatedAt: new Date(),
+                },
+            },
+        });
+        await seedFlaggedQuestion(COURSE_ID);
+
+        const apiCtx = await loginViaAPI(baseURL);
+
+        const byStatusRes = await apiCtx.get('/api/flags/status/pending', {
+            failOnStatusCode: false,
+        });
+        expect.soft(byStatusRes.status()).toBe(403);
+
+        const statsRes = await apiCtx.get(`/api/flags/stats/${COURSE_ID}`, {
+            failOnStatusCode: false,
+        });
+        expect.soft(statsRes.status()).toBe(403);
+
+        await apiCtx.dispose();
+    });
+});
+
 test.describe('TA instructor-only guardrails', () => {
+    test('TA cannot access instructor home, settings, downloads, or student hub pages', async ({ page }) => {
+        await seedCourseWithTA();
+        await loginViaUI(page);
+
+        const instructorOnlyPaths = [
+            '/instructor/home',
+            '/instructor/settings',
+            '/instructor/downloads',
+            '/instructor/student-hub',
+        ];
+
+        for (const path of instructorOnlyPaths) {
+            await page.goto(path);
+            await page.waitForLoadState('domcontentloaded');
+
+            const finalPath = new URL(page.url()).pathname;
+            expect.soft(finalPath, `${path} should route a TA to TA-specific pages`).toMatch(/^\/ta(?:\/settings)?\/?$/);
+        }
+    });
+
     test('authorized TA visiting instructor TA management hub is routed to shared course upload page', async ({ page }) => {
         await seedCourseWithTA();
         await loginViaUI(page);
