@@ -5,7 +5,7 @@
  * suite is for shape, status codes, persistence, and the LLM-backed paths.
  */
 
-const { test, expect, request } = require('@playwright/test');
+const { test, expect, request } = require('./fixtures/monocart');
 const { TEST_USERS, storageStatePath } = require('./helpers/users');
 const {
     QUIZ_COURSE_ID,

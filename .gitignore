@@ -4,6 +4,8 @@
 # Dependencies
 /node_modules
 /playwright-report
+/monocart-report
+/coverage-reports
 /test-results
 /playwright/.auth
 package-lock.json

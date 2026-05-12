@@ -10,7 +10,7 @@
  * through MongoDB, the helper modules seed real documents — no mocks.
  */
 
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./fixtures/monocart');
 const { TEST_USERS, loadCredentials, storageStatePath } = require('./helpers/users');
 const { withDb, getUserIdByUsername } = require('./helpers/quiz');
 const {

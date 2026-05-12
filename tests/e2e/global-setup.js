@@ -1,5 +1,6 @@
 // @ts-check
 const fs = require('fs');
+const path = require('path');
 const crypto = require('crypto');
 const { request } = require('@playwright/test');
 const {
@@ -8,6 +9,8 @@ const {
     CREDENTIALS_PATH,
     storageStatePath,
 } = require('./helpers/users');
+
+const NODE_V8_COVERAGE_DIR = path.resolve(__dirname, '../../test-results/.v8-coverage');
 
 function loadOrGenerateCredentials() {
     const existing = fs.existsSync(CREDENTIALS_PATH)
@@ -82,6 +85,13 @@ module.exports = async function globalSetup(config) {
     const baseURL = config.projects[0].use.baseURL;
     if (!baseURL) {
         throw new Error('global-setup: baseURL is not configured on the chromium project');
+    }
+
+    fs.mkdirSync(NODE_V8_COVERAGE_DIR, { recursive: true });
+    for (const file of fs.readdirSync(NODE_V8_COVERAGE_DIR)) {
+        if (file.endsWith('.json')) {
+            fs.rmSync(path.join(NODE_V8_COVERAGE_DIR, file), { force: true });
+        }
     }
 
     fs.mkdirSync(STORAGE_STATE_DIR, { recursive: true });
