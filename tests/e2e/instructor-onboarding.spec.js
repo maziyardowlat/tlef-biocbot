@@ -2,7 +2,7 @@
 require('dotenv').config();
 const path = require('path');
 const { MongoClient } = require('mongodb');
-const { test, expect, request } = require('@playwright/test');
+const { test, expect, request } = require('./fixtures/monocart');
 const { TEST_USERS, loadCredentials } = require('./helpers/users');
 
 const user = TEST_USERS.instructor_fresh;

@@ -5,7 +5,7 @@
  * disabled state, and nav visibility.
  */
 
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./fixtures/monocart');
 const { TEST_USERS, loadCredentials } = require('./helpers/users');
 const {
     QUIZ_COURSE_ID,

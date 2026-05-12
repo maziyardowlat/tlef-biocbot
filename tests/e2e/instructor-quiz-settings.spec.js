@@ -5,7 +5,7 @@
  * (API) — the two halves of how instructors configure what students see.
  */
 
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./fixtures/monocart');
 const { TEST_USERS, loadCredentials, storageStatePath } = require('./helpers/users');
 const {
     QUIZ_COURSE_ID,

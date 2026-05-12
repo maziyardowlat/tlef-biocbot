@@ -1,7 +1,7 @@
 // @ts-check
 require('dotenv').config();
 const { MongoClient } = require('mongodb');
-const { test, expect } = require('@playwright/test');
+const { test, expect } = require('./fixtures/monocart');
 const { TEST_USERS, loadCredentials } = require('./helpers/users');
 
 const user = TEST_USERS.instructor;

@@ -20,7 +20,7 @@
  * admin halves and the cross-role round-trips.
  */
 
-const { test, expect, request } = require('@playwright/test');
+const { test, expect, request } = require('./fixtures/monocart');
 const { TEST_USERS, loadCredentials, storageStatePath } = require('./helpers/users');
 const { withDb, getUserIdByUsername } = require('./helpers/quiz');
 
