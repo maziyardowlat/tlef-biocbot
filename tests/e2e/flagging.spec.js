@@ -626,6 +626,38 @@ test.describe('Student views their flags — GET /api/flags/my', () => {
         expect(allBody.data.flags.find((f) => f.flagId === id)).toBeTruthy();
     });
 
+    test('DESIRED: direct /my access does not return flags from courses where the student is not enrolled', async ({ request: api }) => {
+        const enrolledFlagId = await seedFlag({
+            flagId: 'e2e-my-enrolled-course',
+            flagDescription: 'Visible enrolled-course flag',
+        });
+
+        await seedOtherCourse();
+        const unEnrolledFlagId = await seedFlag({
+            flagId: 'e2e-my-unenrolled-course',
+            courseId: OTHER_COURSE_ID,
+            flagDescription: 'Must not leak from an un-enrolled course',
+        });
+
+        const all = await api.get('/api/flags/my');
+        expect(all.ok()).toBeTruthy();
+        const allBody = await all.json();
+        const allIds = allBody.data.flags.map((f) => f.flagId);
+
+        expect(allIds).toContain(enrolledFlagId);
+        expect(allIds).not.toContain(unEnrolledFlagId);
+
+        const scoped = await api.get(`/api/flags/my?courseId=${OTHER_COURSE_ID}`, {
+            failOnStatusCode: false,
+        });
+        if (scoped.ok()) {
+            const scopedBody = await scoped.json();
+            expect(scopedBody.data.flags.map((f) => f.flagId)).not.toContain(unEnrolledFlagId);
+        } else {
+            expect([403, 404]).toContain(scoped.status());
+        }
+    });
+
     test('includes the instructor response once the flag is resolved', async ({ request: api }) => {
         const flagId = await seedFlag({
             flagStatus: 'resolved',
