@@ -1,10 +1,7 @@
 // @ts-check
-const fs = require('fs');
-const path = require('path');
 const { test, expect } = require('./fixtures/monocart');
+const { storageStatePath } = require('./helpers/users');
 
-const SCRIPT_PATH = path.join(__dirname, '..', '..', 'public', 'student', 'scripts', 'flag-notifications.js');
-const SCRIPT_URL = '/student/scripts/flag-notifications.js';
 const STORAGE_KEY = 'biocbot_last_known_flags';
 const STUDENT_ID = 'user_e2e_student';
 const COURSE_ID = 'BIOC-E2E-FLAG-NOTIFICATIONS';
@@ -100,22 +97,41 @@ async function loadHarness(page, options = {}) {
     const apiRequests = [];
     const queuedResponses = /** @type {MockFlagResponse[]} */ ([...responses]);
 
-    await page.route('**/e2e-flag-notifications-harness', (route) => route.fulfill({
-        status: 200,
-        contentType: 'text/html',
-        body: '<!doctype html><html><head><title>Flag Notifications Harness</title></head><body><main id="app"></main></body></html>',
-    }));
-
     await page.route('**/student/flagged', (route) => route.fulfill({
         status: 200,
         contentType: 'text/html',
         body: '<!doctype html><html><body><main id="flagged-page">Flagged questions</main></body></html>',
     }));
 
-    await page.route(`**${SCRIPT_URL}`, (route) => route.fulfill({
+    await page.route('**/api/settings/llm-tag', (route) => route.fulfill({
         status: 200,
-        contentType: 'application/javascript',
-        body: fs.readFileSync(SCRIPT_PATH, 'utf8'),
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, llmIndex: null, reasoningIndex: null }),
+    }));
+
+    await page.route('**/api/user-agreement/status', (route) => route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, hasAgreed: true }),
+    }));
+
+    await page.route('**/api/courses/*/student-enrollment', (route) => route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+            success: true,
+            data: {
+                enrolled: true,
+                isBanned: false,
+                role: 'student',
+            },
+        }),
+    }));
+
+    await page.route('**/api/students/*/*/sessions/own', (route) => route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, data: { sessions: [] } }),
     }));
 
     await page.route('**/api/flags/my', async (route) => {
@@ -134,35 +150,38 @@ async function loadHarness(page, options = {}) {
         });
     });
 
-    await page.goto('/e2e-flag-notifications-harness');
-
-    await page.evaluate(({ storageKey, initialFlagsValue, selectedCourseIdValue, studentId }) => {
+    await page.addInitScript(({ storageKey, initialFlagsValue, selectedCourseIdValue, studentId, accelerateTimeouts }) => {
         localStorage.clear();
         localStorage.setItem(storageKey, JSON.stringify(initialFlagsValue));
         localStorage.setItem('selectedCourseId', selectedCourseIdValue);
-        /** @type {any} */ (window).getCurrentUser = () => ({
+        localStorage.setItem('currentUser', JSON.stringify({
             userId: studentId,
             username: 'e2e_student',
+            displayName: 'E2E Student',
             role: 'student',
-        });
-    }, {
-        storageKey: STORAGE_KEY,
-        initialFlagsValue: initialFlags,
-        selectedCourseIdValue: selectedCourseId,
-        studentId: STUDENT_ID,
-    });
+        }));
 
-    if (shortAutoDismiss) {
-        await page.evaluate(() => {
+        if (accelerateTimeouts) {
             const nativeSetTimeout = window.setTimeout.bind(window);
             /** @type {any} */ (window).setTimeout = (callback, delay, ...args) => {
                 const acceleratedDelay = delay === 8000 ? 800 : delay === 300 ? 10 : delay;
                 return nativeSetTimeout(callback, acceleratedDelay, ...args);
             };
-        });
-    }
+        }
+    }, {
+        storageKey: STORAGE_KEY,
+        initialFlagsValue: initialFlags,
+        selectedCourseIdValue: selectedCourseId,
+        studentId: STUDENT_ID,
+        accelerateTimeouts: shortAutoDismiss,
+    });
 
-    await page.addScriptTag({ url: SCRIPT_URL });
+    await page.goto('/student/history');
+
+    await page.evaluate(() => {
+        /** @type {any} */ (window).initializeFlagNotifications = async () => {};
+    });
+    await page.waitForFunction(() => typeof /** @type {any} */ (window).checkForFlagUpdates === 'function');
 
     return { apiRequests };
 }
@@ -180,6 +199,8 @@ async function storedFlags(page) {
 }
 
 test.describe('public/student/scripts/flag-notifications.js', () => {
+    test.use({ storageState: storageStatePath('student') });
+
     test('first successful response seeds local notification state without showing a stale notification', async ({ page }) => {
         const pendingFlag = flag({ flagId: 'flag_e2e_first_seen' });
         const { apiRequests } = await loadHarness(page, {
