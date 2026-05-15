@@ -150,6 +150,12 @@ async function installInstructorRoutes(page, options = {}) {
         const pathname = url.pathname;
         const method = request.method();
 
+        for (const override of options.routeOverrides || []) {
+            if (await override(route, { request, url, pathname, method, course, captured })) {
+                return;
+            }
+        }
+
         if (pathname === '/api/settings/llm-tag') {
             await route.fulfill({ json: { success: true, llmIndex: 1, reasoningIndex: 2 } });
             return;
@@ -866,5 +872,496 @@ test.describe('instructor.js focused browser coverage', () => {
 
         await expect(page.locator('#course-title')).toHaveText('No Course Found');
         await expect(page.locator('.empty-course-state')).toContainText('Go to Onboarding');
+    });
+
+    test('replays startup event wiring for TA navigation, modal backdrops, settings toggle, and polling handlers', async ({ page }) => {
+        await openInstructorDocuments(page);
+
+        const result = await page.evaluate(async () => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            const originalIsTA = instructorWindow.isTA;
+            const originalSetInterval = window.setInterval;
+            const originalClearInterval = window.clearInterval;
+            const intervalCallbacks = [];
+
+            function ensureElement(id, tag = 'div') {
+                let element = document.getElementById(id);
+                if (!element) {
+                    element = document.createElement(tag);
+                    element.id = id;
+                    document.body.appendChild(element);
+                }
+                return element;
+            }
+
+            [
+                'instructor-home-nav',
+                'instructor-documents-nav',
+                'instructor-onboarding-nav',
+                'instructor-flagged-nav',
+                'instructor-downloads-nav',
+                'instructor-ta-hub-nav',
+                'instructor-settings-nav',
+                'ta-dashboard-nav',
+                'ta-courses-nav',
+                'ta-support-nav',
+                'ta-settings-nav',
+            ].forEach((id) => ensureElement(id));
+
+            const avatar = ensureElement('focused-user-avatar');
+            avatar.className = 'user-avatar';
+            const role = ensureElement('focused-user-role');
+            role.className = 'user-role';
+
+            const myCourses = /** @type {HTMLAnchorElement} */ (ensureElement('ta-my-courses-link', 'a'));
+            myCourses.href = '#courses';
+            const support = /** @type {HTMLAnchorElement} */ (ensureElement('ta-student-support-link', 'a'));
+            support.href = '#support';
+            const additiveToggle = /** @type {HTMLInputElement} */ (ensureElement('additive-retrieval-toggle', 'input'));
+            additiveToggle.type = 'checkbox';
+            additiveToggle.disabled = true;
+
+            instructorWindow.isTA = () => true;
+            window.setInterval = /** @type {any} */ ((callback) => {
+                intervalCallbacks.push(callback);
+                Promise.resolve().then(callback);
+                return 12345;
+            });
+            window.clearInterval = /** @type {any} */ (() => {});
+
+            document.dispatchEvent(new Event('DOMContentLoaded'));
+            await new Promise((resolve) => setTimeout(resolve, 50));
+            await Promise.all(intervalCallbacks.map((callback) => Promise.resolve(callback())));
+            document.dispatchEvent(new Event('visibilitychange'));
+
+            document.querySelector('.add-content-btn.additional-material')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            await new Promise((resolve) => setTimeout(resolve, 0));
+
+            instructorWindow.openUploadModal('Unit 1', 'additional');
+            document.getElementById('upload-modal')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+            instructorWindow.openQuestionModal('Unit 1');
+            document.getElementById('question-modal')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+            instructorWindow.openQuestionLearningObjectiveModal('Unit 1', 'q_existing');
+            document.getElementById('question-learning-objective-modal')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+            instructorWindow.openAutoLinkConfirmationModal('Unit 1');
+            document.getElementById('auto-link-confirmation-modal')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+            document.querySelector('.section-header')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            document.querySelector('.accordion-header .publish-toggle input')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            document.querySelector('.accordion-header')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+            const fileInput = /** @type {HTMLInputElement} */ (document.getElementById('file-input'));
+            if (fileInput) {
+                const dataTransfer = new DataTransfer();
+                dataTransfer.items.add(new File(['changed'], 'changed-notes.txt', { type: 'text/plain' }));
+                fileInput.files = dataTransfer.files;
+                fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+
+            additiveToggle.checked = !additiveToggle.checked;
+            additiveToggle.dispatchEvent(new Event('change', { bubbles: true }));
+            document.querySelector('.publish-toggle input')?.dispatchEvent(new Event('change', { bubbles: true }));
+
+            const firstRenameInput = /** @type {HTMLInputElement} */ (document.querySelector('.unit-rename-input'));
+            instructorWindow.openRenameUnitInput('Unit 1');
+            firstRenameInput?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+            instructorWindow.openRenameUnitInput('Unit 1');
+            firstRenameInput?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+            await new Promise((resolve) => setTimeout(resolve, 50));
+
+            window.setInterval = originalSetInterval;
+            window.clearInterval = originalClearInterval;
+            instructorWindow.isTA = originalIsTA;
+
+            return {
+                instructorHomeDisplay: document.getElementById('instructor-home-nav')?.style.display,
+                taCoursesDisplay: document.getElementById('ta-courses-nav')?.style.display,
+                additiveDisabled: additiveToggle.disabled,
+            };
+        });
+
+        expect(result.instructorHomeDisplay).toBe('none');
+        expect(result.taCoursesDisplay).toBe('block');
+        expect(result.additiveDisabled).toBe(false);
+    });
+
+    test('covers route failure branches without changing production behavior', async ({ page }) => {
+        const failures = {
+            addUnit: 0,
+            deleteUnit: 0,
+            publishHttp: 0,
+            publishResult: 0,
+            publishStatus: 0,
+            downloadJson: 0,
+            extractEmpty: 0,
+            extractError: 0,
+            bulkError: 0,
+            objectiveError: 0,
+            thresholdError: 0,
+            materials404: 0,
+            materials500: 0,
+            cleanupNone: 0,
+            cleanupError: 0,
+            renameError: 0,
+            questionUpdateError: 0,
+            generateError: 0,
+            textUploadError: 0,
+            fileUploadError: 0,
+        };
+
+        await openInstructorDocuments(page, {
+            routeOverrides: [
+                async (route, { request, pathname, method }) => {
+                    if (pathname === `/api/courses/${COURSE_ID}/units` && method === 'POST' && failures.addUnit) {
+                        failures.addUnit -= 1;
+                        await route.fulfill({ status: 500, body: 'add failed' });
+                        return true;
+                    }
+                    if (pathname.startsWith(`/api/courses/${COURSE_ID}/units/`) && method === 'DELETE' && failures.deleteUnit) {
+                        failures.deleteUnit -= 1;
+                        await route.fulfill({ status: 500, body: 'delete failed' });
+                        return true;
+                    }
+                    if (pathname === '/api/lectures/publish' && failures.publishHttp) {
+                        failures.publishHttp -= 1;
+                        await route.fulfill({ status: 409, json: { success: false, message: 'publish conflict' } });
+                        return true;
+                    }
+                    if (pathname === '/api/lectures/publish' && failures.publishResult) {
+                        failures.publishResult -= 1;
+                        await route.fulfill({ json: { success: false, message: 'publish rejected' } });
+                        return true;
+                    }
+                    if (pathname === '/api/lectures/publish-status' && failures.publishStatus) {
+                        failures.publishStatus -= 1;
+                        await route.fulfill({ status: 500, body: 'status failed' });
+                        return true;
+                    }
+                    if (pathname === '/api/documents/doc_lecture/download' && failures.downloadJson) {
+                        failures.downloadJson -= 1;
+                        await route.fulfill({ status: 403, json: { message: 'download denied' } });
+                        return true;
+                    }
+                    if (pathname === '/api/documents/doc_practice/extract-questions' && failures.extractEmpty) {
+                        failures.extractEmpty -= 1;
+                        await route.fulfill({ json: { success: true, data: { wasChunked: false, questions: [] } } });
+                        return true;
+                    }
+                    if (pathname === '/api/documents/doc_practice/extract-questions' && failures.extractError) {
+                        failures.extractError -= 1;
+                        await route.fulfill({ status: 500, json: { success: false, message: 'extract failed' } });
+                        return true;
+                    }
+                    if (pathname === '/api/questions/bulk' && failures.bulkError) {
+                        failures.bulkError -= 1;
+                        await route.fulfill({ status: 500, json: { success: false, message: 'bulk failed' } });
+                        return true;
+                    }
+                    if (pathname === '/api/learning-objectives' && method === 'POST' && failures.objectiveError) {
+                        failures.objectiveError -= 1;
+                        await route.fulfill({ status: 500, body: 'objective failed' });
+                        return true;
+                    }
+                    if (pathname === '/api/lectures/pass-threshold' && method === 'POST' && failures.thresholdError) {
+                        failures.thresholdError -= 1;
+                        await route.fulfill({ status: 500, body: 'threshold failed' });
+                        return true;
+                    }
+                    if (pathname === '/api/courses/course-materials/confirm' && failures.materials404) {
+                        failures.materials404 -= 1;
+                        await route.fulfill({ status: 404, body: 'missing endpoint' });
+                        return true;
+                    }
+                    if (pathname === '/api/courses/course-materials/confirm' && failures.materials500) {
+                        failures.materials500 -= 1;
+                        await route.fulfill({ status: 500, body: 'confirm failed' });
+                        return true;
+                    }
+                    if (pathname === '/api/documents/cleanup-orphans' && failures.cleanupNone) {
+                        failures.cleanupNone -= 1;
+                        await route.fulfill({ json: { success: true, data: { totalOrphans: 0 } } });
+                        return true;
+                    }
+                    if (pathname === '/api/documents/cleanup-orphans' && failures.cleanupError) {
+                        failures.cleanupError -= 1;
+                        await route.fulfill({ status: 500, body: 'cleanup failed' });
+                        return true;
+                    }
+                    if (pathname === `/api/courses/${COURSE_ID}/units/Unit%201/rename` && failures.renameError) {
+                        failures.renameError -= 1;
+                        await route.fulfill({ status: 500, body: 'rename failed' });
+                        return true;
+                    }
+                    if (pathname === '/api/questions/q_existing' && method === 'PUT' && failures.questionUpdateError) {
+                        failures.questionUpdateError -= 1;
+                        await route.fulfill({ status: 500, body: 'question update failed' });
+                        return true;
+                    }
+                    if (pathname === '/api/questions/generate-ai' && failures.generateError) {
+                        failures.generateError -= 1;
+                        await route.fulfill({ status: 503, json: { success: false, message: 'generation down' } });
+                        return true;
+                    }
+                    if (pathname === '/api/documents/text' && failures.textUploadError) {
+                        failures.textUploadError -= 1;
+                        await route.fulfill({ status: 500, body: 'text upload failed' });
+                        return true;
+                    }
+                    if (pathname === '/api/documents/upload' && failures.fileUploadError) {
+                        failures.fileUploadError -= 1;
+                        await route.fulfill({ status: 500, body: 'file upload failed' });
+                        return true;
+                    }
+                    void request;
+                    return false;
+                },
+            ],
+        });
+
+        await page.evaluate(async () => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            URL.createObjectURL = () => 'blob:focused-error-download';
+            URL.revokeObjectURL = () => {};
+            window.confirm = () => true;
+
+            instructorWindow.openUploadModal('Unit 1', 'additional');
+            await instructorWindow.handleUpload();
+        });
+
+        failures.addUnit = 1;
+        await page.evaluate(async () => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            await instructorWindow.addNewUnit();
+        });
+
+        failures.deleteUnit = 1;
+        await page.evaluate(async () => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            instructorWindow.openDeleteUnitModal('Unit 2');
+            await instructorWindow.confirmDeleteUnit();
+        });
+
+        failures.publishHttp = 1;
+        await page.evaluate(async () => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            await instructorWindow.updatePublishStatus('Unit 1', false);
+        });
+
+        failures.publishResult = 1;
+        await page.evaluate(async () => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            await instructorWindow.updatePublishStatus('Unit 1', true);
+        });
+
+        failures.publishStatus = 1;
+        await page.evaluate(async () => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            await instructorWindow.loadPublishStatus(false);
+        });
+
+        failures.downloadJson = 1;
+        await page.evaluate(async () => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            await instructorWindow.downloadDocument('doc_lecture');
+        });
+
+        failures.extractEmpty = 1;
+        await page.evaluate(async () => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            instructorWindow.showDocumentModal({
+                documentId: 'doc_practice',
+                originalName: 'Practice quiz.txt',
+                documentType: 'practice-quiz',
+                content: 'empty quiz',
+                lectureName: 'Unit 1',
+                courseId: 'INSTRUCTOR-JS-FOCUSED',
+            });
+            await instructorWindow.extractAssessmentQuestions('doc_practice', 'Unit 1', 'INSTRUCTOR-JS-FOCUSED');
+        });
+
+        failures.extractError = 1;
+        await page.evaluate(async () => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            instructorWindow.showDocumentModal({
+                documentId: 'doc_practice',
+                originalName: 'Practice quiz.txt',
+                documentType: 'practice-quiz',
+                content: 'broken quiz',
+                lectureName: 'Unit 1',
+                courseId: 'INSTRUCTOR-JS-FOCUSED',
+            });
+            await instructorWindow.extractAssessmentQuestions('doc_practice', 'Unit 1', 'INSTRUCTOR-JS-FOCUSED');
+        });
+
+        await page.evaluate(async () => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            instructorWindow.showQuestionReviewModal([
+                { questionType: 'short-answer', question: 'Unselected?', correctAnswer: '', hasAnswer: false },
+            ], 'Unit 1', 'INSTRUCTOR-JS-FOCUSED', false);
+            await instructorWindow.saveSelectedQuestions('Unit 1', 'INSTRUCTOR-JS-FOCUSED');
+        });
+
+        failures.bulkError = 1;
+        await page.evaluate(async () => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            instructorWindow.showQuestionReviewModal([
+                { questionType: 'short-answer', question: 'Selected?', correctAnswer: 'Yes', hasAnswer: true },
+            ], 'Unit 1', 'INSTRUCTOR-JS-FOCUSED', false);
+            await instructorWindow.saveSelectedQuestions('Unit 1', 'INSTRUCTOR-JS-FOCUSED');
+        });
+
+        failures.objectiveError = 1;
+        failures.thresholdError = 1;
+        failures.materials404 = 1;
+        failures.materials500 = 1;
+        failures.cleanupNone = 1;
+        failures.cleanupError = 1;
+        failures.renameError = 1;
+        failures.questionUpdateError = 1;
+        failures.generateError = 1;
+        failures.textUploadError = 1;
+        failures.fileUploadError = 1;
+
+        await page.evaluate(async () => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+
+            await instructorWindow.saveObjectives('Unit 1');
+            await instructorWindow.savePassThreshold('Unit 1', 1);
+            await instructorWindow.confirmCourseMaterials('Unit 1');
+            await instructorWindow.confirmCourseMaterials('Unit 1');
+            await instructorWindow.cleanupOrphanedDocuments();
+            await instructorWindow.cleanupOrphanedDocuments();
+
+            instructorWindow.openRenameUnitInput('Unit 1');
+            /** @type {HTMLInputElement} */ (document.querySelector('.unit-rename-input')).value = 'Rename Failure';
+            await instructorWindow.saveUnitDisplayName('Unit 1');
+
+            instructorWindow.openQuestionLearningObjectiveModal('Unit 1', 'q_existing');
+            await instructorWindow.saveQuestionLearningObjective();
+
+            instructorWindow.openQuestionModal('Unit 1');
+            /** @type {HTMLSelectElement} */ (document.getElementById('question-type')).value = 'multiple-choice';
+            instructorWindow.updateQuestionForm();
+            await instructorWindow.generateAIQuestionContent();
+
+            instructorWindow.openUploadModal('Unit 1', 'additional');
+            instructorWindow.showTextInput();
+            /** @type {HTMLTextAreaElement} */ (document.getElementById('text-input')).value = 'upload will fail';
+            await instructorWindow.handleUpload();
+
+            instructorWindow.openUploadModal('Unit 1', 'lecture-notes');
+            instructorWindow.handleFileUpload(new File(['bad'], 'bad-notes.txt', { type: 'text/plain' }));
+            await instructorWindow.handleUpload();
+        });
+
+        await expect(page.locator('.notification').filter({ hasText: /failed|Error|No questions|denied|Please provide/i }).first()).toBeVisible();
+    });
+
+    test('covers question, topic, document, and helper edge branches', async ({ page }) => {
+        await openInstructorDocuments(page);
+
+        const edgeResults = await page.evaluate(async () => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+
+            instructorWindow.showNotification('Closable notice', 'info');
+            document.querySelector('.notification-close')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+            const topicPromise = instructorWindow.openTopicReviewModal(
+                'INSTRUCTOR-JS-FOCUSED',
+                'Only row source',
+                [],
+                ['Single Topic'],
+                'Unit 1'
+            );
+            document.querySelector('#topic-review-modal .topic-review-remove')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            /** @type {HTMLInputElement} */ (document.querySelector('#topic-review-new-input')).value = 'Manual Recovery';
+            document.querySelector('#topic-review-add-btn')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            document.querySelector('#topic-review-save-btn')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            await topicPromise;
+
+            instructorWindow.openUploadModal('Unit 1', 'practice-quiz');
+            instructorWindow.showInlineTopicReview('INSTRUCTOR-JS-FOCUSED', 'No topics source', [], []);
+            instructorWindow.addInlineTopicRow('Temporary Topic', { unitId: 'Unit 1', source: 'manual' });
+            document.querySelector('#upload-topic-review-list .topic-review-remove')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            await instructorWindow.handleSaveTopicsFromModal();
+
+            instructorWindow.openUploadModal('Unit 1', 'unknown-kind');
+            instructorWindow.resetToSelection();
+            instructorWindow.closeUploadModal();
+
+            const section = document.querySelector('.course-materials-section .section-content');
+            if (section) {
+                section.insertAdjacentHTML('beforeend', `
+                    <div class="file-item">
+                        <h3>Practice Questions/Tutorial - Unit 1</h3>
+                        <div class="status-text">Not Uploaded</div>
+                        <div class="file-info"><p>Missing</p></div>
+                    </div>
+                `);
+            }
+            instructorWindow.updateFileStatus('practice-questions', 'Unit 1', 'uploaded', 'practice.txt');
+            instructorWindow.updateFileStatus('practice-questions', 'Unit 1', 'missing', 'practice.txt');
+
+            instructorWindow.showDocumentModal({
+                documentId: 'doc_short',
+                originalName: 'Short answers.txt',
+                documentType: 'lecture-notes',
+                content: '',
+                lectureName: 'Unit 1',
+                courseId: 'INSTRUCTOR-JS-FOCUSED',
+            });
+            document.querySelector('.document-modal')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+
+            instructorWindow.showQuestionReviewModal([
+                { questionType: 'multiple-choice', question: 'MC missing?', options: { a: 'Alpha' }, correctAnswer: '', hasAnswer: false },
+                { questionType: 'short-answer', question: 'SA missing?', correctAnswer: '', hasAnswer: false },
+                { questionType: 'true-false', question: 'TF answered?', correctAnswer: 'False', hasAnswer: true },
+            ], 'Unit 1', 'INSTRUCTOR-JS-FOCUSED', true);
+            /** @type {HTMLSelectElement} */ (document.querySelector('.missing-answer-input[data-index="0"]')).value = 'A';
+            document.querySelector('.missing-answer-input[data-index="0"]')?.dispatchEvent(new Event('change', { bubbles: true }));
+            /** @type {HTMLInputElement} */ (document.querySelector('.missing-answer-input[data-index="1"]')).value = 'Short answer';
+            document.querySelector('.missing-answer-input[data-index="1"]')?.dispatchEvent(new Event('input', { bubbles: true }));
+            /** @type {HTMLInputElement} */ (document.querySelector('.missing-answer-input[data-index="1"]')).value = '';
+            document.querySelector('.missing-answer-input[data-index="1"]')?.dispatchEvent(new Event('input', { bubbles: true }));
+            instructorWindow.closeQuestionReviewModal();
+
+            instructorWindow.openQuestionModal('Unit 1');
+            /** @type {HTMLSelectElement} */ (document.getElementById('question-type')).value = 'true-false';
+            instructorWindow.updateQuestionForm();
+            instructorWindow.populateFormWithAIContent({ question: 'TF generated?', answer: 'true' });
+            /** @type {HTMLSelectElement} */ (document.getElementById('question-type')).value = 'short-answer';
+            instructorWindow.updateQuestionForm();
+            instructorWindow.populateFormWithAIContent({ question: 'SA generated?', EXPECTED_ANSWER: 'Expected detail' });
+
+            const displayContainer = document.createElement('div');
+            document.body.appendChild(displayContainer);
+            /** @type {HTMLSelectElement} */ (document.getElementById('question-type')).value = 'true-false';
+            instructorWindow.displayCurrentQuestion(displayContainer, { question: 'Display TF?', answer: 'False' });
+            /** @type {HTMLSelectElement} */ (document.getElementById('question-type')).value = 'short-answer';
+            instructorWindow.displayCurrentQuestion(displayContainer, { question: 'Display SA?', answer: '' });
+
+            instructorWindow.updateQuestionsDisplay('Unit 2');
+            instructorWindow.checkAIGenerationInModal();
+            instructorWindow.checkAIGenerationAvailability('Unit 1');
+
+            window.alert = () => {};
+            instructorWindow.saveAssessment('Unit 2');
+            instructorWindow.saveAssessment('Unit 1');
+
+            const caseSensitiveMatches = instructorWindow.findElementsContainingText('.folder-name', 'Metabolism', true).length;
+            const missingMaterials = instructorWindow.checkCourseMaterialsAvailable('Missing Unit');
+            const mcLabel = instructorWindow.getQuestionTypeLabel('multiple-choice');
+            const tfAnswer = instructorWindow.getQuestionAnswerDisplay({ type: 'true-false', answer: 'true' });
+
+            return { caseSensitiveMatches, missingMaterials, mcLabel, tfAnswer };
+        });
+
+        expect(edgeResults.caseSensitiveMatches).toBeGreaterThan(0);
+        expect(edgeResults.missingMaterials).toBe(false);
+        expect(edgeResults.mcLabel).toBe('MCQ');
+        expect(edgeResults.tfAnswer).toContain('True');
     });
 });
