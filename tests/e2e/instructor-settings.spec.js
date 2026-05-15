@@ -297,6 +297,308 @@ async function setInputChecked(page, selector, checked) {
     );
 }
 
+function jsonResponse(body, status = 200) {
+    return {
+        status,
+        contentType: 'application/json',
+        body: JSON.stringify(body),
+    };
+}
+
+async function setupMockedSettingsRoutes(page, options = {}) {
+    const state = {
+        canDeleteAll: true,
+        courseId: 'MOCK-SETTINGS',
+        courseName: 'Mock Settings Course',
+        courseStatus: 'active',
+        lectures: [
+            {
+                name: 'Unit 1',
+                displayName: 'Intro Unit',
+                isPublished: true,
+                learningObjectives: ['Objective 1'],
+                assessmentQuestions: [{ questionId: 'mock-q1' }],
+            },
+            {
+                name: 'Unit 2',
+                displayName: 'Advanced Unit',
+                isPublished: true,
+                learningObjectives: ['Objective 2'],
+                assessmentQuestions: [{ questionId: 'mock-q2' }],
+            },
+        ],
+        admins: [
+            {
+                email: TEST_USERS.instructor.email,
+                displayName: 'E2E Instructor',
+                lastLogin: null,
+            },
+            {
+                email: TEST_USERS.instructor_fresh.email,
+                displayName: '<Fresh & Admin>',
+                lastLogin: 'not-a-date',
+            },
+        ],
+        systemAdminListError: false,
+        grantResult: { success: true },
+        revokeResult: { success: true },
+        promptResetResult: {
+            success: true,
+            prompts: {
+                base: 'Default base prompt',
+                protege: 'Default protege prompt',
+                tutor: 'Default tutor prompt',
+                explain: 'Default explain prompt',
+                directive: 'Default directive prompt',
+            },
+        },
+        mhResetResult: { success: true, prompt: 'Default detection prompt' },
+        questionResetResult: {
+            success: true,
+            prompts: {
+                systemPrompt: 'Default question system',
+                trueFalse: 'Default true false',
+                multipleChoice: 'Default multiple choice',
+                shortAnswer: 'Default short answer',
+            },
+        },
+        deleteAllResult: {
+            success: true,
+            data: { qdrantDeletedCount: 4, mongoDeletedCount: 9 },
+        },
+        promptSaveResult: { success: true },
+        transferStatus: 200,
+        transferResult: {
+            success: true,
+            data: {
+                courseId: 'MOCK-SETTINGS-COPY',
+                courseName: 'Mock Settings Copy',
+                warnings: [],
+            },
+        },
+        courseGetStatus: 200,
+        courseGetResult: null,
+        lifecycleStatus: 200,
+        lifecycleResult: { success: true },
+        abortPaths: new Set(),
+        ...options,
+    };
+
+    if (!(state.abortPaths instanceof Set)) {
+        state.abortPaths = new Set(state.abortPaths);
+    }
+
+    await page.route('**/*', async (route) => {
+        const requestUrl = new URL(route.request().url());
+        const { pathname } = requestUrl;
+        const method = route.request().method();
+
+        if (state.abortPaths.has(pathname)) {
+            await route.abort();
+            return;
+        }
+
+        if (pathname === '/api/settings/can-delete-all') {
+            await route.fulfill(jsonResponse({ success: true, canDeleteAll: state.canDeleteAll }));
+            return;
+        }
+
+        if (pathname === '/api/settings/prompts') {
+            if (method === 'POST') {
+                await route.fulfill(jsonResponse(state.promptSaveResult));
+                return;
+            }
+
+            await route.fulfill(jsonResponse({
+                success: true,
+                prompts: {
+                    base: 'Mock base prompt',
+                    protege: 'Mock protege prompt',
+                    tutor: 'Mock tutor prompt',
+                    explain: 'Mock explain prompt',
+                    directive: 'Mock directive prompt',
+                    quizHelp: 'Mock quiz help prompt',
+                    additiveRetrieval: true,
+                    studentIdleTimeout: 300,
+                },
+            }));
+            return;
+        }
+
+        if (pathname === '/api/settings/prompts/reset') {
+            await route.fulfill(jsonResponse(state.promptResetResult));
+            return;
+        }
+
+        if (pathname === '/api/settings/quiz') {
+            if (method === 'POST') {
+                await route.fulfill(jsonResponse({ success: true }));
+                return;
+            }
+
+            await route.fulfill(jsonResponse({
+                success: true,
+                settings: {
+                    enabled: false,
+                    testableUnits: 'all',
+                    allowLectureMaterialAccess: false,
+                    allowSourceAttributionDownloads: true,
+                },
+            }));
+            return;
+        }
+
+        if (pathname.startsWith('/api/courses/') && pathname.endsWith('/transfer')) {
+            await route.fulfill(jsonResponse(state.transferResult, state.transferStatus));
+            return;
+        }
+
+        if (pathname.startsWith('/api/courses/') && pathname.endsWith('/publish-status')) {
+            await route.fulfill(jsonResponse({ success: true, isPublished: true }));
+            return;
+        }
+
+        if (pathname.startsWith('/api/courses/')) {
+            if (method === 'PUT') {
+                await route.fulfill(jsonResponse(state.lifecycleResult, state.lifecycleStatus));
+                return;
+            }
+
+            const courseId = decodeURIComponent(pathname.split('/').pop() || state.courseId);
+            if (state.courseGetResult) {
+                await route.fulfill(jsonResponse(state.courseGetResult, state.courseGetStatus));
+                return;
+            }
+
+            await route.fulfill(jsonResponse({
+                success: true,
+                data: {
+                    courseId,
+                    name: courseId === 'MOCK-SETTINGS-COPY' ? 'Mock Settings Copy' : state.courseName,
+                    courseName: courseId === 'MOCK-SETTINGS-COPY' ? 'Mock Settings Copy' : state.courseName,
+                    status: state.courseStatus,
+                    lectures: state.lectures,
+                },
+            }));
+            return;
+        }
+
+        if (pathname === '/api/settings/anonymize-students') {
+            if (method === 'POST') {
+                await route.fulfill(jsonResponse({ success: true }));
+                return;
+            }
+
+            await route.fulfill(jsonResponse({ success: true, enabled: true }));
+            return;
+        }
+
+        if (pathname === '/api/settings/mental-health-prompt') {
+            if (method === 'POST') {
+                await route.fulfill(jsonResponse({ success: true }));
+                return;
+            }
+
+            await route.fulfill(jsonResponse({ success: true, prompt: 'Mock detection prompt' }));
+            return;
+        }
+
+        if (pathname === '/api/settings/mental-health-prompt/reset') {
+            await route.fulfill(jsonResponse(state.mhResetResult));
+            return;
+        }
+
+        if (pathname === '/api/settings/global') {
+            if (method === 'POST') {
+                await route.fulfill(jsonResponse({ success: true }));
+                return;
+            }
+
+            await route.fulfill(jsonResponse({ success: true, settings: { allowLocalLogin: false } }));
+            return;
+        }
+
+        if (pathname === '/api/settings/llm') {
+            if (method === 'POST') {
+                await route.fulfill(jsonResponse({ success: true }));
+                return;
+            }
+
+            await route.fulfill(jsonResponse({
+                success: true,
+                settings: { model: 'gpt-4.1-mini', reasoningEffort: 'minimal' },
+            }));
+            return;
+        }
+
+        if (pathname === '/api/settings/question-prompts') {
+            if (method === 'POST') {
+                await route.fulfill(jsonResponse({ success: true }));
+                return;
+            }
+
+            await route.fulfill(jsonResponse({
+                success: true,
+                prompts: {
+                    systemPrompt: 'Mock question system prompt',
+                    trueFalse: 'Mock true false prompt',
+                    multipleChoice: 'Mock multiple choice prompt',
+                    shortAnswer: 'Mock short answer prompt',
+                },
+            }));
+            return;
+        }
+
+        if (pathname === '/api/settings/question-prompts/reset') {
+            await route.fulfill(jsonResponse(state.questionResetResult));
+            return;
+        }
+
+        if (pathname === '/api/settings/system-admins') {
+            if (method === 'POST') {
+                await route.fulfill(jsonResponse(state.grantResult));
+                return;
+            }
+
+            if (state.systemAdminListError) {
+                await route.fulfill(jsonResponse({ success: false, error: 'Admin list unavailable' }, 500));
+                return;
+            }
+
+            await route.fulfill(jsonResponse({ success: true, admins: state.admins }));
+            return;
+        }
+
+        if (pathname === '/api/settings/system-admins/revoke') {
+            await route.fulfill(jsonResponse(state.revokeResult));
+            return;
+        }
+
+        if (pathname === '/api/qdrant/delete-all-collections') {
+            await route.fulfill(jsonResponse(state.deleteAllResult));
+            return;
+        }
+
+        if (pathname === '/api/auth/set-course') {
+            await route.fulfill(jsonResponse({ success: true }));
+            return;
+        }
+
+        await route.continue();
+    });
+
+    return state;
+}
+
+async function openMockedSettings(page, options = {}) {
+    const state = await setupMockedSettingsRoutes(page, options);
+    await page.goto(`/instructor/settings?courseId=${state.courseId}`);
+    await expect(page.locator('h1')).toHaveText('Settings', { timeout: 15_000 });
+    await expect(page.locator('#base-prompt')).toHaveValue('Mock base prompt', { timeout: 15_000 });
+    await expect(page.locator('#testable-units-container .loading-text')).toHaveCount(0, { timeout: 15_000 });
+    return state;
+}
+
 test.beforeAll(async () => {
     const instructor = await getUserByUsername(TEST_USERS.instructor.username);
     const freshInstructor = await getUserByUsername(TEST_USERS.instructor_fresh.username);
@@ -521,6 +823,424 @@ test.describe('Instructor settings UI', () => {
         expect(unit1.assessmentQuestions).toEqual([]);
         expect(unit2.learningObjectives).toEqual([]);
         expect(unit2.assessmentQuestions).toHaveLength(1);
+    });
+
+    test('resets course prompts and quiz defaults after confirmation', async ({ page }) => {
+        await openMockedSettings(page, { canDeleteAll: false });
+
+        await page.locator('#base-prompt').fill('Dirty base prompt');
+        await setInputChecked(page, '#quiz-enabled-toggle', true);
+        await setInputChecked(page, '#quiz-material-access-toggle', false);
+        await setInputChecked(page, '#source-attribution-download-toggle', true);
+        await setInputChecked(page, '.testable-unit-checkbox[value="Unit 1"]', false);
+
+        page.once('dialog', (dialog) => dialog.dismiss());
+        await page.locator('#reset-settings').click();
+        await expect(page.locator('#base-prompt')).toHaveValue('Dirty base prompt');
+
+        page.once('dialog', (dialog) => dialog.accept());
+        await page.locator('#reset-settings').click();
+
+        await expect(page.locator('#base-prompt')).toHaveValue('Default base prompt');
+        await expect(page.locator('#protege-prompt')).toHaveValue('Default protege prompt');
+        await expect(page.locator('#tutor-prompt')).toHaveValue('Default tutor prompt');
+        await expect(page.locator('#explain-prompt')).toHaveValue('Default explain prompt');
+        await expect(page.locator('#directive-prompt')).toHaveValue('Default directive prompt');
+        await expect(page.locator('#additive-retrieval-toggle')).toBeChecked();
+        await expect(page.locator('#idle-timeout-input')).toHaveValue('4');
+        await expect(page.locator('#quiz-enabled-toggle')).not.toBeChecked();
+        await expect(page.locator('#quiz-material-access-toggle')).toBeChecked();
+        await expect(page.locator('#source-attribution-download-toggle')).not.toBeChecked();
+        await expect(page.locator('.testable-unit-checkbox[value="Unit 1"]')).toBeChecked();
+        await expect(page.locator('.notification.success', { hasText: 'Settings reset to defaults' })).toBeVisible();
+    });
+
+    test('covers admin reset, delete-all, and system-admin management states', async ({ page }) => {
+        const state = await openMockedSettings(page);
+        await page.locator('#system-admin-section').scrollIntoViewIfNeeded();
+
+        await expect(page.locator('#llm-model-select')).toHaveValue('gpt-4.1-mini');
+        await expect(page.locator('#llm-reasoning-item')).toBeHidden();
+        await expect(page.locator('#system-admin-list')).toContainText('E2E Instructor');
+        await expect(page.locator('#system-admin-list')).toContainText('You');
+        await expect(page.locator('#system-admin-list')).toContainText('<Fresh & Admin>');
+        await expect(page.locator('#system-admin-list')).toContainText('Last login: Never');
+
+        await page.locator('#grant-system-admin-btn').click();
+        await expect(page.locator('.notification.error', { hasText: 'Enter an email address first.' })).toBeVisible();
+
+        await page.locator('#system-admin-email-input').fill(TEST_USERS.instructor_fresh.email);
+        await page.locator('#grant-system-admin-btn').click();
+        await expect(page.locator('#system-admin-email-input')).toHaveValue('');
+        await expect(page.locator('.notification.success', { hasText: `System admin access granted to ${TEST_USERS.instructor_fresh.email}.` })).toBeVisible();
+
+        state.grantResult = { success: false, error: 'Grant rejected' };
+        await page.locator('#system-admin-email-input').fill('missing-admin@test.local');
+        await page.locator('#grant-system-admin-btn').click();
+        await expect(page.locator('.notification.error', { hasText: 'Grant rejected' })).toBeVisible();
+
+        const freshRevoke = page.locator(`.system-admin-revoke-btn[data-email="${TEST_USERS.instructor_fresh.email}"]`);
+        page.once('dialog', (dialog) => dialog.dismiss());
+        await freshRevoke.click();
+        await expect(freshRevoke).toHaveText('Revoke');
+
+        page.once('dialog', (dialog) => dialog.accept());
+        await freshRevoke.click();
+        await expect(page.locator('.notification.success', { hasText: `System admin access revoked for ${TEST_USERS.instructor_fresh.email}.` })).toBeVisible();
+
+        state.revokeResult = { success: false, error: 'Revoke rejected' };
+        page.once('dialog', (dialog) => dialog.accept());
+        await freshRevoke.click();
+        await expect(page.locator('.notification.error', { hasText: 'Revoke rejected' })).toBeVisible();
+
+        page.once('dialog', (dialog) => dialog.dismiss());
+        await page.locator('#reset-mh-prompt').click();
+        await expect(page.locator('#mental-health-detection-prompt')).toHaveValue('Mock detection prompt');
+
+        page.once('dialog', (dialog) => dialog.accept());
+        await page.locator('#reset-mh-prompt').click();
+        await expect(page.locator('#mental-health-detection-prompt')).toHaveValue('Default detection prompt');
+        await expect(page.locator('.notification.success', { hasText: 'Detection prompt reset to default' })).toBeVisible();
+
+        page.once('dialog', (dialog) => dialog.accept());
+        await page.locator('#reset-question-prompts').click();
+        await expect(page.locator('#question-system-prompt')).toHaveValue('Default question system');
+        await expect(page.locator('#question-true-false-prompt')).toHaveValue('Default true false');
+        await expect(page.locator('#question-multiple-choice-prompt')).toHaveValue('Default multiple choice');
+        await expect(page.locator('#question-short-answer-prompt')).toHaveValue('Default short answer');
+        await expect(page.locator('.notification.success', { hasText: 'Question prompts reset to defaults' })).toBeVisible();
+
+        page.once('dialog', (dialog) => dialog.dismiss());
+        await page.locator('#delete-collection').click();
+        await expect(page.locator('#delete-collection')).toHaveText('Delete All Data');
+
+        page.once('dialog', (dialog) => dialog.accept());
+        await page.locator('#delete-collection').click();
+        await expect(page.locator('.notification.success', { hasText: 'All data deleted successfully! Qdrant: 4, MongoDB: 9 documents removed.' })).toBeVisible();
+
+        state.deleteAllResult = {
+            success: false,
+            message: 'Delete rejected',
+            data: { qdrantDeletedCount: 0, mongoDeletedCount: 0 },
+        };
+        page.once('dialog', (dialog) => dialog.accept());
+        await page.locator('#delete-collection').click();
+        await expect(page.locator('.notification.error', { hasText: 'Failed to delete data: Delete rejected' })).toBeVisible();
+    });
+
+    test('handles transfer validation, master toggles, modal closing, errors, and warning success', async ({ page }) => {
+        const state = await openMockedSettings(page, { canDeleteAll: false });
+        await page.locator('#course-lifecycle-section').scrollIntoViewIfNeeded();
+
+        await page.locator('#transfer-course-name').fill('');
+        await page.locator('#transfer-course-btn').click();
+        await expect(page.locator('.notification.error', { hasText: 'Please enter a name for the new course.' })).toBeVisible();
+        await expect(page.locator('#transfer-course-name')).toBeFocused();
+
+        await page.locator('#transfer-course-name').fill('Mock Copy One');
+        await setInputChecked(page, '#transfer-all-docs', false);
+        await expect(page.locator('.transfer-docs-checkbox:checked')).toHaveCount(0);
+        await setInputChecked(page, '.transfer-unit-row[data-unit-name="Unit 1"] .transfer-docs-checkbox', true);
+        await expect.poll(async () => page.locator('#transfer-all-docs').evaluate((element) => /** @type {HTMLInputElement} */ (element).indeterminate)).toBe(true);
+
+        await page.locator('#transfer-course-btn').click();
+        await expect(page.locator('#transfer-course-modal')).toHaveClass(/show/);
+        await expect(page.locator('#transfer-modal-summary')).toContainText('1 of 2 units will copy docs and existing chunks.');
+        await page.keyboard.press('Escape');
+        await expect(page.locator('#transfer-course-modal')).not.toHaveClass(/show/);
+
+        await page.locator('#transfer-course-btn').click();
+        await expect(page.locator('#transfer-course-modal')).toHaveClass(/show/);
+        await page.locator('#transfer-modal-cancel').click();
+        await expect(page.locator('#transfer-course-modal')).not.toHaveClass(/show/);
+
+        await page.locator('#transfer-course-btn').click();
+        await expect(page.locator('#transfer-course-modal')).toHaveClass(/show/);
+        await page.locator('#transfer-course-modal').click({ position: { x: 5, y: 5 } });
+        await expect(page.locator('#transfer-course-modal')).not.toHaveClass(/show/);
+
+        state.transferStatus = 500;
+        state.transferResult = {
+            success: false,
+            message: 'Transfer rejected',
+            data: { courseId: '', courseName: '', warnings: [] },
+        };
+        await page.locator('#transfer-course-btn').click();
+        await page.locator('#transfer-modal-confirm').click();
+        await expect(page.locator('.notification.error', { hasText: 'Transfer rejected' })).toBeVisible();
+        await expect(page.locator('#transfer-course-btn')).toHaveText('Create Course Copy');
+
+        state.transferStatus = 200;
+        state.transferResult = {
+            success: true,
+            data: {
+                courseId: 'MOCK-SETTINGS-COPY',
+                courseName: 'Mock Settings Copy',
+                warnings: ['Document chunks were skipped'],
+            },
+        };
+        await page.locator('#transfer-course-btn').click();
+        page.once('dialog', async (dialog) => {
+            expect(dialog.message()).toContain('Course copy created with 1 warning.');
+            expect(dialog.message()).toContain('Document chunks were skipped');
+            await dialog.accept();
+        });
+        await page.locator('#transfer-modal-confirm').click();
+        await expect(page).toHaveURL(/courseId=MOCK-SETTINGS-COPY/, { timeout: 10_000 });
+        await expect(page.locator('.notification.info', { hasText: 'Course copy created with 1 warning. Switched to Mock Settings Copy.' })).toBeVisible();
+    });
+
+    test('handles lifecycle cancel and API failure without changing status', async ({ page }) => {
+        const state = await openMockedSettings(page, { canDeleteAll: false });
+        await page.locator('#course-lifecycle-section').scrollIntoViewIfNeeded();
+
+        page.once('dialog', (dialog) => dialog.dismiss());
+        await page.locator('#toggle-course-active-btn').click();
+        await expect(page.locator('#course-status-badge')).toHaveText('Active');
+
+        state.lifecycleStatus = 500;
+        state.lifecycleResult = { success: false, message: 'Lifecycle rejected' };
+        page.once('dialog', (dialog) => dialog.accept());
+        await page.locator('#toggle-course-active-btn').click();
+        await expect(page.locator('.notification.error', { hasText: 'Lifecycle rejected' })).toBeVisible();
+        await expect(page.locator('#course-status-badge')).toHaveText('Active');
+        await expect(page.locator('#toggle-course-active-btn')).toHaveText('Deactivate Course');
+    });
+
+    test('renders empty/error states and endpoint failures defensively', async ({ page }) => {
+        await setupMockedSettingsRoutes(page, {
+            canDeleteAll: true,
+            lectures: [],
+            admins: [],
+            abortPaths: [
+                '/api/settings/global',
+                '/api/settings/llm',
+                '/api/settings/prompts',
+                '/api/settings/quiz',
+                '/api/settings/anonymize-students',
+                '/api/settings/mental-health-prompt',
+                '/api/settings/question-prompts',
+            ],
+        });
+        await page.goto('/instructor/settings?courseId=MOCK-SETTINGS');
+        await expect(page.locator('h1')).toHaveText('Settings', { timeout: 15_000 });
+
+        await expect(page.locator('#system-admin-list')).toContainText('No system admins found.');
+        await expect(page.locator('#transfer-unit-grid')).toContainText('No units found for this course yet.');
+        await expect(page.locator('#testable-units-container')).toContainText('Loading units...');
+
+        await page.locator('#base-prompt').fill('Mock base prompt');
+        await page.locator('#protege-prompt').fill('Mock protege prompt');
+        await page.locator('#tutor-prompt').fill('Mock tutor prompt');
+        await page.unroute('**/*');
+        const state = await setupMockedSettingsRoutes(page, {
+            canDeleteAll: false,
+            promptSaveResult: { success: false, message: 'Prompt save rejected' },
+        });
+        state.abortPaths.add('/api/settings/quiz');
+        await page.locator('#save-settings').click();
+        await expect(page.locator('.notification.error', { hasText: 'Error saving settings' })).toBeVisible();
+    });
+
+    test('uses defensive lifecycle states when course context or course load is missing', async ({ page }) => {
+        await page.route('**/api/**', async (route) => {
+            const requestUrl = new URL(route.request().url());
+            if (requestUrl.pathname === '/api/settings/can-delete-all') {
+                await route.fulfill(jsonResponse({ success: true, canDeleteAll: true }));
+                return;
+            }
+
+            await route.fulfill(jsonResponse({ success: true }));
+        });
+        await page.route('**/instructor/settings**', async (route) => {
+            await route.fulfill({
+                status: 200,
+                contentType: 'text/html',
+                body: `
+                    <!doctype html>
+                    <html>
+                        <body>
+                            <section id="course-lifecycle-section">
+                                <button id="toggle-course-active-btn">Deactivate Course</button>
+                                <input id="transfer-course-name">
+                                <button id="transfer-course-btn">Create Course Copy</button>
+                                <div id="transfer-unit-grid"></div>
+                            </section>
+                            <input type="checkbox" id="transfer-all-docs" checked>
+                            <input type="checkbox" id="transfer-all-objectives" checked>
+                            <input type="checkbox" id="transfer-all-questions" checked>
+                            <script>
+                                window.waitForAuth = async () => {};
+                                window.getCurrentUser = () => ({ role: 'instructor', email: '${TEST_USERS.instructor.email}' });
+                                window.getCurrentCourseId = async () => '';
+                                window.getCurrentInstructorId = () => '${instructorId || 'instructor'}';
+                                window.setCurrentCourseId = async () => {};
+                            </script>
+                            <script src="/instructor/scripts/settings.js"></script>
+                        </body>
+                    </html>
+                `,
+            });
+        });
+        await page.goto('/instructor/settings?courseId=');
+        await expect(page.locator('#transfer-unit-grid')).toContainText('Select a course first to use transfer and deactivate tools.');
+        await expect(page.locator('#toggle-course-active-btn')).toBeDisabled();
+        await expect(page.locator('#transfer-course-btn')).toBeDisabled();
+
+        await page.unroute('**/api/**');
+        await page.unroute('**/instructor/settings**');
+        await openMockedSettings(page, {
+            canDeleteAll: false,
+            courseGetStatus: 500,
+            courseGetResult: { success: false, message: 'Course load rejected' },
+        });
+        await expect(page.locator('#transfer-unit-grid')).toContainText('Unable to load course transfer options right now.');
+        await expect(page.locator('#toggle-course-active-btn')).toBeDisabled();
+        await expect(page.locator('#transfer-course-btn')).toBeDisabled();
+    });
+
+    test('covers defensive admin failures, non-instructor lifecycle, and notification cleanup', async ({ page }) => {
+        await page.addInitScript(() => {
+            window.sessionStorage.setItem('settingsFlashMessage', '{bad json');
+        });
+        const state = await openMockedSettings(page, {
+            systemAdminListError: true,
+            promptSaveResult: { success: false, message: 'Prompt save rejected' },
+        });
+
+        await expect(page.locator('#system-admin-list')).toContainText('Failed to load system admins.');
+
+        await page.locator('#base-prompt').fill('Mock base prompt');
+        await page.locator('#protege-prompt').fill('Mock protege prompt');
+        await page.locator('#tutor-prompt').fill('Mock tutor prompt');
+        await page.locator('#save-settings').click();
+        await expect(page.locator('.notification.error', { hasText: 'Failed to save settings: Prompt save rejected' })).toBeVisible();
+
+        state.promptResetResult = {
+            success: false,
+            message: 'Reset rejected',
+            prompts: { base: '', protege: '', tutor: '', explain: '', directive: '' },
+        };
+        page.once('dialog', (dialog) => dialog.accept());
+        await page.locator('#reset-settings').click();
+        await expect(page.locator('.notification.error', { hasText: 'Failed to reset settings: Reset rejected' })).toBeVisible();
+
+        state.abortPaths.add('/api/settings/prompts/reset');
+        page.once('dialog', (dialog) => dialog.accept());
+        await page.locator('#reset-settings').click();
+        await expect(page.locator('.notification.error', { hasText: 'Error resetting settings' })).toBeVisible();
+        state.abortPaths.delete('/api/settings/prompts/reset');
+
+        state.abortPaths.add('/api/settings/mental-health-prompt/reset');
+        page.once('dialog', (dialog) => dialog.accept());
+        await page.locator('#reset-mh-prompt').click();
+        await expect(page.locator('.notification.error', { hasText: 'Failed to reset detection prompt' })).toBeVisible();
+        state.abortPaths.delete('/api/settings/mental-health-prompt/reset');
+
+        state.questionResetResult = {
+            success: false,
+            message: 'Question reset rejected',
+            prompts: { systemPrompt: '', trueFalse: '', multipleChoice: '', shortAnswer: '' },
+        };
+        page.once('dialog', (dialog) => dialog.dismiss());
+        await page.locator('#reset-question-prompts').click();
+        await expect(page.locator('#reset-question-prompts')).toHaveText('Reset Question Prompts to Default');
+
+        page.once('dialog', (dialog) => dialog.accept());
+        await page.locator('#reset-question-prompts').click();
+        await expect(page.locator('.notification.error', { hasText: 'Failed to reset question prompts: Question reset rejected' })).toBeVisible();
+
+        state.abortPaths.add('/api/settings/question-prompts/reset');
+        page.once('dialog', (dialog) => dialog.accept());
+        await page.locator('#reset-question-prompts').click();
+        await expect(page.locator('.notification.error', { hasText: 'Error resetting question prompts' })).toBeVisible();
+        state.abortPaths.delete('/api/settings/question-prompts/reset');
+
+        state.abortPaths.add('/api/qdrant/delete-all-collections');
+        page.once('dialog', (dialog) => dialog.accept());
+        await page.locator('#delete-collection').click();
+        await expect(page.locator('.notification.error', { hasText: 'Failed to delete data: Network or server error' })).toBeVisible();
+        state.abortPaths.delete('/api/qdrant/delete-all-collections');
+
+        state.systemAdminListError = false;
+        state.abortPaths.add('/api/settings/system-admins');
+        await page.locator('#system-admin-email-input').fill('grant-catch@test.local');
+        await page.locator('#grant-system-admin-btn').click();
+        await expect(page.locator('.notification.error', { hasText: 'Failed to grant system admin access.' })).toBeVisible();
+        state.abortPaths.delete('/api/settings/system-admins');
+
+        await page.locator('#system-admin-email-input').fill(TEST_USERS.instructor_fresh.email);
+        await page.locator('#grant-system-admin-btn').click();
+        await expect(page.locator(`.system-admin-revoke-btn[data-email="${TEST_USERS.instructor_fresh.email}"]`)).toBeVisible();
+
+        await page.locator('#system-admin-list').click({ position: { x: 5, y: 5 } });
+        await page.evaluate((email) => {
+            const button = document.querySelector(`.system-admin-revoke-btn[data-email="${email}"]`);
+            if (button) button.removeAttribute('data-email');
+        }, TEST_USERS.instructor_fresh.email);
+        await page.locator('.system-admin-revoke-btn').last().click();
+        await expect(page.locator('.system-admin-revoke-btn').last()).toHaveText('Revoke');
+
+        await page.evaluate((email) => {
+            const button = document.querySelectorAll('.system-admin-revoke-btn')[1];
+            if (button) button.setAttribute('data-email', email);
+        }, TEST_USERS.instructor_fresh.email);
+        state.abortPaths.add('/api/settings/system-admins/revoke');
+        page.once('dialog', (dialog) => dialog.accept());
+        await page.locator(`.system-admin-revoke-btn[data-email="${TEST_USERS.instructor_fresh.email}"]`).click();
+        await expect(page.locator('.notification.error', { hasText: 'Failed to revoke system admin access.' })).toBeVisible();
+
+        const closeButtons = page.locator('.notification-close');
+        const closeButtonCount = await closeButtons.count();
+        await closeButtons.first().click();
+        await expect.poll(async () => closeButtons.count()).toBe(closeButtonCount - 1);
+
+        await setInputChecked(page, '#transfer-all-objectives', false);
+        await expect(page.locator('.transfer-objectives-checkbox:checked')).toHaveCount(0);
+        await setInputChecked(page, '#transfer-all-questions', false);
+        await expect(page.locator('.transfer-questions-checkbox:checked')).toHaveCount(0);
+
+        await page.unroute('**/*');
+        await page.route('**/api/**', async (route) => {
+            const requestUrl = new URL(route.request().url());
+            if (requestUrl.pathname === '/api/settings/can-delete-all') {
+                await route.fulfill(jsonResponse({ success: false, canDeleteAll: false }));
+                return;
+            }
+            await route.fulfill(jsonResponse({ success: true }));
+        });
+        await page.route('**/instructor/settings**', async (route) => {
+            await route.fulfill({
+                status: 200,
+                contentType: 'text/html',
+                body: `
+                    <!doctype html>
+                    <html>
+                        <body>
+                            <section id="course-lifecycle-section">
+                                <button id="transfer-course-btn">Create Course Copy</button>
+                            </section>
+                            <script>
+                                window.waitForAuth = async () => {};
+                                window.getCurrentUser = () => ({ role: 'student', email: 'student@test.local' });
+                                window.getCurrentCourseId = async () => 'STUDENT-COURSE';
+                            </script>
+                            <script src="/instructor/scripts/settings.js"></script>
+                        </body>
+                    </html>
+                `,
+            });
+        });
+        await page.goto('/instructor/settings?student-role');
+        await expect(page.locator('#course-lifecycle-section')).toBeHidden();
+        await page.locator('#transfer-course-btn').dispatchEvent('click');
+        await expect(page.locator('.notification.warning', { hasText: 'Course data is still loading. Please try again.' })).toBeVisible();
+
+        await page.unroute('**/api/**');
+        await page.unroute('**/instructor/settings**');
+        await openMockedSettings(page, { abortPaths: ['/api/settings/can-delete-all'] });
+        await expect(page.locator('#database-management-section')).toBeHidden();
+        await expect(page.locator('#system-admin-section')).toBeHidden();
     });
 });
 
