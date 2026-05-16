@@ -519,3 +519,391 @@ test.describe('POST /api/quiz/chat', () => {
         expect(body.message.length).toBeGreaterThan(20);
     });
 });
+
+// ----------------------------------------------------------------------------
+// Additional focused coverage + product-bug exposures
+// ----------------------------------------------------------------------------
+// Targets the branches that the suites above leave uncovered in
+// src/routes/quiz.js — primarily the filename / mime / download branches, the
+// soft-delete filter in /questions, the conversation/prompts paths in /chat,
+// and three product bugs in /check-answer and /attempt.
+test.describe('Quiz API — focused coverage + product bugs', () => {
+    test.use({ storageState: storageStatePath('student') });
+
+    test.beforeEach(async () => {
+        await resetQuizCourse({ instructorId, quizSettings: { enabled: true } });
+    });
+
+    // ------------------------------------------------------------------------
+    // /questions soft-delete filter
+    // ------------------------------------------------------------------------
+    test('GET /questions skips soft-deleted (isActive:false) questions', async ({ request: api }) => {
+        await withDb(async (db) => {
+            const course = await db.collection('courses').findOne({ courseId: QUIZ_COURSE_ID });
+            const lectures = course.lectures.map((lec) => {
+                if (lec.name !== 'Unit 1') return lec;
+                return {
+                    ...lec,
+                    assessmentQuestions: lec.assessmentQuestions.map((q) =>
+                        q.questionId === QUESTION_IDS.mc ? { ...q, isActive: false } : q
+                    ),
+                };
+            });
+            await db.collection('courses').updateOne(
+                { courseId: QUIZ_COURSE_ID },
+                { $set: { lectures } }
+            );
+        });
+
+        const res = await api.get(`/api/quiz/questions?courseId=${QUIZ_COURSE_ID}`);
+        expect(res.ok()).toBeTruthy();
+        const body = await res.json();
+        const ids = body.questions.map((q) => q.questionId);
+        expect(ids).not.toContain(QUESTION_IDS.mc);
+        expect(ids).toContain(QUESTION_IDS.tf);
+        expect(ids).toContain(QUESTION_IDS.sa);
+    });
+
+    // ------------------------------------------------------------------------
+    // /materials missing-field branches
+    // ------------------------------------------------------------------------
+    test('GET /materials returns 400 when courseId or lectureName is missing', async ({ request: api }) => {
+        const r1 = await api.get('/api/quiz/materials?lectureName=Unit%201');
+        expect(r1.status()).toBe(400);
+
+        const r2 = await api.get(`/api/quiz/materials?courseId=${QUIZ_COURSE_ID}`);
+        expect(r2.status()).toBe(400);
+    });
+
+    // ------------------------------------------------------------------------
+    // /materials/:id/download — auxiliary branches
+    // ------------------------------------------------------------------------
+    test('GET /materials/:id/download returns 400 when courseId is missing', async ({ request: api }) => {
+        const res = await api.get(`/api/quiz/materials/${DOC_ID}/download`);
+        expect(res.status()).toBe(400);
+    });
+
+    test('GET /materials/:id/download returns 404 when documentId does not exist', async ({ request: api }) => {
+        const res = await api.get(`/api/quiz/materials/doc_does_not_exist/download?courseId=${QUIZ_COURSE_ID}`);
+        expect(res.status()).toBe(404);
+    });
+
+    test('GET /materials/:id/download returns 404 when the document belongs to a different course', async ({ request: api }) => {
+        const otherDocId = 'doc_e2e_quiz_other_course';
+        await withDb((db) => db.collection('documents').insertOne({
+            documentId: otherDocId,
+            courseId: `${QUIZ_COURSE_ID}-OTHER`,
+            lectureName: 'Unit 1',
+            documentType: 'lecture-notes',
+            contentType: 'text',
+            content: 'should never be served',
+            mimeType: 'text/plain',
+            filename: 'other.txt',
+            originalName: 'other.txt',
+            size: 20,
+            status: 'parsed',
+            uploadDate: new Date(),
+            lastModified: new Date(),
+        }));
+        try {
+            const res = await api.get(`/api/quiz/materials/${otherDocId}/download?courseId=${QUIZ_COURSE_ID}`);
+            expect(res.status()).toBe(404);
+        } finally {
+            await withDb((db) => db.collection('documents').deleteOne({ documentId: otherDocId }));
+        }
+    });
+
+    test('GET /materials/:id/download serves binary file content with the stored MIME type', async ({ request: api }) => {
+        const binDocId = 'doc_e2e_quiz_binary';
+        // %PDF-1.4 header bytes so the response body has identifiable content.
+        const payload = Buffer.from([0x25, 0x50, 0x44, 0x46, 0x2D, 0x31, 0x2E, 0x34, 0x0A, 0x00, 0x01, 0x02]);
+        await withDb((db) => db.collection('documents').insertOne({
+            documentId: binDocId,
+            courseId: QUIZ_COURSE_ID,
+            lectureName: 'Unit 1',
+            documentType: 'lecture-notes',
+            contentType: 'file',
+            fileData: payload,
+            mimeType: 'application/pdf',
+            filename: 'lecture.pdf',
+            originalName: 'Lecture Slides.pdf',
+            size: payload.length,
+            status: 'parsed',
+            uploadDate: new Date(),
+            lastModified: new Date(),
+        }));
+        try {
+            const res = await api.get(`/api/quiz/materials/${binDocId}/download?courseId=${QUIZ_COURSE_ID}`);
+            expect(res.ok()).toBeTruthy();
+            expect(res.headers()['content-type']).toContain('application/pdf');
+
+            const body = await res.body();
+            expect(body.length).toBe(payload.length);
+            expect(Buffer.compare(body, payload)).toBe(0);
+
+            const disposition = res.headers()['content-disposition'] || '';
+            expect(disposition.toLowerCase()).toContain('attachment');
+            expect(disposition).toContain('Lecture Slides.pdf');
+        } finally {
+            await withDb((db) => db.collection('documents').deleteOne({ documentId: binDocId }));
+        }
+    });
+
+    test('GET /materials/:id/download returns 500 when contentType=file but fileData is corrupt', async ({ request: api }) => {
+        const badDocId = 'doc_e2e_quiz_bad_filedata';
+        // Truthy but neither a Buffer nor anything with a `.buffer` — forces the
+        // `payload === null` branch and the 500 response.
+        await withDb((db) => db.collection('documents').insertOne({
+            documentId: badDocId,
+            courseId: QUIZ_COURSE_ID,
+            lectureName: 'Unit 1',
+            documentType: 'lecture-notes',
+            contentType: 'file',
+            fileData: { not: 'a buffer' },
+            mimeType: 'application/octet-stream',
+            filename: 'corrupt.bin',
+            originalName: 'corrupt.bin',
+            size: 0,
+            status: 'parsed',
+            uploadDate: new Date(),
+            lastModified: new Date(),
+        }));
+        try {
+            const res = await api.get(`/api/quiz/materials/${badDocId}/download?courseId=${QUIZ_COURSE_ID}`);
+            expect(res.status()).toBe(500);
+        } finally {
+            await withDb((db) => db.collection('documents').deleteOne({ documentId: badDocId }));
+        }
+    });
+
+    test('GET /materials/:id/download URL-encodes non-ASCII filenames with an ASCII fallback', async ({ request: api }) => {
+        const uniDocId = 'doc_e2e_quiz_unicode_name';
+        const unicodeName = 'Café Résumé.txt';
+        await withDb((db) => db.collection('documents').insertOne({
+            documentId: uniDocId,
+            courseId: QUIZ_COURSE_ID,
+            lectureName: 'Unit 1',
+            documentType: 'lecture-notes',
+            contentType: 'text',
+            content: 'unicode body',
+            mimeType: 'text/plain',
+            filename: 'notes.txt',
+            originalName: unicodeName,
+            size: 12,
+            status: 'parsed',
+            uploadDate: new Date(),
+            lastModified: new Date(),
+        }));
+        try {
+            const res = await api.get(`/api/quiz/materials/${uniDocId}/download?courseId=${QUIZ_COURSE_ID}`);
+            expect(res.ok()).toBeTruthy();
+            const disposition = res.headers()['content-disposition'] || '';
+            expect(disposition.toLowerCase()).toContain('attachment');
+            // ASCII fallback strips non-ASCII; the RFC 5987 filename* preserves UTF-8.
+            expect(disposition).toMatch(/filename="C[^"]+\.txt"/);
+            expect(disposition).not.toContain('Café');
+            expect(disposition).toContain("filename*=UTF-8''");
+            expect(disposition).toContain(encodeURIComponent(unicodeName));
+        } finally {
+            await withDb((db) => db.collection('documents').deleteOne({ documentId: uniDocId }));
+        }
+    });
+
+    test('GET /materials/:id/download infers the filename extension from each known MIME type', async ({ request: api }) => {
+        const mimeCases = [
+            { suffix: 'pdf',     mime: 'application/pdf',                                                             ext: '.pdf'  },
+            { suffix: 'md',      mime: 'text/markdown',                                                                ext: '.md'   },
+            { suffix: 'doc',     mime: 'application/msword',                                                          ext: '.doc'  },
+            { suffix: 'docx',    mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',     ext: '.docx' },
+            { suffix: 'rtf',     mime: 'application/rtf',                                                              ext: '.rtf'  },
+            { suffix: 'txt',     mime: 'text/plain',                                                                   ext: '.txt'  },
+            { suffix: 'unknown', mime: 'application/x-unrecognised',                                                   ext: ''      },
+        ];
+        const docs = mimeCases.map((c) => ({
+            documentId: `doc_mime_${c.suffix}`,
+            courseId: QUIZ_COURSE_ID,
+            lectureName: 'Unit 1',
+            documentType: 'lecture-notes',
+            contentType: 'text',
+            content: `content-${c.suffix}`,
+            mimeType: c.mime,
+            // originalName has NO extension → forces the MIME inference path.
+            originalName: `Lecture Notes ${c.suffix}`,
+            filename: '',
+            size: 1,
+            status: 'parsed',
+            uploadDate: new Date(),
+            lastModified: new Date(),
+        }));
+        try {
+            await withDb((db) => db.collection('documents').insertMany(docs));
+            for (const c of mimeCases) {
+                const res = await api.get(`/api/quiz/materials/doc_mime_${c.suffix}/download?courseId=${QUIZ_COURSE_ID}`);
+                expect(res.ok()).toBeTruthy();
+                const disposition = res.headers()['content-disposition'] || '';
+                expect(disposition).toContain(`Lecture Notes ${c.suffix}${c.ext}`);
+            }
+        } finally {
+            await withDb((db) => db.collection('documents').deleteMany({
+                documentId: { $in: docs.map((d) => d.documentId) },
+            }));
+        }
+    });
+
+    test('GET /materials/:id/download takes the extension from filename when originalName has none', async ({ request: api }) => {
+        const docId = 'doc_e2e_quiz_filename_ext';
+        await withDb((db) => db.collection('documents').insertOne({
+            documentId: docId,
+            courseId: QUIZ_COURSE_ID,
+            lectureName: 'Unit 1',
+            documentType: 'lecture-notes',
+            contentType: 'text',
+            content: 'fallback ext from filename',
+            mimeType: 'application/x-anything',
+            filename: 'stored.md',
+            // originalName has NO extension — should fall back to filename's `.md`.
+            originalName: 'Pretty Display Name',
+            size: 12,
+            status: 'parsed',
+            uploadDate: new Date(),
+            lastModified: new Date(),
+        }));
+        try {
+            const res = await api.get(`/api/quiz/materials/${docId}/download?courseId=${QUIZ_COURSE_ID}`);
+            expect(res.ok()).toBeTruthy();
+            const disposition = res.headers()['content-disposition'] || '';
+            // The route should reach for `filename` because it carries a real
+            // extension and `originalName` does not.
+            expect(disposition).toContain('stored.md');
+        } finally {
+            await withDb((db) => db.collection('documents').deleteOne({ documentId: docId }));
+        }
+    });
+
+    // ------------------------------------------------------------------------
+    // /chat — uncovered branches (course.prompts override, conversation
+    // history loop, short-answer correctAnswer lookup)
+    // ------------------------------------------------------------------------
+    test('POST /chat uses course-specific prompts and iterates the conversation history block', async ({ request: api }) => {
+        test.setTimeout(60_000);
+        await withDb((db) => db.collection('courses').updateOne(
+            { courseId: QUIZ_COURSE_ID },
+            { $set: { prompts: {
+                base: 'You are a focused quiz tutor for biology.',
+                quizHelp: 'Be concise and never reveal the literal correct answer.',
+            } } }
+        ));
+
+        const res = await api.post('/api/quiz/chat', {
+            data: {
+                courseId: QUIZ_COURSE_ID,
+                lectureName: 'Unit 1',
+                questionText: 'Which biomolecule is the primary energy currency of the cell?',
+                questionType: 'multiple-choice',
+                correctAnswer: 'B',
+                studentAnswer: 'A',
+                message: 'Why is the cell\'s energy carrier the one that gets phosphorylated and dephosphorylated?',
+                conversationHistory: [
+                    { role: 'user',      content: 'I was confused earlier.' },
+                    { role: 'assistant', content: 'No worries — what part?' },
+                    { role: 'user',      content: 'Why ATP and not glucose directly.' },
+                ],
+            },
+        });
+        expect(res.ok()).toBeTruthy();
+        const body = await res.json();
+        expect(body.success).toBe(true);
+        expect(body.source).toBe('quiz-help');
+        expect(typeof body.message).toBe('string');
+        expect(body.message.length).toBeGreaterThan(20);
+    });
+
+    test('POST /chat looks up short-answer correctAnswer from the DB when the client sends the AI placeholder', async ({ request: api }) => {
+        test.setTimeout(60_000);
+        const res = await api.post('/api/quiz/chat', {
+            data: {
+                courseId: QUIZ_COURSE_ID,
+                lectureName: 'Unit 1',
+                questionText: 'Name the bond formed between two amino acids during protein synthesis.',
+                questionType: 'short-answer',
+                correctAnswer: '[evaluated by AI - see feedback]',
+                studentAnswer: 'no idea',
+                message: 'Can you remind me what kind of bond connects amino acids?',
+                conversationHistory: [],
+            },
+        });
+        expect(res.ok()).toBeTruthy();
+        const body = await res.json();
+        expect(body.success).toBe(true);
+        expect(body.source).toBe('quiz-help');
+    });
+
+    // ========================================================================
+    // PRODUCT BUGS — these tests are intentionally left failing per AGENTS.md.
+    // ========================================================================
+
+    test('PRODUCT BUG: /check-answer reveals answers even when the quiz is disabled', async ({ request: api }) => {
+        // Disable the quiz. /questions correctly returns 403 in that state,
+        // but /check-answer has no enabled-check, so a student can still call
+        // it and harvest correctAnswer values for every seeded question.
+        await resetQuizCourse({ instructorId, quizSettings: { enabled: false } });
+
+        const res = await api.post('/api/quiz/check-answer', {
+            data: {
+                courseId: QUIZ_COURSE_ID,
+                questionId: QUESTION_IDS.mc,
+                lectureName: 'Unit 1',
+                studentAnswer: 'A',
+            },
+        });
+        // Expected behavior: server should refuse since the quiz is disabled.
+        expect(res.status()).toBe(403);
+    });
+
+    test('PRODUCT BUG: /check-answer reveals answers for questions in unpublished units', async ({ request: api }) => {
+        // Unit 2 is unpublished in the seed and houses QUESTION_IDS.unpublished.
+        // /questions correctly hides it, but /check-answer fetches by raw
+        // lectureName+questionId without consulting isPublished, so it leaks
+        // the verdict (and correctAnswer for MC/TF) for hidden questions.
+        const res = await api.post('/api/quiz/check-answer', {
+            data: {
+                courseId: QUIZ_COURSE_ID,
+                questionId: QUESTION_IDS.unpublished,
+                lectureName: 'Unit 2',
+                studentAnswer: 'true',
+            },
+        });
+        // Expected behavior: 403/404 — content from unpublished units should
+        // never be reachable by a student.
+        expect([403, 404]).toContain(res.status());
+        if (res.ok()) {
+            const body = await res.json();
+            expect(body.data).not.toHaveProperty('correctAnswer');
+        }
+    });
+
+    test('PRODUCT BUG: /attempt trusts a student-supplied `correct` flag without cross-checking', async ({ request: api }) => {
+        // The student deliberately submits a known-wrong MC answer ('A' when
+        // the correct answer is 'B') but lies in the body with `correct: true`.
+        // The route stores whatever the client sends, so a student can inflate
+        // their accuracy stats arbitrarily. The server should at minimum reject
+        // an attempt whose `correct` flag contradicts the canonical answer.
+        const cheat = await api.post('/api/quiz/attempt', {
+            data: {
+                courseId: QUIZ_COURSE_ID,
+                questionId: QUESTION_IDS.mc,
+                lectureName: 'Unit 1',
+                questionType: 'multiple-choice',
+                studentAnswer: 'A',
+                correct: true,
+                feedback: 'fabricated',
+            },
+        });
+        expect([400, 403, 409, 422]).toContain(cheat.status());
+
+        // And history should not credit the fabricated attempt.
+        const histRes = await api.get(`/api/quiz/history?courseId=${QUIZ_COURSE_ID}`);
+        const hist = await histRes.json();
+        expect(hist.stats.correctCount).toBe(0);
+    });
+});
