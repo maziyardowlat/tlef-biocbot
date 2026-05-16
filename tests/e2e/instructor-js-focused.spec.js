@@ -7,7 +7,6 @@
  * production code or depending on expensive document/AI processing.
  */
 
-const path = require('path');
 const { test, expect } = require('./fixtures/monocart');
 const { storageStatePath } = require('./helpers/users');
 
@@ -882,6 +881,9 @@ test.describe('instructor.js focused browser coverage', () => {
             const originalIsTA = instructorWindow.isTA;
             const originalSetInterval = window.setInterval;
             const originalClearInterval = window.clearInterval;
+            const testWindow = /** @type {any} */ (window);
+            const originalGetCurrentUser = testWindow.getCurrentUser;
+            const originalGetCurrentCourseId = testWindow.getCurrentCourseId;
             const intervalCallbacks = [];
 
             function ensureElement(id, tag = 'div') {
@@ -929,10 +931,23 @@ test.describe('instructor.js focused browser coverage', () => {
             });
             window.clearInterval = /** @type {any} */ (() => {});
 
+            testWindow.getCurrentUser = () => null;
             document.dispatchEvent(new Event('DOMContentLoaded'));
+            await new Promise((resolve) => setTimeout(resolve, 50));
+            testWindow.getCurrentUser = originalGetCurrentUser;
+            document.dispatchEvent(new Event('auth:ready'));
             await new Promise((resolve) => setTimeout(resolve, 50));
             await Promise.all(intervalCallbacks.map((callback) => Promise.resolve(callback())));
             document.dispatchEvent(new Event('visibilitychange'));
+            myCourses.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+
+            window.history.replaceState({}, '', '/instructor/documents');
+            localStorage.removeItem('selectedCourseId');
+            testWindow.taCourses = [];
+            testWindow.getCurrentCourseId = async () => null;
+            support.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            testWindow.getCurrentCourseId = originalGetCurrentCourseId;
 
             document.querySelector('.add-content-btn.additional-material')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
             await new Promise((resolve) => setTimeout(resolve, 0));
@@ -975,6 +990,8 @@ test.describe('instructor.js focused browser coverage', () => {
             window.setInterval = originalSetInterval;
             window.clearInterval = originalClearInterval;
             instructorWindow.isTA = originalIsTA;
+            testWindow.getCurrentUser = originalGetCurrentUser;
+            testWindow.getCurrentCourseId = originalGetCurrentCourseId;
 
             return {
                 instructorHomeDisplay: document.getElementById('instructor-home-nav')?.style.display,
@@ -1007,9 +1024,21 @@ test.describe('instructor.js focused browser coverage', () => {
             cleanupError: 0,
             renameError: 0,
             questionUpdateError: 0,
+            questionCreate401: 0,
             generateError: 0,
+            generateNonJson: 0,
+            struggleGenerateNonJson: 0,
+            regenerateNonJson: 0,
             textUploadError: 0,
             fileUploadError: 0,
+            publishNonJson: 0,
+            publishStatusChanged: 0,
+            downloadText: 0,
+            delete404: 0,
+            delete500: 0,
+            removeDocument500: 0,
+            courseGetLegacy: 0,
+            courseGetMissing: 0,
         };
 
         await openInstructorDocuments(page, {
@@ -1030,9 +1059,21 @@ test.describe('instructor.js focused browser coverage', () => {
                         await route.fulfill({ status: 409, json: { success: false, message: 'publish conflict' } });
                         return true;
                     }
+                    if (pathname === '/api/lectures/publish' && failures.publishNonJson) {
+                        failures.publishNonJson -= 1;
+                        await route.fulfill({ status: 503, contentType: 'text/plain', body: 'publish unavailable' });
+                        return true;
+                    }
                     if (pathname === '/api/lectures/publish' && failures.publishResult) {
                         failures.publishResult -= 1;
                         await route.fulfill({ json: { success: false, message: 'publish rejected' } });
+                        return true;
+                    }
+                    if (pathname === '/api/lectures/publish-status' && failures.publishStatusChanged) {
+                        failures.publishStatusChanged -= 1;
+                        await route.fulfill({
+                            json: { success: true, data: { publishStatus: { 'Unit 1': false, 'Unit 2': false } } },
+                        });
                         return true;
                     }
                     if (pathname === '/api/lectures/publish-status' && failures.publishStatus) {
@@ -1043,6 +1084,11 @@ test.describe('instructor.js focused browser coverage', () => {
                     if (pathname === '/api/documents/doc_lecture/download' && failures.downloadJson) {
                         failures.downloadJson -= 1;
                         await route.fulfill({ status: 403, json: { message: 'download denied' } });
+                        return true;
+                    }
+                    if (pathname === '/api/documents/doc_lecture/download' && failures.downloadText) {
+                        failures.downloadText -= 1;
+                        await route.fulfill({ status: 503, contentType: 'text/plain', body: 'plain download denied' });
                         return true;
                     }
                     if (pathname === '/api/documents/doc_practice/extract-questions' && failures.extractEmpty) {
@@ -1100,6 +1146,26 @@ test.describe('instructor.js focused browser coverage', () => {
                         await route.fulfill({ status: 500, body: 'question update failed' });
                         return true;
                     }
+                    if (pathname === '/api/questions' && method === 'POST' && failures.questionCreate401) {
+                        failures.questionCreate401 -= 1;
+                        await route.fulfill({ status: 401, contentType: 'text/plain', body: 'expired' });
+                        return true;
+                    }
+                    if (pathname === '/api/questions/generate-ai' && failures.generateNonJson) {
+                        failures.generateNonJson -= 1;
+                        await route.fulfill({ status: 503, contentType: 'text/plain', body: 'generation unavailable' });
+                        return true;
+                    }
+                    if (pathname === '/api/questions/generate-ai' && failures.struggleGenerateNonJson) {
+                        failures.struggleGenerateNonJson -= 1;
+                        await route.fulfill({ status: 503, contentType: 'text/plain', body: 'topic generation unavailable' });
+                        return true;
+                    }
+                    if (pathname === '/api/questions/generate-ai' && failures.regenerateNonJson) {
+                        failures.regenerateNonJson -= 1;
+                        await route.fulfill({ status: 502, contentType: 'text/plain', body: 'regeneration unavailable' });
+                        return true;
+                    }
                     if (pathname === '/api/questions/generate-ai' && failures.generateError) {
                         failures.generateError -= 1;
                         await route.fulfill({ status: 503, json: { success: false, message: 'generation down' } });
@@ -1113,6 +1179,48 @@ test.describe('instructor.js focused browser coverage', () => {
                     if (pathname === '/api/documents/upload' && failures.fileUploadError) {
                         failures.fileUploadError -= 1;
                         await route.fulfill({ status: 500, body: 'file upload failed' });
+                        return true;
+                    }
+                    if (pathname === '/api/documents/doc_lecture' && method === 'DELETE' && failures.delete404) {
+                        failures.delete404 -= 1;
+                        await route.fulfill({ status: 404, contentType: 'text/plain', body: 'already gone' });
+                        return true;
+                    }
+                    if (pathname === '/api/documents/doc_lecture' && method === 'DELETE' && failures.delete500) {
+                        failures.delete500 -= 1;
+                        await route.fulfill({ status: 500, contentType: 'text/plain', body: 'delete warning' });
+                        return true;
+                    }
+                    if (pathname === `/api/courses/${COURSE_ID}/remove-document` && failures.removeDocument500) {
+                        failures.removeDocument500 -= 1;
+                        await route.fulfill({ status: 500, contentType: 'text/plain', body: 'remove failed' });
+                        return true;
+                    }
+                    if (pathname === `/api/courses/${COURSE_ID}` && method === 'GET' && failures.courseGetLegacy) {
+                        failures.courseGetLegacy -= 1;
+                        await route.fulfill({
+                            json: {
+                                success: true,
+                                data: {
+                                    courseId: COURSE_ID,
+                                    courseMaterials: [{ id: 'legacy_doc' }],
+                                    unitFiles: [{ _id: 'legacy_doc' }],
+                                    lectures: [
+                                        {
+                                            name: 'Unit 1',
+                                            materials: [{ id: 'legacy_doc' }],
+                                            files: [{ _id: 'other_doc' }],
+                                            documents: [],
+                                        },
+                                    ],
+                                },
+                            },
+                        });
+                        return true;
+                    }
+                    if (pathname === `/api/courses/${COURSE_ID}` && method === 'GET' && failures.courseGetMissing) {
+                        failures.courseGetMissing -= 1;
+                        await route.fulfill({ status: 404, contentType: 'text/plain', body: 'course missing' });
                         return true;
                     }
                     void request;
@@ -1257,6 +1365,204 @@ test.describe('instructor.js focused browser coverage', () => {
             await instructorWindow.handleUpload();
         });
 
+        await page.evaluate(async () => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            const wrapper = document.createElement('div');
+            wrapper.className = 'accordion-item published';
+            wrapper.innerHTML = '<input id="publish-unit1" type="checkbox" checked>';
+            document.body.appendChild(wrapper);
+
+            const originalSetTimeout = window.setTimeout;
+            window.setTimeout = /** @type {any} */ ((callback) => {
+                callback();
+                return 1;
+            });
+            await instructorWindow.updatePublishStatus('Unit 1', true);
+            instructorWindow.showNotification('Immediate cleanup notice', 'info');
+            window.setTimeout = originalSetTimeout;
+        });
+
+        failures.publishNonJson = 1;
+        await page.evaluate(async () => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            const originalSetTimeout = window.setTimeout;
+            window.setTimeout = /** @type {any} */ ((callback) => {
+                callback();
+                return 1;
+            });
+            /** @type {HTMLInputElement} */ (document.getElementById('publish-unit1')).checked = false;
+            await instructorWindow.updatePublishStatus('Unit 1', true);
+            window.setTimeout = originalSetTimeout;
+        });
+
+        await page.evaluate(async () => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            /** @type {HTMLInputElement} */ (document.getElementById('publish-unit1')).checked = true;
+            await instructorWindow.loadPublishStatus(true);
+        });
+        failures.publishStatusChanged = 1;
+        await page.evaluate(async () => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            /** @type {HTMLInputElement} */ (document.getElementById('publish-unit1')).checked = true;
+            await instructorWindow.loadPublishStatus(false);
+        });
+
+        failures.downloadText = 1;
+        await page.evaluate(async () => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            await instructorWindow.downloadDocument('doc_lecture');
+        });
+
+        failures.delete404 = 1;
+        await page.evaluate(async () => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            await instructorWindow.deleteDocument('doc_lecture');
+        });
+
+        failures.delete500 = 1;
+        failures.removeDocument500 = 1;
+        failures.courseGetLegacy = 1;
+        await page.evaluate(async (courseId) => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            await instructorWindow.deleteDocument('doc_lecture');
+            await instructorWindow.removeDocumentFromCourseStructure('legacy_doc', courseId, 'e2e_instructor_id');
+        }, COURSE_ID);
+
+        failures.delete500 = 1;
+        failures.removeDocument500 = 1;
+        failures.courseGetMissing = 1;
+        await page.evaluate(async () => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            await instructorWindow.deleteDocument('doc_lecture');
+        });
+
+        failures.questionCreate401 = 1;
+        await page.evaluate(async () => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            const testWindow = /** @type {any} */ (window);
+            const originalGetCurrentUser = testWindow.getCurrentUser;
+
+            testWindow.getCurrentUser = () => null;
+            instructorWindow.openQuestionModal('Unit 1');
+            await instructorWindow.saveQuestion();
+            testWindow.getCurrentUser = originalGetCurrentUser;
+
+            instructorWindow.openQuestionModal('Unit 1');
+            /** @type {HTMLSelectElement} */ (document.getElementById('question-type')).value = '';
+            /** @type {HTMLTextAreaElement} */ (document.getElementById('question-text')).value = 'Missing type';
+            await instructorWindow.saveQuestion();
+
+            /** @type {HTMLSelectElement} */ (document.getElementById('question-type')).value = 'true-false';
+            instructorWindow.updateQuestionForm();
+            /** @type {HTMLTextAreaElement} */ (document.getElementById('question-text')).value = 'Needs a true false answer';
+            document.querySelectorAll('input[name="tf-answer"]').forEach((radio) => {
+                /** @type {HTMLInputElement} */ (radio).checked = false;
+            });
+            await instructorWindow.saveQuestion();
+
+            /** @type {HTMLSelectElement} */ (document.getElementById('question-type')).value = 'multiple-choice';
+            instructorWindow.updateQuestionForm();
+            /** @type {HTMLTextAreaElement} */ (document.getElementById('question-text')).value = 'Needs options';
+            await instructorWindow.saveQuestion();
+
+            const firstMcq = /** @type {HTMLInputElement} */ (document.querySelector('.mcq-input[data-option="A"]'));
+            firstMcq.value = 'Alpha';
+            firstMcq.dispatchEvent(new Event('input', { bubbles: true }));
+            firstMcq.value = '';
+            firstMcq.dispatchEvent(new Event('input', { bubbles: true }));
+            firstMcq.value = 'Alpha';
+            firstMcq.dispatchEvent(new Event('input', { bubbles: true }));
+            await instructorWindow.saveQuestion();
+
+            /** @type {HTMLInputElement} */ (document.querySelector('input[name="mcq-correct"][value="A"]')).checked = true;
+            await instructorWindow.saveQuestion();
+        });
+
+        failures.generateNonJson = 1;
+        await page.evaluate(async () => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            instructorWindow.openQuestionModal('Unit 1');
+            /** @type {HTMLSelectElement} */ (document.getElementById('question-type')).value = 'multiple-choice';
+            instructorWindow.updateQuestionForm();
+            await instructorWindow.generateAIQuestionContent();
+        });
+
+        failures.struggleGenerateNonJson = 1;
+        await page.evaluate(async () => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            instructorWindow.openQuestionModal('Unit 1');
+            /** @type {HTMLSelectElement} */ (document.getElementById('question-type')).value = 'multiple-choice';
+            instructorWindow.updateQuestionForm();
+            const topicSelect = /** @type {HTMLSelectElement} */ (document.getElementById('struggle-topic-select'));
+            topicSelect.innerHTML = '<option value="Glycolysis">Glycolysis</option>';
+            topicSelect.value = 'Glycolysis';
+            await instructorWindow.generateAIQuestionFromStruggleTopic();
+        });
+
+        await page.evaluate(async () => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            const fakeUnit = document.createElement('div');
+            fakeUnit.className = 'accordion-item';
+            fakeUnit.innerHTML = `
+                <span class="folder-name">Unit 1</span>
+                <div class="objectives-list"><span class="objective-text">Harness objective</span></div>
+            `;
+            document.body.appendChild(fakeUnit);
+
+            instructorWindow.openQuestionModal('Unit 1');
+            /** @type {HTMLSelectElement} */ (document.getElementById('question-type')).value = 'short-answer';
+            instructorWindow.updateQuestionForm();
+            await instructorWindow.generateAIQuestionContent();
+        });
+
+        failures.regenerateNonJson = 1;
+        await page.evaluate(async () => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            instructorWindow.openRegenerateModal();
+            /** @type {HTMLTextAreaElement} */ (document.getElementById('regenerate-feedback')).value = 'Make it narrower';
+            await instructorWindow.submitRegenerate();
+        });
+
+        await page.evaluate(async () => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            const threshold = /** @type {HTMLInputElement} */ (document.getElementById('pass-threshold-unit-1'));
+            threshold.value = '1';
+            instructorWindow.setupThresholdInputListeners();
+            threshold.dispatchEvent(new Event('change', { bubbles: true }));
+
+            const existingActions = document.createElement('div');
+            existingActions.innerHTML = `
+                <div class="add-content-section">Existing add</div>
+                <div class="save-objectives">Confirm Course Materials</div>
+            `;
+            instructorWindow.addActionButtonsIfMissing(existingActions, 'Unit 1');
+
+            const testWindow = /** @type {any} */ (window);
+            const originalSavePassThreshold = testWindow.savePassThreshold;
+            testWindow.savePassThreshold = () => Promise.reject(new Error('forced threshold save failure'));
+            instructorWindow.saveAssessment('Unit 1');
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            testWindow.savePassThreshold = originalSavePassThreshold;
+
+            const originalFetch = window.fetch;
+            const originalSetTimeout = window.setTimeout;
+            window.setTimeout = /** @type {any} */ ((callback) => {
+                callback();
+                return 1;
+            });
+            await instructorWindow.loadDocuments();
+            window.fetch = /** @type {any} */ (() => Promise.reject(new Error('forced document load failure')));
+            await instructorWindow.loadDocuments();
+            window.fetch = originalFetch;
+            window.setTimeout = originalSetTimeout;
+
+            const placeholderContainer = document.createElement('div');
+            placeholderContainer.innerHTML = '<div class="file-item placeholder-item"><h3>*Lecture Notes - Unit 1</h3><span class="status-text">Not Uploaded</span></div>';
+            instructorWindow.removeExistingPlaceholders(placeholderContainer);
+
+            instructorWindow.showNotification('Error branch sentinel failed', 'error');
+        });
+
         await expect(page.locator('.notification').filter({ hasText: /failed|Error|No questions|denied|Please provide/i }).first()).toBeVisible();
     });
 
@@ -1281,6 +1587,26 @@ test.describe('instructor.js focused browser coverage', () => {
             document.querySelector('#topic-review-add-btn')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
             document.querySelector('#topic-review-save-btn')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
             await topicPromise;
+
+            const cancelTopicPromise = instructorWindow.openTopicReviewModal(
+                'INSTRUCTOR-JS-FOCUSED',
+                'Cancel source',
+                [],
+                ['Cancel Topic'],
+                'Unit 1'
+            );
+            document.querySelector('#topic-review-cancel-btn')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            await cancelTopicPromise;
+
+            const closeTopicPromise = instructorWindow.openTopicReviewModal(
+                'INSTRUCTOR-JS-FOCUSED',
+                'Close source',
+                [],
+                ['Close Topic'],
+                'Unit 1'
+            );
+            document.querySelector('#topic-review-close-btn')?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+            await closeTopicPromise;
 
             instructorWindow.openUploadModal('Unit 1', 'practice-quiz');
             instructorWindow.showInlineTopicReview('INSTRUCTOR-JS-FOCUSED', 'No topics source', [], []);
