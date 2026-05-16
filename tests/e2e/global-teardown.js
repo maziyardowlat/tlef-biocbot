@@ -4,7 +4,7 @@ const path = require('path');
 const { fileURLToPath } = require('url');
 const { addCoverageReport } = require('monocart-reporter');
 
-const NODE_V8_COVERAGE_DIR = path.resolve(__dirname, '../../test-results/.v8-coverage');
+const NODE_V8_COVERAGE_DIR = path.resolve(__dirname, '../../coverage-reports/.v8-server');
 const APP_ROOT = path.resolve(__dirname, '../..');
 const SERVER_INFO_FILE = path.join(NODE_V8_COVERAGE_DIR, 'server-info.json');
 
@@ -60,10 +60,15 @@ async function flushServerCoverage() {
 module.exports = async function globalTeardown(config) {
     if (process.env.MONOCART_COVERAGE === '0') return;
     await flushServerCoverage();
-    if (!fs.existsSync(NODE_V8_COVERAGE_DIR)) return;
+    if (!fs.existsSync(NODE_V8_COVERAGE_DIR)) {
+        console.warn(`[v8-coverage] no coverage dir at ${NODE_V8_COVERAGE_DIR} — server-side coverage will be missing`);
+        return;
+    }
 
     const files = readCoverageFiles();
+    console.log(`[v8-coverage] found ${files.length} dump file(s) in ${NODE_V8_COVERAGE_DIR}`);
 
+    let totalEntries = 0;
     for (const file of files) {
         const filePath = path.join(NODE_V8_COVERAGE_DIR, file);
         const raw = JSON.parse(fs.readFileSync(filePath, 'utf8'));
@@ -77,10 +82,12 @@ module.exports = async function globalTeardown(config) {
         }
 
         if (coverageList.length) {
+            totalEntries += coverageList.length;
             const testInfo = /** @type {import('@playwright/test').TestInfo} */ (
                 /** @type {unknown} */ ({ config })
             );
             await addCoverageReport(coverageList, testInfo);
         }
     }
+    console.log(`[v8-coverage] merged ${totalEntries} server-side src/ entries into the monocart report`);
 };

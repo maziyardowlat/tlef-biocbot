@@ -23,15 +23,11 @@ if (coverageDir && serverInfoFile) {
         runId,
         startedAt: new Date().toISOString(),
     }, null, 2));
+    // Visible at server boot so it's obvious when instrumentation is active.
+    console.log(`[v8-coverage] enabled — pid=${process.pid} dir=${coverageDir}`);
 
     process.on('SIGUSR2', flushCoverage);
-
-    for (const signal of ['SIGINT', 'SIGTERM']) {
-        process.once(signal, () => {
-            flushCoverage();
-            process.exit(0);
-        });
-    }
-
-    process.once('beforeExit', flushCoverage);
+    // Do NOT install SIGINT/SIGTERM handlers that call process.exit(0):
+    // that path skips Node's built-in NODE_V8_COVERAGE auto-dump on exit.
+    // Letting the default signal behavior run preserves the dump.
 }
