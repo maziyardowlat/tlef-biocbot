@@ -129,7 +129,12 @@ async function openStudentScriptHarness(page, options = {}) {
             contentType: 'text/html',
             body: `<!doctype html>
 <html>
-<head><title>student.js harness</title></head>
+<head>
+    <title>student.js harness</title>
+    <link rel="stylesheet" href="/styles/style.css">
+    <link rel="stylesheet" href="/styles/chat.css">
+    <link rel="stylesheet" href="/styles/agreement-modal.css">
+</head>
 <body>
     <div class="app-container">
         <aside class="sidebar">
@@ -898,6 +903,8 @@ test.describe('student.js compact browser harness', () => {
         };
 
         await openStudentScriptHarness(page, { chatData: seededChat });
+        await expect(page.locator('#chat-messages')).toContainText('It starts with phosphorylation.', { timeout: 10_000 });
+        await expect(page.locator('#chat-messages')).not.toContainText('Loading your previous chat...');
         await page.evaluate(() => {
             const w = /** @type {any} */ (window);
             w.currentCalibrationQuestions = [{
@@ -970,6 +977,10 @@ test.describe('student.js compact browser harness', () => {
                 ],
             };
             w.__fetchMocks['/api/courses/JOINABLE/join'] = { success: true };
+            w.__fetchMocks['/api/courses/JOINABLE/student-enrollment'] = {
+                success: true,
+                data: { enrolled: true, status: 'active' },
+            };
             w.__fetchMocks['/api/courses/JOINABLE'] = {
                 success: true,
                 data: {
@@ -997,7 +1008,10 @@ test.describe('student.js compact browser harness', () => {
             ]);
         });
 
+        await expect(page.locator('#course-select')).toBeVisible();
+        await page.locator('#course-select').click();
         await page.locator('#course-select').selectOption('JOINABLE');
+        await expect.poll(() => page.evaluate(() => /** @type {any} */ (window).__prompts.length)).toBe(1);
         await expect.poll(() => page.evaluate(() => {
             const w = /** @type {any} */ (window);
             return w.__fetchLog.findLast((entry) => entry.url === '/api/courses/JOINABLE/join')?.body?.code;
