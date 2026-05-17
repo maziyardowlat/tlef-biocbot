@@ -17,12 +17,12 @@ different shapes** depending on which UI flow created it. One extra wrinkle:
 helper converts that object back into the string-y/object shape before calling
 `POST /api/questions`.
 
-| Field | `onboarding.js` modal state | `onboarding.js` final POST | `instructor.js` POST |
-|---|---|---|---|
-| TF `correctAnswer` | boolean `true` / `false` | string `"true"` / `"false"` | string `"true"` / `"false"` |
-| MCQ `options` | array `["A text", "B text", ...]` | object `{A: "...", B: "...", ...}` | object `{A: "...", B: "...", ...}` |
-| MCQ `correctAnswer` | numeric index `2` | letter `"C"` | letter `"C"` |
-| SA `correctAnswer` | string | string | string |
+| Field                 | `onboarding.js` modal state       | `onboarding.js` final POST         | `instructor.js` POST               |
+| --------------------- | ----------------------------------- | ------------------------------------ | ------------------------------------ |
+| TF `correctAnswer`  | boolean `true` / `false`        | string `"true"` / `"false"`      | string `"true"` / `"false"`      |
+| MCQ `options`       | array `["A text", "B text", ...]` | object `{A: "...", B: "...", ...}` | object `{A: "...", B: "...", ...}` |
+| MCQ `correctAnswer` | numeric index `2`                 | letter `"C"`                       | letter `"C"`                       |
+| SA `correctAnswer`  | string                              | string                               | string                               |
 
 ### Decided direction: standardize on the structured shape
 
@@ -97,6 +97,12 @@ and `quiz.js`/`chat.js` were one bad input away from crashing.
 
 - **Where:** `public/student/scripts/student.js` lines 2200, 2213, 2216–2221
 - **Symptom:** Branches that exist only because two ingest paths persist different shapes.
+- **Coverage verdicts:**
+  - `2200` (`practiceTests.passThreshold: null` while initializing missing `practiceTests`) is reachable today when autosave runs with calibration questions but no existing `practiceTests` object. Include in coverage prompts; it is not a Phase 3b-only branch.
+  - `2213` (true/false answer index rendered as `True` / `False`) is reachable today from the true/false assessment flow created by either ingest path. Include in coverage prompts.
+  - `2216-2218` (multiple-choice answer index resolves through `Object.keys(q.options)`) is reachable today for current legacy object options and future array options. Include in coverage prompts.
+  - `2218-2220` (fallback to `Option ${studentAnswerIndex}` when the selected index has no option key) is not reachable through the current UI with valid ingested questions; treat as **skip — Phase 3b cleanup** rather than writing a direct coverage test against it.
+  - `2221-2223` (non-true/false, non-multiple-choice answer text falls back to the raw submitted answer) is reachable today through short-answer assessment questions. Include in coverage prompts.
 - **Fix:** Phase 3b — once shapes are unified, delete these branches and the wire-protocol fallback they support.
 
 ### 6. `GET /api/courses` returns soft-deleted courses
@@ -158,6 +164,13 @@ and `quiz.js`/`chat.js` were one bad input away from crashing.
 - **Compare to:** Other `lectures.js` routes (e.g. `/publish` at line 14) check `userHasCourseAccess()` before mutating.
 - **Why it matters:** Information leak — students could enumerate course publish states, including units the instructor hasn't released.
 - **Fix:** Drop the `instructorId` query param (use `req.user.userId` only). Add `userHasCourseAccess(db, courseId, req.user.userId)` check before responding.
+
+### 11a. TA Hub renders a missing TA display name as `undefined`
+
+- **Where:** `public/instructor/scripts/ta-hub.js` around line 283.
+- **Symptom:** The TA card heading interpolates `${ta.displayName}` directly. If the TA user document lacks `displayName`, the UI renders `undefined` instead of a useful fallback such as the TA username.
+- **Failing test:** `tests/e2e/instructor-ta-hub-branches.spec.js` › "falls back to the TA username when displayName is missing"
+- **Fix:** Render `ta.displayName || ta.username || ta.userId` anywhere the TA name is shown, including the remove-confirmation modal label.
 
 ### 12. Error-response shape drift: `error` vs `message`
 
@@ -413,3 +426,16 @@ and `quiz.js`/`chat.js` were one bad input away from crashing.
   "PRODUCT BUG: /stats is shadowed by /:courseId".
 - **Fix:** Move `router.get('/stats', ...)` above `router.get('/:courseId', ...)`.
 
+
+## Duplicate top-level declarations in `public/instructor/scripts/instructor.js`
+
+- `waitForAuth`: the declaration at lines 13-33 is shadowed by the later declaration at lines 6952-6969. Coverage marks the shadowed copy as uncovered.
+- `showNotification`: the declaration at lines 344-373 is shadowed by the later declaration at lines 6753-6782. Coverage marks the shadowed copy as uncovered.
+
+## Duplicate top-level declarations in `public/instructor/scripts/onboarding.js`
+
+- `removeObjective`: the declaration at lines 1590-1605 is shadowed by the later declaration at lines 1868-1872. Coverage marks the shadowed copy as uncovered.
+
+## History page auth-helper fallback in `public/student/scripts/history.js`
+
+- `getCurrentUser`: the branch at lines 183-185 intends to call the `auth.js` helper when `window.getCurrentUser` is a different function, but `history.js` declares its own top-level `getCurrentUser`, replacing the global name on the page. A page-driven test that installs an external helper after load still returns `null`, leaving this fallback branch effectively unreachable/dead under the real script load order.
