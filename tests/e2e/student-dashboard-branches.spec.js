@@ -6,8 +6,18 @@
  * API states with Playwright routes. Production code is intentionally untouched.
  */
 
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
 const { test, expect } = require('./fixtures/monocart');
 const { storageStatePath } = require('./helpers/users');
+
+// Ephemeral copy of the student storage state for the logout test.
+const LOGOUT_STORAGE_STATE = path.join(
+    os.tmpdir(),
+    `biocbot-student-logout-${process.pid}.json`
+);
 
 const STUDENT_ID = 'user_e2e_dashboard_branch_student';
 const COURSE_ID = 'BIOC-E2E-DASH-BRANCH';
@@ -87,6 +97,12 @@ async function mockDashboardApis(page, options = {}) {
 
         if (url.pathname === '/api/auth/me') {
             return fulfillJson(route, { success: true, user: STUDENT_USER });
+        }
+
+        // Important: never let this spec destroy the real server-side session
+        // stored in tests/e2e/.auth/student.json.
+        if (url.pathname === '/api/auth/logout') {
+            return fulfillJson(route, { success: true });
         }
 
         if (url.pathname === '/api/settings/llm-tag') {
@@ -305,24 +321,38 @@ test.describe('Student dashboard branch coverage', () => {
         await expect(page.locator('#confirm-modal')).toBeVisible();
     });
 
-    test('uses the page Auth shim for auth checks and logout handling', async ({ page }) => {
-        await mockDashboardApis(page);
-        await openDashboard(page, {
-            installAuthShim: true,
-            authUser: {
-                ...STUDENT_USER,
-                displayName: 'Injected Dashboard Student',
-            },
+    test.describe('logout isolation', () => {
+        test.use({ storageState: LOGOUT_STORAGE_STATE });
+
+        test.beforeAll(() => {
+            fs.copyFileSync(storageStatePath('student'), LOGOUT_STORAGE_STATE);
         });
 
-        await expect.poll(async () => {
-            return page.evaluate(() => /** @type {any} */ (window).__dashboardCheckAuthCalls);
-        }, { timeout: 10_000 }).toBe(1);
+        test.afterAll(() => {
+            if (fs.existsSync(LOGOUT_STORAGE_STATE)) {
+                fs.unlinkSync(LOGOUT_STORAGE_STATE);
+            }
+        });
 
-        await page.locator('#logout-btn').click();
-        await expect.poll(async () => {
-            return page.evaluate(() => /** @type {any} */ (window).__dashboardLogoutCalled === true);
-        }).toBe(true);
+        test('uses the page Auth shim for auth checks and logout handling', async ({ page }) => {
+            await mockDashboardApis(page);
+            await openDashboard(page, {
+                installAuthShim: true,
+                authUser: {
+                    ...STUDENT_USER,
+                    displayName: 'Injected Dashboard Student',
+                },
+            });
+
+            await expect.poll(async () => {
+                return page.evaluate(() => /** @type {any} */ (window).__dashboardCheckAuthCalls);
+            }, { timeout: 10_000 }).toBe(1);
+
+            await page.locator('#logout-btn').click();
+            await expect.poll(async () => {
+                return page.evaluate(() => /** @type {any} */ (window).__dashboardLogoutCalled === true);
+            }).toBe(true);
+        });
     });
 
     test('stops dashboard initialization when page Auth reports no user', async ({ page }) => {
