@@ -352,3 +352,64 @@ and `quiz.js`/`chat.js` were one bad input away from crashing.
 - **Fix:** Decide the intended lifecycle rule. If deleted means inaccessible,
   enforce it in `joinCourseAsInstructor()` and in the route before updating.
 
+### 30. `GET /api/auth/users/:userId` always throws (mongo driver v6 API misuse)
+
+- **Where:** `src/routes/auth.js` lines 610-620.
+- **Symptom:** The route calls
+  `usersCollection.findOne({ userId }).project({ ... })` — chaining `.project()`
+  on a `findOne` result. In the mongodb v6 driver `findOne` returns a Document
+  (or null) rather than a Cursor, so `.project` is undefined and every call
+  throws a `TypeError`. The catch block converts it to a 500 response.
+- **Why it matters:** The endpoint is completely unreachable. Any caller —
+  including the instructor dashboard's "view user details" flow — gets a 500.
+- **Failing tests:** `tests/e2e/routes-auth-api.spec.js` ›
+  "PRODUCT BUG: GET /users/:userId throws because findOne(...).project() is
+  not a function" and the matching 404 variant.
+- **Fix:** Pass `projection` as the second argument to `findOne`:
+  `usersCollection.findOne({ userId }, { projection: { userId: 1, ... } })`.
+
+### 31. `DELETE /api/courses/:courseId/units/:unitName` 500s when no body sent
+
+- **Where:** `src/routes/courses.js` line 3140.
+- **Symptom:** The handler runs `const { instructorId } = req.body;` before
+  falling back to the querystring at line 3144. Express 5 leaves `req.body`
+  undefined when the request has no Content-Type / no body, so the
+  destructure throws and the route returns 500 — even when the caller
+  supplied `?instructorId=...` in the URL.
+- **Why it matters:** Clients that send DELETE with the id in the
+  querystring (the documented fallback) crash instead of succeeding.
+- **Failing test:** `tests/e2e/routes-courses-api.spec.js` ›
+  "PRODUCT BUG: DELETE /units/:unitName 500 when no body sent
+  (destructures req.body)".
+- **Fix:** Default to an empty object — `const { instructorId } = req.body || {};` —
+  or read the querystring first.
+
+### 32. `/stats` and `/course-material` handlers in `routes/questions.js` are shadowed by `/:questionId`
+
+- **Where:** `src/routes/questions.js` — `/:questionId` is registered at line
+  452, well before `/stats` (line 646) and `/course-material` (line 839).
+- **Symptom:** Express matches the dynamic `/:questionId` first for any
+  single-segment GET, so `GET /api/questions/stats` and
+  `GET /api/questions/course-material` are treated as questionId lookups,
+  return 404, and the actual handlers never run.
+- **Why it matters:** Two documented endpoints are completely unreachable.
+  The course-material content fetch is required for AI question generation
+  diagnostics; the stats endpoint is wired into the instructor dashboard.
+- **Failing tests:** `tests/e2e/routes-questions-api.spec.js` ›
+  "PRODUCT BUG: /stats is shadowed by /:questionId" and
+  "PRODUCT BUG: /course-material is shadowed by /:questionId".
+- **Fix:** Reorder the `router.get` calls so the static paths are registered
+  before the parameterised one — mirroring the comment already in
+  `routes/courses.js` ("must come before /:courseId to avoid route matching
+  issues").
+
+### 33. `/stats` in `routes/onboarding.js` is shadowed by `/:courseId`
+
+- **Where:** `src/routes/onboarding.js` — `/:courseId` is registered at
+  line 155, before `/stats` at line 549.
+- **Symptom:** Same root cause as #32. `GET /api/onboarding/stats` is
+  matched as a courseId lookup and falls through to a 404.
+- **Failing test:** `tests/e2e/routes-onboarding-api.spec.js` ›
+  "PRODUCT BUG: /stats is shadowed by /:courseId".
+- **Fix:** Move `router.get('/stats', ...)` above `router.get('/:courseId', ...)`.
+
