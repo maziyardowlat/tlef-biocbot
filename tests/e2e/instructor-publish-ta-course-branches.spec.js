@@ -65,6 +65,10 @@ async function installBranchRoutes(page, options = {}) {
         taCourses: [{ courseId: COURSE_ID, courseName: course.courseName }],
         taPermissions: { canAccessCourses: true, canAccessFlags: true },
         instructorCourses: [course],
+        instructorCoursesMode: 'success',
+        instructorCoursesStatus: 200,
+        taCoursesStatus: 200,
+        taCoursesSuccess: true,
         courseByIdStatus: 200,
         publishCalls: 0,
         publishStatusCalls: 0,
@@ -103,18 +107,46 @@ async function installBranchRoutes(page, options = {}) {
             return;
         }
 
-        if (pathname === `/api/onboarding/instructor/${INSTRUCTOR_ID}`) {
+        if (pathname.startsWith('/api/onboarding/instructor/')) {
+            if (controls.instructorCoursesMode === 'network-error') {
+                await route.abort('failed');
+                return;
+            }
+            if (controls.instructorCoursesStatus !== 200) {
+                await route.fulfill({ status: controls.instructorCoursesStatus, body: 'instructor courses unavailable' });
+                return;
+            }
             await route.fulfill({ json: { success: true, data: { courses: controls.instructorCourses } } });
             return;
         }
 
         if (pathname === `/api/courses/ta/${TA_ID}`) {
-            await route.fulfill({ json: { success: true, data: controls.taCourses } });
+            if (controls.taCoursesStatus !== 200) {
+                await route.fulfill({ status: controls.taCoursesStatus, body: 'ta courses unavailable' });
+                return;
+            }
+            await route.fulfill({
+                json: {
+                    success: controls.taCoursesSuccess,
+                    message: controls.taCoursesSuccess ? undefined : 'ta courses rejected',
+                    data: controls.taCourses,
+                },
+            });
             return;
         }
 
         if (pathname === `/api/courses/ta/${INSTRUCTOR_ID}`) {
-            await route.fulfill({ json: { success: true, data: controls.taCourses } });
+            if (controls.taCoursesStatus !== 200) {
+                await route.fulfill({ status: controls.taCoursesStatus, body: 'ta courses unavailable' });
+                return;
+            }
+            await route.fulfill({
+                json: {
+                    success: controls.taCoursesSuccess,
+                    message: controls.taCoursesSuccess ? undefined : 'ta courses rejected',
+                    data: controls.taCourses,
+                },
+            });
             return;
         }
 
@@ -164,6 +196,8 @@ async function installBranchRoutes(page, options = {}) {
             }
             const publishStatus = controls.publishStatusMode === 'external-change'
                 ? { 'Unit 1': false, 'Unit 2': false }
+                : controls.publishStatusMode === 'external-publish'
+                    ? { 'Unit 1': true, 'Unit 2': false }
                 : { 'Unit 1': true, 'Unit 2': false };
             await route.fulfill({ json: { success: true, data: { publishStatus } } });
             return;
@@ -179,6 +213,11 @@ async function installBranchRoutes(page, options = {}) {
             if (controls.publishMode === 'result-error-once') {
                 controls.publishMode = 'success';
                 await route.fulfill({ json: { success: false, message: 'publish rejected' } });
+                return;
+            }
+            if (controls.publishMode === 'network-error-once') {
+                controls.publishMode = 'success';
+                await route.abort('failed');
                 return;
             }
             await route.fulfill({ json: { success: true, message: 'Publish updated', data: request.postDataJSON() } });
@@ -230,12 +269,29 @@ async function seedPublishToggleHarness(page, checked = true) {
 
 async function openInstructorDocuments(page, options = {}) {
     const controls = await installBranchRoutes(page, options);
-    await page.goto(`/instructor/documents?courseId=${COURSE_ID}`);
-    await expect(page.locator('#course-title')).toHaveText('Instructor Branch Window', { timeout: 15_000 });
+    if (Object.prototype.hasOwnProperty.call(options, 'selectedCourseId')) {
+        await page.addInitScript((selectedCourseId) => {
+            if (selectedCourseId) {
+                localStorage.setItem('selectedCourseId', selectedCourseId);
+            } else {
+                localStorage.removeItem('selectedCourseId');
+            }
+        }, options.selectedCourseId);
+    }
+    const url = options.withCourseParam === false
+        ? '/instructor/documents'
+        : `/instructor/documents?courseId=${COURSE_ID}`;
+    await page.goto(url);
+    if (options.expectCourseTitle !== false) {
+        await expect(page.locator('#course-title')).toHaveText('Instructor Branch Window', { timeout: 15_000 });
+    }
     await page.waitForFunction(() => {
         const instructorWindow = /** @type {InstructorWindow} */ (window);
         return [
             'addContentToWeek',
+            'extractFilenameFromDisposition',
+            'formatFileSize',
+            'loadTAPermissions',
             'updatePublishStatus',
             'loadPublishStatus',
             'startPublishStatusPolling',
@@ -250,7 +306,8 @@ async function openInstructorSettings(page, options = {}) {
     await page.goto(`/instructor/settings?courseId=${options.withCourseParam === false ? '' : COURSE_ID}`);
     await page.waitForFunction(() => {
         const instructorWindow = /** @type {InstructorWindow} */ (window);
-        return typeof instructorWindow.showNotification === 'function';
+        return typeof instructorWindow.showNotification === 'function'
+            && typeof instructorWindow.getCurrentCourseId === 'function';
     });
     return controls;
 }
@@ -275,6 +332,88 @@ test.describe('instructor publish, TA, course, and polling branches', () => {
 
         expect(buttonCount).toBe(0);
         await expect(page.locator('.accordion-item[data-unit-name="Harness Unit"] .status-text')).toHaveText('Processed');
+    });
+
+    test('parses fallback filenames when content disposition is absent or malformed', async ({ page }) => {
+        await openInstructorDocuments(page);
+
+        const filenames = await page.evaluate(() => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            return [
+                instructorWindow.extractFilenameFromDisposition(null),
+                instructorWindow.extractFilenameFromDisposition('attachment; filename*=UTF-8\'\'%E0%A4%A; filename="fallback.pdf"'),
+                instructorWindow.extractFilenameFromDisposition('attachment; filename="notes.pdf"'),
+            ];
+        });
+
+        expect(filenames).toEqual([null, 'fallback.pdf', 'notes.pdf']);
+    });
+
+    test('returns without adding content when the unit accordion is missing', async ({ page }) => {
+        await openInstructorDocuments(page);
+
+        const counts = await page.evaluate(() => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            const before = document.querySelectorAll('.file-item').length;
+            instructorWindow.addContentToWeek('Missing Harness Unit', 'Missing.pdf', 'No target unit', 'doc-missing');
+            return {
+                before,
+                after: document.querySelectorAll('.file-item').length,
+            };
+        });
+
+        expect(counts.after).toBe(counts.before);
+    });
+
+    test('replaces practice placeholder with uploaded document actions', async ({ page }) => {
+        await openInstructorDocuments(page);
+
+        const replacement = await page.evaluate(() => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            const accordion = document.createElement('div');
+            accordion.className = 'accordion-item';
+            accordion.dataset.unitName = 'Practice Harness';
+            accordion.innerHTML = `
+                <div class="course-materials-section">
+                    <div class="section-content">
+                        <div class="file-item placeholder-item">
+                            <div class="file-info">
+                                <h3>*Practice Questions/Tutorial</h3>
+                                <p>Placeholder</p>
+                                <span class="status-text uploaded">Uploaded</span>
+                            </div>
+                            <div class="file-actions"></div>
+                        </div>
+                    </div>
+                </div>`;
+            document.body.appendChild(accordion);
+
+            instructorWindow.addContentToWeek(
+                'Practice Harness',
+                'Practice set.pdf',
+                'New practice document',
+                'doc-practice',
+                'processed',
+                'practice-quiz',
+            );
+
+            const item = /** @type {HTMLElement} */ (accordion.querySelector('.file-item'));
+            return {
+                isPlaceholder: item.classList.contains('placeholder-item'),
+                documentId: item.dataset.documentId,
+                documentType: item.dataset.documentType,
+                actionCount: item.querySelectorAll('.action-button').length,
+                status: item.querySelector('.status-text')?.textContent,
+            };
+        });
+
+        expect(replacement).toEqual({
+            isPlaceholder: false,
+            documentId: 'doc-practice',
+            documentType: 'practice_q_tutorials',
+            actionCount: 3,
+            status: 'Processed',
+        });
     });
 
     test('reverts published toggle when publish request returns an HTTP error', async ({ page }) => {
@@ -309,6 +448,21 @@ test.describe('instructor publish, TA, course, and polling branches', () => {
         await expect(page.locator('.notification').filter({ hasText: 'Failed to update publish status' })).toBeVisible();
     });
 
+    test('reverts published toggle when publish request rejects', async ({ page }) => {
+        await openInstructorDocuments(page, { controls: { publishMode: 'network-error-once' } });
+        await seedPublishToggleHarness(page, true);
+
+        await page.evaluate(async () => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            const toggle = /** @type {HTMLInputElement} */ (document.getElementById('publish-unit1'));
+            toggle.checked = false;
+            await instructorWindow.updatePublishStatus('Unit 1', false);
+        });
+
+        await expect(page.locator('#publish-unit1')).toBeChecked();
+        await expect(page.locator('.notification').filter({ hasText: 'Error updating publish status' })).toBeVisible();
+    });
+
     test('shows warning when publish status request fails', async ({ page }) => {
         const controls = await openInstructorDocuments(page);
         await page.evaluate(() => {
@@ -340,6 +494,27 @@ test.describe('instructor publish, TA, course, and polling branches', () => {
 
         await expect(page.locator('#publish-unit1')).not.toBeChecked();
         await expect(page.locator('.notification').filter({ hasText: 'Publish status updated by another user' })).toBeVisible();
+    });
+
+    test('adds published class when external publish status turns true', async ({ page }) => {
+        const controls = await openInstructorDocuments(page, { controls: { publishStatusMode: 'external-change' } });
+        await seedPublishToggleHarness(page, false);
+
+        await page.evaluate(async () => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            await instructorWindow.loadPublishStatus(false);
+        });
+
+        controls.publishStatusMode = 'external-publish';
+
+        await page.evaluate(async () => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            const toggle = /** @type {HTMLInputElement} */ (document.getElementById('publish-unit1'));
+            toggle.checked = false;
+            await instructorWindow.loadPublishStatus(false);
+        });
+
+        await expect(page.locator('.accordion-item[data-unit-name="Unit 1"]')).toHaveClass(/published/);
     });
 
     test('disables retrieval toggle when no course context exists', async ({ page }) => {
@@ -432,6 +607,29 @@ test.describe('instructor publish, TA, course, and polling branches', () => {
         expect(clearCalls).toBe(1);
     });
 
+    test('logs hidden state when polling visibility changes', async ({ page }) => {
+        await openInstructorDocuments(page);
+        await seedPublishToggleHarness(page, true);
+
+        const sawHiddenLog = await page.evaluate(() => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            const logs = [];
+            const originalLog = console.log;
+            console.log = (...args) => {
+                logs.push(args.join(' '));
+                originalLog(...args);
+            };
+            Object.defineProperty(document, 'hidden', { configurable: true, value: true });
+            instructorWindow.startPublishStatusPolling();
+            document.dispatchEvent(new Event('visibilitychange'));
+            instructorWindow.stopPublishStatusPolling();
+            console.log = originalLog;
+            return logs.some((message) => message.includes('Page hidden'));
+        });
+
+        expect(sawHiddenLog).toBe(true);
+    });
+
     test('hides TA links when permissions deny access', async ({ page }) => {
         await openInstructorDocuments(page, {
             controls: {
@@ -456,6 +654,129 @@ test.describe('instructor publish, TA, course, and polling branches', () => {
 
         await expect(page.locator('#ta-my-courses-link')).toHaveCSS('display', 'none');
         await expect(page.locator('#ta-student-support-link')).toHaveCSS('display', 'none');
+    });
+
+    test('warns when TA permission links are absent', async ({ page }) => {
+        await openInstructorDocuments(page);
+
+        const linkCount = await page.evaluate(async () => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            document.getElementById('ta-my-courses-link')?.remove();
+            document.getElementById('ta-student-support-link')?.remove();
+            await instructorWindow.updateTANavigationBasedOnPermissions();
+            return document.querySelectorAll('#ta-my-courses-link, #ta-student-support-link').length;
+        });
+
+        expect(linkCount).toBe(0);
+    });
+
+    test('keeps TA permissions untouched when TA id is missing', async ({ page }) => {
+        await openInstructorDocuments(page);
+
+        const permissions = await page.evaluate(async () => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            const testWindow = /** @type {any} */ (window);
+            testWindow.taPermissions = { sentinel: true };
+            testWindow.getCurrentInstructorId = () => '';
+            await instructorWindow.loadTAPermissions();
+            return testWindow.taPermissions;
+        });
+
+        expect(permissions).toEqual({ sentinel: true });
+    });
+
+    test('clears TA permissions when courses request fails', async ({ page }) => {
+        await openInstructorDocuments(page, {
+            controls: {
+                taCoursesStatus: 500,
+            },
+        });
+
+        const permissions = await page.evaluate(async () => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            await instructorWindow.loadTAPermissions();
+            return /** @type {any} */ (window).taPermissions;
+        });
+
+        expect(permissions).toEqual({});
+    });
+
+    test('clears TA permissions when courses response is unsuccessful', async ({ page }) => {
+        await openInstructorDocuments(page, {
+            controls: {
+                taCoursesSuccess: false,
+            },
+        });
+
+        const permissions = await page.evaluate(async () => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            await instructorWindow.loadTAPermissions();
+            return /** @type {any} */ (window).taPermissions;
+        });
+
+        expect(permissions).toEqual({});
+    });
+
+    test('denies feature access when TA permissions are empty', async ({ page }) => {
+        await openInstructorDocuments(page);
+
+        const canAccessCourses = await page.evaluate(() => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            /** @type {any} */ (window).taPermissions = {};
+            return instructorWindow.hasPermissionForFeature('courses');
+        });
+
+        expect(canAccessCourses).toBe(false);
+    });
+
+    test('navigates TA courses link with selected course', async ({ page }) => {
+        await openInstructorDocuments(page);
+
+        await page.evaluate(() => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            document.getElementById('ta-my-courses-link')?.remove();
+            const link = document.createElement('a');
+            link.id = 'ta-my-courses-link';
+            link.href = '#';
+            document.body.appendChild(link);
+            localStorage.setItem('selectedCourseId', 'INSTRUCTOR-BRANCH-WINDOW');
+            window.history.replaceState({}, '', '/instructor/settings');
+            instructorWindow.setupTANavigationHandlers();
+            link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        });
+
+        await expect(page).toHaveURL(/\/instructor\/documents\?courseId=INSTRUCTOR-BRANCH-WINDOW/);
+    });
+
+    test('navigates TA support link with selected course', async ({ page }) => {
+        await openInstructorDocuments(page);
+
+        await page.evaluate(() => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            document.getElementById('ta-student-support-link')?.remove();
+            const link = document.createElement('a');
+            link.id = 'ta-student-support-link';
+            link.href = '#';
+            document.body.appendChild(link);
+            localStorage.setItem('selectedCourseId', 'INSTRUCTOR-BRANCH-WINDOW');
+            instructorWindow.setupTANavigationHandlers();
+            link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        });
+
+        await expect(page).toHaveURL(/\/instructor\/flagged\?courseId=INSTRUCTOR-BRANCH-WINDOW/);
+    });
+
+    test('warns when TA support link is missing', async ({ page }) => {
+        await openInstructorDocuments(page);
+
+        const hasSupportLink = await page.evaluate(() => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            document.getElementById('ta-student-support-link')?.remove();
+            instructorWindow.setupTANavigationHandlers();
+            return Boolean(document.getElementById('ta-student-support-link'));
+        });
+
+        expect(hasSupportLink).toBe(false);
     });
 
     test('alerts when TA support has no selected course', async ({ page }) => {
@@ -491,5 +812,73 @@ test.describe('instructor publish, TA, course, and polling branches', () => {
         });
 
         expect(alertMessage).toBe('No course selected. Please try again.');
+    });
+
+    test('loads selected course from localStorage when URL has no course', async ({ page }) => {
+        await openInstructorDocuments(page);
+
+        const selectedCourse = await page.evaluate(async (courseId) => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            window.history.replaceState({}, '', '/instructor/documents');
+            localStorage.setItem('selectedCourseId', courseId);
+            return instructorWindow.getCurrentCourseId();
+        }, COURSE_ID);
+
+        expect(selectedCourse).toBe(COURSE_ID);
+    });
+
+    test('falls back to user preference course when no courses are returned', async ({ page }) => {
+        await openInstructorDocuments(page, {
+            controls: { instructorCourses: [] },
+        });
+
+        const selectedCourse = await page.evaluate(async (courseId) => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            const testWindow = /** @type {any} */ (window);
+            window.history.replaceState({}, '', '/instructor/documents');
+            localStorage.removeItem('selectedCourseId');
+            testWindow.getCurrentUser = () => ({ preferences: { courseId } });
+            return instructorWindow.getCurrentCourseId();
+        }, COURSE_ID);
+
+        expect(selectedCourse).toBe(COURSE_ID);
+    });
+
+    test('redirects to onboarding when course lookup fails', async ({ page }) => {
+        await openInstructorSettings(page, {
+            controls: {
+                instructorCoursesStatus: 500,
+            },
+        });
+
+        await page.evaluate(async () => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            const testWindow = /** @type {any} */ (window);
+            window.history.replaceState({}, '', '/instructor/documents');
+            localStorage.removeItem('selectedCourseId');
+            testWindow.getCurrentUser = () => ({ preferences: {} });
+            await instructorWindow.getCurrentCourseId();
+        });
+
+        await expect(page).toHaveURL(/\/instructor\/onboarding/, { timeout: 4_000 });
+    });
+
+    test('redirects to onboarding when course lookup rejects', async ({ page }) => {
+        await openInstructorSettings(page, {
+            controls: {
+                instructorCoursesMode: 'network-error',
+            },
+        });
+
+        await page.evaluate(async () => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            const testWindow = /** @type {any} */ (window);
+            window.history.replaceState({}, '', '/instructor/documents');
+            localStorage.removeItem('selectedCourseId');
+            testWindow.getCurrentUser = () => ({ preferences: {} });
+            await instructorWindow.getCurrentCourseId();
+        });
+
+        await expect(page).toHaveURL(/\/instructor\/onboarding/, { timeout: 4_000 });
     });
 });

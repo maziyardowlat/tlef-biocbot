@@ -147,6 +147,20 @@ test('returns null when chat lookup throws', async ({ page }) => {
     expect(result).toBeNull();
 });
 
+test('returns null when chat lookup finds no matching chat', async ({ page }) => {
+    await openHistoryPage(page);
+    await seedLocalHistory(page, [
+        { id: 'existing-chat', title: 'Existing chat' },
+    ]);
+
+    const result = await page.evaluate(() => {
+        const w = /** @type {any} */ (window);
+        return w.getChatById('missing-chat');
+    });
+
+    expect(result).toBeNull();
+});
+
 test('delete short-circuits when no current student exists', async ({ page }) => {
     await openHistoryPage(page);
     await clearCurrentUser(page);
@@ -230,6 +244,74 @@ test('delete falls back to localStorage when server reports unsuccessful JSON', 
     expect(remaining).toEqual([]);
 });
 
+test('delete falls back when server failure has no message', async ({ page }) => {
+    await page.route('**/api/students/*/*/sessions/*/own', async (route) => {
+        if (route.request().method() !== 'DELETE') return route.fallback();
+        await route.fulfill({ json: { success: false } });
+    });
+    await openHistoryPage(page);
+    await seedLocalHistory(page, [
+        { id: 'json-false-delete-no-message', title: 'Remove after false without message' },
+    ]);
+
+    const deleted = await page.evaluate(() => {
+        const w = /** @type {any} */ (window);
+        return w.deleteChatFromHistory('json-false-delete-no-message');
+    });
+    const remaining = await page.evaluate((sid) => {
+        return JSON.parse(localStorage.getItem(`biocbot_chat_history_${sid}`) || '[]');
+    }, studentId);
+
+    expect(deleted).toBe(true);
+    expect(remaining).toEqual([]);
+});
+
+test('delete returns false when fallback history is not an array', async ({ page }) => {
+    await page.route('**/api/students/*/*/sessions/*/own', async (route) => {
+        if (route.request().method() !== 'DELETE') return route.fallback();
+        await route.fulfill({ status: 500, body: 'failed' });
+    });
+    await openHistoryPage(page);
+    await page.evaluate((sid) => {
+        localStorage.setItem(`biocbot_chat_history_${sid}`, JSON.stringify({ id: 'not-an-array' }));
+    }, studentId);
+
+    const deleted = await page.evaluate(() => {
+        const w = /** @type {any} */ (window);
+        return w.deleteChatFromHistory('not-an-array');
+    });
+
+    expect(deleted).toBe(false);
+});
+
+test('delete returns false when the student id disappears before fallback storage write', async ({ page }) => {
+    await openHistoryPage(page);
+    await page.evaluate((arg) => {
+        const w = /** @type {any} */ (window);
+        w.currentUser = { userId: arg.studentId, displayName: 'Ephemeral Student' };
+        localStorage.removeItem('currentUser');
+        localStorage.setItem(`biocbot_chat_history_${arg.studentId}`, JSON.stringify([
+            { id: 'delete-without-fallback-student', title: 'Cannot write fallback' },
+        ]));
+    }, { studentId });
+
+    const deleted = await page.evaluate(async () => {
+        const w = /** @type {any} */ (window);
+        const originalFetch = w.fetch;
+        w.fetch = async () => {
+            w.currentUser = null;
+            throw new Error('offline before fallback');
+        };
+        try {
+            return await w.deleteChatFromHistory('delete-without-fallback-student');
+        } finally {
+            w.fetch = originalFetch;
+        }
+    });
+
+    expect(deleted).toBe(false);
+});
+
 test('title update short-circuits when no current student exists', async ({ page }) => {
     await openHistoryPage(page);
     await clearCurrentUser(page);
@@ -288,6 +370,29 @@ test('title update falls back to localStorage when server reports unsuccessful J
     expect(title).toBe('Fallback after false');
 });
 
+test('title update falls back when server failure has no message', async ({ page }) => {
+    await page.route('**/api/students/*/*/sessions/*/title', async (route) => {
+        if (route.request().method() !== 'PUT') return route.fallback();
+        await route.fulfill({ json: { success: false } });
+    });
+    await openHistoryPage(page);
+    await seedLocalHistory(page, [
+        { id: 'json-false-title-no-message', title: 'Old title' },
+    ]);
+
+    const updated = await page.evaluate(() => {
+        const w = /** @type {any} */ (window);
+        return w.updateChatTitle('json-false-title-no-message', 'Fallback without message');
+    });
+    const title = await page.evaluate((sid) => {
+        const history = JSON.parse(localStorage.getItem(`biocbot_chat_history_${sid}`) || '[]');
+        return history[0]?.title;
+    }, studentId);
+
+    expect(updated).toBe(true);
+    expect(title).toBe('Fallback without message');
+});
+
 test('title update syncs localStorage when the server succeeds', async ({ page }) => {
     await page.route('**/api/students/*/*/sessions/*/title', async (route) => {
         if (route.request().method() !== 'PUT') return route.fallback();
@@ -311,6 +416,28 @@ test('title update syncs localStorage when the server succeeds', async ({ page }
     expect(title).toBe('Server title');
 });
 
+test('title update succeeds when local backup has no matching chat after server success', async ({ page }) => {
+    await page.route('**/api/students/*/*/sessions/*/title', async (route) => {
+        if (route.request().method() !== 'PUT') return route.fallback();
+        await route.fulfill({ json: { success: true } });
+    });
+    await openHistoryPage(page);
+    await seedLocalHistory(page, [
+        { id: 'other-server-success-title', title: 'Other title' },
+    ]);
+
+    const updated = await page.evaluate(() => {
+        const w = /** @type {any} */ (window);
+        return w.updateChatTitle('missing-server-success-title', 'Server accepted only');
+    });
+    const history = await page.evaluate((sid) => {
+        return JSON.parse(localStorage.getItem(`biocbot_chat_history_${sid}`) || '[]');
+    }, studentId);
+
+    expect(updated).toBe(true);
+    expect(history).toEqual([{ id: 'other-server-success-title', title: 'Other title' }]);
+});
+
 test('title update returns false when fallback cannot find the chat', async ({ page }) => {
     await page.route('**/api/students/*/*/sessions/*/title', async (route) => {
         if (route.request().method() !== 'PUT') return route.fallback();
@@ -324,6 +451,61 @@ test('title update returns false when fallback cannot find the chat', async ({ p
     const updated = await page.evaluate(() => {
         const w = /** @type {any} */ (window);
         return w.updateChatTitle('missing-chat', 'No match');
+    });
+
+    expect(updated).toBe(false);
+});
+
+test('title update returns false when fallback history is not an array', async ({ page }) => {
+    await page.route('**/api/students/*/*/sessions/*/title', async (route) => {
+        if (route.request().method() !== 'PUT') return route.fallback();
+        await route.fulfill({ status: 500, body: 'failed' });
+    });
+    await openHistoryPage(page);
+    await page.evaluate((sid) => {
+        localStorage.setItem(`biocbot_chat_history_${sid}`, JSON.stringify({ id: 'not-an-array' }));
+    }, studentId);
+
+    const updated = await page.evaluate(() => {
+        const w = /** @type {any} */ (window);
+        return w.updateChatTitle('not-an-array', 'Nope');
+    });
+
+    expect(updated).toBe(false);
+});
+
+test('title update returns false when the student id disappears before fallback storage write', async ({ page }) => {
+    await openHistoryPage(page);
+    await page.evaluate((arg) => {
+        const w = /** @type {any} */ (window);
+        w.currentUser = { userId: arg.studentId, displayName: 'Ephemeral Student' };
+        localStorage.removeItem('currentUser');
+        localStorage.setItem(`biocbot_chat_history_${arg.studentId}`, JSON.stringify([
+            { id: 'title-without-fallback-student', title: 'Old title' },
+        ]));
+    }, { studentId });
+
+    const updated = await page.evaluate(async () => {
+        const w = /** @type {any} */ (window);
+        const originalFetch = w.fetch;
+        const originalFindIndex = Array.prototype.findIndex;
+        w.fetch = async () => {
+            throw new Error('offline before title fallback');
+        };
+        Array.prototype.findIndex = function patchedFindIndex(callback, thisArg) {
+            const result = originalFindIndex.call(this, callback, thisArg);
+            if (Array.isArray(this) && this.some((item) => item?.id === 'title-without-fallback-student')) {
+                w.currentUser = null;
+                localStorage.removeItem('currentUser');
+            }
+            return result;
+        };
+        try {
+            return await w.updateChatTitle('title-without-fallback-student', 'Cannot write fallback');
+        } finally {
+            w.fetch = originalFetch;
+            Array.prototype.findIndex = originalFindIndex;
+        }
     });
 
     expect(updated).toBe(false);
