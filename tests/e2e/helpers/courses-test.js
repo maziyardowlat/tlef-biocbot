@@ -160,6 +160,94 @@ async function setCourseStatus(courseId, status) {
 }
 
 /**
+ * Seed a document row in the `documents` collection and attach it to the
+ * named lecture's `documents[]` array on the course. Useful for transfer /
+ * unit-deletion specs that need a doc actually present in MongoDB.
+ *
+ * @param {Object} args
+ * @param {string} args.documentId
+ * @param {string} args.courseId
+ * @param {string} args.lectureName
+ * @param {string} args.instructorId
+ * @param {string} [args.filename]
+ * @param {string} [args.content]
+ * @param {string} [args.contentType] - 'text' or 'file'
+ * @param {string} [args.mimeType]
+ * @param {string} [args.status]      - 'parsed'/'uploaded'
+ */
+async function seedDocumentAndAttach({
+    documentId,
+    courseId,
+    lectureName,
+    instructorId,
+    filename = 'seed.txt',
+    content = 'Seeded document body for coverage tests.',
+    contentType = 'text',
+    mimeType = 'text/plain',
+    status = 'parsed',
+}) {
+    await withDb(async (db) => {
+        const now = new Date();
+        await db.collection('documents').deleteMany({ documentId });
+        await db.collection('documents').insertOne({
+            documentId,
+            courseId,
+            lectureName,
+            instructorId,
+            filename,
+            originalName: filename,
+            content,
+            contentType,
+            mimeType,
+            documentType: 'additional',
+            size: Buffer.byteLength(content, 'utf8'),
+            status,
+            createdAt: now,
+            updatedAt: now,
+        });
+        await db.collection('courses').updateOne(
+            { courseId, 'lectures.name': lectureName },
+            {
+                $push: {
+                    'lectures.$.documents': {
+                        documentId,
+                        filename,
+                        originalName: filename,
+                        mimeType,
+                        size: Buffer.byteLength(content, 'utf8'),
+                        status,
+                    },
+                },
+                $set: { updatedAt: now },
+            }
+        );
+    });
+}
+
+/**
+ * Force a user's role to a particular value (and ensure `isActive: true`).
+ * Used to restore TAs that get demoted to 'student' by the
+ * DELETE /tas/:taId route during these tests.
+ */
+async function setUserRole(userId, role) {
+    await withDb((db) =>
+        db.collection('users').updateOne(
+            { userId },
+            { $set: { role, isActive: true, updatedAt: new Date() } }
+        )
+    );
+}
+
+async function clearInvitedCourses(userId) {
+    await withDb((db) =>
+        db.collection('users').updateOne(
+            { userId },
+            { $unset: { invitedCourses: '' }, $set: { updatedAt: new Date() } }
+        )
+    );
+}
+
+/**
  * Remove all courses owned by an instructor (or where they appear in
  * instructors/tas arrays). Used to clear stale state between tests so that
  * routes which find-by-instructorId don't accidentally target the wrong doc.
@@ -193,4 +281,7 @@ module.exports = {
     cleanupCoursesForUser,
     setStudentEnrollment,
     setCourseStatus,
+    seedDocumentAndAttach,
+    setUserRole,
+    clearInvitedCourses,
 };
