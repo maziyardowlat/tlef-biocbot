@@ -1,0 +1,719 @@
+// @ts-check
+/**
+ * API coverage for src/routes/questions.js (15% → target much higher).
+ *
+ * Per AGENTS.md, bug-exposing assertions are left failing and recorded in
+ * FINDINGS.md (#21: `!correctAnswer` rejects falsy structured answers, #23:
+ * routes trust body `instructorId` without checking course access, #24:
+ * GET /:questionId is a global cross-course lookup).
+ */
+
+const { test, expect, request } = require('./fixtures/monocart');
+const { TEST_USERS, storageStatePath } = require('./helpers/users');
+const {
+    withDb,
+    getUserIdByUsername,
+    seedCourse,
+    cleanupCourses,
+    cleanupCoursesForUser,
+} = require('./helpers/courses-test');
+
+const COURSE_A = 'BIOC-E2E-API-QUESTIONS-A';
+const COURSE_B = 'BIOC-E2E-API-QUESTIONS-B';
+
+let instructorId;
+let instructorFreshId;
+
+test.beforeAll(async () => {
+    instructorId = await getUserIdByUsername(TEST_USERS.instructor.username);
+    instructorFreshId = await getUserIdByUsername(TEST_USERS.instructor_fresh.username);
+});
+
+test.beforeEach(async () => {
+    await cleanupCoursesForUser(instructorId);
+    await cleanupCoursesForUser(instructorFreshId);
+});
+
+test.afterAll(async () => {
+    await cleanupCourses([COURSE_A, COURSE_B]);
+    await cleanupCoursesForUser(instructorId);
+    await cleanupCoursesForUser(instructorFreshId);
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/questions
+// ---------------------------------------------------------------------------
+test.describe('POST /api/questions (create)', () => {
+    test.use({ storageState: storageStatePath('instructor') });
+
+    test.beforeEach(async () => {
+        await seedCourse({ courseId: COURSE_A, instructorId });
+    });
+
+    test('400 when required fields are missing', async ({ request: api }) => {
+        const res = await api.post('/api/questions', { data: { courseId: COURSE_A } });
+        expect(res.status()).toBe(400);
+    });
+
+    test('happy path creates a multiple-choice question and returns id', async ({ request: api }) => {
+        const res = await api.post('/api/questions', {
+            data: {
+                courseId: COURSE_A,
+                lectureName: 'Unit 1',
+                instructorId,
+                questionType: 'multiple-choice',
+                question: 'Which biomolecule stores genetic information?',
+                options: { A: 'DNA', B: 'ATP', C: 'Glucose', D: 'Glycogen' },
+                correctAnswer: 'A',
+                difficulty: 'easy',
+                tags: ['genetics'],
+                points: 1,
+                learningObjective: 'Understand information macromolecules',
+            },
+        });
+        expect(res.ok()).toBeTruthy();
+        const body = await res.json();
+        expect(body.success).toBe(true);
+        expect(body.data.questionId).toMatch(/^q_/);
+    });
+
+    test('creates a short-answer question (default points/difficulty)', async ({ request: api }) => {
+        const res = await api.post('/api/questions', {
+            data: {
+                courseId: COURSE_A,
+                lectureName: 'Unit 1',
+                instructorId,
+                questionType: 'short-answer',
+                question: 'Define homeostasis.',
+                correctAnswer: 'Maintenance of stable internal conditions despite external changes.',
+            },
+        });
+        expect(res.ok()).toBeTruthy();
+    });
+
+    test('PRODUCT BUG (FINDINGS #21): boolean false TF correctAnswer rejected as missing', async ({ request: api }) => {
+        const res = await api.post('/api/questions', {
+            data: {
+                courseId: COURSE_A,
+                lectureName: 'Unit 1',
+                instructorId,
+                questionType: 'true-false',
+                question: 'Hydrogen bonds are stronger than covalent bonds.',
+                correctAnswer: false, // structured TF answer
+            },
+        });
+        // EXPECTED: accept boolean false. Currently 400 because the route uses !correctAnswer.
+        expect(res.ok()).toBeTruthy();
+    });
+
+    test('PRODUCT BUG (FINDINGS #21): MCQ correctAnswer index 0 rejected as missing', async ({ request: api }) => {
+        const res = await api.post('/api/questions', {
+            data: {
+                courseId: COURSE_A,
+                lectureName: 'Unit 1',
+                instructorId,
+                questionType: 'multiple-choice',
+                question: 'Which is the first amino acid in the alphabet?',
+                options: ['Alanine', 'Arginine', 'Asparagine', 'Glutamine'],
+                correctAnswer: 0, // structured numeric index
+            },
+        });
+        expect(res.ok()).toBeTruthy();
+    });
+
+    test('PRODUCT BUG (FINDINGS #23): body `instructorId` mismatch is accepted (no auth check)', async ({ request: api }) => {
+        // Authenticated as e2e_instructor but submits a different instructorId
+        // for a course they own. Expected: 403 — route must derive identity
+        // from req.user, not trust the request body.
+        const res = await api.post('/api/questions', {
+            data: {
+                courseId: COURSE_A,
+                lectureName: 'Unit 1',
+                instructorId: instructorFreshId, // not the caller
+                questionType: 'true-false',
+                question: 'Trust but verify.',
+                correctAnswer: 'true',
+            },
+        });
+        expect([401, 403]).toContain(res.status());
+    });
+
+    test('PRODUCT BUG (FINDINGS #23): authenticated instructor can mutate another instructor\'s course', async ({ request: api }) => {
+        // COURSE_B is owned by instructor_fresh. Caller (e2e_instructor) is
+        // authenticated but has no access to that course. Currently the route
+        // never checks user/course relation, so it succeeds.
+        await seedCourse({ courseId: COURSE_B, instructorId: instructorFreshId });
+        const res = await api.post('/api/questions', {
+            data: {
+                courseId: COURSE_B,
+                lectureName: 'Unit 1',
+                instructorId,
+                questionType: 'true-false',
+                question: 'Cross-course injection',
+                correctAnswer: 'true',
+            },
+        });
+        // EXPECTED: 403 — caller has no access to COURSE_B.
+        expect([401, 403]).toContain(res.status());
+    });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/questions/lecture
+// ---------------------------------------------------------------------------
+test.describe('GET /api/questions/lecture', () => {
+    test.use({ storageState: storageStatePath('instructor') });
+
+    test('400 when query params missing', async ({ request: api }) => {
+        const res = await api.get('/api/questions/lecture?courseId=COURSE');
+        expect(res.status()).toBe(400);
+    });
+
+    test('returns the list and count for a seeded lecture', async ({ request: api }) => {
+        const now = new Date();
+        await seedCourse({
+            courseId: COURSE_A,
+            instructorId,
+            lectures: [
+                {
+                    name: 'Unit 1',
+                    isPublished: true,
+                    learningObjectives: [],
+                    passThreshold: 2,
+                    createdAt: now,
+                    updatedAt: now,
+                    documents: [],
+                    assessmentQuestions: [
+                        {
+                            questionId: 'q_e2e_listed_1',
+                            questionType: 'true-false',
+                            question: 'A',
+                            correctAnswer: 'true',
+                            isActive: true,
+                        },
+                    ],
+                },
+            ],
+        });
+        const res = await api.get(`/api/questions/lecture?courseId=${COURSE_A}&lectureName=${encodeURIComponent('Unit 1')}`);
+        expect(res.ok()).toBeTruthy();
+        const body = await res.json();
+        expect(body.data.count).toBeGreaterThanOrEqual(1);
+        expect(body.data.questions.find((q) => q.questionId === 'q_e2e_listed_1')).toBeTruthy();
+    });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/questions/:questionId (global lookup) — FINDINGS #24
+// ---------------------------------------------------------------------------
+test.describe('GET /api/questions/:questionId', () => {
+    test('404 when questionId does not exist', async ({ baseURL }) => {
+        const api = await request.newContext({
+            baseURL,
+            storageState: storageStatePath('instructor'),
+        });
+        try {
+            const res = await api.get('/api/questions/q_does_not_exist');
+            expect(res.status()).toBe(404);
+        } finally {
+            await api.dispose();
+        }
+    });
+
+    test('returns the question for the owning instructor', async ({ baseURL }) => {
+        const now = new Date();
+        await seedCourse({
+            courseId: COURSE_A,
+            instructorId,
+            lectures: [{
+                name: 'Unit 1',
+                isPublished: true,
+                learningObjectives: [],
+                passThreshold: 2,
+                createdAt: now,
+                updatedAt: now,
+                documents: [],
+                assessmentQuestions: [
+                    { questionId: 'q_e2e_owner', questionType: 'true-false', question: 'A', correctAnswer: 'true', isActive: true },
+                ],
+            }],
+        });
+        const api = await request.newContext({
+            baseURL,
+            storageState: storageStatePath('instructor'),
+        });
+        try {
+            const res = await api.get('/api/questions/q_e2e_owner');
+            expect(res.ok()).toBeTruthy();
+            const body = await res.json();
+            expect(body.data.questionId).toBe('q_e2e_owner');
+        } finally {
+            await api.dispose();
+        }
+    });
+
+    test('PRODUCT BUG (FINDINGS #24): any authenticated user can fetch a question from another course', async ({ baseURL }) => {
+        // Seed a question in COURSE_B (owned by instructor_fresh).
+        const now = new Date();
+        await seedCourse({
+            courseId: COURSE_B,
+            instructorId: instructorFreshId,
+            lectures: [{
+                name: 'Unit 1',
+                isPublished: true,
+                learningObjectives: [],
+                passThreshold: 2,
+                createdAt: now,
+                updatedAt: now,
+                documents: [],
+                assessmentQuestions: [
+                    { questionId: 'q_e2e_other_course', questionType: 'true-false', question: 'private', correctAnswer: 'true', isActive: true },
+                ],
+            }],
+        });
+        // Caller is e2e_instructor — has no access to COURSE_B.
+        const api = await request.newContext({
+            baseURL,
+            storageState: storageStatePath('instructor'),
+        });
+        try {
+            const res = await api.get('/api/questions/q_e2e_other_course');
+            // EXPECTED: 403/404. Currently 200 — leaks the question.
+            expect([403, 404]).toContain(res.status());
+        } finally {
+            await api.dispose();
+        }
+    });
+});
+
+// ---------------------------------------------------------------------------
+// PUT /api/questions/:questionId
+// ---------------------------------------------------------------------------
+test.describe('PUT /api/questions/:questionId', () => {
+    test.use({ storageState: storageStatePath('instructor') });
+
+    test('400 when required fields missing', async ({ request: api }) => {
+        await seedCourse({ courseId: COURSE_A, instructorId });
+        const res = await api.put('/api/questions/q_anything', {
+            data: { courseId: COURSE_A },
+        });
+        expect(res.status()).toBe(400);
+    });
+
+    test('happy path updates question fields', async ({ request: api }) => {
+        const now = new Date();
+        await seedCourse({
+            courseId: COURSE_A,
+            instructorId,
+            lectures: [{
+                name: 'Unit 1',
+                isPublished: true,
+                learningObjectives: [],
+                passThreshold: 2,
+                createdAt: now,
+                updatedAt: now,
+                documents: [],
+                assessmentQuestions: [
+                    { questionId: 'q_e2e_update', questionType: 'true-false', question: 'Old text', correctAnswer: 'true', isActive: true, points: 1 },
+                ],
+            }],
+        });
+        const res = await api.put('/api/questions/q_e2e_update', {
+            data: {
+                courseId: COURSE_A,
+                lectureName: 'Unit 1',
+                instructorId,
+                question: 'New text',
+                points: 5,
+                tags: ['updated'],
+                learningObjective: '  Trimmed objective  ',
+            },
+        });
+        expect(res.ok()).toBeTruthy();
+
+        const doc = await withDb((db) =>
+            db.collection('courses').findOne({ courseId: COURSE_A })
+        );
+        const q = doc.lectures[0].assessmentQuestions.find((x) => x.questionId === 'q_e2e_update');
+        expect(q.question).toBe('New text');
+        expect(q.points).toBe(5);
+        expect(q.learningObjective).toBe('Trimmed objective'); // normalized
+    });
+});
+
+// ---------------------------------------------------------------------------
+// DELETE /api/questions/:questionId
+// ---------------------------------------------------------------------------
+test.describe('DELETE /api/questions/:questionId', () => {
+    test.use({ storageState: storageStatePath('instructor') });
+
+    test('400 when fields missing', async ({ request: api }) => {
+        const res = await api.delete('/api/questions/q_x', { data: { courseId: COURSE_A } });
+        expect(res.status()).toBe(400);
+    });
+
+    test('happy path soft-deletes (sets isActive false)', async ({ request: api }) => {
+        const now = new Date();
+        await seedCourse({
+            courseId: COURSE_A,
+            instructorId,
+            lectures: [{
+                name: 'Unit 1',
+                isPublished: true,
+                learningObjectives: [],
+                passThreshold: 2,
+                createdAt: now,
+                updatedAt: now,
+                documents: [],
+                assessmentQuestions: [
+                    { questionId: 'q_e2e_delete', questionType: 'true-false', question: 'X', correctAnswer: 'true', isActive: true },
+                ],
+            }],
+        });
+        const res = await api.delete('/api/questions/q_e2e_delete', {
+            data: { courseId: COURSE_A, lectureName: 'Unit 1', instructorId },
+        });
+        expect(res.ok()).toBeTruthy();
+
+        const doc = await withDb((db) =>
+            db.collection('courses').findOne({ courseId: COURSE_A })
+        );
+        const q = doc.lectures[0].assessmentQuestions.find((x) => x.questionId === 'q_e2e_delete');
+        // Implementation either removes or sets isActive:false; either way the
+        // question is no longer "active".
+        if (q) {
+            expect(q.isActive).toBe(false);
+        }
+    });
+
+    test('400 when course or lecture is unknown (model returns failure)', async ({ request: api }) => {
+        const res = await api.delete('/api/questions/q_nope', {
+            data: { courseId: 'BIOC-E2E-API-NOPE', lectureName: 'Unit 1', instructorId },
+        });
+        // Route surfaces model failure as 400
+        expect([400, 404]).toContain(res.status());
+    });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/questions/stats
+//
+// PRODUCT BUG: `/stats` is registered AFTER `/:questionId` in
+// src/routes/questions.js, so Express treats `stats` as a questionId. The
+// /stats handler is therefore unreachable. Same pattern hits `/course-material`
+// below.
+// ---------------------------------------------------------------------------
+test.describe('GET /api/questions/stats', () => {
+    test.use({ storageState: storageStatePath('instructor') });
+
+    test('PRODUCT BUG: /stats is shadowed by /:questionId (route ordering)', async ({ request: api }) => {
+        // EXPECTED: the validation branch in /stats returns 400 when courseId
+        // is missing. Currently the request is matched by /:questionId
+        // (questionId='stats'), which returns 404.
+        const res = await api.get('/api/questions/stats');
+        expect(res.status()).toBe(400);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/questions/bulk
+// ---------------------------------------------------------------------------
+test.describe('POST /api/questions/bulk', () => {
+    test.use({ storageState: storageStatePath('instructor') });
+
+    test('400 when required fields or questions array missing', async ({ request: api }) => {
+        const r1 = await api.post('/api/questions/bulk', { data: {} });
+        expect(r1.status()).toBe(400);
+
+        const r2 = await api.post('/api/questions/bulk', {
+            data: { courseId: 'X', lectureName: 'Unit 1', instructorId, questions: 'not-array' },
+        });
+        expect(r2.status()).toBe(400);
+    });
+
+    test('happy path inserts each question and returns inserted ids', async ({ request: api }) => {
+        await seedCourse({ courseId: COURSE_A, instructorId });
+        const res = await api.post('/api/questions/bulk', {
+            data: {
+                courseId: COURSE_A,
+                lectureName: 'Unit 1',
+                instructorId,
+                questions: [
+                    {
+                        questionType: 'true-false',
+                        question: 'Bulk Q1',
+                        correctAnswer: 'true',
+                        learningObjective: '',
+                    },
+                    {
+                        questionType: 'multiple-choice',
+                        question: 'Bulk Q2',
+                        options: { A: 'a', B: 'b' },
+                        correctAnswer: 'A',
+                        learningObjective: '',
+                    },
+                ],
+            },
+        });
+        expect(res.ok()).toBeTruthy();
+        const body = await res.json();
+        expect(body.data.insertedCount).toBe(2);
+        expect(body.data.insertedIds).toHaveLength(2);
+    });
+
+    test('empty questions array is technically valid → inserts 0', async ({ request: api }) => {
+        await seedCourse({ courseId: COURSE_A, instructorId });
+        const res = await api.post('/api/questions/bulk', {
+            data: { courseId: COURSE_A, lectureName: 'Unit 1', instructorId, questions: [] },
+        });
+        expect(res.ok()).toBeTruthy();
+        const body = await res.json();
+        expect(body.data.insertedCount).toBe(0);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/questions/course-material
+//
+// Same shadowing issue as /stats — `/course-material` is registered AFTER
+// `/:questionId`, so the handler is unreachable.
+// ---------------------------------------------------------------------------
+test.describe('GET /api/questions/course-material', () => {
+    test.use({ storageState: storageStatePath('instructor') });
+
+    test('PRODUCT BUG: /course-material is shadowed by /:questionId (route ordering)', async ({ request: api }) => {
+        const now = new Date();
+        await seedCourse({
+            courseId: COURSE_A,
+            instructorId,
+            lectures: [{
+                name: 'Unit 1',
+                isPublished: true,
+                learningObjectives: [],
+                passThreshold: 2,
+                createdAt: now,
+                updatedAt: now,
+                documents: [
+                    {
+                        documentId: 'doc-cm-1',
+                        type: 'lecture_notes',
+                        documentType: 'lecture-notes',
+                        originalName: 'Lecture Notes A.txt',
+                        content: 'ATP is the cellular energy currency.',
+                    },
+                ],
+                assessmentQuestions: [],
+            }],
+        });
+        const res = await api.get(
+            `/api/questions/course-material?courseId=${COURSE_A}&lectureName=Unit 1&instructorId=${instructorId}`
+        );
+        // EXPECTED: 200 with the document content. Currently 404 because the
+        // request is matched by /:questionId where questionId='course-material'.
+        expect(res.ok()).toBeTruthy();
+        const body = await res.json();
+        expect(body.data.hasMaterials).toBe(true);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/questions/check-answer
+// ---------------------------------------------------------------------------
+test.describe('POST /api/questions/check-answer', () => {
+    test.use({ storageState: storageStatePath('instructor') });
+
+    test('400 when required fields missing', async ({ request: api }) => {
+        const res = await api.post('/api/questions/check-answer', {
+            data: { question: 'A?' },
+        });
+        expect(res.status()).toBe(400);
+    });
+
+    test('returns an evaluation result (real LLM, lenient assertion)', async ({ request: api }) => {
+        test.setTimeout(60_000);
+        const res = await api.post('/api/questions/check-answer', {
+            data: {
+                question: 'What molecule stores genetic information?',
+                studentAnswer: 'DNA',
+                expectedAnswer: 'Deoxyribonucleic acid (DNA)',
+                questionType: 'short-answer',
+                studentName: 'E2E',
+            },
+        });
+        expect(res.ok()).toBeTruthy();
+        const body = await res.json();
+        expect(body.success).toBe(true);
+        expect(body.data).toBeTruthy();
+    });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/questions/generate-ai (validation-only paths to avoid LLM tax)
+// ---------------------------------------------------------------------------
+test.describe('POST /api/questions/generate-ai', () => {
+    test.use({ storageState: storageStatePath('instructor') });
+
+    test('400 when required fields missing', async ({ request: api }) => {
+        const res = await api.post('/api/questions/generate-ai', { data: {} });
+        expect(res.status()).toBe(400);
+    });
+
+    test('400 when regenerate is true without feedback', async ({ request: api }) => {
+        const res = await api.post('/api/questions/generate-ai', {
+            data: {
+                courseId: COURSE_A,
+                lectureName: 'Unit 1',
+                instructorId,
+                questionType: 'true-false',
+                regenerate: true,
+            },
+        });
+        expect(res.status()).toBe(400);
+    });
+
+    test('400 when questionType is invalid', async ({ request: api }) => {
+        const res = await api.post('/api/questions/generate-ai', {
+            data: {
+                courseId: COURSE_A,
+                lectureName: 'Unit 1',
+                instructorId,
+                questionType: 'essay',
+            },
+        });
+        expect(res.status()).toBe(400);
+    });
+
+    test('404 when course does not exist', async ({ request: api }) => {
+        const res = await api.post('/api/questions/generate-ai', {
+            data: {
+                courseId: 'BIOC-E2E-API-NOPE',
+                lectureName: 'Unit 1',
+                instructorId,
+                questionType: 'true-false',
+            },
+        });
+        expect(res.status()).toBe(404);
+    });
+
+    test('403 when caller does not own the course', async ({ request: api }) => {
+        await seedCourse({ courseId: COURSE_B, instructorId: instructorFreshId });
+        const res = await api.post('/api/questions/generate-ai', {
+            data: {
+                courseId: COURSE_B,
+                lectureName: 'Unit 1',
+                instructorId,
+                questionType: 'true-false',
+            },
+        });
+        expect(res.status()).toBe(403);
+    });
+
+    test('404 when unit does not exist on owned course', async ({ request: api }) => {
+        await seedCourse({ courseId: COURSE_A, instructorId });
+        const res = await api.post('/api/questions/generate-ai', {
+            data: {
+                courseId: COURSE_A,
+                lectureName: 'Unit 99',
+                instructorId,
+                questionType: 'true-false',
+            },
+        });
+        expect(res.status()).toBe(404);
+    });
+
+    test('400 when struggleTopic is not in approvedStruggleTopics', async ({ request: api }) => {
+        await seedCourse({
+            courseId: COURSE_A,
+            instructorId,
+            overrides: { approvedStruggleTopics: ['Approved Topic'] },
+        });
+        const res = await api.post('/api/questions/generate-ai', {
+            data: {
+                courseId: COURSE_A,
+                lectureName: 'Unit 1',
+                instructorId,
+                questionType: 'true-false',
+                struggleTopic: 'Not Approved Topic',
+            },
+        });
+        expect(res.status()).toBe(400);
+    });
+
+    test('400 when unit has no course materials', async ({ request: api }) => {
+        await seedCourse({ courseId: COURSE_A, instructorId });
+        const res = await api.post('/api/questions/generate-ai', {
+            data: {
+                courseId: COURSE_A,
+                lectureName: 'Unit 1',
+                instructorId,
+                questionType: 'true-false',
+            },
+        });
+        expect(res.status()).toBe(400);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/questions/auto-link-learning-objectives
+// ---------------------------------------------------------------------------
+test.describe('POST /api/questions/auto-link-learning-objectives', () => {
+    test.use({ storageState: storageStatePath('instructor') });
+
+    test('400 when required fields missing', async ({ request: api }) => {
+        const res = await api.post('/api/questions/auto-link-learning-objectives', {
+            data: { courseId: 'X' },
+        });
+        expect(res.status()).toBe(400);
+    });
+
+    test('short-circuits with no LOs', async ({ request: api }) => {
+        await seedCourse({ courseId: COURSE_A, instructorId });
+        const res = await api.post('/api/questions/auto-link-learning-objectives', {
+            data: {
+                courseId: COURSE_A,
+                lectureName: 'Unit 1',
+                instructorId,
+                learningObjectives: [],
+                questions: [{ questionId: 'q1', question: 'A?' }],
+            },
+        });
+        expect(res.ok()).toBeTruthy();
+        const body = await res.json();
+        expect(body.data.linkedCount).toBe(0);
+        expect(body.data.matchedQuestions[0].learningObjective).toBe('');
+    });
+
+    test('short-circuits with no questions in DB and none supplied', async ({ request: api }) => {
+        await seedCourse({ courseId: COURSE_A, instructorId });
+        const res = await api.post('/api/questions/auto-link-learning-objectives', {
+            data: {
+                courseId: COURSE_A,
+                lectureName: 'Unit 1',
+                instructorId,
+                learningObjectives: ['Understand X', 'Compare Y'],
+            },
+        });
+        expect(res.ok()).toBeTruthy();
+        const body = await res.json();
+        expect(body.data.matchedQuestions).toEqual([]);
+    });
+
+    test('returns matchedQuestions (real LLM) with provided LOs+Qs', async ({ request: api }) => {
+        test.setTimeout(60_000);
+        const res = await api.post('/api/questions/auto-link-learning-objectives', {
+            data: {
+                courseId: COURSE_A,
+                lectureName: 'Unit 1',
+                instructorId,
+                learningObjectives: ['Understand the energy currency of cells', 'Compare DNA and RNA structure'],
+                questions: [
+                    { ref: 'q1', question: 'What molecule is the universal energy carrier?', learningObjective: '' },
+                ],
+            },
+        });
+        expect(res.ok()).toBeTruthy();
+        const body = await res.json();
+        expect(Array.isArray(body.data.matchedQuestions)).toBe(true);
+        expect(body.data.matchedQuestions.length).toBe(1);
+    });
+});
