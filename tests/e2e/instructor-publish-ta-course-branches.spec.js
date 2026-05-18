@@ -69,9 +69,13 @@ async function installBranchRoutes(page, options = {}) {
         instructorCoursesStatus: 200,
         taCoursesStatus: 200,
         taCoursesSuccess: true,
+        taPermissionsByCourse: null,
+        taPermissionResultsByCourse: null,
         courseByIdStatus: 200,
+        courseByIdCalls: 0,
         publishCalls: 0,
         publishStatusCalls: 0,
+        retrievalRequests: /** @type {Array<Record<string, unknown>>} */ ([]),
     };
     Object.assign(controls, options.controls || {});
 
@@ -150,6 +154,27 @@ async function installBranchRoutes(page, options = {}) {
             return;
         }
 
+        const taPermissionsMatch = pathname.match(/^\/api\/courses\/([^/]+)\/ta-permissions\/([^/]+)$/);
+        if (taPermissionsMatch && [TA_ID, INSTRUCTOR_ID].includes(taPermissionsMatch[2])) {
+            const courseId = decodeURIComponent(taPermissionsMatch[1]);
+            const resultByCourse = controls.taPermissionResultsByCourse || {};
+            const permissionsByCourse = controls.taPermissionsByCourse || {};
+            if (Object.prototype.hasOwnProperty.call(resultByCourse, courseId)) {
+                await route.fulfill({ json: resultByCourse[courseId] });
+                return;
+            }
+            const permissions = Object.prototype.hasOwnProperty.call(permissionsByCourse, courseId)
+                ? permissionsByCourse[courseId]
+                : controls.taPermissions;
+            await route.fulfill({
+                json: {
+                    success: true,
+                    data: { permissions },
+                },
+            });
+            return;
+        }
+
         if (pathname === `/api/courses/${COURSE_ID}/ta-permissions/${TA_ID}`) {
             await route.fulfill({
                 json: {
@@ -171,6 +196,7 @@ async function installBranchRoutes(page, options = {}) {
         }
 
         if (pathname === `/api/courses/${COURSE_ID}` && method === 'GET') {
+            controls.courseByIdCalls += 1;
             if (controls.courseByIdStatus !== 200) {
                 await route.fulfill({ status: controls.courseByIdStatus, body: 'course unavailable' });
                 return;
@@ -180,6 +206,7 @@ async function installBranchRoutes(page, options = {}) {
         }
 
         if (pathname === `/api/courses/${COURSE_ID}/retrieval-mode` && method === 'PUT') {
+            controls.retrievalRequests.push(request.postDataJSON());
             if (controls.retrievalSaveMode === 'fail') {
                 await route.fulfill({ status: 500, json: { success: false, message: 'save failed' } });
                 return;
@@ -312,6 +339,98 @@ async function openInstructorSettings(page, options = {}) {
     return controls;
 }
 
+async function openInstructorScriptHarness(page, options = {}) {
+    const controls = await installBranchRoutes(page, options);
+    if (Object.prototype.hasOwnProperty.call(options, 'selectedCourseId')) {
+        await page.addInitScript((selectedCourseId) => {
+            if (selectedCourseId) {
+                localStorage.setItem('selectedCourseId', selectedCourseId);
+            } else {
+                localStorage.removeItem('selectedCourseId');
+            }
+        }, options.selectedCourseId);
+    }
+
+    await page.route('**/instructor/branch-harness', async (route) => {
+        await route.fulfill({
+            contentType: 'text/html',
+            body: `<!doctype html>
+<html>
+<head><title>Instructor Branch Harness</title></head>
+<body>
+    <nav>
+        <li id="instructor-home-nav"></li>
+        <li id="instructor-documents-nav"></li>
+        <li id="instructor-onboarding-nav"></li>
+        <li id="instructor-flagged-nav"></li>
+        <li id="instructor-downloads-nav"></li>
+        <li id="instructor-ta-hub-nav"></li>
+        <li id="instructor-settings-nav"></li>
+        <li id="ta-dashboard-nav" style="display: none;"></li>
+        <li id="ta-courses-nav" style="display: none;"><a href="#" id="ta-my-courses-link">Course Upload</a></li>
+        <li id="ta-support-nav" style="display: none;"><a href="#" id="ta-student-support-link">Student Flag</a></li>
+        <li id="ta-settings-nav" style="display: none;"></li>
+    </nav>
+    <div id="user-display-name"></div>
+    <div class="user-avatar">I</div>
+    <div class="user-role"></div>
+    <script src="/common/scripts/auth.js"></script>
+    <script src="/instructor/scripts/instructor.js"></script>
+</body>
+</html>`,
+        });
+    });
+
+    await page.goto('/instructor/branch-harness');
+    await page.waitForFunction(() => {
+        const instructorWindow = /** @type {InstructorWindow} */ (window);
+        return typeof instructorWindow.getCurrentCourseId === 'function'
+            && typeof instructorWindow.loadTAPermissions === 'function'
+            && typeof instructorWindow.updateSidebarForTA === 'function';
+    });
+    return controls;
+}
+
+async function openInstructorSettingsWithReadyAuth(page, options = {}) {
+    const controls = await installBranchRoutes(page, options);
+    await page.route('**/common/scripts/auth.js', async (route) => {
+        await route.fulfill({
+            contentType: 'application/javascript',
+            body: `
+                const readyUser = {
+                    userId: '${INSTRUCTOR_ID}',
+                    username: 'e2e_instructor',
+                    displayName: 'Branch Instructor',
+                    role: 'instructor',
+                    preferences: {}
+                };
+                window.getCurrentUser = () => readyUser;
+                window.hasRole = (role) => readyUser.role === role;
+                window.isInstructor = () => true;
+                window.isTA = () => false;
+                window.isStudent = () => false;
+                window.isSystemAdmin = () => false;
+                window.getCurrentInstructorId = () => readyUser.userId;
+                window.getCurrentCourseId = () => new URLSearchParams(window.location.search).get('courseId')
+                    || window.localStorage.getItem('selectedCourseId')
+                    || readyUser.preferences.courseId
+                    || null;
+                window.setCurrentCourseId = async (courseId) => {
+                    readyUser.preferences.courseId = courseId;
+                    return true;
+                };
+                window.authenticatedFetch = (url, options = {}) => fetch(url, { ...options, credentials: 'include' });
+                window.applyLLMBodyTag = async () => {};
+                window.applyLLMTagClassesToElement = () => {};
+                window.getCurrentLLMTagClasses = () => [];
+            `,
+        });
+    });
+    await page.goto(`/instructor/settings?courseId=${COURSE_ID}`);
+    await expect(page.locator('h1')).toHaveText('Settings', { timeout: 15_000 });
+    return controls;
+}
+
 test.describe('instructor publish, TA, course, and polling branches', () => {
     test.use({ storageState: storageStatePath('instructor') });
 
@@ -343,10 +462,11 @@ test.describe('instructor publish, TA, course, and polling branches', () => {
                 instructorWindow.extractFilenameFromDisposition(null),
                 instructorWindow.extractFilenameFromDisposition('attachment; filename*=UTF-8\'\'%E0%A4%A; filename="fallback.pdf"'),
                 instructorWindow.extractFilenameFromDisposition('attachment; filename="notes.pdf"'),
+                instructorWindow.extractFilenameFromDisposition('attachment; inline'),
             ];
         });
 
-        expect(filenames).toEqual([null, 'fallback.pdf', 'notes.pdf']);
+        expect(filenames).toEqual([null, 'fallback.pdf', 'notes.pdf', null]);
     });
 
     test('returns without adding content when the unit accordion is missing', async ({ page }) => {
@@ -414,6 +534,88 @@ test.describe('instructor publish, TA, course, and polling branches', () => {
             actionCount: 3,
             status: 'Processed',
         });
+    });
+
+    test('inserts unmatched practice content before course action controls', async ({ page }) => {
+        await openInstructorDocuments(page);
+
+        const insertion = await page.evaluate(() => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            const accordion = document.createElement('div');
+            accordion.className = 'accordion-item';
+            accordion.dataset.unitName = 'Unmatched Practice Harness';
+            accordion.innerHTML = `
+                <div class="course-materials-section">
+                    <div class="section-content">
+                        <div class="file-item placeholder-item" data-document-type="lecture_notes">
+                            <div class="file-info">
+                                <h3>*Lecture Notes - Unit 1</h3>
+                                <p>Required lecture placeholder</p>
+                                <span class="status-text not-uploaded">Not Uploaded</span>
+                            </div>
+                            <div class="file-actions">
+                                <button class="action-button upload">Upload</button>
+                            </div>
+                        </div>
+                        <div class="add-content-section">
+                            <button class="action-button add-content">Add Content</button>
+                        </div>
+                    </div>
+                </div>`;
+            document.body.appendChild(accordion);
+
+            instructorWindow.addContentToWeek(
+                'Unmatched Practice Harness',
+                'Practice worksheet.pdf',
+                'Uploaded successfully - worksheet.pdf',
+                'doc-new-practice',
+                undefined,
+                'practice-quiz',
+            );
+
+            const content = /** @type {HTMLElement} */ (accordion.querySelector('.section-content'));
+            const children = Array.from(content.children).map((element) => {
+                const row = /** @type {HTMLElement} */ (element);
+                return {
+                    className: row.className,
+                    title: row.querySelector('.file-info h3')?.textContent || row.querySelector('button')?.textContent || '',
+                    documentId: row.dataset.documentId || null,
+                    documentType: row.dataset.documentType || null,
+                    statusText: row.querySelector('.status-text')?.textContent || null,
+                    statusClass: row.querySelector('.status-text')?.className || null,
+                    actions: Array.from(row.querySelectorAll('.action-button')).map((button) => button.textContent?.trim()),
+                    isPlaceholder: row.classList.contains('placeholder-item'),
+                };
+            });
+
+            return {
+                children,
+                placeholderCount: accordion.querySelectorAll('.placeholder-item').length,
+            };
+        });
+
+        expect(insertion.placeholderCount).toBe(1);
+        expect(insertion.children).toEqual([
+            expect.objectContaining({
+                title: '*Lecture Notes - Unit 1',
+                documentType: 'lecture_notes',
+                isPlaceholder: true,
+                actions: ['Upload'],
+            }),
+            expect.objectContaining({
+                title: 'Practice worksheet.pdf',
+                documentId: 'doc-new-practice',
+                documentType: 'practice_q_tutorials',
+                statusText: 'Uploaded',
+                statusClass: 'status-text uploaded',
+                actions: ['View', 'Download', 'Delete'],
+                isPlaceholder: false,
+            }),
+            expect.objectContaining({
+                className: 'add-content-section',
+                title: 'Add Content',
+            }),
+        ]);
     });
 
     test('reverts published toggle when publish request returns an HTTP error', async ({ page }) => {
@@ -526,8 +728,31 @@ test.describe('instructor publish, TA, course, and polling branches', () => {
         await expect(page.locator('#additive-retrieval-toggle')).toBeDisabled();
     });
 
+    test('initializes retrieval toggle immediately when auth is already ready and saves successful changes', async ({ page }) => {
+        const controls = await openInstructorSettingsWithReadyAuth(page, {
+            course: branchCourse({ isAdditiveRetrieval: true }),
+        });
+
+        const toggle = page.locator('#additive-retrieval-toggle');
+        await expect(toggle).toBeChecked();
+        await expect(toggle).toBeEnabled();
+        expect(controls.courseByIdCalls).toBeGreaterThan(0);
+
+        await toggle.evaluate((element) => {
+            const input = /** @type {HTMLInputElement} */ (element);
+            input.checked = false;
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+
+        await expect.poll(() => controls.retrievalRequests).toEqual([
+            { isAdditiveRetrieval: false },
+        ]);
+        await expect(toggle).not.toBeChecked();
+        await expect(page.locator('.notification').filter({ hasText: 'Retrieval mode updated' })).toBeVisible();
+    });
+
     test('restores retrieval toggle when save fails', async ({ page }) => {
-        await openInstructorSettings(page, {
+        const controls = await openInstructorSettings(page, {
             controls: { retrievalSaveMode: 'fail' },
         });
 
@@ -539,6 +764,9 @@ test.describe('instructor publish, TA, course, and polling branches', () => {
             input.dispatchEvent(new Event('change', { bubbles: true }));
         });
 
+        await expect.poll(() => controls.retrievalRequests).toEqual([
+            { isAdditiveRetrieval: true },
+        ]);
         await expect(toggle).not.toBeChecked();
         await expect(page.locator('.notification').filter({ hasText: 'Failed to update retrieval mode' })).toBeVisible();
     });
@@ -630,6 +858,36 @@ test.describe('instructor publish, TA, course, and polling branches', () => {
         expect(sawHiddenLog).toBe(true);
     });
 
+    test('uses T as the TA sidebar avatar fallback when the user initial helper is unavailable', async ({ page }) => {
+        await openInstructorScriptHarness(page, {
+            role: 'ta',
+            controls: {
+                taPermissions: { canAccessCourses: true, canAccessFlags: true },
+            },
+        });
+
+        const sidebarState = await page.evaluate(async () => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            const testWindow = /** @type {any} */ (window);
+            testWindow.getCurrentUserInitial = undefined;
+            testWindow.isTA = () => true;
+            await instructorWindow.updateSidebarForTA();
+            return {
+                avatar: document.querySelector('.user-avatar')?.textContent,
+                role: document.querySelector('.user-role')?.textContent,
+                instructorHomeDisplay: /** @type {HTMLElement | null} */ (document.getElementById('instructor-home-nav'))?.style.display,
+                taCoursesDisplay: /** @type {HTMLElement | null} */ (document.getElementById('ta-courses-nav'))?.style.display,
+            };
+        });
+
+        expect(sidebarState).toEqual({
+            avatar: 'T',
+            role: 'Teaching Assistant',
+            instructorHomeDisplay: 'none',
+            taCoursesDisplay: 'block',
+        });
+    });
+
     test('hides TA links when permissions deny access', async ({ page }) => {
         await openInstructorDocuments(page, {
             controls: {
@@ -717,6 +975,28 @@ test.describe('instructor publish, TA, course, and polling branches', () => {
         expect(permissions).toEqual({});
     });
 
+    test('clears TA permissions when a successful TA courses response omits data', async ({ page }) => {
+        await openInstructorScriptHarness(page, {
+            role: 'ta',
+            controls: {
+                taCourses: undefined,
+            },
+        });
+
+        const permissions = await page.evaluate(async () => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            const testWindow = /** @type {any} */ (window);
+            testWindow.taPermissions = { stale: { canAccessCourses: true } };
+            await instructorWindow.loadTAPermissions();
+            return {
+                permissions: testWindow.taPermissions,
+                courses: testWindow.taCourses,
+            };
+        });
+
+        expect(permissions).toEqual({ permissions: {}, courses: [] });
+    });
+
     test('denies feature access when TA permissions are empty', async ({ page }) => {
         await openInstructorDocuments(page);
 
@@ -727,6 +1007,32 @@ test.describe('instructor publish, TA, course, and polling branches', () => {
         });
 
         expect(canAccessCourses).toBe(false);
+    });
+
+    test('checks all TA permission course IDs when no selected course is available', async ({ page }) => {
+        await openInstructorScriptHarness(page);
+
+        const access = await page.evaluate(() => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            const testWindow = /** @type {any} */ (window);
+            window.history.replaceState({}, '', '/instructor/branch-harness');
+            localStorage.removeItem('selectedCourseId');
+            testWindow.getCurrentUser = () => ({ preferences: {} });
+            testWindow.taCourses = [];
+            testWindow.taPermissions = {
+                'TA-DENIED-COURSE': { canAccessCourses: false, canAccessFlags: false },
+                'TA-ALLOWED-COURSE': { canAccessCourses: false, canAccessFlags: true },
+            };
+            return {
+                canAccessFlags: instructorWindow.hasPermissionForFeature('flags'),
+                canAccessCourses: instructorWindow.hasPermissionForFeature('courses'),
+            };
+        });
+
+        expect(access).toEqual({
+            canAccessFlags: true,
+            canAccessCourses: false,
+        });
     });
 
     test('navigates TA courses link with selected course', async ({ page }) => {
@@ -815,70 +1121,201 @@ test.describe('instructor publish, TA, course, and polling branches', () => {
     });
 
     test('loads selected course from localStorage when URL has no course', async ({ page }) => {
-        await openInstructorDocuments(page);
+        await openInstructorScriptHarness(page, {
+            selectedCourseId: 'LOCAL-STORAGE-COURSE',
+        });
 
-        const selectedCourse = await page.evaluate(async (courseId) => {
+        const selectedCourse = await page.evaluate(async () => {
             const instructorWindow = /** @type {InstructorWindow} */ (window);
-            window.history.replaceState({}, '', '/instructor/documents');
-            localStorage.setItem('selectedCourseId', courseId);
+            window.history.replaceState({}, '', '/instructor/branch-harness');
             return instructorWindow.getCurrentCourseId();
-        }, COURSE_ID);
+        });
 
-        expect(selectedCourse).toBe(COURSE_ID);
+        expect(selectedCourse).toBe('LOCAL-STORAGE-COURSE');
+    });
+
+    test('waits for auth when the instructor id is initially unavailable', async ({ page }) => {
+        await openInstructorScriptHarness(page, {
+            controls: {
+                instructorCourses: [branchCourse({ courseId: 'AUTH-WAIT-COURSE' })],
+            },
+        });
+
+        const selectedCourse = await page.evaluate(async () => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            const testWindow = /** @type {any} */ (window);
+            let authReady = false;
+            window.history.replaceState({}, '', '/instructor/branch-harness');
+            localStorage.removeItem('selectedCourseId');
+            testWindow.getCurrentUser = () => (authReady ? { userId: 'e2e_instructor_id', preferences: {} } : null);
+            testWindow.getCurrentInstructorId = () => (authReady ? 'e2e_instructor_id' : null);
+            setTimeout(() => {
+                authReady = true;
+                document.dispatchEvent(new CustomEvent('auth:ready'));
+            }, 0);
+            return instructorWindow.getCurrentCourseId();
+        });
+
+        expect(selectedCourse).toBe('AUTH-WAIT-COURSE');
+    });
+
+    test('returns null when no user id is available after waiting for auth', async ({ page }) => {
+        await openInstructorScriptHarness(page);
+
+        const selectedCourse = await page.evaluate(async () => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            const testWindow = /** @type {any} */ (window);
+            window.history.replaceState({}, '', '/instructor/branch-harness');
+            localStorage.removeItem('selectedCourseId');
+            testWindow.getCurrentUser = () => null;
+            testWindow.getCurrentInstructorId = () => null;
+            setTimeout(() => document.dispatchEvent(new CustomEvent('auth:ready')), 0);
+            return instructorWindow.getCurrentCourseId();
+        });
+
+        expect(selectedCourse).toBeNull();
+        await expect(page).toHaveURL(/\/instructor\/branch-harness/);
+    });
+
+    test('returns the first TA course from the result.data course list', async ({ page }) => {
+        await openInstructorScriptHarness(page, {
+            controls: {
+                taCourses: [
+                    { courseId: 'TA-DATA-COURSE', courseName: 'TA Data Course' },
+                    { courseId: 'TA-SECOND-COURSE', courseName: 'TA Second Course' },
+                ],
+            },
+        });
+
+        const selectedCourse = await page.evaluate(async () => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            const testWindow = /** @type {any} */ (window);
+            window.history.replaceState({}, '', '/instructor/branch-harness');
+            localStorage.removeItem('selectedCourseId');
+            testWindow.isTA = () => true;
+            testWindow.getCurrentInstructorId = () => 'e2e_ta_id';
+            return instructorWindow.getCurrentCourseId();
+        });
+
+        expect(selectedCourse).toBe('TA-DATA-COURSE');
+    });
+
+    test('returns the first instructor course from the result.data.courses shape', async ({ page }) => {
+        await openInstructorScriptHarness(page, {
+            controls: {
+                instructorCourses: [
+                    branchCourse({ courseId: 'INSTRUCTOR-DATA-COURSE' }),
+                    branchCourse({ courseId: 'INSTRUCTOR-SECOND-COURSE' }),
+                ],
+            },
+        });
+
+        const selectedCourse = await page.evaluate(async () => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            const testWindow = /** @type {any} */ (window);
+            window.history.replaceState({}, '', '/instructor/branch-harness');
+            localStorage.removeItem('selectedCourseId');
+            testWindow.isTA = () => false;
+            testWindow.getCurrentInstructorId = () => 'e2e_instructor_id';
+            return instructorWindow.getCurrentCourseId();
+        });
+
+        expect(selectedCourse).toBe('INSTRUCTOR-DATA-COURSE');
     });
 
     test('falls back to user preference course when no courses are returned', async ({ page }) => {
-        await openInstructorDocuments(page, {
+        await openInstructorScriptHarness(page, {
             controls: { instructorCourses: [] },
         });
 
-        const selectedCourse = await page.evaluate(async (courseId) => {
+        const selectedCourse = await page.evaluate(async () => {
             const instructorWindow = /** @type {InstructorWindow} */ (window);
             const testWindow = /** @type {any} */ (window);
-            window.history.replaceState({}, '', '/instructor/documents');
+            window.history.replaceState({}, '', '/instructor/branch-harness');
             localStorage.removeItem('selectedCourseId');
-            testWindow.getCurrentUser = () => ({ preferences: { courseId } });
+            testWindow.getCurrentUser = () => ({ preferences: { courseId: 'PREFERENCE-COURSE' } });
+            testWindow.getCurrentInstructorId = () => 'e2e_instructor_id';
             return instructorWindow.getCurrentCourseId();
-        }, COURSE_ID);
+        });
 
-        expect(selectedCourse).toBe(COURSE_ID);
+        expect(selectedCourse).toBe('PREFERENCE-COURSE');
     });
 
-    test('redirects to onboarding when course lookup fails', async ({ page }) => {
-        await openInstructorSettings(page, {
+    test('schedules onboarding redirect when course lookup fails', async ({ page }) => {
+        await openInstructorScriptHarness(page, {
             controls: {
                 instructorCoursesStatus: 500,
             },
         });
 
-        await page.evaluate(async () => {
+        const outcome = await page.evaluate(async () => {
             const instructorWindow = /** @type {InstructorWindow} */ (window);
             const testWindow = /** @type {any} */ (window);
-            window.history.replaceState({}, '', '/instructor/documents');
+            const originalSetTimeout = window.setTimeout;
+            let redirectDelay = null;
+            testWindow.setTimeout = (handler, timeout, ...args) => {
+                if (typeof handler === 'function' && timeout === 2000) {
+                    redirectDelay = timeout;
+                    return 1;
+                }
+                return originalSetTimeout(handler, timeout, ...args);
+            };
+            window.history.replaceState({}, '', '/instructor/branch-harness');
             localStorage.removeItem('selectedCourseId');
             testWindow.getCurrentUser = () => ({ preferences: {} });
-            await instructorWindow.getCurrentCourseId();
+            testWindow.getCurrentInstructorId = () => 'e2e_instructor_id';
+            const courseId = await instructorWindow.getCurrentCourseId();
+            testWindow.setTimeout = originalSetTimeout;
+            return {
+                courseId,
+                redirectDelay,
+                notification: document.querySelector('.notification')?.textContent,
+            };
         });
 
-        await expect(page).toHaveURL(/\/instructor\/onboarding/, { timeout: 4_000 });
+        expect(outcome).toMatchObject({
+            courseId: null,
+            redirectDelay: 2000,
+        });
+        expect(outcome.notification).toContain('No course found. Please complete onboarding first.');
     });
 
-    test('redirects to onboarding when course lookup rejects', async ({ page }) => {
-        await openInstructorSettings(page, {
+    test('schedules onboarding redirect when course lookup rejects', async ({ page }) => {
+        await openInstructorScriptHarness(page, {
             controls: {
                 instructorCoursesMode: 'network-error',
             },
         });
 
-        await page.evaluate(async () => {
+        const outcome = await page.evaluate(async () => {
             const instructorWindow = /** @type {InstructorWindow} */ (window);
             const testWindow = /** @type {any} */ (window);
-            window.history.replaceState({}, '', '/instructor/documents');
+            const originalSetTimeout = window.setTimeout;
+            let redirectDelay = null;
+            testWindow.setTimeout = (handler, timeout, ...args) => {
+                if (typeof handler === 'function' && timeout === 2000) {
+                    redirectDelay = timeout;
+                    return 1;
+                }
+                return originalSetTimeout(handler, timeout, ...args);
+            };
+            window.history.replaceState({}, '', '/instructor/branch-harness');
             localStorage.removeItem('selectedCourseId');
             testWindow.getCurrentUser = () => ({ preferences: {} });
-            await instructorWindow.getCurrentCourseId();
+            testWindow.getCurrentInstructorId = () => 'e2e_instructor_id';
+            const courseId = await instructorWindow.getCurrentCourseId();
+            testWindow.setTimeout = originalSetTimeout;
+            return {
+                courseId,
+                redirectDelay,
+                notification: document.querySelector('.notification')?.textContent,
+            };
         });
 
-        await expect(page).toHaveURL(/\/instructor\/onboarding/, { timeout: 4_000 });
+        expect(outcome).toMatchObject({
+            courseId: null,
+            redirectDelay: 2000,
+        });
+        expect(outcome.notification).toContain('No course found. Please complete onboarding first.');
     });
 });
