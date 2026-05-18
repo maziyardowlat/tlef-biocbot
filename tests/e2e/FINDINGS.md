@@ -439,3 +439,28 @@ and `quiz.js`/`chat.js` were one bad input away from crashing.
 ## History page auth-helper fallback in `public/student/scripts/history.js`
 
 - `getCurrentUser`: the branch at lines 183-185 intends to call the `auth.js` helper when `window.getCurrentUser` is a different function, but `history.js` declares its own top-level `getCurrentUser`, replacing the global name on the page. A page-driven test that installs an external helper after load still returns `null`, leaving this fallback branch effectively unreachable/dead under the real script load order.
+
+## Dead CSS candidates in `public/styles/documents.css`
+
+While adding `tests/e2e/documents-css-coverage.spec.js`, `rg` found several
+selectors that are only present in `documents.css` and not in current
+instructor HTML or dynamic DOM construction. These were intentionally not
+covered by fake harness markup:
+
+- Legacy document-list/table upload UI: `.upload-box`, `.upload-button`,
+  `.documents-list`, `.document-filters`, `#document-search`,
+  `#document-filter`, `.documents-table`, `.status`, `.empty-state-icon`.
+- Prototype browsing/selection UI: `.document-cards`, `.document-card`,
+  `.folder-structure`, `.folder-item`, `.file-type-section`,
+  `.file-type-options`, `.week-selection`, `.form-group`.
+- Superseded upload/modal flow selectors: `.modal-step`, `.step-indicators`,
+  `.step-dot`, `.file-upload-area`, `.upload-zone`, `.objectives-checkbox`,
+  `.objectives-input`, `.content-preview`, `.preview-section`,
+  `.validation-actions`.
+- Calibration/prototype question editor selectors not present in current
+  `index.html`/`onboarding.html` DOM: `.delete-question`, `.option-item`,
+  `.score-box`, `.generate-questions-container`, `.generate-btn`,
+  `.generate-help-text`.
+
+These should be deleted or moved to a page-specific stylesheet if the product
+no longer renders the corresponding UI.

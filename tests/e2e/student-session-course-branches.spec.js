@@ -75,6 +75,12 @@ function courseDoc(overrides = {}) {
  * @param {Object} [options]
  * @param {boolean} [options.seedSelectedCourse]
  * @param {boolean} [options.seedCourseName]
+ * @param {Object} [options.availableCourses]
+ * @param {Object} [options.authResponse]
+ * @param {Object} [options.courseResponse]
+ * @param {Object} [options.enrollmentResponse]
+ * @param {Object} [options.flagResponse]
+ * @param {Object} [options.joinResponse]
  * @returns {Promise<{
  *   calls: string[],
  *   alerts: string[],
@@ -82,6 +88,7 @@ function courseDoc(overrides = {}) {
  *   setAvailableCourses: (value: Object) => void,
  *   setAuthResponse: (value: Object) => void,
  *   setCourseResponse: (value: Object) => void,
+ *   setEnrollmentResponse: (value: Object) => void,
  *   setFlagResponse: (value: Object) => void,
  *   setJoinResponse: (value: Object) => void,
  * }>}
@@ -90,11 +97,11 @@ async function openStudentWithMocks(page, options = {}) {
     const calls = /** @type {string[]} */ ([]);
     const alerts = /** @type {string[]} */ ([]);
     const prompts = /** @type {string[]} */ ([]);
-    let availableCourses = {
+    let availableCourses = options.availableCourses || {
         success: true,
         data: [{ courseId: COURSE_ID, courseName: COURSE_NAME, isEnrolled: true }],
     };
-    let authResponse = {
+    let authResponse = options.authResponse || {
         status: 200,
         body: {
             success: true,
@@ -107,16 +114,17 @@ async function openStudentWithMocks(page, options = {}) {
             },
         },
     };
-    let courseResponse = { status: 200, body: { success: true, data: courseDoc() } };
-    let flagResponse = { status: 500, body: { success: false } };
-    let joinResponse = { status: 200, body: { success: true } };
+    let courseResponse = options.courseResponse || { status: 200, body: { success: true, data: courseDoc() } };
+    let enrollmentResponse = options.enrollmentResponse || { status: 200, body: { success: true, data: { enrolled: true, status: 'active' } } };
+    let flagResponse = options.flagResponse || { status: 500, body: { success: false } };
+    let joinResponse = options.joinResponse || { status: 200, body: { success: true } };
     const seedSelectedCourse = options.seedSelectedCourse !== false;
     const seedCourseName = options.seedCourseName !== false;
     const seededChat = chatData();
 
     await page.route('**/api/**', async (route) => {
         calls.push(new URL(route.request().url()).pathname + new URL(route.request().url()).search);
-        await fulfillApi(route, { availableCourses, authResponse, courseResponse, flagResponse, joinResponse });
+        await fulfillApi(route, { availableCourses, authResponse, courseResponse, enrollmentResponse, flagResponse, joinResponse });
     });
 
     await page.exposeFunction('__recordStudentSessionAlert', (message) => {
@@ -177,6 +185,9 @@ async function openStudentWithMocks(page, options = {}) {
         setCourseResponse(value) {
             courseResponse = value;
         },
+        setEnrollmentResponse(value) {
+            enrollmentResponse = value;
+        },
         setFlagResponse(value) {
             flagResponse = value;
         },
@@ -188,7 +199,7 @@ async function openStudentWithMocks(page, options = {}) {
 
 /**
  * @param {Route} route
- * @param {{ availableCourses: Object, authResponse: Object, courseResponse: Object, flagResponse: Object, joinResponse: Object }} state
+ * @param {{ availableCourses: Object, authResponse: Object, courseResponse: Object, enrollmentResponse: Object, flagResponse: Object, joinResponse: Object }} state
  */
 async function fulfillApi(route, state) {
     const request = route.request();
@@ -224,7 +235,15 @@ async function fulfillApi(route, state) {
     }
 
     if (pathname === `/api/courses/${COURSE_ID}/student-enrollment`) {
-        await route.fulfill({ json: { success: true, data: { enrolled: true, status: 'active' } } });
+        if (state.enrollmentResponse.abort) {
+            await route.abort('failed');
+            return;
+        }
+        await route.fulfill({
+            status: Number(state.enrollmentResponse.status || 200),
+            contentType: 'application/json',
+            body: JSON.stringify(state.enrollmentResponse.body || state.enrollmentResponse),
+        });
         return;
     }
 
@@ -375,6 +394,10 @@ test('successful flag submission schedules flag refresh', async ({ page }) => {
 
 test('course join dropdown handles failed join, network error, and prompt cancel', async ({ page }) => {
     const harness = await openStudentWithMocks(page);
+    await page.evaluate(() => {
+        const w = /** @type {any} */ (window);
+        w.checkPublishedUnitsAndLoadQuestions = () => {};
+    });
 
     async function renderJoinDropdown() {
         await page.evaluate((secondCourseId) => {
@@ -415,6 +438,65 @@ test('course join dropdown handles failed join, network error, and prompt cancel
     expect(harness.prompts.length).toBeGreaterThanOrEqual(3);
 });
 
+test('loadAvailableCourses clears a stored course when enrollment is revoked', async ({ page }) => {
+    await openStudentWithMocks(page, {
+        enrollmentResponse: { status: 200, body: { success: true, data: { enrolled: false, status: 'inactive' } } },
+    });
+
+    await expect(page.locator('#course-select')).toBeVisible({ timeout: 10_000 });
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('selectedCourseId'))).toBeNull();
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('selectedCourseName'))).toBeNull();
+    await expect.poll(() => page.evaluate(({ studentId, courseId }) => {
+        return localStorage.getItem(`biocbot_session_${studentId}_${courseId}_Unit 1`);
+    }, { studentId: STUDENT_ID, courseId: COURSE_ID })).toBeNull();
+});
+
+for (const scenario of [
+    {
+        name: 'course verification returns success false',
+        courseResponse: { status: 200, body: { success: false, data: null } },
+    },
+    {
+        name: 'course verification returns non-OK',
+        courseResponse: { status: 503, body: { success: false, message: 'unavailable' } },
+    },
+]) {
+    test(`loadAvailableCourses clears a stored course when ${scenario.name}`, async ({ page }) => {
+        await openStudentWithMocks(page, { courseResponse: scenario.courseResponse });
+
+        await expect(page.locator('#course-select')).toBeVisible({ timeout: 10_000 });
+        await expect.poll(() => page.evaluate(() => localStorage.getItem('selectedCourseId'))).toBeNull();
+        await expect.poll(() => page.evaluate(() => localStorage.getItem('selectedCourseName'))).toBeNull();
+    });
+}
+
+test('loadAvailableCourses clears a stored course when enrollment verification aborts', async ({ page }) => {
+    const harness = await openStudentWithMocks(page);
+    harness.setEnrollmentResponse({ abort: true });
+    harness.setAvailableCourses({
+        success: true,
+        data: [
+            { courseId: COURSE_ID, courseName: COURSE_NAME, isEnrolled: true },
+            { courseId: SECOND_COURSE_ID, courseName: 'Second Course', isEnrolled: true },
+        ],
+    });
+
+    await page.evaluate(({ courseId, courseName, studentId }) => {
+        localStorage.setItem('selectedCourseId', courseId);
+        localStorage.setItem('selectedCourseName', courseName);
+        localStorage.setItem(`biocbot_current_chat_${studentId}`, JSON.stringify({
+            metadata: { courseId, studentId, unitName: 'Unit 1' },
+            messages: [{ type: 'bot', content: 'saved chat' }],
+        }));
+        const w = /** @type {any} */ (window);
+        return w.loadAvailableCourses();
+    }, { courseId: COURSE_ID, courseName: COURSE_NAME, studentId: STUDENT_ID });
+
+    await expect(page.locator('#course-select')).toBeVisible();
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('selectedCourseId'))).toBeNull();
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('selectedCourseName'))).toBeNull();
+});
+
 test('loadAvailableCourses renders no-courses and fetch-error empty states', async ({ page }) => {
     const harness = await openStudentWithMocks(page, { seedSelectedCourse: false });
 
@@ -432,6 +514,128 @@ test('loadAvailableCourses renders no-courses and fetch-error empty states', asy
         return w.loadAvailableCourses();
     });
     await expect(page.locator('#chat-messages')).toContainText('No Courses Available');
+
+    harness.setAvailableCourses({ success: true });
+    await page.evaluate(() => {
+        const chatMessages = document.getElementById('chat-messages');
+        if (chatMessages) {
+            chatMessages.innerHTML = '';
+        }
+        const w = /** @type {any} */ (window);
+        return w.loadAvailableCourses();
+    });
+    await expect(page.locator('#chat-messages')).toContainText('No Courses Available');
+});
+
+test('loadAvailableCourses shows the dropdown for multiple courses when storage still has a course', async ({ page }) => {
+    const harness = await openStudentWithMocks(page, { seedSelectedCourse: false });
+    harness.setAvailableCourses({
+        success: true,
+        data: [
+            { courseId: COURSE_ID, courseName: COURSE_NAME, isEnrolled: true },
+            { courseId: SECOND_COURSE_ID, courseName: 'Second Course', isEnrolled: true },
+        ],
+    });
+
+    await page.evaluate((courseId) => {
+        localStorage.removeItem('selectedCourseId');
+        const nativeFetch = window.fetch.bind(window);
+        window.fetch = (input, init) => {
+            const url = input instanceof Request ? input.url : String(input);
+            if (url.includes('/api/courses/available/all')) {
+                localStorage.setItem('selectedCourseId', courseId);
+            }
+            return nativeFetch(input, init);
+        };
+        const chatMessages = document.getElementById('chat-messages');
+        if (chatMessages) {
+            chatMessages.innerHTML = '';
+        }
+        const w = /** @type {any} */ (window);
+        return w.loadAvailableCourses();
+    }, COURSE_ID);
+
+    await expect(page.locator('#course-select')).toBeVisible();
+    await expect(page.locator('#course-select option')).toHaveText([
+        'Choose a course...',
+        COURSE_NAME,
+        'Second Course',
+    ]);
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('selectedCourseId'))).toBe(COURSE_ID);
+});
+
+test('showCourseSelection hides the dropdown after enrolled selection and successful join', async ({ page }) => {
+    const harness = await openStudentWithMocks(page);
+
+    await page.evaluate((secondCourseId) => {
+        const w = /** @type {any} */ (window);
+        w.showCourseSelection([
+            { courseId: secondCourseId, courseName: 'Already Enrolled Course', isEnrolled: true },
+        ]);
+    }, SECOND_COURSE_ID);
+    await page.locator('#course-select').selectOption(SECOND_COURSE_ID);
+    await expect(page.locator('#course-selection-wrapper')).toBeHidden();
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('selectedCourseId'))).toBe(SECOND_COURSE_ID);
+
+    harness.setJoinResponse({ status: 200, body: { success: true } });
+    await page.evaluate((secondCourseId) => {
+        const w = /** @type {any} */ (window);
+        w.__studentSessionPromptValue = 'JOIN-CODE';
+        w.showCourseSelection([
+            { courseId: secondCourseId, courseName: 'Joinable Course', isEnrolled: false },
+        ]);
+    }, SECOND_COURSE_ID);
+    await page.locator('#course-select').selectOption(SECOND_COURSE_ID);
+    await expect.poll(() => harness.alerts.includes('Successfully joined the course!')).toBe(true);
+    await expect(page.locator('#course-selection-wrapper')).toBeHidden();
+});
+
+test('loadCourseData course-change path clears prior session state and triggers delayed question load', async ({ page }) => {
+    await openStudentWithMocks(page);
+
+    const result = await page.evaluate(async ({ courseId, secondCourseId, studentId }) => {
+        const w = /** @type {any} */ (window);
+        localStorage.setItem('userId', studentId);
+        localStorage.setItem('selectedCourseId', courseId);
+        localStorage.setItem('selectedUnitName', 'Unit 1');
+        localStorage.setItem(`biocbot_current_chat_${studentId}`, JSON.stringify({ messages: [{ type: 'bot', content: 'old' }] }));
+        const chatMessages = document.getElementById('chat-messages');
+        if (chatMessages) {
+            chatMessages.innerHTML = '<p>old course message</p>';
+        }
+        w.__studentSessionQuestionLoads = 0;
+        w.__studentSessionTimeouts = [];
+        w.checkPublishedUnitsAndLoadQuestions = () => {
+            w.__studentSessionQuestionLoads += 1;
+        };
+        window.setTimeout = /** @type {any} */ ((handler, timeout) => {
+            w.__studentSessionTimeouts.push(timeout);
+            if (typeof handler === 'function') {
+                handler();
+            }
+            return 0;
+        });
+
+        await w.loadCourseData(secondCourseId, true);
+
+        return {
+            selectedCourseId: localStorage.getItem('selectedCourseId'),
+            selectedUnitName: localStorage.getItem('selectedUnitName'),
+            currentChat: localStorage.getItem(`biocbot_current_chat_${studentId}`),
+            newSession: localStorage.getItem(`biocbot_session_${studentId}_${secondCourseId}_this unit`),
+            chatHtml: document.getElementById('chat-messages')?.innerHTML || '',
+            questionLoads: w.__studentSessionQuestionLoads,
+            timeouts: w.__studentSessionTimeouts,
+        };
+    }, { courseId: COURSE_ID, secondCourseId: SECOND_COURSE_ID, studentId: STUDENT_ID });
+
+    expect(result.selectedCourseId).toBe(SECOND_COURSE_ID);
+    expect(result.selectedUnitName).toBeNull();
+    expect(result.currentChat).toBeNull();
+    expect(result.newSession).toMatch(/^autosave_/);
+    expect(result.chatHtml).toBe('');
+    expect(result.timeouts).toContain(200);
+    expect(result.questionLoads).toBeGreaterThanOrEqual(1);
 });
 
 test('loadCourseData clears a 404 selection and renders load errors for invalid course payloads', async ({ page }) => {
@@ -496,6 +700,130 @@ test('student name falls back when the auth request fails', async ({ page }) => 
     })).toBe('Student Name');
 });
 
+test('updateCourseDisplay reaches the span.course-name fallback and updates student identity text', async ({ page }) => {
+    await openStudentWithMocks(page);
+
+    const result = await page.evaluate(() => {
+        const w = /** @type {any} */ (window);
+        document.querySelectorAll('.course-name').forEach((element) => element.remove());
+        document.querySelectorAll('.user-role').forEach((element) => element.remove());
+        document.querySelectorAll('.message.bot-message').forEach((element) => element.remove());
+        document.body.insertAdjacentHTML('beforeend', `
+            <section id="course-display-branch-harness">
+                <span class="course-name">Old Span Course</span>
+                <div class="user-role">Student - Old Span Course</div>
+                <div id="user-display-name">Old Student</div>
+                <div class="message bot-message"><p>Old welcome</p></div>
+            </section>
+        `);
+
+        const originalQuerySelector = Document.prototype.querySelector;
+        const selectors = /** @type {string[]} */ ([]);
+        Document.prototype.querySelector = function(selector) {
+            selectors.push(String(selector));
+            if (selector === '.course-name' && selectors.filter((value) => value === '.course-name').length === 1) {
+                return null;
+            }
+            return originalQuerySelector.call(this, selector);
+        };
+
+        try {
+            w.updateCourseDisplay({ name: 'Fallback Span Biology' }, 'Fallback Student');
+        } finally {
+            Document.prototype.querySelector = originalQuerySelector;
+        }
+
+        return {
+            selectors,
+            courseText: document.querySelector('#course-display-branch-harness span.course-name')?.textContent,
+            roleText: document.querySelector('#course-display-branch-harness .user-role')?.textContent,
+            studentText: document.getElementById('user-display-name')?.textContent,
+            welcomeText: document.querySelector('#course-display-branch-harness .bot-message p')?.textContent,
+        };
+    });
+
+    expect(result.selectors).toContain('span.course-name');
+    expect(result.courseText).toBe('Fallback Span Biology');
+    expect(result.roleText).toBe('Student - Fallback Span Biology');
+    expect(result.studentText).toBe('Fallback Student');
+    expect(result.welcomeText).toContain('Fallback Span Biology');
+});
+
+test('updateCourseDisplay reaches the current-course fallback selector', async ({ page }) => {
+    await openStudentWithMocks(page);
+
+    const result = await page.evaluate(() => {
+        const w = /** @type {any} */ (window);
+        document.querySelectorAll('.course-name').forEach((element) => element.remove());
+        document.body.insertAdjacentHTML('beforeend', `
+            <section id="current-course-branch-harness">
+                <div class="current-course"><strong class="course-name">Old Current Course</strong></div>
+            </section>
+        `);
+
+        const originalQuerySelector = Document.prototype.querySelector;
+        const selectors = /** @type {string[]} */ ([]);
+        Document.prototype.querySelector = function(selector) {
+            selectors.push(String(selector));
+            if (selector === '.course-name' || selector === 'span.course-name') {
+                return null;
+            }
+            return originalQuerySelector.call(this, selector);
+        };
+
+        try {
+            w.updateCourseDisplay({ courseName: 'Current Course Fallback Biology' });
+        } finally {
+            Document.prototype.querySelector = originalQuerySelector;
+        }
+
+        return {
+            selectors,
+            courseText: document.querySelector('#current-course-branch-harness .current-course .course-name')?.textContent,
+        };
+    });
+
+    expect(result.selectors).toContain('.current-course .course-name');
+    expect(result.courseText).toBe('Current Course Fallback Biology');
+});
+
+test('updateCourseDisplay delegates to forceUpdateCourseName when no direct course-name selector resolves', async ({ page }) => {
+    await openStudentWithMocks(page);
+
+    const result = await page.evaluate(() => {
+        const w = /** @type {any} */ (window);
+        document.querySelectorAll('.course-name').forEach((element) => element.remove());
+        document.body.insertAdjacentHTML('beforeend', '<div id="forced-course-name">Not forced</div>');
+
+        const originalQuerySelector = Document.prototype.querySelector;
+        const originalForceUpdate = w.forceUpdateCourseName;
+        Document.prototype.querySelector = function(selector) {
+            if (selector === '.course-name' || selector === 'span.course-name' || selector === '.current-course .course-name') {
+                return null;
+            }
+            return originalQuerySelector.call(this, selector);
+        };
+        w.forceUpdateCourseName = (courseName) => {
+            const status = document.getElementById('forced-course-name');
+            if (status) {
+                status.textContent = `forced: ${courseName}`;
+            }
+            return true;
+        };
+
+        try {
+            w.updateCourseDisplay({ courseName: 'Forced Fallback Biology' });
+        } finally {
+            w.forceUpdateCourseName = originalForceUpdate;
+            Document.prototype.querySelector = originalQuerySelector;
+        }
+
+        return document.getElementById('forced-course-name')?.textContent;
+    });
+
+    expect(result).toBe('forced: Forced Fallback Biology');
+});
+
 test('current course id follows preferences, storage, course list, and error fallbacks', async ({ page }) => {
     const harness = await openStudentWithMocks(page, { seedSelectedCourse: false });
 
@@ -533,6 +861,18 @@ test('current course id follows preferences, storage, course list, and error fal
             { courseId: SECOND_COURSE_ID, courseName: 'Second Course' },
         ],
     });
+    await expect.poll(() => page.evaluate(() => {
+        const w = /** @type {any} */ (window);
+        return w.getCurrentCourseId();
+    })).toBeNull();
+
+    harness.setAvailableCourses({ success: true, data: [] });
+    await expect.poll(() => page.evaluate(() => {
+        const w = /** @type {any} */ (window);
+        return w.getCurrentCourseId();
+    })).toBeNull();
+
+    harness.setAvailableCourses({ success: false, message: 'Course list unavailable', data: [] });
     await expect.poll(() => page.evaluate(() => {
         const w = /** @type {any} */ (window);
         return w.getCurrentCourseId();
