@@ -426,6 +426,121 @@ and `quiz.js`/`chat.js` were one bad input away from crashing.
   "PRODUCT BUG: /stats is shadowed by /:courseId".
 - **Fix:** Move `router.get('/stats', ...)` above `router.get('/:courseId', ...)`.
 
+### 34. 🔒 `src/routes/questions.js` has no role gate or per-course access check on most verbs
+
+- **Where:** Every endpoint in `src/routes/questions.js` *except*
+  `POST /generate-ai` (lines 1121-1139). The router is mounted at
+  `src/server.js:497` with only `requireAuth` +
+  `requireActiveCourseForNonInstructors` in front of it — there is no
+  `requireInstructor` / `requireInstructorOrTA` middleware, and the handlers
+  themselves do not call any of the `userHasCourseAccess` /
+  `hasSystemAdminAccess` helpers used elsewhere.
+- **Symptom (extends FINDINGS #23 / #24 to every verb):**
+  - A logged-in **student** can `POST`, `PUT`, `DELETE`, `POST /bulk`, and
+    `POST /auto-link-learning-objectives` against any **active** course, even
+    courses they are not enrolled in.
+  - A logged-in instructor can mutate **another instructor's course** via
+    PUT / DELETE / bulk / auto-link (FINDINGS #23 covered only POST).
+  - `GET /api/questions/lecture` is a cross-course read leak: any
+    authenticated caller (including students not enrolled in the target
+    course) can list its full assessmentQuestions for any lecture.
+- **Failing tests:** `tests/e2e/questions-api-ownership-branches.spec.js` —
+  the `Student-role caller cannot mutate questions`,
+  `Cross-instructor mutations on another instructor's course`, and
+  `GET /api/questions/lecture cross-course information leak` describe blocks.
+- **Why it matters:** Course content integrity (vandalism, fabricated
+  questions, mass deletion) plus a quiz-content leak. The
+  `instructorId`-in-body pattern is decoration; the route never checks it.
+- **Fix:** Centralize on a single permission helper for question mutations
+  (e.g. `requireCourseInstructorOrTA(courseId)` driven off `req.user`), drop
+  body `instructorId`, and add the same access check to `GET /lecture` and
+  `GET /:questionId` (already noted in FINDINGS #24).
+
+### 35. `PUT /api/questions/:questionId` silently creates when the question does not exist
+
+- **Where:** `src/routes/questions.js` PUT handler (line 519-579) →
+  `src/models/Course.js` `updateAssessmentQuestions` (line 499-587).
+- **Symptom:** When the supplied `:questionId` does not match any existing
+  question on the target lecture, the model's `existingQuestionIndex < 0`
+  branch (line 561-582) **inserts** a new question with the caller-supplied
+  id and `$push`-es it onto `assessmentQuestions`. The PUT response shape is
+  identical to a real update (`success: true, updatedCount: 1`).
+- **Why it matters:** A REST `PUT` to an unknown resource should 404 — silent
+  upsert is surprising, hides bugs in callers that race
+  delete + update, and lets a stale client recreate a question that was just
+  removed. It also means the same id-confusion / cross-instructor abuse path
+  in FINDING #34 can be used to *create* questions on another instructor's
+  course just by `PUT`-ing to any unused id.
+- **Failing test:** `tests/e2e/questions-api-ownership-branches.spec.js` ›
+  "PRODUCT BUG (FINDING #35): PUT on an unknown questionId silently creates
+  a new question".
+- **Fix:** In the PUT handler, look up the question first (or have the model
+  surface `created` truthy and reject it on the PUT path) and return 404 when
+  the question does not exist. Bulk insertion / create stays the POST path.
+
+### 36. 🔒 `DELETE /api/flags/:flagId` has no role gate or ownership check
+
+- **Where:** `src/routes/flags.js` lines 490-538. The router is mounted at
+  `src/server.js:492` with `requireAuth` + `requireActiveCourseForNonInstructors`
+  + `requireStudentEnrolled`. The latter two only fire when a `courseId` is
+  in `req.body`, `req.query`, or `req.params` — none of which exist for
+  `DELETE /api/flags/:flagId` — so they pass through. The route handler
+  itself looks up the flag by `flagId` only and deletes it.
+- **Symptom:** Any authenticated user (student, TA, instructor) can delete
+  any flagged-question document in the database — including flags belonging
+  to other students in other courses they have no relationship with.
+- **Why it matters:** Students can silently erase their own flags after the
+  fact, or grief other students by removing legitimate flags. Instructors
+  can erase flags raised against questions on courses they don't own.
+- **Failing test:** `tests/e2e/flags-api-error-branches.spec.js` ›
+  "PRODUCT BUG: a student can delete any flag (no role gate)".
+- **Fix:** Restrict the route to `requireInstructorOrTA` (or whoever owns
+  the cleanup workflow) and enforce per-course access — load the flag,
+  resolve its `courseId`, and confirm `req.user` is the course instructor /
+  on its `tas` array.
+
+### 37. 🔒 Flag instructor/TA response endpoints don't verify course membership
+
+- **Where:** `src/routes/flags.js` PUT `/:flagId/response` (lines 288-364)
+  and PUT `/:flagId/status` (lines 370-438). Both endpoints only check
+  `user.role !== 'instructor' && user.role !== 'ta'` — they never confirm
+  that the caller is on the specific course the flag belongs to.
+- **Symptom:** Any instructor in the system can write an "instructor
+  response" to a flag raised on another instructor's course, or flip a
+  flag's status across course boundaries. A TA who is a TA on *any* course
+  has the same cross-course write access.
+- **Why it matters:** Flagged questions surface course-specific feedback /
+  appeals. Allowing arbitrary instructors and TAs to author the canonical
+  reply or close the case undermines the workflow's integrity and leaks the
+  flag content to unrelated faculty.
+- **Failing tests:** `tests/e2e/flags-api-error-branches.spec.js` ›
+  "PRODUCT BUG: an instructor not on the flag's course can still update the
+  response" and "PRODUCT BUG: a TA not on the flag's course can still
+  update the status".
+- **Fix:** After resolving the flag, look up its `courseId` and confirm the
+  caller is the course's `instructorId`, in `instructors`, or in `tas`
+  before updating. Mirrors the access pattern called out in FINDING #34
+  for questions.
+
+### 38. `updateInstructorResponse` defaults `flagStatus` to "resolved" but does not stamp `resolvedAt`
+
+- **Where:** `src/models/FlaggedQuestion.js` lines 165-180.
+- **Symptom:** When the caller omits `flagStatus`, the model stores
+  `flagStatus: 'resolved'` (via the `responseData.flagStatus || 'resolved'`
+  default on line 169) but the subsequent `if (responseData.flagStatus
+  === 'resolved')` check (line 173) tests the *input* value, which is
+  `undefined`, so `resolvedAt` is never set.
+- **Why it matters:** The implicit invariant "every flag in `'resolved'`
+  state has a `resolvedAt` timestamp" is broken silently. Audit / dashboard
+  queries that compute resolution latency or filter for "resolved without
+  timestamp" miss these records.
+- **Failing test:** `tests/e2e/flags-api-error-branches.spec.js` ›
+  "PRODUCT BUG: stored.flagStatus='resolved' without a matching
+  resolvedAt".
+- **Fix:** Check the resolved status against the *final* value, e.g.
+  `const finalStatus = responseData.flagStatus || 'resolved'; if
+  (finalStatus === 'resolved') updateData.resolvedAt = now;`.
+
 
 ## Duplicate top-level declarations in `public/instructor/scripts/instructor.js`
 
@@ -439,6 +554,11 @@ and `quiz.js`/`chat.js` were one bad input away from crashing.
 ## History page auth-helper fallback in `public/student/scripts/history.js`
 
 - `getCurrentUser`: the branch at lines 183-185 intends to call the `auth.js` helper when `window.getCurrentUser` is a different function, but `history.js` declares its own top-level `getCurrentUser`, replacing the global name on the page. A page-driven test that installs an external helper after load still returns `null`, leaving this fallback branch effectively unreachable/dead under the real script load order.
+
+## Qdrant service coverage notes
+
+- `src/services/qdrantService.js` has no score-threshold search option today. `searchDocuments()` builds `vector`, `limit`, `with_payload`, `with_vector`, and optional `courseId` / `lectureName` / `lectureNames` filters only, so there is no product branch to cover for threshold inclusion/exclusion.
+- The service also has no retry or back-off implementation around client construction, collection validation, search, upsert, scroll, or delete. The added harness coverage exercises construction/config/provider failures and direct operation failures, but retry/back-off remains absent rather than skipped.
 
 ## Dead CSS candidates in `public/styles/documents.css`
 
