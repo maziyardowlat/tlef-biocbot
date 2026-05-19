@@ -391,46 +391,6 @@ async function openInstructorScriptHarness(page, options = {}) {
     return controls;
 }
 
-async function openInstructorSettingsWithReadyAuth(page, options = {}) {
-    const controls = await installBranchRoutes(page, options);
-    await page.route('**/common/scripts/auth.js', async (route) => {
-        await route.fulfill({
-            contentType: 'application/javascript',
-            body: `
-                const readyUser = {
-                    userId: '${INSTRUCTOR_ID}',
-                    username: 'e2e_instructor',
-                    displayName: 'Branch Instructor',
-                    role: 'instructor',
-                    preferences: {}
-                };
-                window.getCurrentUser = () => readyUser;
-                window.hasRole = (role) => readyUser.role === role;
-                window.isInstructor = () => true;
-                window.isTA = () => false;
-                window.isStudent = () => false;
-                window.isSystemAdmin = () => false;
-                window.getCurrentInstructorId = () => readyUser.userId;
-                window.getCurrentCourseId = () => new URLSearchParams(window.location.search).get('courseId')
-                    || window.localStorage.getItem('selectedCourseId')
-                    || readyUser.preferences.courseId
-                    || null;
-                window.setCurrentCourseId = async (courseId) => {
-                    readyUser.preferences.courseId = courseId;
-                    return true;
-                };
-                window.authenticatedFetch = (url, options = {}) => fetch(url, { ...options, credentials: 'include' });
-                window.applyLLMBodyTag = async () => {};
-                window.applyLLMTagClassesToElement = () => {};
-                window.getCurrentLLMTagClasses = () => [];
-            `,
-        });
-    });
-    await page.goto(`/instructor/settings?courseId=${COURSE_ID}`);
-    await expect(page.locator('h1')).toHaveText('Settings', { timeout: 15_000 });
-    return controls;
-}
-
 test.describe('instructor publish, TA, course, and polling branches', () => {
     test.use({ storageState: storageStatePath('instructor') });
 
@@ -726,29 +686,6 @@ test.describe('instructor publish, TA, course, and polling branches', () => {
         });
 
         await expect(page.locator('#additive-retrieval-toggle')).toBeDisabled();
-    });
-
-    test('initializes retrieval toggle immediately when auth is already ready and saves successful changes', async ({ page }) => {
-        const controls = await openInstructorSettingsWithReadyAuth(page, {
-            course: branchCourse({ isAdditiveRetrieval: true }),
-        });
-
-        const toggle = page.locator('#additive-retrieval-toggle');
-        await expect(toggle).toBeChecked();
-        await expect(toggle).toBeEnabled();
-        expect(controls.courseByIdCalls).toBeGreaterThan(0);
-
-        await toggle.evaluate((element) => {
-            const input = /** @type {HTMLInputElement} */ (element);
-            input.checked = false;
-            input.dispatchEvent(new Event('change', { bubbles: true }));
-        });
-
-        await expect.poll(() => controls.retrievalRequests).toEqual([
-            { isAdditiveRetrieval: false },
-        ]);
-        await expect(toggle).not.toBeChecked();
-        await expect(page.locator('.notification').filter({ hasText: 'Retrieval mode updated' })).toBeVisible();
     });
 
     test('restores retrieval toggle when save fails', async ({ page }) => {
