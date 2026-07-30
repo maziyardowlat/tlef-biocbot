@@ -213,16 +213,21 @@ function processSelectedFile(file) {
  * when documents of those types already exist on the resumed course.
  */
 function repopulateMaterialStatuses(documents) {
-    const types = new Set((documents || []).map(d => d.documentType));
+    const typeCounts = (documents || []).reduce((counts, document) => {
+        counts[document.documentType] = (counts[document.documentType] || 0) + 1;
+        return counts;
+    }, {});
     const lectureStatus = document.getElementById('lecture-status');
-    if (lectureStatus && types.has('lecture-notes')) {
-        lectureStatus.textContent = 'Uploaded';
+    if (lectureStatus && typeCounts['lecture-notes']) {
+        lectureStatus.dataset.uploadCount = String(typeCounts['lecture-notes']);
+        lectureStatus.textContent = `${typeCounts['lecture-notes']} Uploaded`;
         lectureStatus.classList.remove('not-uploaded');
         lectureStatus.classList.add('uploaded');
     }
     const practiceStatus = document.getElementById('practice-status');
-    if (practiceStatus && types.has('practice-quiz')) {
-        practiceStatus.textContent = 'Uploaded';
+    if (practiceStatus && typeCounts['practice-quiz']) {
+        practiceStatus.dataset.uploadCount = String(typeCounts['practice-quiz']);
+        practiceStatus.textContent = `${typeCounts['practice-quiz']} Uploaded`;
         practiceStatus.classList.remove('not-uploaded');
         practiceStatus.classList.add('uploaded');
     }
@@ -265,10 +270,14 @@ function openUploadModal(week, contentType = '') {
         uploadFileBtn.textContent = buttonText;
     }
     
-    // Show/hide name input section based on content type
-    // Always hide name input section to enforce standardized naming
+    // A visible material name keeps repeated uploads distinguishable. File
+    // uploads may leave it blank and retain their original filename.
     if (nameInputSection) {
-        nameInputSection.style.display = 'none';
+        nameInputSection.style.display = 'block';
+        const nameInput = nameInputSection.querySelector('#material-name');
+        if (nameInput) {
+            nameInput.placeholder = `Name this ${title.replace(/^Upload /, '').toLowerCase()}...`;
+        }
     }
     
     // Reset the modal to initial state
@@ -372,6 +381,11 @@ async function handleUpload() {
         showNotification('Please provide content via file upload or direct text input', 'error');
         return;
     }
+
+    if (!uploadedFile && textInput && !materialNameInput) {
+        showNotification('Please enter a material name for pasted content', 'error');
+        return;
+    }
     
     // Show loading indicator and hide upload section
     const loadingIndicator = document.getElementById('upload-loading-indicator');
@@ -424,26 +438,13 @@ async function handleUpload() {
         console.log('Document type determined:', documentType);
         let uploadResult = null;
         
-        // Check if this document type already exists for Unit 1
-        const documentTypeExists = await checkDocumentTypeExists(courseId, 'Unit 1', documentType);
-        if (documentTypeExists) {
-            const replace = confirm(`${documentType.replace('-', ' ')} already exists for Unit 1. Would you like to replace the existing content?`);
-            if (replace) {
-                // Remove existing documents of this type
-                await removeExistingDocumentType(courseId, 'Unit 1', documentType, instructorId);
-                console.log(`Removed existing ${documentType} documents for Unit 1`);
-            } else {
-                throw new Error(`${documentType.replace('-', ' ')} already exists for Unit 1. Please remove the existing content first or use a different type.`);
-            }
-        }
-        
         // Save the uploaded content using the same API that course upload expects
         if (uploadedFile) {
-            // Pass the standardized title to the save function
-            const title = getDefaultTitle(documentType);
+            // Blank titles preserve the original filename for source attribution.
+            const title = materialNameInput || null;
             uploadResult = await saveUnit1Document(courseId, 'Unit 1', documentType, uploadedFile, instructorId, title);
         } else if (textInput) {
-            const title = getDefaultTitle(documentType, 'Text Content');
+            const title = materialNameInput;
             console.log('Saving text content with title:', title);
             console.log('Request details:', {
                 courseId,
@@ -460,7 +461,6 @@ async function handleUpload() {
         
         // Update status badge based on content type
         let statusBadge = null;
-        let statusText = 'Uploaded';
         
         switch (currentContentType) {
             case 'lecture-notes':
@@ -471,12 +471,16 @@ async function handleUpload() {
                 break;
             case 'additional':
                 statusBadge = document.getElementById('additional-status');
-                statusText = 'Added';
                 break;
         }
         
         if (statusBadge) {
-            statusBadge.textContent = statusText;
+            const previousCount = Number(statusBadge.dataset.uploadCount || 0);
+            const uploadCount = previousCount + 1;
+            statusBadge.dataset.uploadCount = String(uploadCount);
+            statusBadge.textContent = currentContentType === 'additional'
+                ? `${uploadCount} Added`
+                : `${uploadCount} Uploaded`;
             statusBadge.style.background = 'rgba(40, 167, 69, 0.1)';
             statusBadge.style.color = '#28a745';
         }
@@ -500,7 +504,12 @@ async function handleUpload() {
                 console.warn('Could not extract topics from uploaded document:', e);
             }
 
-            showInlineTopicReview(courseId, getDefaultTitle(documentType), existingTopics, suggestedTopics);
+            const sourceName = uploadResult?.data?.filename
+                || uploadResult?.data?.title
+                || materialNameInput
+                || uploadedFile?.name
+                || getDefaultTitle(documentType);
+            showInlineTopicReview(courseId, sourceName, existingTopics, suggestedTopics);
         } catch (topicError) {
             console.error('Error during topic review flow:', topicError);
             showNotification('Upload succeeded, but topic review could not be completed.', 'warning');

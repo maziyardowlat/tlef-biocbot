@@ -358,15 +358,27 @@ describe('main chat source, mode, tracking, safety, and continuation branches', 
         expect(res.body.sourceAttribution.source).toBe('GPT');
     });
 
-    test('source attribution replaces a lower-scoring duplicate document id', async () => {
+    test('source attribution deduplicates chunks by document while preserving multiple files of the same type', async () => {
         ai([
-            { score: 0.4, type: 'lecture_notes', lectureName: 'Unit 1', documentId: '', chunkText: 'old' },
-            { score: 0.9, type: 'lecture_notes', lectureName: 'Unit 1', documentId: 'new-id', chunkText: 'new' }
+            { score: 0.4, type: 'lecture_notes', lectureName: 'Unit 1', documentId: 'lecture-1', fileName: 'Metabolism.pdf', chunkText: 'old' },
+            { score: 0.9, type: 'lecture_notes', lectureName: 'Unit 1', documentId: 'lecture-1', fileName: 'Metabolism.pdf', chunkText: 'new' },
+            { score: 0.8, type: 'lecture_notes', lectureName: 'Unit 1', documentId: 'lecture-2', fileName: 'Glycolysis.pdf', chunkText: 'other' }
         ]);
         const res = await request(app({ db: chatDb() })).post('/').send({ message: 'hi', courseId: 'C1', unitName: 'Unit 1' });
         expect(res.body.sourceAttribution.documents).toEqual([
-            expect.objectContaining({ documentId: 'new-id' })
+            expect.objectContaining({
+                documentId: 'lecture-1',
+                fileName: 'Metabolism.pdf',
+                documentType: 'Lecture Notes'
+            }),
+            expect.objectContaining({
+                documentId: 'lecture-2',
+                fileName: 'Glycolysis.pdf',
+                documentType: 'Lecture Notes'
+            })
         ]);
+        expect(res.body.sourceAttribution.description).toContain('Metabolism.pdf — Lecture Notes (Unit 1)');
+        expect(res.body.sourceAttribution.description).toContain('Glycolysis.pdf — Lecture Notes (Unit 1)');
     });
 
     test('source attribution handles relevance changing between score and filter reads', async () => {

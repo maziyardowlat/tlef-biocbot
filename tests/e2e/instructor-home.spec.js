@@ -473,14 +473,57 @@ test.describe('Instructor home dashboard', () => {
             return testWindow.__lastWeeklyChartConfig?.data?.datasets?.length;
         }))
             .toBe(2);
-        await expect.poll(() => page.evaluate(() => {
-            const testWindow = /** @type {Window & typeof globalThis & { __lastWeeklyChartConfig?: { options?: { plugins?: { tooltip?: { callbacks?: { title?: Function, afterBody?: Function } } } } } }} */ (window);
-            const callbacks = testWindow.__lastWeeklyChartConfig?.options?.plugins?.tooltip?.callbacks;
-            return [
-                callbacks?.title?.([{ label: 'May 11' }]),
-                callbacks?.afterBody?.([{ raw: 2 }, { raw: 1 }]),
-            ].join('|');
-        })).toBe('Week of May 11|\nTotal active: 3 students');
+        // The chart renders an HTML tooltip (Chart.js `external`) instead of the
+        // canvas-drawn one so long topic lists can scroll. Drive the handler with
+        // a synthetic Chart.js tooltip model and assert what it puts in the DOM.
+        const tooltipState = await page.evaluate(() => {
+            const testWindow = /** @type {any} */ (window);
+            const tooltipConfig = testWindow.__lastWeeklyChartConfig?.options?.plugins?.tooltip;
+            const canvas = document.getElementById('weekly-struggle-chart');
+            if (!tooltipConfig?.external || !canvas) {
+                throw new Error('Weekly chart external tooltip handler was not configured');
+            }
+
+            tooltipConfig.external({
+                chart: { canvas },
+                tooltip: {
+                    opacity: 1,
+                    caretX: 40,
+                    caretY: 40,
+                    title: [tooltipConfig.callbacks.title([{ label: 'May 11' }])],
+                    labelColors: [
+                        { backgroundColor: '#dc3545' },
+                        { backgroundColor: '#4a90e2' },
+                        { backgroundColor: '#ffc107' },
+                    ],
+                    dataPoints: [
+                        { dataset: { label: 'Osmosis', backgroundColor: '#dc3545' }, raw: 1, formattedValue: '1' },
+                        { dataset: { label: 'Cell membranes', backgroundColor: '#4a90e2' }, raw: 2, formattedValue: '2' },
+                        { dataset: { label: 'Photosynthesis', backgroundColor: '#ffc107' }, raw: 0, formattedValue: '0' },
+                    ],
+                },
+            });
+
+            const tooltip = document.querySelector('.chart-tooltip');
+            const body = tooltip?.querySelector('.chart-tooltip-body');
+            if (!tooltip || !body) {
+                throw new Error('External tooltip handler did not render a tooltip');
+            }
+
+            return {
+                canvasTooltipEnabled: tooltipConfig.enabled,
+                title: tooltip.querySelector('.chart-tooltip-title')?.textContent,
+                rows: Array.from(body.querySelectorAll('.chart-tooltip-row')).map((row) => row.textContent),
+                footer: tooltip.querySelector('.chart-tooltip-footer')?.textContent,
+                bodyOverflowY: getComputedStyle(body).overflowY,
+            };
+        });
+        expect(tooltipState.canvasTooltipEnabled).toBe(false);
+        expect(tooltipState.title).toBe('Week of May 11');
+        // Zero-count topics are dropped and the rest are sorted busiest-first.
+        expect(tooltipState.rows).toEqual(['Cell membranes: 2', 'Osmosis: 1']);
+        expect(tooltipState.footer).toBe('Total active: 3 students');
+        expect(tooltipState.bodyOverflowY).toBe('auto');
         await page.locator('#chart-prev-weeks').dispatchEvent('click');
         await page.locator('#chart-next-weeks').dispatchEvent('click');
 
@@ -676,13 +719,9 @@ test.describe('Instructor home dashboard', () => {
         await expect(page.locator('#instructor-code-entry-group')).toBeVisible();
 
         // Use programmatic clicks (evaluate(el => el.click())) through this
-        // flow. CI surfaced intermittent "element not stable / not visible"
-        // failures on the join button and on the course-code input after the
-        // first error attempt — the input gains a .field-error-shake CSS
-        // animation that makes Playwright's actionability checks block until
-        // the test times out (DIAG confirmed visible/enabled = true but
-        // class includes field-error-shake at the moment of timeout).
-        // Bypassing the check fires the inline handlers directly.
+        // flow. The join button and course-code input carry a 0.28s
+        // .field-error-shake animation after a failed attempt, which can block
+        // the click actionability check's stability requirement.
         await page.locator('#join-course-btn').evaluate(el => /** @type {HTMLElement} */ (el).click());
         await expect(page.locator('#instructor-course-code-feedback')).toContainText('Instructor course code is required');
         await expect(page.locator('#instructor-course-code-input')).toHaveAttribute('aria-invalid', 'true');
@@ -692,19 +731,11 @@ test.describe('Instructor home dashboard', () => {
         await expect(page.locator('#instructor-course-code-feedback')).toContainText('Invalid instructor course code');
         await expect(page.locator('#join-course-btn')).toBeEnabled();
 
-        // Clear the input via a manual input event first. The 0.28s
-        // .field-error-shake animation from the previous WRONG attempt is
-        // what's making Playwright's actionability check fail until test
-        // timeout (confirmed by DIAG output in CI). The input event listener
-        // on this field removes .field-error-shake / .input-error classes,
-        // so dispatching a synthetic input event clears the shake state
-        // immediately and the subsequent fill becomes deterministic.
-        await page.locator('#instructor-course-code-input').evaluate(el => {
-            const input = /** @type {HTMLInputElement} */ (el);
-            input.focus();
-            input.value = '';
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-        });
+        // This fill used to time out with "element is not visible": the home
+        // page initialized twice (auth:ready plus its 500ms fallback timer), and
+        // the second init's setSelectedCourse() -> hideCourseSelector() closed
+        // the whole course selector mid-test. public/instructor/scripts/home.js
+        // now guards against the double init, so a plain fill is deterministic.
         await page.locator('#instructor-course-code-input').fill('JOININS');
         await page.locator('#join-course-btn').evaluate(el => /** @type {HTMLElement} */ (el).click());
         await expect(page.locator('#course-name-display')).toHaveText('Joinable Home Biology', { timeout: 15_000 });

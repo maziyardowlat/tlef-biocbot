@@ -583,11 +583,20 @@ function addActionButtonsIfMissing(container, unitName) {
         }
     });
     
-    // Add "Add Additional Material" button if it doesn't exist
+    // Keep every material category repeatable. Required means at least one
+    // document of that type, not that the category is a single upload slot.
     if (!hasAddContentSection) {
         const addContentSection = document.createElement('div');
         addContentSection.className = 'add-content-section';
         addContentSection.innerHTML = `
+            <button class="add-content-btn lecture-notes" onclick="openUploadModal('${unitName}', 'lecture-notes')">
+                <span class="btn-icon">➕</span>
+                Add Lecture Notes
+            </button>
+            <button class="add-content-btn practice-quiz" onclick="openUploadModal('${unitName}', 'practice-quiz')">
+                <span class="btn-icon">➕</span>
+                Add Practice Questions/Tutorial
+            </button>
             <button class="add-content-btn additional-material" onclick="openUploadModal('${unitName}', 'additional')">
                 <span class="btn-icon">➕</span>
                 Add Additional Material

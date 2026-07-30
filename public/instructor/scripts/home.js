@@ -53,16 +53,31 @@ function weeklyStruggleEndpoint(weeks) {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    // Wait for auth to be ready before initializing
-    // This ensures getCurrentInstructorId() is available
+    // Two racers can start the page: the auth:ready event and a 500ms fallback
+    // timer. When auth resolves in under 500ms — the common case — both fire, so
+    // initializeHomePage() must guard against running twice. A second run
+    // re-registers every listener and re-enters setSelectedCourse(), whose
+    // hideCourseSelector() call slams the course selector shut underneath an
+    // instructor who has already opened it.
+    let homePageInitialized = false;
+    let initFallbackTimer = null;
+
     function tryInitialize() {
+        if (homePageInitialized) {
+            return true;
+        }
         if (typeof getCurrentInstructorId === 'function' && getCurrentInstructorId()) {
+            homePageInitialized = true;
+            if (initFallbackTimer !== null) {
+                clearTimeout(initFallbackTimer);
+                initFallbackTimer = null;
+            }
             initializeHomePage();
             return true;
         }
         return false;
     }
-    
+
     // Try initializing immediately if auth is already ready
     if (!tryInitialize()) {
         // Wait for auth:ready event if auth hasn't loaded yet
@@ -73,9 +88,10 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         };
         document.addEventListener('auth:ready', authReadyHandler);
-        
+
         // Fallback: try initializing after a short delay if event doesn't fire
-        setTimeout(() => {
+        initFallbackTimer = setTimeout(() => {
+            initFallbackTimer = null;
             if (tryInitialize()) {
                 document.removeEventListener('auth:ready', authReadyHandler);
             }
@@ -1525,30 +1541,52 @@ function renderWeeklyStruggleTooltip(context) {
 
     const points = tooltip.dataPoints || [];
 
+    // Every topic in the page is a dataset, so most weeks carry a long tail of
+    // zero-count topics. Show only the topics actually present that week, busiest first.
+    const rows = points
+        .map((point, i) => {
+            const colors = tooltip.labelColors && tooltip.labelColors[i];
+            return {
+                label: point.dataset.label,
+                value: Number(point.raw) || 0,
+                text: point.formattedValue,
+                color: (colors && colors.backgroundColor) || point.dataset.backgroundColor
+            };
+        })
+        .filter(row => row.value > 0)
+        .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label));
+
     const titleEl = document.createElement('div');
     titleEl.className = 'chart-tooltip-title';
     titleEl.textContent = (tooltip.title && tooltip.title[0]) || '';
 
     const body = document.createElement('div');
     body.className = 'chart-tooltip-body';
-    points.forEach((point, i) => {
+
+    if (rows.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'chart-tooltip-empty';
+        empty.textContent = 'No active struggles this week.';
+        body.appendChild(empty);
+    }
+
+    rows.forEach((rowData) => {
         const row = document.createElement('div');
         row.className = 'chart-tooltip-row';
 
         const swatch = document.createElement('span');
         swatch.className = 'chart-tooltip-swatch';
-        const colors = tooltip.labelColors && tooltip.labelColors[i];
-        swatch.style.backgroundColor = (colors && colors.backgroundColor) || point.dataset.backgroundColor;
+        swatch.style.backgroundColor = rowData.color;
 
         const label = document.createElement('span');
-        label.textContent = `${point.dataset.label}: ${point.formattedValue}`;
+        label.textContent = `${rowData.label}: ${rowData.text}`;
 
         row.appendChild(swatch);
         row.appendChild(label);
         body.appendChild(row);
     });
 
-    const total = points.reduce((sum, point) => sum + (Number(point.raw) || 0), 0);
+    const total = rows.reduce((sum, row) => sum + row.value, 0);
     const footer = document.createElement('div');
     footer.className = 'chart-tooltip-footer';
     footer.textContent = `Total active: ${total} student${total !== 1 ? 's' : ''}`;

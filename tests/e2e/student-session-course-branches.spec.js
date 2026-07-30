@@ -625,6 +625,13 @@ test('showCourseSelection hides the dropdown after enrolled selection and succes
 
 test('loadCourseData course-change path clears prior session state and triggers delayed question load', async ({ page }) => {
     await openStudentWithMocks(page);
+    // Startup auto-continues the seeded session a few hundred ms after auth is
+    // ready: loadChatData() restores selectedCourseId/selectedUnitName from that
+    // chat's metadata and repaints #chat-messages. Without waiting for it, the
+    // restore lands during this test's own loadCourseData() await and puts the
+    // *old* course back, so the course-change assertions below fail. The
+    // repainted message is the signal that the restore has finished.
+    await expect(page.locator('#chat-messages')).toContainText('seeded branch chat', { timeout: 10_000 });
 
     const result = await page.evaluate(async ({ courseId, secondCourseId, studentId }) => {
         const w = /** @type {any} */ (window);

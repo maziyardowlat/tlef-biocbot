@@ -1090,6 +1090,11 @@
   padding: 1px 0;
 }
 
+.chart-tooltip-empty {
+  font-style: italic;
+  opacity: 0.75;
+}
+
 .chart-tooltip-swatch {
   flex: 0 0 auto;
   width: 10px;

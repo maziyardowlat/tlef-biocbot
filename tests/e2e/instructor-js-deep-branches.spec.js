@@ -248,10 +248,14 @@ test.describe('instructor.js deep branch coverage', () => {
             const aiButton = document.createElement('button');
             aiButton.id = 'generate-ai-unit1';
             document.body.appendChild(aiButton);
-            const lectureUpload = document.querySelector(`[onclick*="'Unit 1'"][onclick*="lecture-notes"]`);
-            const lectureItem = lectureUpload?.closest('.file-item');
+            const lectureItem = Array.from(document.querySelectorAll('.file-item'))
+                .find(item => item.querySelector('h3')?.textContent?.includes('Lecture Notes'));
             const lectureStatus = lectureItem?.querySelector('.status-text');
-            if (lectureStatus) lectureStatus.textContent = 'Processed';
+            if (lectureItem && lectureStatus) {
+                lectureItem.classList.remove('placeholder-item');
+                lectureItem.dataset.documentType = 'lecture_notes';
+                lectureStatus.textContent = 'Processed';
+            }
             instructorWindow.checkAIGenerationAvailability('Unit 1');
 
             const content = /** @type {HTMLElement} */ (document.querySelector('.accordion-content'));
@@ -268,6 +272,8 @@ test.describe('instructor.js deep branch coverage', () => {
                 aiTitle: aiButton.title,
                 expanded: !content.classList.contains('collapsed'),
                 actions: section.querySelectorAll('.add-content-section, .save-objectives').length,
+                addMaterialActions: Array.from(section.querySelectorAll('.add-content-btn'))
+                    .map(button => button.textContent?.replace(/\s+/g, ' ').trim()),
             };
         });
 
@@ -331,6 +337,11 @@ test.describe('instructor.js deep branch coverage', () => {
         expect(result.aiTitle).toContain('Generate questions');
         expect(result.expanded).toBe(true);
         expect(result.actions).toBeGreaterThan(0);
+        expect(result.addMaterialActions).toEqual([
+            '➕ Add Lecture Notes',
+            '➕ Add Practice Questions/Tutorial',
+            '➕ Add Additional Material',
+        ]);
         await expect(page.locator('.notification').filter({ hasText: /Missing mandatory materials|Please upload course materials|Error loading/i }).first()).toBeVisible();
     });
 
@@ -358,7 +369,8 @@ test.describe('instructor.js deep branch coverage', () => {
             await instructorWindow.handleUpload();
         });
 
-        await expect(page.locator('.file-item[data-document-id="doc_practice_upload"] h3')).toHaveText('*Practice Questions/Tutorial - Unit 1');
+        await expect(page.locator('.file-item[data-document-id="doc_practice_upload"] h3')).toHaveText('practice.txt');
+        await expect(page.locator('.file-item[data-document-id="doc_practice_upload"] .document-type-badge')).toHaveText('Practice Questions/Tutorial');
         expect(state.textUploads).toHaveLength(0);
         expect(state.fileUploads).toBe(2);
         expect(state.savedTopics).toBeGreaterThanOrEqual(1);

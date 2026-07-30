@@ -620,8 +620,8 @@ test.describe('Source attribution and flag menus', () => {
                     description: 'Should prefer documents',
                     downloadsEnabled: true,
                     documents: [
-                        { documentId: 'doc_alpha', fileName: 'Alpha.pdf', lectureName: 'Unit 1' },
-                        { documentId: 'doc_missing_name' },
+                        { documentId: 'doc_alpha', fileName: 'Alpha.pdf', documentType: 'Lecture Notes', lectureName: 'Unit 1' },
+                        { documentId: 'doc_missing_name', documentType: 'Practice Questions' },
                         { fileName: 'Ignored because missing id' },
                     ],
                 }
@@ -634,8 +634,8 @@ test.describe('Source attribution and flag menus', () => {
 
         const downloadableMessage = page.locator('.bot-message').filter({ hasText: 'Downloadable response' });
         await expect(downloadableMessage.locator('.message-source a')).toHaveCount(2);
-        await expect(downloadableMessage.locator('.message-source')).toContainText('Alpha.pdf (Unit 1)');
-        await expect(downloadableMessage.locator('.message-source')).toContainText('Source Document');
+        await expect(downloadableMessage.locator('.message-source')).toContainText('Alpha.pdf — Lecture Notes (Unit 1)');
+        await expect(downloadableMessage.locator('.message-source')).toContainText('Source Document — Practice Questions');
         await expect(downloadableMessage.locator('.message-source a').first()).toHaveAttribute(
             'href',
             new RegExp(`/api/chat/source-documents/doc_alpha/download\\?courseId=${STU_COURSE_ID}`)

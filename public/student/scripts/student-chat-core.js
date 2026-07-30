@@ -230,7 +230,11 @@ function renderSourceAttribution(sourceDiv, sourceAttribution) {
         }
 
         const labelBase = doc.fileName || 'Source Document';
-        const label = doc.lectureName ? `${labelBase} (${doc.lectureName})` : labelBase;
+        const typeSuffix = doc.documentType && doc.documentType !== labelBase
+            ? ` — ${doc.documentType}`
+            : '';
+        const labelWithType = `${labelBase}${typeSuffix}`;
+        const label = doc.lectureName ? `${labelWithType} (${doc.lectureName})` : labelWithType;
         const link = document.createElement('a');
         link.href = buildSourceDownloadUrl(doc.documentId, courseId);
         link.textContent = label;
