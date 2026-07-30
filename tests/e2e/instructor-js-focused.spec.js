@@ -560,6 +560,7 @@ test.describe('instructor.js focused browser coverage', () => {
         await expect(page.locator('#upload-modal')).toHaveClass(/show/);
 
         await page.locator('button.method-btn', { hasText: 'Paste content directly' }).click();
+        await page.locator('#material-name').fill('ATP Production Notes');
         await page.locator('#text-input').fill('Pasted instructor material about ATP production.');
         await page.locator('#upload-btn').click();
 
