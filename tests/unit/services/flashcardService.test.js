@@ -110,6 +110,28 @@ describe('flashcardService generated response validation', () => {
         expect(cards).toHaveLength(1);
     });
 
+    test('drops questions that depend on a vague lecture or unseen figure reference', () => {
+        const cards = flashcardService.parseGeneratedCards(JSON.stringify({
+            cards: [
+                {
+                    front: 'Based on lecture one, what do you think the figures show?',
+                    back: 'A generic interpretation.',
+                    sourceRef: 'S1'
+                },
+                {
+                    front: 'How does ATP synthase use a proton gradient to produce ATP?',
+                    back: 'It couples proton flow to rotational catalysis.',
+                    sourceRef: 'S1'
+                }
+            ]
+        }), sources, 10);
+
+        expect(cards).toHaveLength(1);
+        expect(cards[0].front).toMatch(/ATP synthase/);
+        expect(flashcardService.hasVagueSourceReference('What does Figure 3 show?')).toBe(true);
+        expect(flashcardService.hasVagueSourceReference('What variables appear on a Lineweaver-Burk plot?')).toBe(false);
+    });
+
     test('generates and persists a draft from stored parsed text', async () => {
         const db = memoryDb({
             documents: [{

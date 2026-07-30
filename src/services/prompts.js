@@ -142,6 +142,8 @@ const FLASHCARD_GENERATION_PROMPT = `Generate {{cardCount}} university-level stu
 Use the learning objectives as the main guide for deciding which concepts are most important. Prefer concepts, processes, relationships, common misconceptions, and definitions that students need to understand. Avoid trivia and duplicate or near-duplicate cards.
 
 Keep each front concise and focused on one learning target. Make each back complete enough to study independently.
+Every card must be self-contained. A student should understand the question without seeing the original lecture, slide, figure, image, graph, table, or surrounding text.
+Do not write prompts such as "Based on the lecture," "What does the figure show?" or "In the image above." If a visual contains useful information, name the specific molecules, axes, trend, structure, or process directly in the card.
 
 Learning objectives:
 {{learningObjectives}}

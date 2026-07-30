@@ -141,6 +141,16 @@ function normalizeSourceTokenBudget(value) {
     return parsed;
 }
 
+function hasVagueSourceReference(front) {
+    const text = String(front || '');
+    return [
+        /\bbased on\s+(?:(?:the|this|that)\s+)?(?:lecture|slides?|figures?|images?|diagrams?|graphs?|tables?|course materials?|notes?)\b/i,
+        /\b(?:the|this|that|above|below|following|shown|provided)\s+(?:figures?|images?|diagrams?|graphs?|tables?|slides?|lectures?|notes?|materials?)\b/i,
+        /\b(?:figures?|images?|diagrams?|graphs?|tables?|slides?)\s+(?:above|below|shown|provided)\b/i,
+        /\b(?:figure|fig\.?|image|diagram|graph|table|slide)\s*#?\d+\b/i
+    ].some(pattern => pattern.test(text));
+}
+
 function parseGeneratedCards(content, sourceRecords, requestedCount) {
     const raw = String(content || '');
     const start = raw.indexOf('{');
@@ -159,6 +169,7 @@ function parseGeneratedCards(content, sourceRecords, requestedCount) {
         const source = sources.get(String(candidate?.sourceRef || '').trim());
         const key = front.toLowerCase();
         if (!front || !back || !source || seen.has(key)) continue;
+        if (hasVagueSourceReference(front)) continue;
         if (front.length > 300 || back.length > 1200) continue;
 
         seen.add(key);
@@ -221,6 +232,9 @@ Non-negotiable generation contract:
 - Generate exactly ${cardCount} cards.
 - Use only the supplied course material; do not add facts from outside knowledge.
 - Every card must cite exactly one source label from the supplied material.
+- Every question must be self-contained and understandable without opening the cited source.
+- Never refer vaguely to "the lecture," "the figure," "the image," "the graph," "the table," "the slide," or surrounding material. State the specific biological or chemical subject directly.
+- Do not ask students to interpret an unseen visual. Convert useful visual information into an explicit question about the named structure, variables, trend, or process.
 - Return only a JSON object using this schema:
 {
   "cards": [
@@ -310,6 +324,7 @@ module.exports = {
     buildSourceRecords,
     buildSourceRecordsFromStoredChunks,
     normalizeSourceTokenBudget,
+    hasVagueSourceReference,
     parseGeneratedCards,
     buildPrompt,
     generateDeck

@@ -187,9 +187,27 @@ async function publishDraft(db, deckId, publishedBy) {
 }
 
 async function unpublishDeck(db, deckId) {
+    const existing = await getDeckById(db, deckId);
+    if (!existing) return null;
+
+    const existingDraft = Array.isArray(existing.draftCards) && existing.draftCards.length > 0
+        ? existing.draftCards
+        : null;
+    const draftCards = existingDraft || existing.publishedCards || [];
+    const draftSourceDocumentIds = existingDraft
+        ? (existing.draftSourceDocumentIds || [])
+        : (existing.publishedSourceDocumentIds || []);
     const result = await getDecksCollection(db).updateOne(
         { deckId },
-        { $set: { isPublished: false, updatedAt: new Date() } }
+        {
+            $set: {
+                isPublished: false,
+                hasDraft: draftCards.length > 0,
+                draftCards,
+                draftSourceDocumentIds,
+                updatedAt: new Date()
+            }
+        }
     );
     return result.matchedCount > 0 ? getDeckById(db, deckId) : null;
 }

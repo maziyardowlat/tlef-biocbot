@@ -44,6 +44,20 @@ describe('FlashcardDeck', () => {
 
         const visible = await FlashcardDeck.listPublishedDecks(db, 'C1', ['Unit 1']);
         expect(visible).toHaveLength(1);
+
+        const unpublished = await FlashcardDeck.unpublishDeck(db, draft.deckId);
+        expect(unpublished).toMatchObject({
+            isPublished: false,
+            hasDraft: true,
+            draftCards: published.publishedCards
+        });
+
+        const republished = await FlashcardDeck.publishDraft(db, draft.deckId, 'i1');
+        expect(republished).toMatchObject({
+            isPublished: true,
+            hasDraft: false,
+            publishedVersion: 2
+        });
     });
 
     test('preserves card ids when regenerating the same front', async () => {

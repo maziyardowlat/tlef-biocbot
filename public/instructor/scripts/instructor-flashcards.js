@@ -74,6 +74,12 @@ function renderInstructorFlashcardSection(unitName) {
         return;
     }
 
+    const hasRecoverablePublishedCards = !deck.isPublished
+        && !deck.hasDraft
+        && Array.isArray(deck.publishedCards)
+        && deck.publishedCards.length > 0;
+    const isEditableDraft = deck.hasDraft || hasRecoverablePublishedCards;
+
     if (deck.isStale) {
         status.textContent = 'Materials changed';
         status.className = 'flashcard-status-badge stale';
@@ -86,20 +92,24 @@ function renderInstructorFlashcardSection(unitName) {
         status.textContent = `Published v${deck.publishedVersion}`;
         status.className = 'flashcard-status-badge published';
         setFlashcardSectionMessage(unitName, `${deck.publishedCards.length} cards are available to students.`, 'success');
+    } else if (hasRecoverablePublishedCards) {
+        status.textContent = 'Unpublished draft';
+        status.className = 'flashcard-status-badge draft';
+        setFlashcardSectionMessage(unitName, 'This deck is unpublished. Edit it or publish it again.');
     }
 
     const cards = deck.hasDraft ? deck.draftCards : deck.publishedCards;
     editor.style.display = '';
     editor.innerHTML = `
         <div class="flashcard-editor-heading">
-            <h4>${deck.hasDraft ? 'Draft cards' : 'Published cards'}</h4>
+            <h4>${isEditableDraft ? 'Draft cards' : 'Published cards'}</h4>
             <span>${cards.length} card${cards.length === 1 ? '' : 's'}</span>
         </div>
         <div class="flashcard-editor-list">
-            ${cards.map((card, index) => renderFlashcardEditorRow(card, index, !deck.hasDraft)).join('')}
+            ${cards.map((card, index) => renderFlashcardEditorRow(card, index, !isEditableDraft)).join('')}
         </div>
         <div class="flashcard-editor-actions">
-            ${deck.hasDraft ? `
+            ${isEditableDraft ? `
                 <button type="button" class="secondary-button" onclick="addManualFlashcard('${unitName}')">Add Card</button>
                 <button type="button" class="secondary-button" onclick="saveFlashcardDraft('${unitName}')">Save Draft</button>
                 <button type="button" class="flashcard-publish-btn" onclick="publishFlashcardDeck('${unitName}', this)">Publish to Students</button>
@@ -208,8 +218,26 @@ function addManualFlashcard(unitName) {
     editor.lastElementChild?.querySelector('.flashcard-front-input')?.focus();
 }
 
-function removeFlashcardEditorRow(button) {
-    button.closest('.flashcard-editor-row')?.remove();
+async function removeFlashcardEditorRow(button) {
+    const section = button.closest('.flashcards-section');
+    const unitName = section?.dataset.flashcardUnit;
+    const row = button.closest('.flashcard-editor-row');
+    const list = row?.parentElement;
+    if (!unitName || !row || !list) return;
+
+    if (list.querySelectorAll('.flashcard-editor-row').length <= 1) {
+        showNotification('A deck needs at least one card.', 'warning');
+        return;
+    }
+
+    row.remove();
+    try {
+        await saveFlashcardDraft(unitName, { quiet: true });
+        showNotification('Flashcard removed.', 'success');
+    } catch (error) {
+        renderInstructorFlashcardSection(unitName);
+        showNotification(error.message || 'Unable to remove flashcard.', 'error');
+    }
 }
 
 async function publishFlashcardDeck(unitName, button) {

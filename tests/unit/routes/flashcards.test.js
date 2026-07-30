@@ -76,6 +76,20 @@ describe('flashcard instructor routes', () => {
             .post(`/instructor/${draft.deckId}/publish`);
         expect(published.status).toBe(200);
         expect(published.body.data).toMatchObject({ isPublished: true, publishedVersion: 1 });
+
+        const unpublished = await request(app({ db, user: instructor }))
+            .post(`/instructor/${draft.deckId}/unpublish`);
+        expect(unpublished.status).toBe(200);
+        expect(unpublished.body.data).toMatchObject({
+            isPublished: false,
+            hasDraft: true,
+            draftCards: expect.any(Array)
+        });
+
+        const republished = await request(app({ db, user: instructor }))
+            .post(`/instructor/${draft.deckId}/publish`);
+        expect(republished.status).toBe(200);
+        expect(republished.body.data).toMatchObject({ isPublished: true, publishedVersion: 2 });
     });
 
     test('returns the generated service draft', async () => {
