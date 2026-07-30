@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BiocBot - Flashcards</title>
+    <link rel="icon" type="image/x-icon" href="../assets/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="../assets/images/favicon-32x32.png">
+    <link rel="stylesheet" href="../styles/style.css">
+    <link rel="stylesheet" href="../styles/flashcards.css">
+</head>
+<body>
+    <p class="skip-link"><a href="#main">Skip to main content</a></p>
+    <div class="app-container">
+        <header class="sidebar">
+            <div class="logo-container"><h2>BiocBot</h2></div>
+            <nav class="main-nav">
+                <ul>
+                    <li><a href="/student"><span class="icon"></span> Chat</a></li>
+                    <li><a href="/student/history"><span class="icon"></span> Chat History</a></li>
+                    <li><a href="/student/flagged"><span class="icon"></span> Flagged</a></li>
+                    <li><a href="/student/dashboard.html"><span class="icon"></span> Topic Dashboard</a></li>
+                    <li id="quiz-nav-item"><a href="/student/quiz"><span class="icon"></span> Quiz</a></li>
+                    <li class="active"><a href="/student/flashcards" aria-current="page"><span class="icon"></span> Flashcards</a></li>
+                    <li id="super-course-nav-item" style="display: none;"><a href="/student/super-course"><span class="icon"></span> Super Course</a></li>
+                    <li class="mobile-only-nav"><a href="#" id="mobile-logout-btn"><span class="icon"></span> Logout</a></li>
+                </ul>
+            </nav>
+            <div class="user-info">
+                <div class="user-avatar">S</div>
+                <div class="user-name" id="user-display-name">Student</div>
+                <div class="user-role">Student</div>
+                <div class="user-actions"><a href="#" id="logout-btn" class="user-action">Logout</a></div>
+            </div>
+        </header>
+
+        <main class="main-content">
+            <header class="page-header">
+                <h1 id="main" tabindex="-1">Flashcards</h1>
+                <p>Study instructor-reviewed cards generated from your published course materials.</p>
+            </header>
+
+            <div id="flashcard-loading" class="flashcard-state" role="status">Loading flashcard decks…</div>
+            <div id="flashcard-error" class="flashcard-state error" style="display: none;" role="alert"></div>
+            <div id="flashcard-empty" class="flashcard-state" style="display: none;">
+                <h2>No flashcard decks yet</h2>
+                <p>Your instructor has not published any flashcards for this course.</p>
+            </div>
+
+            <section id="deck-library" style="display: none;" aria-labelledby="deck-library-title">
+                <div class="flashcard-section-heading">
+                    <div>
+                        <h2 id="deck-library-title">Choose a deck</h2>
+                        <p>Progress is saved separately for each unit.</p>
+                    </div>
+                </div>
+                <div id="deck-list" class="deck-list"></div>
+            </section>
+
+            <section id="study-area" class="study-area" style="display: none;" aria-labelledby="study-title">
+                <div class="study-toolbar">
+                    <button type="button" id="back-to-decks" class="secondary-button">← All decks</button>
+                    <button type="button" id="shuffle-cards" class="secondary-button">Shuffle</button>
+                </div>
+                <div class="study-heading">
+                    <div>
+                        <span id="study-unit" class="study-unit"></span>
+                        <h2 id="study-title"></h2>
+                    </div>
+                    <span id="study-progress-text"></span>
+                </div>
+                <div class="flashcard-progress" role="progressbar" aria-labelledby="study-progress-text" aria-valuemin="0">
+                    <div id="flashcard-progress-fill"></div>
+                </div>
+
+                <button type="button" id="study-card" class="study-card" aria-pressed="false" aria-describedby="flip-hint">
+                    <span class="card-side-label" id="card-side-label">Front</span>
+                    <span id="card-content" class="card-content"></span>
+                    <span id="card-source" class="card-source" style="display: none;"></span>
+                    <span id="flip-hint" class="flip-hint">Press to reveal the answer</span>
+                </button>
+
+                <div id="review-actions" class="review-actions" style="display: none;">
+                    <button type="button" id="review-again" class="review-again">Review again <span>←</span></button>
+                    <button type="button" id="review-know" class="review-know">Know it <span>→</span></button>
+                </div>
+
+                <div id="study-complete" class="study-complete" style="display: none;" role="status">
+                    <h2>Deck complete</h2>
+                    <p>You reviewed every card in this session.</p>
+                    <button type="button" id="restart-deck" class="primary-button">Study again</button>
+                </div>
+                <p class="ai-card-note">These cards were generated with AI and reviewed by your instructor. Use the source label to verify details.</p>
+            </section>
+        </main>
+    </div>
+
+    <script src="../common/scripts/modal-a11y.js"></script>
+    <script src="../common/scripts/auth.js"></script>
+    <script src="../common/scripts/mobile-layout.js"></script>
+    <script src="../common/scripts/idle-timer.js"></script>
+    <script src="./scripts/flashcards.js"></script>
+</body>
+</html>

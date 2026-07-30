@@ -7,6 +7,7 @@ const path = require('path');
 // Import the Document model and Course model
 const DocumentModel = require('../models/Document');
 const CourseModel = require('../models/Course');
+const FlashcardDeck = require('../models/FlashcardDeck');
 const { hasSystemAdminAccess } = require('../services/authorization');
 const { QUESTION_EXTRACTION_SYSTEM_PROMPT, buildQuestionExtractionPrompt } = require('../services/prompts');
 const { resolveCourseAi, sendLlmKeyError } = require('./llmKeyMiddleware');
@@ -192,6 +193,8 @@ async function ingestDocument({
             console.warn('Warning: Document uploaded but Qdrant processing failed:', error.message);
         }
     }
+
+    await FlashcardDeck.markUnitStale(db, documentData.courseId, documentData.lectureName);
 
     return { result, courseResult, qdrantResult };
 }
@@ -904,6 +907,7 @@ router.delete('/:documentId', async (req, res) => {
         
         // Delete the document from the documents collection
         const result = await DocumentModel.deleteDocument(db, documentId);
+        await FlashcardDeck.markUnitStale(db, document.courseId, document.lectureName);
 
         // Remove the backing file from GridFS (no-op for older inline-fileData docs).
         if (document.fileId) {

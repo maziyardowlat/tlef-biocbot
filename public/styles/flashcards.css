@@ -1,0 +1,252 @@
+.flashcard-state {
+    padding: 2rem;
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: 10px;
+    background: white;
+    text-align: center;
+    color: #475569;
+}
+
+.flashcard-state.error {
+    border-color: #fecaca;
+    background: #fef2f2;
+    color: #991b1b;
+}
+
+.flashcard-state h2 {
+    margin-top: 0;
+}
+
+.flashcard-section-heading,
+.study-toolbar,
+.study-heading,
+.review-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.flashcard-section-heading h2,
+.study-heading h2 {
+    margin-bottom: 0.2rem;
+}
+
+.flashcard-section-heading p {
+    margin: 0;
+    color: #64748b;
+}
+
+.deck-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.deck-card {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.45rem;
+    min-height: 170px;
+    padding: 1.2rem;
+    border: 1px solid #dbe3ec;
+    border-radius: 12px;
+    background: white;
+    color: #334155;
+    text-align: left;
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.deck-card:hover,
+.deck-card:focus-visible {
+    transform: translateY(-2px);
+    border-color: var(--primary-color, #0055b7);
+    box-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
+    outline: none;
+}
+
+.deck-card strong {
+    font-size: 1.05rem;
+    color: #0f172a;
+}
+
+.deck-unit,
+.study-unit {
+    display: inline-block;
+    padding: 0.2rem 0.55rem;
+    border-radius: 999px;
+    background: #e8f1fb;
+    color: var(--primary-color, #0055b7);
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.deck-mastery {
+    color: #166534;
+    font-size: 0.85rem;
+}
+
+.deck-progress-track {
+    width: 100%;
+    height: 5px;
+    margin-top: auto;
+    overflow: hidden;
+    border-radius: 999px;
+    background: #e2e8f0;
+}
+
+.deck-progress-track span,
+#flashcard-progress-fill {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--primary-color, #0055b7);
+}
+
+.study-area {
+    max-width: 840px;
+}
+
+.study-toolbar {
+    margin-bottom: 1rem;
+}
+
+.study-heading {
+    align-items: flex-end;
+}
+
+.flashcard-progress {
+    height: 7px;
+    margin: 0.8rem 0 1.5rem;
+    overflow: hidden;
+    border-radius: 999px;
+    background: #e2e8f0;
+}
+
+#flashcard-progress-fill {
+    width: 0;
+    transition: width 0.2s ease;
+}
+
+.study-card {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    width: 100%;
+    min-height: 360px;
+    padding: 2rem;
+    border: 2px solid #dbe3ec;
+    border-radius: 18px;
+    background: white;
+    color: #0f172a;
+    cursor: pointer;
+    box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+}
+
+.study-card:hover,
+.study-card:focus-visible {
+    border-color: var(--primary-color, #0055b7);
+    outline: 3px solid rgba(0, 85, 183, 0.14);
+}
+
+.study-card.is-flipped {
+    background: #f8fbff;
+}
+
+.card-side-label {
+    align-self: center;
+    padding: 0.25rem 0.7rem;
+    border-radius: 999px;
+    background: #e2e8f0;
+    color: #475569;
+    font-size: 0.75rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+.card-content {
+    display: block;
+    margin: auto 0;
+    padding: 2rem 0;
+    font-size: clamp(1.2rem, 2.8vw, 1.7rem);
+    line-height: 1.55;
+    text-align: center;
+    white-space: pre-wrap;
+}
+
+.card-source {
+    align-self: center;
+    color: #64748b;
+    font-size: 0.82rem;
+}
+
+.flip-hint {
+    align-self: center;
+    margin-top: 1rem;
+    color: #64748b;
+    font-size: 0.82rem;
+}
+
+.review-actions {
+    justify-content: center;
+    margin-top: 1rem;
+}
+
+.review-actions button {
+    min-width: 170px;
+    padding: 0.85rem 1.1rem;
+    border-radius: 8px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.review-again {
+    border: 1px solid #fecaca;
+    background: #fff1f2;
+    color: #be123c;
+}
+
+.review-know {
+    border: 1px solid #bbf7d0;
+    background: #f0fdf4;
+    color: #166534;
+}
+
+.study-complete {
+    padding: 3rem 1rem;
+    border: 1px solid #bbf7d0;
+    border-radius: 14px;
+    background: #f0fdf4;
+    text-align: center;
+}
+
+.ai-card-note {
+    margin-top: 1.5rem;
+    color: #64748b;
+    font-size: 0.8rem;
+    text-align: center;
+}
+
+@media (max-width: 640px) {
+    .study-card {
+        min-height: 300px;
+        padding: 1.3rem;
+    }
+
+    .review-actions button {
+        flex: 1;
+        min-width: 130px;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .deck-card,
+    #flashcard-progress-fill {
+        transition: none;
+    }
+}
