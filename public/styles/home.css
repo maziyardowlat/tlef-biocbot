@@ -1047,6 +1047,72 @@
   font-size: 0.95em;
 }
 
+/* HTML tooltip for the weekly struggle chart. Replaces the canvas-drawn tooltip
+   so long topic lists can scroll instead of overflowing off screen. */
+.chart-tooltip {
+  position: absolute;
+  z-index: 20;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  max-width: min(340px, 90%);
+  max-height: min(300px, 60vh);
+  padding: 10px 12px;
+  border-radius: 8px;
+  background-color: rgba(33, 37, 41, 0.95);
+  color: #fff;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.chart-tooltip-title {
+  flex: 0 0 auto;
+  margin-bottom: 6px;
+  font-weight: bold;
+}
+
+.chart-tooltip-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 4px;
+}
+
+.chart-tooltip-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 1px 0;
+}
+
+.chart-tooltip-swatch {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.chart-tooltip-footer {
+  flex: 0 0 auto;
+  margin-top: 8px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.chart-tooltip-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chart-tooltip-body::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.35);
+  border-radius: 3px;
+}
+
 .chart-legend-note {
   margin-top: 12px;
   font-size: 0.85em;
