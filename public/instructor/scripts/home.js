@@ -53,16 +53,31 @@ function weeklyStruggleEndpoint(weeks) {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    // Wait for auth to be ready before initializing
-    // This ensures getCurrentInstructorId() is available
+    // Two racers can start the page: the auth:ready event and a 500ms fallback
+    // timer. When auth resolves in under 500ms — the common case — both fire, so
+    // initializeHomePage() must guard against running twice. A second run
+    // re-registers every listener and re-enters setSelectedCourse(), whose
+    // hideCourseSelector() call slams the course selector shut underneath an
+    // instructor who has already opened it.
+    let homePageInitialized = false;
+    let initFallbackTimer = null;
+
     function tryInitialize() {
+        if (homePageInitialized) {
+            return true;
+        }
         if (typeof getCurrentInstructorId === 'function' && getCurrentInstructorId()) {
+            homePageInitialized = true;
+            if (initFallbackTimer !== null) {
+                clearTimeout(initFallbackTimer);
+                initFallbackTimer = null;
+            }
             initializeHomePage();
             return true;
         }
         return false;
     }
-    
+
     // Try initializing immediately if auth is already ready
     if (!tryInitialize()) {
         // Wait for auth:ready event if auth hasn't loaded yet
@@ -73,9 +88,10 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         };
         document.addEventListener('auth:ready', authReadyHandler);
-        
+
         // Fallback: try initializing after a short delay if event doesn't fire
-        setTimeout(() => {
+        initFallbackTimer = setTimeout(() => {
+            initFallbackTimer = null;
             if (tryInitialize()) {
                 document.removeEventListener('auth:ready', authReadyHandler);
             }
@@ -981,6 +997,8 @@ const POLLING_INTERVAL_MS = 10000; // Poll every 10 seconds
 let weeklyStruggleChart = null;   // Chart.js instance
 let weeklyChartOffset = 0;        // Navigation offset (0 = most recent page)
 const WEEKS_PER_PAGE = 8;         // Weeks shown per page
+let chartTooltipHideTimer = null; // Delayed-hide timer for the HTML tooltip
+let chartTooltipHovered = false;  // True while the pointer sits inside the tooltip
 
 /**
  * Start polling for struggle activity updates
@@ -1367,6 +1385,7 @@ function renderWeeklyStruggleChart(weekData, totalWeeksAvailable) {
         weeklyStruggleChart.destroy();
         weeklyStruggleChart = null;
     }
+    hideWeeklyStruggleTooltip(canvas.parentElement, true);
 
     // A page can legitimately contain only gap-filled (zero-struggle) weeks when an
     // earlier week pushed the timeline back. Drawing an empty chart looks like a crash,
@@ -1406,12 +1425,12 @@ function renderWeeklyStruggleChart(weekData, totalWeeksAvailable) {
                 tooltip: {
                     mode: 'index',
                     intersect: false,
+                    // Canvas-drawn tooltips cannot scroll, and a week can easily carry
+                    // more topics than fit on screen, so render an HTML tooltip instead.
+                    enabled: false,
+                    external: renderWeeklyStruggleTooltip,
                     callbacks: {
-                        title: (items) => `Week of ${items[0].label}`,
-                        afterBody: (items) => {
-                            const total = items.reduce((sum, item) => sum + item.raw, 0);
-                            return `\nTotal active: ${total} student${total !== 1 ? 's' : ''}`;
-                        }
+                        title: (items) => `Week of ${items[0].label}`
                     }
                 }
             },
@@ -1430,6 +1449,166 @@ function renderWeeklyStruggleChart(weekData, totalWeeksAvailable) {
             }
         }
     });
+}
+
+/**
+ * Get (or lazily create) the HTML tooltip element for the weekly struggle chart.
+ * It lives inside the canvas wrapper so it scrolls with the page.
+ * @param {HTMLElement} wrapper - The chart canvas wrapper
+ * @returns {HTMLElement} The tooltip element
+ */
+function getWeeklyStruggleTooltip(wrapper) {
+    let el = wrapper.querySelector('.chart-tooltip');
+    if (el) return el;
+
+    el = document.createElement('div');
+    el.className = 'chart-tooltip';
+    el.setAttribute('role', 'tooltip');
+
+    // Track the pointer so a tooltip the instructor is scrolling never disappears
+    // underneath them when the cursor leaves the canvas.
+    el.addEventListener('mouseenter', () => {
+        chartTooltipHovered = true;
+        if (chartTooltipHideTimer) {
+            clearTimeout(chartTooltipHideTimer);
+            chartTooltipHideTimer = null;
+        }
+    });
+    el.addEventListener('mouseleave', () => {
+        chartTooltipHovered = false;
+        hideWeeklyStruggleTooltip(wrapper, true);
+    });
+
+    wrapper.appendChild(el);
+    return el;
+}
+
+/**
+ * Hide the weekly struggle tooltip
+ * @param {HTMLElement} wrapper - The chart canvas wrapper
+ * @param {boolean} immediate - Skip the grace period that lets the pointer reach the tooltip
+ */
+function hideWeeklyStruggleTooltip(wrapper, immediate) {
+    if (!wrapper) return;
+    const el = wrapper.querySelector('.chart-tooltip');
+    if (!el) return;
+
+    if (chartTooltipHideTimer) {
+        clearTimeout(chartTooltipHideTimer);
+        chartTooltipHideTimer = null;
+    }
+
+    const hide = () => {
+        chartTooltipHideTimer = null;
+        el.style.opacity = '0';
+        el.style.pointerEvents = 'none';
+    };
+
+    if (immediate) {
+        chartTooltipHovered = false;
+        hide();
+        return;
+    }
+
+    // Grace period: the pointer needs a moment to travel from the bar to the tooltip.
+    chartTooltipHideTimer = setTimeout(() => {
+        if (!chartTooltipHovered) hide();
+    }, 250);
+}
+
+/**
+ * Chart.js external tooltip handler: renders a scrollable HTML tooltip.
+ * @param {Object} context - Chart.js external tooltip context
+ */
+function renderWeeklyStruggleTooltip(context) {
+    const { chart, tooltip } = context;
+    const wrapper = chart.canvas.parentElement;
+    if (!wrapper) return;
+
+    if (tooltip.opacity === 0) {
+        hideWeeklyStruggleTooltip(wrapper, false);
+        return;
+    }
+
+    // While the pointer is inside the tooltip, leave it exactly where it is.
+    if (chartTooltipHovered) return;
+
+    const el = getWeeklyStruggleTooltip(wrapper);
+    if (chartTooltipHideTimer) {
+        clearTimeout(chartTooltipHideTimer);
+        chartTooltipHideTimer = null;
+    }
+
+    const points = tooltip.dataPoints || [];
+
+    // Every topic in the page is a dataset, so most weeks carry a long tail of
+    // zero-count topics. Show only the topics actually present that week, busiest first.
+    const rows = points
+        .map((point, i) => {
+            const colors = tooltip.labelColors && tooltip.labelColors[i];
+            return {
+                label: point.dataset.label,
+                value: Number(point.raw) || 0,
+                text: point.formattedValue,
+                color: (colors && colors.backgroundColor) || point.dataset.backgroundColor
+            };
+        })
+        .filter(row => row.value > 0)
+        .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label));
+
+    const titleEl = document.createElement('div');
+    titleEl.className = 'chart-tooltip-title';
+    titleEl.textContent = (tooltip.title && tooltip.title[0]) || '';
+
+    const body = document.createElement('div');
+    body.className = 'chart-tooltip-body';
+
+    if (rows.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'chart-tooltip-empty';
+        empty.textContent = 'No active struggles this week.';
+        body.appendChild(empty);
+    }
+
+    rows.forEach((rowData) => {
+        const row = document.createElement('div');
+        row.className = 'chart-tooltip-row';
+
+        const swatch = document.createElement('span');
+        swatch.className = 'chart-tooltip-swatch';
+        swatch.style.backgroundColor = rowData.color;
+
+        const label = document.createElement('span');
+        label.textContent = `${rowData.label}: ${rowData.text}`;
+
+        row.appendChild(swatch);
+        row.appendChild(label);
+        body.appendChild(row);
+    });
+
+    const total = rows.reduce((sum, row) => sum + row.value, 0);
+    const footer = document.createElement('div');
+    footer.className = 'chart-tooltip-footer';
+    footer.textContent = `Total active: ${total} student${total !== 1 ? 's' : ''}`;
+
+    el.replaceChildren(titleEl, body, footer);
+
+    // Measure at the origin, then place so the tooltip stays inside the chart area.
+    el.style.opacity = '1';
+    el.style.pointerEvents = 'auto';
+    el.style.left = '0px';
+    el.style.top = '0px';
+
+    const { offsetWidth: tipWidth, offsetHeight: tipHeight } = el;
+    let left = tooltip.caretX + 12;
+    if (left + tipWidth > wrapper.clientWidth) {
+        left = tooltip.caretX - tipWidth - 12;
+    }
+    left = Math.max(0, left);
+    const top = Math.max(0, Math.min(tooltip.caretY - tipHeight / 2, wrapper.clientHeight - tipHeight));
+
+    el.style.left = `${left}px`;
+    el.style.top = `${top}px`;
 }
 
 // ===========================

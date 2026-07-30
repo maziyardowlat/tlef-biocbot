@@ -369,6 +369,17 @@
     color: var(--success-color);
 }
 
+.document-type-badge {
+    display: inline-block;
+    margin-right: 8px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: #eef3f9;
+    color: #405b78;
+    font-size: 12px;
+    font-weight: 600;
+}
+
 .status-text.processing {
     color: var(--warning-color);
 }
@@ -1103,7 +1114,69 @@
 .course-materials-section .file-item,
 .probing-questions-section .file-item {
     margin-bottom: 12px;
-} 
+}
+
+/*
+ * Keep uploaded material metadata in stable columns so filenames of different
+ * lengths do not shift the material type or upload status between rows.
+ */
+.course-materials-section .file-item:not(.placeholder-item) > .file-info {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 240px 80px;
+    grid-template-areas:
+        "title type status"
+        "description type status";
+    column-gap: 20px;
+    align-items: center;
+    min-width: 0;
+    margin: 0 15px 0 0;
+}
+
+.course-materials-section .file-item:not(.placeholder-item) > .file-info > h3 {
+    grid-area: title;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.course-materials-section .file-item:not(.placeholder-item) > .file-info > p {
+    grid-area: description;
+}
+
+.course-materials-section .file-item:not(.placeholder-item) > .file-info > .document-type-badge {
+    grid-area: type;
+    justify-self: start;
+    margin-right: 0;
+    white-space: nowrap;
+}
+
+.course-materials-section .file-item:not(.placeholder-item) > .file-info > .status-text {
+    grid-area: status;
+    justify-self: start;
+    white-space: nowrap;
+}
+
+.course-materials-section .file-item:not(.placeholder-item) > .file-actions {
+    flex: 0 0 265px;
+    justify-content: flex-end;
+}
+
+@media (max-width: 768px) {
+    .course-materials-section .file-item:not(.placeholder-item) > .file-info {
+        grid-template-columns: minmax(0, 1fr);
+        grid-template-areas:
+            "title"
+            "description"
+            "type"
+            "status";
+        row-gap: 8px;
+        width: 100%;
+        margin: 10px 0 0;
+    }
+
+    .course-materials-section .file-item:not(.placeholder-item) > .file-actions {
+        flex: 0 0 auto;
+    }
+}
 
 /* Simple Upload Modal Styles */
 .upload-section {

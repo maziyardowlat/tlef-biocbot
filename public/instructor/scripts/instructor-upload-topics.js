@@ -144,9 +144,14 @@ function openUploadModal(week, contentType = '') {
         uploadFileBtn.textContent = buttonText;
     }
     
-    // Always minimize name input section as per user request to remove rename capability
+    // File uploads keep their original filename. Pasted text needs a distinct
+    // material name so multiple documents of the same category stay identifiable.
     if (nameInputSection) {
         nameInputSection.style.display = 'none';
+        const nameInput = nameInputSection.querySelector('#material-name');
+        if (nameInput) {
+            nameInput.placeholder = `Name this ${title.replace(/^Upload /, '').toLowerCase()}...`;
+        }
     }
     
     // Reset the modal to initial state
@@ -231,6 +236,8 @@ function showFileUpload() {
     document.getElementById('upload-method-selection').style.display = 'none';
     document.getElementById('file-upload-section').style.display = 'block';
     document.getElementById('text-input-section').style.display = 'none';
+    const nameInputSection = document.getElementById('name-input-section');
+    if (nameInputSection) nameInputSection.style.display = 'none';
 }
 
 /**
@@ -240,6 +247,8 @@ function showTextInput() {
     document.getElementById('upload-method-selection').style.display = 'none';
     document.getElementById('file-upload-section').style.display = 'none';
     document.getElementById('text-input-section').style.display = 'block';
+    const nameInputSection = document.getElementById('name-input-section');
+    if (nameInputSection) nameInputSection.style.display = 'block';
 }
 
 /**
@@ -416,6 +425,11 @@ async function handleUpload() {
         showNotification('Please provide content via file upload or direct text input', 'error');
         return;
     }
+
+    if (!uploadedFile && textInput && !materialNameInput) {
+        showNotification('Please enter a material name for pasted content', 'error');
+        return;
+    }
     
     // Show loading indicator and hide upload section
     const loadingIndicator = document.getElementById('upload-loading-indicator');
@@ -448,18 +462,10 @@ async function handleUpload() {
             formData.append('documentType', currentContentType);
             formData.append('instructorId', instructorId);
 
-            // Determine strict title based on content type to ensure consistency
-            let strictTitle = '';
-            if (currentContentType === 'lecture-notes') {
-                strictTitle = `*Lecture Notes - ${lectureName}`;
-            } else if (currentContentType === 'practice-quiz') {
-                strictTitle = `*Practice Questions/Tutorial - ${lectureName}`;
-            } else if (currentContentType === 'additional') {
-                strictTitle = `Additional Material - ${lectureName}`;
-            }
-
-            if (strictTitle) {
-                formData.append('title', strictTitle);
+            // Do not replace the filename with a category-wide title. Qdrant and
+            // source attribution need a distinct name for each contributing file.
+            if (materialNameInput) {
+                formData.append('title', materialNameInput);
             }
             
             const response = await fetch('/api/documents/upload', {
@@ -476,7 +482,7 @@ async function handleUpload() {
             
         } else if (textInput) {
             // Handle text submission
-            const title = materialNameInput || `${currentContentType} - ${currentWeek}`;
+            const title = materialNameInput;
             
             const response = await fetch('/api/documents/text', {
                 method: 'POST',
@@ -529,21 +535,11 @@ async function handleUpload() {
             uploadResult = await response.json();
         }
         
-        // Generate proper file name based on content type
-        let fileName = '';
-        switch (currentContentType) {
-            case 'lecture-notes':
-                fileName = `*Lecture Notes - ${currentWeek}`;
-                break;
-            case 'practice-quiz':
-                fileName = `*Practice Questions/Tutorial - ${currentWeek}`;
-                break;
-            case 'additional':
-                fileName = materialNameInput || `Additional Material - ${currentWeek}`;
-                break;
-            default:
-                fileName = uploadResult?.data?.title || `Content - ${currentWeek}`;
-        }
+        const fileName = uploadResult?.data?.filename
+            || uploadResult?.data?.title
+            || materialNameInput
+            || uploadedFile?.name
+            || `Content - ${currentWeek}`;
         
         // Add the content to the appropriate week with document ID
         const documentId = uploadResult?.data?.documentId;
@@ -681,6 +677,13 @@ function addContentToWeek(week, fileName, description, documentId, status = 'upl
         // Update content
         targetFileItem.querySelector('.file-info h3').textContent = fileName;
         targetFileItem.querySelector('.file-info p').textContent = description;
+        let typeBadge = targetFileItem.querySelector('.document-type-badge');
+        if (!typeBadge) {
+            typeBadge = document.createElement('span');
+            typeBadge.className = 'document-type-badge';
+            targetFileItem.querySelector('.file-info').insertBefore(typeBadge, targetFileItem.querySelector('.status-text'));
+        }
+        typeBadge.textContent = getDocumentTypeLabel(contentType);
         targetFileItem.querySelector('.status-text').textContent = status === 'processed' ? 'Processed' : 'Uploaded';
         targetFileItem.querySelector('.status-text').className = `status-text ${status}`;
         
@@ -713,6 +716,7 @@ function addContentToWeek(week, fileName, description, documentId, status = 'upl
             <div class="file-info">
                 <h3>${fileName}</h3>
                 <p>${description}</p>
+                <span class="document-type-badge">${getDocumentTypeLabel(contentType)}</span>
                 <span class="status-text ${status}">${status === 'processed' ? 'Processed' : 'Uploaded'}</span>
             </div>
             <div class="file-actions">

@@ -78,6 +78,7 @@ test.describe('onboarding save and upload modal branches', () => {
         await page.locator('#upload-btn').click();
         await expect(page.getByText('Please provide content via file upload or direct text input')).toBeVisible();
 
+        await page.locator('#material-name').fill('Lecture Notes Without Course');
         await page.locator('#text-input').fill('Lecture text without a course.');
         await page.locator('#upload-btn').click();
         await expect(page.getByText(/No course ID available/)).toBeVisible();
@@ -91,6 +92,7 @@ test.describe('onboarding save and upload modal branches', () => {
             const testWindow = /** @type {any} */ (window);
             testWindow.openUploadModal('Unit 1', 'additional');
         });
+        await page.locator('#material-name').fill('Additional Material - Unit 1');
         await page.locator('#text-input').fill('Additional branch material.');
         await page.locator('#upload-btn').click();
         await expect(page.locator('#topic-review-section')).toBeVisible();

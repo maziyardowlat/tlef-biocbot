@@ -4,6 +4,21 @@
 
 let documentModalTrigger = null;
 
+function getDocumentTypeLabel(documentType) {
+    switch (documentType) {
+        case 'lecture-notes':
+        case 'lecture_notes':
+            return 'Lecture Notes';
+        case 'practice-quiz':
+        case 'practice_q_tutorials':
+            return 'Practice Questions/Tutorial';
+        case 'additional':
+            return 'Additional Material';
+        default:
+            return 'Course Material';
+    }
+}
+
 /**
  * Load the saved documents for all lectures from the database
  */
@@ -240,11 +255,17 @@ function createDocumentItem(doc) {
             statusText = doc.status || 'Unknown';
     }
     
+    const storedDocumentType = doc.type && doc.type !== 'unknown'
+        ? doc.type
+        : (doc.documentType || doc.type);
+    const documentTypeLabel = getDocumentTypeLabel(storedDocumentType);
+
     documentItem.innerHTML = `
         <span class="file-icon">${fileIcon}</span>
         <div class="file-info">
             <h3>${doc.filename || doc.originalName}</h3>
             ${doc.metadata?.description ? `<p>${doc.metadata.description}</p>` : ''}
+            <span class="document-type-badge">${documentTypeLabel}</span>
             <span class="status-text">${statusText}</span>
         </div>
         <div class="file-actions">
@@ -836,20 +857,15 @@ async function confirmCourseMaterials(week) {
  * @returns {boolean} True if lecture notes are uploaded
  */
 function checkLectureNotesUploaded(week) {
-    // Look for lecture notes status in the week
-    const weekLower = week.toLowerCase().replace(' ', '');
-    const lectureNotesElement = document.querySelector(`[onclick*="'${week}'"][onclick*="lecture-notes"]`);
-    
-    if (lectureNotesElement) {
-        // Check if there's a "Processed" status nearby
-        const parentItem = lectureNotesElement.closest('.file-item');
-        if (parentItem) {
-            const statusElement = parentItem.querySelector('.status-text');
-            return statusElement && statusElement.textContent === 'Processed';
-        }
-    }
-    
-    return false; // Default to false for now
+    const unit = document.querySelector(`.accordion-item[data-unit-name="${week}"]`);
+    if (!unit) return false;
+
+    return Array.from(unit.querySelectorAll('.file-item:not(.placeholder-item)')).some(item => {
+        const documentType = item.dataset.documentType || '';
+        const isLectureNotes = documentType === 'lecture_notes' || documentType === 'lecture-notes';
+        const status = item.querySelector('.status-text')?.textContent?.trim();
+        return isLectureNotes && status === 'Processed';
+    });
 }
 
 /**

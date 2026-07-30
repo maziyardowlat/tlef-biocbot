@@ -450,7 +450,7 @@ test.describe('instructor onboarding focused script coverage', () => {
         await expect.poll(() => captured.completions.length).toBe(1);
     });
 
-    test('covers custom setup, upload replacement, inline topic save, and upload error recovery', async ({ page }) => {
+    test('covers custom setup, repeated same-type uploads, inline topic save, and upload error recovery', async ({ page }) => {
         const course = focusedCourse({
             lectures: [{
                 name: 'Unit 1',
@@ -473,16 +473,8 @@ test.describe('instructor onboarding focused script coverage', () => {
         await expect(page.locator('#substep-materials.guided-substep.active')).toBeVisible();
 
         await page.locator('.material-item.required button.upload-btn').first().click();
+        await page.locator('#material-name').fill('Enzyme Kinetics Lecture');
         await page.locator('#text-input').fill('Lecture content for enzyme kinetics.');
-        page.once('dialog', dialog => dialog.dismiss());
-        await page.locator('#upload-btn').click();
-        await expect(page.getByText(/already exists for Unit 1/)).toBeVisible();
-        await expect(page.locator('#lecture-status')).toHaveText('Not Uploaded');
-
-        await page.locator('#upload-modal .modal-close').click();
-        await page.locator('.material-item.required button.upload-btn').first().click();
-        await page.locator('#text-input').fill('Replacement lecture content for enzyme kinetics.');
-        page.once('dialog', dialog => dialog.accept());
         await page.locator('#upload-btn').click();
         await expect(page.locator('#topic-review-section')).toBeVisible();
         await expect(page.locator('#upload-topic-review-list')).toContainText('No topics detected yet');
@@ -492,15 +484,27 @@ test.describe('instructor onboarding focused script coverage', () => {
         await page.locator('#save-topics-btn').click();
         await expect(page.locator('#upload-modal')).toBeHidden();
 
-        expect(captured.deletedDocuments).toEqual(['old-lecture-doc']);
-        expect(captured.removedDocumentTypes[0]).toMatchObject({
-            documentTypes: ['lecture-notes'],
-            instructorId: INSTRUCTOR_ID,
-        });
+        await page.locator('.material-item.required button.upload-btn').first().click();
+        await page.locator('#material-name').fill('Enzyme Regulation Lecture');
+        await page.locator('#text-input').fill('A second lecture document for enzyme regulation.');
+        await page.locator('#upload-btn').click();
+        await expect(page.locator('#topic-review-section')).toBeVisible();
+        await page.locator('#save-topics-btn').click();
+        await expect(page.locator('#upload-modal')).toBeHidden();
+
+        await expect(page.locator('#lecture-status')).toHaveText('2 Uploaded');
+        expect(captured.deletedDocuments).toEqual([]);
+        expect(captured.removedDocumentTypes).toEqual([]);
+        expect(captured.textUploads).toHaveLength(2);
         expect(captured.textUploads[0]).toEqual(expect.objectContaining({
             lectureName: 'Unit 1',
             documentType: 'lecture-notes',
-            title: 'Lecture Notes - Unit 1',
+            title: 'Enzyme Kinetics Lecture',
+        }));
+        expect(captured.textUploads[1]).toEqual(expect.objectContaining({
+            lectureName: 'Unit 1',
+            documentType: 'lecture-notes',
+            title: 'Enzyme Regulation Lecture',
         }));
         expect(captured.textUploads[0].courseId).toBe(captured.onboardingCreates[0].courseId);
         expect(captured.approvedTopicSaves[0].topics).toEqual([

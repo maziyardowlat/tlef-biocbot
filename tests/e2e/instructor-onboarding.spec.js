@@ -881,10 +881,9 @@ test.describe('instructor onboarding', () => {
         }
     });
 
-    test('replaces an existing lecture-notes upload instead of attaching duplicates', async ({ page }) => {
+    test('attaches repeated lecture-notes uploads as independently named documents', async ({ page }) => {
         test.setTimeout(150_000);
 
-        page.on('dialog', dialog => dialog.accept());
         await page.route('**/api/courses/*/extract-topics', async route => {
             await route.fulfill({
                 status: 200,
@@ -898,7 +897,7 @@ test.describe('instructor onboarding', () => {
             });
         });
 
-        await startCustomCourse(page, `${COURSE_NAME} Upload Replacement`);
+        await startCustomCourse(page, `${COURSE_NAME} Repeated Lecture Uploads`);
         await addLearningObjective(page);
         await page.locator('#substep-objectives button.btn-primary', { hasText: 'Continue to Course Materials' }).click();
         await expect(page.locator('#substep-materials.guided-substep.active')).toBeVisible();
@@ -911,10 +910,12 @@ test.describe('instructor onboarding', () => {
             const { unit1 } = await getOnlyCourseDetail(apiCtx);
             const lectureDocuments = unit1.documents.filter(document => document.documentType === 'lecture-notes');
 
-            // Product requirement: replacing lecture notes leaves exactly one current lecture-notes document attached.
-            expect(lectureDocuments).toHaveLength(1);
-            expect(lectureDocuments[0].title).toBe('Lecture Notes - Unit 1');
-            expect(lectureDocuments[0].documentId).toBeTruthy();
+            expect(lectureDocuments).toHaveLength(2);
+            expect(lectureDocuments.map(document => document.title).sort()).toEqual([
+                path.basename(LECTURE_FIXTURE),
+                path.basename(PRACTICE_FIXTURE),
+            ].sort());
+            expect(lectureDocuments.every(document => document.documentId)).toBe(true);
         } finally {
             await apiCtx.dispose();
         }

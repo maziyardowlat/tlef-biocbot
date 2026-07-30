@@ -101,13 +101,18 @@ async function determineSourceAttribution(searchResults, unitName, sourceDownloa
         const sourceDocuments = new Map();
         
         relevantChunks.forEach(chunk => {
-            const docType = chunk.type || chunk.documentType || 'unknown';
+            const docType = chunk.type && chunk.type !== 'unknown'
+                ? chunk.type
+                : (chunk.documentType || chunk.type || 'unknown');
             const sourceUnit = chunk.lectureName || unitName;
             const score = typeof chunk.score === 'number' ? chunk.score : 0;
             
             let readableType = 'Material';
             switch (docType) {
-                case 'lecture_notes': readableType = 'Lecture Notes'; break;
+                case 'lecture_notes':
+                case 'lecture-notes':
+                    readableType = 'Lecture Notes';
+                    break;
                 case 'practice_q_tutorials':
                 case 'practice-quiz':
                     readableType = 'Practice Questions';
@@ -120,14 +125,20 @@ async function determineSourceAttribution(searchResults, unitName, sourceDownloa
 
             const rawDocumentId = typeof chunk.documentId === 'string' ? chunk.documentId.trim() : '';
             const documentId = rawDocumentId || null;
-            // Deduplicate by type + unit (not fileName, which is inconsistent across chunks)
-            const dedupeKey = `${readableType}::${sourceUnit}`;
+            const rawFileName = typeof chunk.fileName === 'string' ? chunk.fileName.trim() : '';
+            const fileName = rawFileName || readableType;
+            // Multiple chunks from one document should produce one citation, while
+            // separate documents of the same type must remain separate sources.
+            const dedupeKey = documentId
+                ? `document::${documentId}`
+                : `fallback::${fileName}::${sourceUnit}::${readableType}`;
             const existing = sourceDocuments.get(dedupeKey);
 
             if (!existing) {
                 sourceDocuments.set(dedupeKey, {
                     documentId,
-                    fileName: readableType,
+                    fileName,
+                    documentType: readableType,
                     lectureName: sourceUnit || unitName || null,
                     maxScore: score
                 });
@@ -154,7 +165,7 @@ async function determineSourceAttribution(searchResults, unitName, sourceDownloa
             .sort((a, b) => b.maxScore - a.maxScore);
         const sourceDescription = sortedSourceDocs.length > 0
             ? sortedSourceDocs
-                .map(doc => `${doc.fileName}${doc.lectureName ? ` (${doc.lectureName})` : ''}`)
+                .map(doc => `${doc.fileName} — ${doc.documentType}${doc.lectureName ? ` (${doc.lectureName})` : ''}`)
                 .join(', ')
             : Array.from(sources).join(', ');
         console.log('🔍 [SOURCE_DEBUG] Final Source Description:', sourceDescription);
@@ -164,6 +175,7 @@ async function determineSourceAttribution(searchResults, unitName, sourceDownloa
             .map(doc => ({
                 documentId: doc.documentId,
                 fileName: doc.fileName,
+                documentType: doc.documentType,
                 lectureName: doc.lectureName
             }));
 
