@@ -125,7 +125,9 @@ describe('course tutoring prompt settings', () => {
     const promptBody = {
         courseId: 'C1', base: 'base', protege: 'protege', tutor: 'tutor',
         explain: 'explain', directive: 'directive', quizHelp: 'quiz',
-        chatSummary: 'summary', additiveRetrieval: true,
+        chatSummary: 'summary', flashcards: 'Focus on {{learningObjectives}}.',
+        flashcardSourceTokenBudget: 24000,
+        additiveRetrieval: true,
         additionalMaterialSecondarySearch: true, studentIdleTimeout: 300,
         studentSessionTimeout: 2700,
     };
@@ -148,6 +150,7 @@ describe('course tutoring prompt settings', () => {
         expect((await request(app({ db, user: instructor })).post('/prompts').send({ ...promptBody, studentIdleTimeout: 10 })).status).toBe(400);
         expect((await request(app({ db, user: instructor })).post('/prompts').send({ ...promptBody, studentSessionTimeout: 10 })).status).toBe(400);
         expect((await request(app({ db, user: instructor })).post('/prompts').send({ ...promptBody, studentSessionTimeout: 86401 })).status).toBe(400);
+        expect((await request(app({ db, user: instructor })).post('/prompts').send({ ...promptBody, flashcardSourceTokenBudget: 1000 })).status).toBe(400);
     });
 
     test('POST saves prompts and reset removes them', async () => {
@@ -155,7 +158,14 @@ describe('course tutoring prompt settings', () => {
         let res = await request(app({ db, user: instructor })).post('/prompts').send(promptBody);
         expect(res.status).toBe(200);
         expect(await db.collection('courses').findOne({ courseId: 'C1' })).toMatchObject({
-            prompts: { base: 'base', chatSummary: 'summary', studentIdleTimeout: 300, studentSessionTimeout: 2700 },
+            prompts: {
+                base: 'base',
+                chatSummary: 'summary',
+                flashcards: 'Focus on {{learningObjectives}}.',
+                flashcardSourceTokenBudget: 24000,
+                studentIdleTimeout: 300,
+                studentSessionTimeout: 2700
+            },
             isAdditiveRetrieval: true, additionalMaterialSecondarySearch: true,
         });
         res = await request(app({ db, user: instructor })).post('/prompts/reset').send({ courseId: 'C1' });

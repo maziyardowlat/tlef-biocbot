@@ -144,10 +144,13 @@ router.post('/instructor/generate', async (req, res) => {
         const deck = await flashcardService.generateDeck({
             db,
             llmService: ai.llm,
+            qdrantService: ai.qdrant,
             course,
             lectureName,
             cardCount,
-            generatedBy: req.user.userId
+            generatedBy: req.user.userId,
+            promptTemplate: course.prompts?.flashcards,
+            sourceTokenBudget: course.prompts?.flashcardSourceTokenBudget
         });
         return res.json({
             success: true,

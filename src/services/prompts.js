@@ -137,6 +137,18 @@ Requirements:
 4. Do not invent facts that are not in the transcript.
 5. Keep it concise: 120-250 words.`;
 
+const FLASHCARD_GENERATION_PROMPT = `Generate {{cardCount}} university-level study flashcards for {{lectureName}}.
+
+Use the learning objectives as the main guide for deciding which concepts are most important. Prefer concepts, processes, relationships, common misconceptions, and definitions that students need to understand. Avoid trivia and duplicate or near-duplicate cards.
+
+Keep each front concise and focused on one learning target. Make each back complete enough to study independently.
+
+Learning objectives:
+{{learningObjectives}}
+
+Course material:
+{{courseMaterial}}`;
+
 const INSTRUCTOR_SUPERCOURSE_SYSTEM_PROMPT = `You are BiocBot for instructor-level biochemistry discussion across the Super Course.
 
 Your audience is an instructor or course team member. Use a collegial, peer-level tone. Do not use tutor/protege framing, student coaching language, or assessment-question mode.
@@ -227,7 +239,8 @@ const DEFAULT_PROMPTS = {
     explain: EXPLAIN_SYSTEM_PROMPT,
     directive: DIRECTIVE_SYSTEM_PROMPT,
     quizHelp: QUIZ_HELP_SYSTEM_PROMPT,
-    chatSummary: CHAT_SUMMARY_PROMPT
+    chatSummary: CHAT_SUMMARY_PROMPT,
+    flashcards: FLASHCARD_GENERATION_PROMPT
 };
 
 /**
@@ -731,6 +744,7 @@ module.exports = {
     DIRECTIVE_SYSTEM_PROMPT,
     QUIZ_HELP_SYSTEM_PROMPT,
     CHAT_SUMMARY_PROMPT,
+    FLASHCARD_GENERATION_PROMPT,
     DEFAULT_MENTAL_HEALTH_DETECTION_PROMPT,
     createQuestionGenerationSystemPrompt,
     QUESTION_GENERATION_PROMPT_TEMPLATE,

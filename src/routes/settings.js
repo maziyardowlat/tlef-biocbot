@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const { normalizeErrorResponses } = require('../middleware/apiResponse');
 const prompts = require('../services/prompts');
+const flashcardService = require('../services/flashcardService');
 const CourseModel = require('../models/Course');
 const SuperchatModel = require('../models/Superchat');
 const { hasSystemAdminAccess, normalizeEmail } = require('../services/authorization');
@@ -583,7 +584,12 @@ router.get('/prompts', async (req, res) => {
         if (!courseId) {
             return res.json({
                 success: true,
-                prompts: { ...prompts.DEFAULT_PROMPTS, additiveRetrieval: false, additionalMaterialSecondarySearch: false },
+                prompts: {
+                    ...prompts.DEFAULT_PROMPTS,
+                    flashcardSourceTokenBudget: flashcardService.DEFAULT_SOURCE_TOKEN_BUDGET,
+                    additiveRetrieval: false,
+                    additionalMaterialSecondarySearch: false
+                },
                 isCourseSpecific: false,
                 courseId: null
             });
@@ -603,6 +609,10 @@ router.get('/prompts', async (req, res) => {
             directive: coursePrompts.directive || prompts.DEFAULT_PROMPTS.directive,
             quizHelp: coursePrompts.quizHelp || prompts.DEFAULT_PROMPTS.quizHelp,
             chatSummary: coursePrompts.chatSummary || prompts.DEFAULT_PROMPTS.chatSummary,
+            flashcards: coursePrompts.flashcards || prompts.DEFAULT_PROMPTS.flashcards,
+            flashcardSourceTokenBudget: flashcardService.normalizeSourceTokenBudget(
+                coursePrompts.flashcardSourceTokenBudget
+            ),
             // Course-level additive retrieval setting
             additiveRetrieval: course ? !!course.isAdditiveRetrieval : false,
             // Course-level secondary search for additional materials (off by default)
@@ -639,7 +649,22 @@ router.post('/prompts', async (req, res) => {
             return res.status(503).json({ success: false, message: 'Database connection not available' });
         }
 
-        const { base, protege, tutor, explain, directive, quizHelp, chatSummary, additiveRetrieval, additionalMaterialSecondarySearch, studentIdleTimeout, studentSessionTimeout, courseId } = req.body;
+        const {
+            base,
+            protege,
+            tutor,
+            explain,
+            directive,
+            quizHelp,
+            chatSummary,
+            flashcards,
+            flashcardSourceTokenBudget,
+            additiveRetrieval,
+            additionalMaterialSecondarySearch,
+            studentIdleTimeout,
+            studentSessionTimeout,
+            courseId
+        } = req.body;
 
         if (!courseId) {
             return res.status(400).json({ success: false, message: 'courseId is required to save settings' });
@@ -656,7 +681,8 @@ router.post('/prompts', async (req, res) => {
             typeof tutor !== 'string' ||
             typeof explain !== 'string' ||
             typeof directive !== 'string' ||
-            (chatSummary !== undefined && typeof chatSummary !== 'string')
+            (chatSummary !== undefined && typeof chatSummary !== 'string') ||
+            (flashcards !== undefined && typeof flashcards !== 'string')
         ) {
             return res.status(400).json({ success: false, message: 'Invalid prompt format' });
         }
@@ -678,6 +704,21 @@ router.post('/prompts', async (req, res) => {
             }
         }
 
+        let flashcardTokenBudget = flashcardService.DEFAULT_SOURCE_TOKEN_BUDGET;
+        if (flashcardSourceTokenBudget !== undefined) {
+            flashcardTokenBudget = Number(flashcardSourceTokenBudget);
+            if (
+                !Number.isInteger(flashcardTokenBudget) ||
+                flashcardTokenBudget < flashcardService.MIN_SOURCE_TOKENS ||
+                flashcardTokenBudget > flashcardService.MAX_SOURCE_TOKENS
+            ) {
+                return res.status(400).json({
+                    success: false,
+                    message: `Flashcard source token budget must be between ${flashcardService.MIN_SOURCE_TOKENS} and ${flashcardService.MAX_SOURCE_TOKENS}`
+                });
+            }
+        }
+
         // Update the course document directly
         await db.collection('courses').updateOne(
             { courseId: courseId },
@@ -690,6 +731,8 @@ router.post('/prompts', async (req, res) => {
                     'prompts.directive': directive,
                     'prompts.quizHelp': quizHelp || prompts.DEFAULT_PROMPTS.quizHelp,
                     'prompts.chatSummary': chatSummary && chatSummary.trim() ? chatSummary : prompts.DEFAULT_PROMPTS.chatSummary,
+                    'prompts.flashcards': flashcards && flashcards.trim() ? flashcards : prompts.DEFAULT_PROMPTS.flashcards,
+                    'prompts.flashcardSourceTokenBudget': flashcardTokenBudget,
                     'prompts.studentIdleTimeout': timeoutVal,
                     'prompts.studentSessionTimeout': sessionTimeoutVal,
                     isAdditiveRetrieval: !!additiveRetrieval,

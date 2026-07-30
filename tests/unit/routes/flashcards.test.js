@@ -25,6 +25,10 @@ function courseDb() {
             instructorId: 'i1',
             instructors: ['i1'],
             studentEnrollment: { s1: { enrolled: true } },
+            prompts: {
+                flashcards: 'Custom flashcard instructions',
+                flashcardSourceTokenBudget: 24000
+            },
             lectures: [
                 { name: 'Unit 1', displayName: 'Enzymes', isPublished: true },
                 { name: 'Unit 2', displayName: 'Hidden', isPublished: false }
@@ -89,6 +93,12 @@ describe('flashcard instructor routes', () => {
             .send({ courseId: 'C1', lectureName: 'Unit 1', cardCount: 5 });
         expect(response.status).toBe(200);
         expect(response.body.data.deckId).toBe('deck-generated');
+        expect(flashcardService.generateDeck).toHaveBeenCalledWith(
+            expect.objectContaining({
+                promptTemplate: 'Custom flashcard instructions',
+                sourceTokenBudget: 24000
+            })
+        );
     });
 });
 

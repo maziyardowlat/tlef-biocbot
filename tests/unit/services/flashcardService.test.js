@@ -23,6 +23,57 @@ describe('flashcardService content selection', () => {
     test('uses a beginning/end/middle stratified order', () => {
         expect(flashcardService.stratifiedIndexes(5).slice(0, 3)).toEqual([0, 4, 2]);
     });
+
+    test('renders an editable prompt while preserving source and JSON requirements', () => {
+        const prompt = flashcardService.buildPrompt({
+            lectureName: 'Unit 3',
+            cardCount: 10,
+            learningObjectives: ['Compare pathway regulation'],
+            sourceRecords: [{
+                sourceRef: 'S1',
+                fileName: 'Pathways.pdf',
+                chunkIndex: 2,
+                text: 'Pathway regulation material.'
+            }],
+            promptTemplate: 'Prioritize comparisons for {{lectureName}} using {{learningObjectives}}.'
+        });
+
+        expect(prompt).toContain('Prioritize comparisons for Unit 3 using 1. Compare pathway regulation.');
+        expect(prompt).toContain('[S1] Pathways.pdf, section 3');
+        expect(prompt).toContain('Generate exactly 10 cards');
+        expect(prompt).toContain('"sourceRef": "S1"');
+    });
+
+    test('uses existing indexed chunks and preserves slide metadata', () => {
+        const sources = flashcardService.buildSourceRecordsFromStoredChunks(
+            [{
+                documentId: 'd1',
+                originalName: 'Slides.pptx',
+                content: 'Mongo fallback content should not be used.'
+            }],
+            [{
+                documentId: 'd1',
+                fileName: 'Slides.pptx',
+                chunkIndex: 6,
+                chunkText: 'Existing Qdrant chunk.',
+                slideNumber: 7
+            }],
+            12000
+        );
+
+        expect(sources).toEqual([expect.objectContaining({
+            documentId: 'd1',
+            chunkIndex: 6,
+            text: 'Existing Qdrant chunk.',
+            slideNumber: 7
+        })]);
+    });
+
+    test('normalizes the configurable source token budget', () => {
+        expect(flashcardService.normalizeSourceTokenBudget(24000)).toBe(24000);
+        expect(flashcardService.normalizeSourceTokenBudget(1000)).toBe(12000);
+        expect(flashcardService.normalizeSourceTokenBudget(50001)).toBe(12000);
+    });
 });
 
 describe('flashcardService generated response validation', () => {
@@ -80,22 +131,36 @@ describe('flashcardService generated response validation', () => {
                 })
             }))
         };
+        const qdrantService = {
+            getUnitChunkRecords: jest.fn(async () => [{
+                documentId: 'doc1',
+                fileName: 'Lecture.pdf',
+                chunkIndex: 4,
+                chunkText: 'Indexed mitochondria and ATP synthase material.'
+            }])
+        };
         const deck = await flashcardService.generateDeck({
             db,
             llmService,
+            qdrantService,
             course: {
                 courseId: 'C1',
                 lectures: [{ name: 'Unit 1', displayName: 'Bioenergetics', learningObjectives: ['Explain ATP synthesis'] }]
             },
             lectureName: 'Unit 1',
             cardCount: 5,
-            generatedBy: 'i1'
+            generatedBy: 'i1',
+            promptTemplate: 'Emphasize mechanisms for {{lectureName}}: {{courseMaterial}}',
+            sourceTokenBudget: 24000
         });
 
         expect(deck.title).toBe('Bioenergetics Flashcards');
         expect(deck.draftCards).toHaveLength(5);
+        expect(qdrantService.getUnitChunkRecords).toHaveBeenCalledWith('C1', 'Unit 1', ['doc1']);
+        expect(llmService.sendMessage.mock.calls[0][0]).toContain('Indexed mitochondria and ATP synthase material.');
+        expect(llmService.sendMessage.mock.calls[0][0]).not.toContain('Mitochondria create a proton gradient');
         expect(llmService.sendMessage).toHaveBeenCalledWith(
-            expect.stringContaining('Explain ATP synthesis'),
+            expect.stringContaining('Emphasize mechanisms for Unit 1'),
             expect.objectContaining({ response_format: { type: 'json_object' } })
         );
     });

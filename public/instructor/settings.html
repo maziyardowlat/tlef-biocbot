@@ -459,6 +459,26 @@
 
                                     <div class="setting-item vertical">
                                         <div class="setting-info">
+                                            <h4 id="flashcard-prompt-label">Flashcard generation prompt</h4>
+                                            <p id="flashcard-prompt-desc">Controls how draft flashcards are selected and written. Available placeholders: <code>{{cardCount}}</code>, <code>{{lectureName}}</code>, <code>{{learningObjectives}}</code>, and <code>{{courseMaterial}}</code>. Source citation and JSON formatting requirements are added automatically.</p>
+                                        </div>
+                                        <div class="setting-controls full-width-control">
+                                            <textarea id="flashcard-prompt" rows="14" placeholder="Enter flashcard generation prompt..." aria-labelledby="flashcard-prompt-label" aria-describedby="flashcard-prompt-desc"></textarea>
+                                        </div>
+                                    </div>
+
+                                    <div class="setting-item">
+                                        <div class="setting-info">
+                                            <h4 id="flashcard-token-budget-label">Flashcard source token budget</h4>
+                                            <p id="flashcard-token-budget-desc">Maximum amount of indexed unit material included in one generation request. The default is 12,000 tokens (roughly 8,000–9,000 words).</p>
+                                        </div>
+                                        <div class="setting-controls">
+                                            <input type="number" id="flashcard-token-budget" min="2000" max="50000" step="1000" value="12000" aria-labelledby="flashcard-token-budget-label" aria-describedby="flashcard-token-budget-desc">
+                                        </div>
+                                    </div>
+
+                                    <div class="setting-item vertical">
+                                        <div class="setting-info">
                                             <h4 id="chat-summary-prompt-label">Summarize &amp; start new chat prompt</h4>
                                             <p id="chat-summary-prompt-desc">Instructions used when a student summarizes the current chat into a new same-unit session. BiocBot automatically adds the unit, mode, and transcript.</p>
                                         </div>
