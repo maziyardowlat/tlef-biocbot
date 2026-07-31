@@ -449,6 +449,9 @@ async function deleteDocument(documentId) {
         
         // Reload documents to sync with database (this will also refresh placeholders)
         await loadDocuments();
+        if (typeof loadFlashcardDecks === 'function') {
+            await loadFlashcardDecks();
+        }
         
         // Show appropriate success message
         if (documentDeleted && courseUpdateSuccess) {

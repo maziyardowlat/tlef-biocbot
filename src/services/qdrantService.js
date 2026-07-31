@@ -792,6 +792,74 @@ class QdrantService {
     }
 
     /**
+     * Retrieve the upload-time chunks for a course unit, optionally restricted
+     * to the supplied current document IDs. Payload metadata is preserved so
+     * downstream features can cite the original slide/page when available.
+     * @param {string} courseId
+     * @param {string} lectureName
+     * @param {string[]} documentIds
+     * @returns {Promise<Array<Object>>}
+     */
+    async getUnitChunkRecords(courseId, lectureName, documentIds = []) {
+        try {
+            const must = [
+                { key: 'courseId', match: { value: courseId } },
+                { key: 'lectureName', match: { value: lectureName } }
+            ];
+            if (Array.isArray(documentIds) && documentIds.length > 0) {
+                must.push({ key: 'documentId', match: { any: documentIds } });
+            }
+
+            const records = [];
+            let nextOffset = null;
+            let loopCount = 0;
+            const MAX_LOOPS = 100;
+
+            do {
+                loopCount += 1;
+                const scrollResult = await this.client.scroll(this.collectionName, {
+                    filter: { must },
+                    limit: 1000,
+                    with_payload: true,
+                    offset: nextOffset
+                });
+                const points = scrollResult.points || [];
+                nextOffset = scrollResult.next_page_offset;
+
+                for (const point of points) {
+                    const payload = point.payload || {};
+                    if (typeof payload.chunkText !== 'string' || !payload.chunkText.trim()) continue;
+                    records.push({
+                        id: point.id,
+                        courseId: payload.courseId,
+                        lectureName: payload.lectureName,
+                        documentId: payload.documentId,
+                        fileName: payload.fileName,
+                        chunkIndex: payload.chunkIndex,
+                        totalChunks: payload.totalChunks,
+                        chunkText: payload.chunkText,
+                        pageNumber: payload.pageNumber,
+                        slideNumber: payload.slideNumber,
+                        sourceUnit: payload.sourceUnit,
+                        strategyUsed: payload.strategyUsed
+                    });
+                }
+
+                if (points.length === 0 || loopCount >= MAX_LOOPS) break;
+            } while (nextOffset);
+
+            records.sort((a, b) => {
+                const documentOrder = String(a.documentId || '').localeCompare(String(b.documentId || ''));
+                return documentOrder || Number(a.chunkIndex || 0) - Number(b.chunkIndex || 0);
+            });
+            return records;
+        } catch (error) {
+            console.error('Error retrieving unit chunk records:', error);
+            throw error;
+        }
+    }
+
+    /**
      * Clone all stored chunks for one document onto another document/course/unit without re-chunking.
      * Reuses the existing vectors and chunk text payload so transfers stay 1:1 with the source.
      * @param {Object} params

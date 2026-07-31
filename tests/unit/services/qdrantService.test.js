@@ -289,6 +289,43 @@ describe('QdrantService', () => {
         await expect(service.getDocumentChunks('D')).resolves.toEqual(['one', 'two']);
     });
 
+    test('getUnitChunkRecords scopes to the course, unit, and current documents while preserving source metadata', async () => {
+        const scroll = jest.fn(async () => ({
+            points: [{
+                id: 'p1',
+                payload: {
+                    courseId: 'C1',
+                    lectureName: 'Unit 2',
+                    documentId: 'D1',
+                    fileName: 'Slides.pptx',
+                    chunkIndex: 3,
+                    totalChunks: 8,
+                    chunkText: 'Stored slide content',
+                    slideNumber: 4,
+                    sourceUnit: 'slide',
+                    strategyUsed: 'pptx-slide'
+                }
+            }],
+            next_page_offset: null
+        }));
+        const service = makeService({ client: { scroll } });
+
+        await expect(service.getUnitChunkRecords('C1', 'Unit 2', ['D1'])).resolves.toEqual([
+            expect.objectContaining({
+                documentId: 'D1',
+                chunkText: 'Stored slide content',
+                chunkIndex: 3,
+                slideNumber: 4,
+                strategyUsed: 'pptx-slide'
+            })
+        ]);
+        expect(scroll.mock.calls[0][1].filter.must).toEqual([
+            { key: 'courseId', match: { value: 'C1' } },
+            { key: 'lectureName', match: { value: 'Unit 2' } },
+            { key: 'documentId', match: { any: ['D1'] } }
+        ]);
+    });
+
     test('cloneDocumentChunks validates input and handles no source points', async () => {
         const service = makeService();
         await expect(service.cloneDocumentChunks({})).resolves.toMatchObject({ success: false, error: expect.stringContaining('Missing required') });

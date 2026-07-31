@@ -121,7 +121,7 @@ describe('prompts.buildQuestionObjectiveLinkingPrompt', () => {
 
 describe('prompts exported constants', () => {
     test('DEFAULT_PROMPTS exposes every chat mode as a non-empty string', () => {
-        for (const key of ['base', 'protege', 'tutor', 'explain', 'directive', 'quizHelp']) {
+        for (const key of ['base', 'protege', 'tutor', 'explain', 'directive', 'quizHelp', 'flashcards']) {
             expect(typeof prompts.DEFAULT_PROMPTS[key]).toBe('string');
             expect(prompts.DEFAULT_PROMPTS[key].length).toBeGreaterThan(0);
         }

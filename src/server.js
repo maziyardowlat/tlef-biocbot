@@ -10,6 +10,7 @@ const { ensureCourseCodes } = require('./models/Course');
 const { ensureSuperchatsFromLegacy } = require('./models/Superchat');
 const { ensureIndexes: ensureMessageFeedbackIndexes } = require('./models/MessageFeedback');
 const { ensureIndexes: ensureChatSurveyResponseIndexes } = require('./models/ChatSurveyResponse');
+const { ensureIndexes: ensureFlashcardIndexes } = require('./models/FlashcardDeck');
 const coursesRoutes = require('./routes/courses');
 const flagsRoutes = require('./routes/flags');
 const lecturesRoutes = require('./routes/lectures');
@@ -29,6 +30,7 @@ const studentsRoutes = require('./routes/students');
 const userAgreementRoutes = require('./routes/user-agreement');
 const settingsRoutes = require('./routes/settings');
 const quizRoutes = require('./routes/quiz');
+const flashcardRoutes = require('./routes/flashcards');
 const studentTrackerRoutes = require('./routes/student-tracker');
 const struggleActivityRoutes = require('./routes/struggle-activity');
 const mentalHealthFlagsRoutes = require('./routes/mentalHealthFlags');
@@ -343,6 +345,10 @@ function setupProtectedRoutes() {
         res.sendFile(path.join(__dirname, '../public/student/quiz.html'));
     });
 
+    app.get('/student/flashcards', authMiddleware.requireStudent, (req, res) => {
+        res.sendFile(path.join(__dirname, '../public/student/flashcards.html'));
+    });
+
     // Student Super Course chat page
     app.get('/student/super-course', authMiddleware.requireStudent, (req, res) => {
         res.sendFile(path.join(__dirname, '../public/student/super-course.html'));
@@ -584,6 +590,7 @@ function setupAPIRoutes() {
     app.use('/api/student/struggle', authMiddleware.requireAuth, authMiddleware.populateUser, studentTrackerRoutes);
     app.use('/api/struggle-activity', authMiddleware.requireAuth, authMiddleware.requireActiveCourseForNonInstructors, struggleActivityRoutes);
     app.use('/api/quiz', authMiddleware.requireAuth, authMiddleware.populateUser, authMiddleware.requireActiveCourseForNonInstructors, authMiddleware.requireStudentEnrolled, quizRoutes);
+    app.use('/api/flashcards', authMiddleware.requireAuth, authMiddleware.populateUser, authMiddleware.requireActiveCourseForNonInstructors, authMiddleware.requireStudentEnrolled, flashcardRoutes);
     app.use('/api/mental-health-flags', authMiddleware.requireAuth, authMiddleware.populateUser, authMiddleware.requireActiveCourseForNonInstructors, mentalHealthFlagsRoutes);
 
     // Test-only routes for scripting the LLM stub. Gated by BIOCBOT_TEST_LLM_STUB
@@ -625,6 +632,7 @@ async function startServer() {
         await ensureSuperchatsFromLegacy(db);
         await ensureMessageFeedbackIndexes(db);
         await ensureChatSurveyResponseIndexes(db);
+        await ensureFlashcardIndexes(db);
 
         // Set up routes after authentication is initialized
         setupProtectedRoutes();

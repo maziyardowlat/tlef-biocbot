@@ -158,6 +158,12 @@ function generateUnitsFromOnboarding(onboardingData) {
         ensureActionButtonsExist();
     }, 200); // Reduced timeout since buttons are already there
 
+    setTimeout(() => {
+        if (typeof loadFlashcardDecks === 'function') {
+            loadFlashcardDecks();
+        }
+    }, 250);
+
     // Focus a specific unit if requested via URL (e.g., ?unit=Unit%203)
     setTimeout(() => {
         focusUnitFromURL();
@@ -265,6 +271,37 @@ function createUnitElement(unitName, unitData, isExpanded = false) {
                     <!-- Action buttons will be added dynamically by loadDocuments() -->
                     <!-- Expected order: Documents → Placeholders → Cleanup → Action Buttons -->
                     <!-- This ensures proper positioning below uploaded files -->
+                </div>
+            </div>
+
+            <!-- Shared Flashcards Section -->
+            <div class="unit-section flashcards-section" data-flashcard-unit="${unitName}">
+                <div class="section-header">
+                    <h3>Student Flashcards</h3>
+                    <button class="toggle-section">▼</button>
+                </div>
+                <div class="section-content">
+                    <div class="flashcard-intro">
+                        <div>
+                            <strong>Instructor-curated study deck</strong>
+                            <p>Generate a draft from this unit's uploaded materials, review it, then publish it to students.</p>
+                        </div>
+                        <span class="flashcard-status-badge" id="flashcard-status-${unitId}">Not generated</span>
+                    </div>
+                    <div class="flashcard-generation-controls">
+                        <label for="flashcard-count-${unitId}">Cards</label>
+                        <select id="flashcard-count-${unitId}">
+                            <option value="5">5</option>
+                            <option value="10" selected>10</option>
+                            <option value="15">15</option>
+                            <option value="20">20</option>
+                        </select>
+                        <button type="button" class="flashcard-generate-btn" onclick="generateFlashcardDraft('${unitName}', this)">
+                            <span aria-hidden="true">🪄</span> Generate Draft
+                        </button>
+                    </div>
+                    <p class="flashcard-section-message" id="flashcard-message-${unitId}">Upload course materials to generate a shared deck.</p>
+                    <div class="flashcard-draft-editor" id="flashcard-editor-${unitId}" style="display: none;"></div>
                 </div>
             </div>
             

@@ -875,7 +875,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    // Fill the six persona prompt textareas from a prompts object.
+    // Fill the course prompt textareas from a prompts object.
     function applyPromptValues(promptValues) {
         const fields = {
             'base-prompt': promptValues.base,
@@ -884,11 +884,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             'explain-prompt': promptValues.explain,
             'directive-prompt': promptValues.directive,
             'quiz-help-prompt': promptValues.quizHelp,
+            'flashcard-prompt': promptValues.flashcards,
             'chat-summary-prompt': promptValues.chatSummary
         };
         for (const [id, value] of Object.entries(fields)) {
             const el = document.getElementById(id);
             if (el) el.value = value || '';
+        }
+        const flashcardTokenBudget = document.getElementById('flashcard-token-budget');
+        if (flashcardTokenBudget) {
+            flashcardTokenBudget.value = String(promptValues.flashcardSourceTokenBudget || 12000);
         }
     }
 
@@ -1181,6 +1186,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 explain: document.getElementById('explain-prompt')?.value ?? '',
                 directive: document.getElementById('directive-prompt')?.value ?? '',
                 quizHelp: document.getElementById('quiz-help-prompt')?.value ?? '',
+                flashcards: document.getElementById('flashcard-prompt')?.value ?? '',
+                flashcardSourceTokenBudget: Number(document.getElementById('flashcard-token-budget')?.value || 12000),
                 chatSummary: document.getElementById('chat-summary-prompt')?.value ?? '',
                 additiveRetrieval: document.getElementById('additive-retrieval-toggle')?.checked === true,
                 additionalMaterialSecondarySearch: document.getElementById('additional-material-secondary-toggle')?.checked === true,

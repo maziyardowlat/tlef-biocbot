@@ -547,6 +547,9 @@ async function handleUpload() {
         addContentToWeek(currentWeek, fileName, `Uploaded successfully - ${uploadResult?.data?.filename || fileName}`, documentId, uploadStatus, currentContentType);
         
         showNotification(uploadResult?.message || 'Content uploaded successfully!', 'success');
+        if (typeof loadFlashcardDecks === 'function') {
+            await loadFlashcardDecks();
+        }
 
         // Transition to inline topic review within the same modal
         try {
