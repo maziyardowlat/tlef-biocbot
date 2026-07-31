@@ -1416,7 +1416,10 @@ function extractQuestionData(messageElement) {
             options: options,
             studentAnswer: studentAnswer,
             feedback: feedback,
-            questionIndex: currentQuestionIndex
+            questionIndex: (() => {
+                const match = /^calibration-question-(\d+)$/.exec(messageElement.id || '');
+                return match ? Number(match[1]) : currentQuestionIndex;
+            })()
         };
 
     } catch (error) {

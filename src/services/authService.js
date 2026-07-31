@@ -162,6 +162,19 @@ class AuthService {
         }
     }
 
+    async completeStudentOnboarding(userId) {
+        try {
+            if (!userId) {
+                return { success: false, error: 'User ID is required' };
+            }
+
+            return await User.completeStudentOnboarding(this.db, userId);
+        } catch (error) {
+            console.error('Error completing student onboarding:', error);
+            return { success: false, error: 'Failed to complete student onboarding' };
+        }
+    }
+
     /**
      * Create or get user for SAML authentication (future implementation)
      * @param {Object} samlData - SAML authentication data
@@ -295,6 +308,9 @@ class AuthService {
             authProvider: resolvedUser.authProvider,
             puid: resolvedUser.puid,
             academicStudentId: resolvedUser.academicStudentId,
+            ...(typeof resolvedUser.studentOnboardingComplete === 'boolean' && {
+                studentOnboardingComplete: resolvedUser.studentOnboardingComplete
+            }),
             preferences: resolvedUser.preferences,
             permissions: resolvedUser.permissions
         };

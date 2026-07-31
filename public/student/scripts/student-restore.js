@@ -152,8 +152,46 @@ function loadChatData(chatData) {
             // Clear the loading message
             chatMessages.innerHTML = '';
 
+            const savedAnswerEntries = Array.isArray(chatData.studentAnswers?.answers)
+                ? chatData.studentAnswers.answers
+                : [];
+            const savedAssessmentAnswers = savedAnswerEntries.map(answer => answer?.answer);
+            const resumeQuestionIndex = savedAssessmentAnswers
+                .filter(answer => answer !== undefined && answer !== null)
+                .length;
+            const resumeQuestion = chatData.practiceTests?.questions?.[resumeQuestionIndex];
+            let pendingCalibrationMessage = null;
+            let pendingShortAnswerDraft = null;
+
+            if (resumeQuestion) {
+                const expectedText = String(resumeQuestion.question || '').trim();
+                chatData.messages.forEach(messageData => {
+                    if (messageData.messageType !== 'practice-test-question' || !messageData.questionData) return;
+
+                    const savedText = String(
+                        messageData.questionData.questionText || messageData.content || ''
+                    ).trim();
+                    const savedIndex = Number(messageData.questionData.questionIndex);
+                    const textMatches = expectedText && savedText.includes(expectedText);
+                    const hasComparableText = expectedText && savedText;
+                    const indexMatches = Number.isInteger(savedIndex) && savedIndex === resumeQuestionIndex;
+
+                    // Text is the safer identifier for legacy saves because older
+                    // exports recorded every visible card with the current global
+                    // question index instead of the index encoded in its DOM id.
+                    if (textMatches || (!hasComparableText && indexMatches)) {
+                        pendingCalibrationMessage = messageData;
+                        pendingShortAnswerDraft = messageData.questionData.studentAnswer;
+                    }
+                });
+            }
+
             // Load each message from the chat data WITHOUT triggering auto-save
             chatData.messages.forEach((messageData, index) => {
+                // The unanswered card is rendered interactively below. Restoring
+                // its saved snapshot too would duplicate the current question.
+                if (messageData === pendingCalibrationMessage) return;
+
                 const messageOptions = {
                     messageType: messageData.messageType || null,
                     isSummarySeed: messageData.isSummarySeed === true,
@@ -221,7 +259,7 @@ function loadChatData(chatData) {
                 currentPassThreshold = chatData.practiceTests.passThreshold;
                 window.currentPassThreshold = currentPassThreshold; // Update global reference
                 
-                studentAnswers = chatData.studentAnswers.answers.map(answer => answer.answer);
+                studentAnswers = savedAssessmentAnswers;
                 window.studentAnswers = studentAnswers; // Sync global
                 window.currentAssessmentScore = chatData.assessmentScore
                     ?? chatData.practiceTests.score
@@ -233,8 +271,7 @@ function loadChatData(chatData) {
 
                 // Calculate the correct current question index based on answers provided
                 // This is more reliable than the saved index which might be stale
-                const answersProvidedCount = studentAnswers.filter(a => a !== undefined && a !== null).length;
-                currentQuestionIndex = answersProvidedCount;
+                currentQuestionIndex = resumeQuestionIndex;
 
 
                 // Resume assessment if incomplete
@@ -251,6 +288,12 @@ function loadChatData(chatData) {
                     // Use a small delay to ensure DOM is ready
                     setTimeout(() => {
                         showCalibrationQuestion();
+                        if (typeof pendingShortAnswerDraft === 'string') {
+                            const answerInput = document.querySelector(
+                                `#calibration-question-${currentQuestionIndex} .calibration-answer-input`
+                            );
+                            if (answerInput) answerInput.value = pendingShortAnswerDraft;
+                        }
                     }, 500);
                 }
             }

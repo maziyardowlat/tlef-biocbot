@@ -3,6 +3,54 @@
  * study-mode calculation/toggle.
  */
 
+async function shouldPrepareFirstStudentGuidedChat() {
+    const user = typeof waitForCurrentUser === 'function'
+        ? await waitForCurrentUser()
+        : (typeof getCurrentUser === 'function' ? getCurrentUser() : null);
+
+    // Undefined is intentional for accounts created before this feature.
+    return user?.role === 'student' && user.studentOnboardingComplete === false;
+}
+
+async function prepareFirstStudentGuidedChat(unitName) {
+    currentCalibrationQuestions = [];
+    window.currentCalibrationQuestions = currentCalibrationQuestions;
+    currentQuestionIndex = 0;
+    studentAnswers = [];
+    window.studentAnswers = studentAnswers;
+    window.studentEvaluations = [];
+    window.currentAssessmentScore = null;
+
+    localStorage.removeItem('lastModeChange');
+    localStorage.setItem('studentMode', 'tutor');
+    localStorage.setItem('selectedUnitName', unitName);
+    updateModeToggleUI('tutor');
+
+    clearCurrentChatData();
+    const chatMessages = document.getElementById('chat-messages');
+    if (chatMessages) chatMessages.innerHTML = '';
+
+    const safeUnitName = String(unitName).replace(/[&<>"']/g, character => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    })[character]);
+
+    addMessage(
+        `<strong>Tutor mode is ready</strong><br>` +
+        `You're ready to ask questions about ${safeUnitName}. You can switch between Tutor and Protégé mode whenever you want.`,
+        'bot',
+        false,
+        false,
+        null,
+        true
+    );
+    enableChatInput();
+    window.StudentGuidedTour?.advanceAfterUnitSelection();
+}
+
 /**
  * Check for published units and load real assessment questions
  * If no units are published, allow direct chat
@@ -300,8 +348,12 @@ function showUnitSelectionDropdown(publishedUnits) {
         const freshSelectedUnit = forceFreshAssessment
             ? publishedUnits.find(unit => unit.name === localStorage.getItem('selectedUnitName'))
             : null;
+        const guidedTourNeedsUnitSelection = window.StudentGuidedTour?.isWaitingForUnitSelection() === true;
 
-        if (forceFreshAssessment && (freshSelectedUnit || mostRecentUnit)) {
+        if (guidedTourNeedsUnitSelection) {
+            updatedUnitSelect.value = '';
+            localStorage.removeItem('selectedUnitName');
+        } else if (forceFreshAssessment && (freshSelectedUnit || mostRecentUnit)) {
             const unitToAssess = freshSelectedUnit || mostRecentUnit;
             updatedUnitSelect.value = unitToAssess.name;
             localStorage.setItem('selectedUnitName', unitToAssess.name);
@@ -438,6 +490,11 @@ async function loadQuestionsForSelectedUnit(unitName) {
 
         if (!selectedUnit) {
             throw new Error(`Unit ${unitName} not found`);
+        }
+
+        if (await shouldPrepareFirstStudentGuidedChat()) {
+            await prepareFirstStudentGuidedChat(selectedUnit.name);
+            return;
         }
 
 

@@ -373,7 +373,7 @@ window.agreementModal = new AgreementModal();
 // Auto-initialize when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
     // Only initialize for students (not instructors)
-    if (window.location.pathname.includes('/student/')) {
+    if (window.location.pathname === '/student' || window.location.pathname.startsWith('/student/')) {
         window.agreementModal.initializeForUser();
     }
 });
