@@ -160,7 +160,8 @@ function loadChatData(chatData) {
                 .filter(answer => answer !== undefined && answer !== null)
                 .length;
             const resumeQuestion = chatData.practiceTests?.questions?.[resumeQuestionIndex];
-            let pendingCalibrationMessage = null;
+            const pendingCalibrationMessages = new Set();
+            let legacyPendingCalibrationMessage = null;
             let pendingShortAnswerDraft = null;
 
             if (resumeQuestion) {
@@ -179,18 +180,25 @@ function loadChatData(chatData) {
                     // Text is the safer identifier for legacy saves because older
                     // exports recorded every visible card with the current global
                     // question index instead of the index encoded in its DOM id.
-                    if (textMatches || (!hasComparableText && indexMatches)) {
-                        pendingCalibrationMessage = messageData;
+                    if (textMatches) {
+                        pendingCalibrationMessages.add(messageData);
+                        pendingShortAnswerDraft = messageData.questionData.studentAnswer;
+                    } else if (!hasComparableText && indexMatches) {
+                        legacyPendingCalibrationMessage = messageData;
                         pendingShortAnswerDraft = messageData.questionData.studentAnswer;
                     }
                 });
+
+                if (pendingCalibrationMessages.size === 0 && legacyPendingCalibrationMessage) {
+                    pendingCalibrationMessages.add(legacyPendingCalibrationMessage);
+                }
             }
 
             // Load each message from the chat data WITHOUT triggering auto-save
             chatData.messages.forEach((messageData, index) => {
                 // The unanswered card is rendered interactively below. Restoring
                 // its saved snapshot too would duplicate the current question.
-                if (messageData === pendingCalibrationMessage) return;
+                if (pendingCalibrationMessages.has(messageData)) return;
 
                 const messageOptions = {
                     messageType: messageData.messageType || null,
