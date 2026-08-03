@@ -95,6 +95,7 @@ async function upsertAcademicStudent(db, student, courseId) {
         lastLogin: null,
         createdAt: now,
         updatedAt: now,
+        studentOnboardingComplete: false,
         preferences: {
             theme: 'light',
             notifications: true,

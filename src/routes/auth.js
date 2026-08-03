@@ -127,6 +127,7 @@ router.post('/login', async (req, res, next) => {
                     role: user.role,
                     displayName: user.displayName,
                     authProvider: user.authProvider,
+                    studentOnboardingComplete: user.studentOnboardingComplete,
                     preferences: user.preferences
                 },
                 redirect: redirectPath
@@ -413,6 +414,49 @@ router.get('/me', async (req, res) => {
             success: false,
             error: 'Failed to get user information'
         });
+    }
+});
+
+/**
+ * POST /api/auth/student-onboarding/complete
+ * Complete the one-time student welcome after a course and unit are selected.
+ */
+router.post('/student-onboarding/complete', async (req, res) => {
+    try {
+        let user = req.user;
+        const authService = req.app.locals.authService;
+
+        if (!user && req.session?.userId && authService) {
+            user = await authService.getUserById(req.session.userId);
+        }
+
+        if (!user) {
+            return res.status(401).json({ success: false, error: 'Not authenticated' });
+        }
+
+        if (user.role !== 'student') {
+            return res.status(403).json({ success: false, error: 'Student access required' });
+        }
+
+        if (!authService) {
+            return res.status(503).json({ success: false, error: 'Authentication service not available' });
+        }
+
+        const result = await authService.completeStudentOnboarding(user.userId);
+        if (!result.success) {
+            return res.status(400).json({ success: false, error: result.error });
+        }
+
+        return res.json({
+            success: true,
+            data: {
+                studentOnboardingComplete: true,
+                completedAt: result.completedAt
+            }
+        });
+    } catch (error) {
+        console.error('Error completing student onboarding:', error);
+        return res.status(500).json({ success: false, error: 'Failed to complete student onboarding' });
     }
 });
 

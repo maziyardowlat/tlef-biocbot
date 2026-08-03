@@ -77,6 +77,22 @@ async function saveStorageState(baseURL, key, user, password) {
         );
     }
 
+    // Shared student fixtures represent returning students. Without completing
+    // the one-time walkthrough here, every test that navigates directly to a
+    // student subpage is correctly redirected back to the current tour step.
+    if (user.role === 'student') {
+        const onboardingRes = await api.post('/api/auth/student-onboarding/complete', {
+            failOnStatusCode: false,
+        });
+        if (!onboardingRes.ok()) {
+            const body = await onboardingRes.text();
+            throw new Error(
+                `Failed to complete onboarding for test student "${user.username}": ` +
+                `${onboardingRes.status()} ${body}`
+            );
+        }
+    }
+
     await api.storageState({ path: storageStatePath(key) });
     await api.dispose();
 }

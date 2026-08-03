@@ -29,6 +29,7 @@ const { createId } = require('../services/id');
  *   lastLogin: Date,             // Last login timestamp
  *   createdAt: Date,             // Account creation timestamp
  *   updatedAt: Date,             // Last update timestamp
+ *   studentOnboardingComplete: Boolean, // New students skip first-visit calibration until this is true
  *   preferences: {               // User preferences
  *     theme: String,             // UI theme preference
  *     notifications: Boolean,    // Notification preferences
@@ -59,6 +60,9 @@ function toSessionUser(user) {
         authProvider: resolvedUser.authProvider,
         puid: resolvedUser.puid,
         academicStudentId: resolvedUser.academicStudentId,
+        ...(typeof resolvedUser.studentOnboardingComplete === 'boolean' && {
+            studentOnboardingComplete: resolvedUser.studentOnboardingComplete
+        }),
         preferences: resolvedUser.preferences,
         permissions: resolvedUser.permissions,
         invitedCourses: resolvedUser.invitedCourses || []
@@ -101,6 +105,7 @@ async function createUser(db, userData) {
         lastLogin: null,
         createdAt: now,
         updatedAt: now,
+        ...(userData.role === 'student' && { studentOnboardingComplete: false }),
         preferences: {
             theme: 'light',
             notifications: true,
@@ -210,16 +215,20 @@ async function authenticateUser(db, username, password) {
     
     // Update last login
     const now = new Date();
+    const loginUpdates = { lastLogin: now, updatedAt: now };
+    if (user.role === 'student' && typeof user.studentOnboardingComplete !== 'boolean' && !user.lastLogin) {
+        loginUpdates.studentOnboardingComplete = false;
+    }
     await collection.updateOne(
         { userId: user.userId },
-        { $set: { lastLogin: now, updatedAt: now } }
+        { $set: loginUpdates }
     );
     
     console.log(`User authenticated: ${user.userId} (${user.role})`);
     
     return {
         success: true,
-        user: toSessionUser(user)
+        user: toSessionUser({ ...user, ...loginUpdates })
     };
 }
 
@@ -253,6 +262,9 @@ async function getUserById(db, userId) {
         authProvider: resolvedUser.authProvider,
         puid: resolvedUser.puid,
         academicStudentId: resolvedUser.academicStudentId,
+        ...(typeof resolvedUser.studentOnboardingComplete === 'boolean' && {
+            studentOnboardingComplete: resolvedUser.studentOnboardingComplete
+        }),
         preferences: resolvedUser.preferences,
         lastLogin: resolvedUser.lastLogin,
         struggleState: resolvedUser.struggleState,
@@ -298,6 +310,9 @@ async function getUserByPuid(db, puid) {
         lastLogin: resolvedUser.lastLogin,
         puid: resolvedUser.puid,
         academicStudentId: resolvedUser.academicStudentId,
+        ...(typeof resolvedUser.studentOnboardingComplete === 'boolean' && {
+            studentOnboardingComplete: resolvedUser.studentOnboardingComplete
+        }),
         permissions: resolvedUser.permissions
     };
 }
@@ -388,6 +403,14 @@ async function createOrGetSAMLUser(db, samlData) {
             updatedAt: new Date()
         };
 
+        if (
+            existingUser.role === 'student' &&
+            typeof existingUser.studentOnboardingComplete !== 'boolean' &&
+            !existingUser.lastLogin
+        ) {
+            updateFields.studentOnboardingComplete = false;
+        }
+
         // If PUID is provided but not yet stored (migration case), save it now
         if (samlData.puid && !existingUser.puid) {
             updateFields.puid = samlData.puid;
@@ -472,6 +495,7 @@ async function createOrGetSAMLUser(db, samlData) {
         lastLogin: now,
         createdAt: now,
         updatedAt: now,
+        ...((samlData.role || 'student') === 'student' && { studentOnboardingComplete: false }),
         preferences: {
             theme: 'light',
             notifications: true,
@@ -550,6 +574,34 @@ async function deactivateUser(db, userId) {
     }
 }
 
+/**
+ * Mark the one-time student welcome flow as complete.
+ * Existing users without this field are treated as already onboarded by the
+ * client, so only accounts created with an explicit false value enter it.
+ * @param {Object} db - MongoDB database instance
+ * @param {string} userId - Student user identifier
+ * @returns {Promise<Object>} Update result
+ */
+async function completeStudentOnboarding(db, userId) {
+    const now = new Date();
+    const result = await getUsersCollection(db).updateOne(
+        { userId, role: 'student', isActive: true },
+        {
+            $set: {
+                studentOnboardingComplete: true,
+                studentOnboardingCompletedAt: now,
+                updatedAt: now
+            }
+        }
+    );
+
+    if (result.matchedCount === 0) {
+        return { success: false, error: 'Student not found' };
+    }
+
+    return { success: true, completedAt: now.toISOString() };
+}
+
 module.exports = {
     getUsersCollection,
     createUser,
@@ -560,6 +612,7 @@ module.exports = {
     createOrGetSAMLUser,
     getUsersByRole,
     deactivateUser,
+    completeStudentOnboarding,
     updateUserStruggleState,
     resetUserStruggleState
 };
