@@ -210,6 +210,38 @@ describe('allowStudentAssets', () => {
         expect(next).toHaveBeenCalled();
     });
 
+    test('does not serve an unmarked HTML page to an instructor who merely holds a grant', async () => {
+        const { middleware } = makeMiddleware();
+        const grant = previewSession.createGrant(instructor, COURSE_ID);
+        const req = makeRequest({ user: instructor, grant, path: '/student/dashboard.html' });
+        const res = makeResponse();
+        const next = jest.fn();
+
+        await middleware.allowStudentAssets(req, res, next);
+
+        expect(next).not.toHaveBeenCalled();
+        expect(res.redirectedTo).toBe('/instructor');
+    });
+
+    test('serves the HTML page after resolvePreview has swapped a marked request', async () => {
+        const { middleware } = makeMiddleware();
+        const grant = previewSession.createGrant(instructor, COURSE_ID);
+        const req = makeRequest({
+            user: instructor,
+            marked: true,
+            grant,
+            path: '/student/dashboard.html?preview=1'
+        });
+        req.query = { preview: '1' };
+        const next = jest.fn();
+
+        await middleware.resolvePreview(req, makeResponse(), () => {});
+        await middleware.allowStudentAssets(req, makeResponse(), next);
+
+        expect(req.user.role).toBe('student');
+        expect(next).toHaveBeenCalled();
+    });
+
     test('still refuses an instructor with no grant', async () => {
         const { middleware } = makeMiddleware();
         const req = makeRequest({ user: instructor, path: '/student/scripts/student.js' });

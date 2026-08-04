@@ -550,6 +550,24 @@ function createAuthMiddleware(db) {
                 return next();
             }
 
+            // This middleware is mounted on the whole public/student directory,
+            // so express.static can serve page shells as well as scripts and
+            // styles. A preview grant alone is safe for inert assets, but not for
+            // HTML: an unmarked instructor tab would otherwise render a student
+            // page while its API calls still use the instructor identity. Keep
+            // page admission marker-bound by sending unmarked staff through the
+            // normal role gate. Marked preview navigations have already been
+            // swapped to a student identity by resolvePreview above.
+            const requestPath = String(req.originalUrl || req.path || '').split('?')[0];
+            const isPageShell =
+                requestPath === '/student' ||
+                requestPath === '/student/' ||
+                /\.html?$/i.test(requestPath);
+
+            if (isPageShell) {
+                return requireStudent(req, res, next);
+            }
+
             if (await hasPreviewGrant(req)) {
                 return next();
             }

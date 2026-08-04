@@ -261,13 +261,13 @@ router.get('/student-visible', async (req, res) => {
  * Update the pass threshold for a specific lecture
  */
 router.post('/pass-threshold', async (req, res) => {
-    const { courseId, lectureName, passThreshold, instructorId } = req.body;
+    const { courseId, lectureName, passThreshold } = req.body;
     
     // Validate required fields
-    if (!courseId || !lectureName || typeof passThreshold !== 'number' || !instructorId) {
+    if (!courseId || !lectureName || typeof passThreshold !== 'number') {
         return res.status(400).json({
             success: false,
-            message: 'Missing required fields: courseId, lectureName, passThreshold (number), instructorId'
+            message: 'Missing required fields: courseId, lectureName, passThreshold (number)'
         });
     }
     
@@ -289,10 +289,9 @@ router.post('/pass-threshold', async (req, res) => {
             });
         }
 
-        // Authorize from the session, not the body. instructorId is caller-
-        // supplied and is recorded as the author of the change, not trusted as
-        // proof of who is making it — without this any authenticated user could
-        // move the bar a course's students have to clear.
+        // Authorize and attribute the update from the session, never from a
+        // caller-supplied instructorId. Otherwise an authorized staff member
+        // could forge another user's id in the course audit metadata.
         const user = req.user;
         if (!user) {
             return res.status(401).json({ success: false, message: 'Authentication required' });
@@ -309,8 +308,16 @@ router.post('/pass-threshold', async (req, res) => {
             courseId, 
             lectureName, 
             passThreshold, 
-            instructorId
+            user.userId
         );
+
+        if (!result.success) {
+            const status = /not found|no longer exists/i.test(result.error || '') ? 404 : 400;
+            return res.status(status).json({
+                success: false,
+                message: result.error || 'Failed to update pass threshold'
+            });
+        }
         
         console.log(`Pass threshold updated for ${lectureName}: ${passThreshold}`);
         
@@ -322,7 +329,7 @@ router.post('/pass-threshold', async (req, res) => {
                 lectureName,
                 passThreshold,
                 updatedAt: new Date().toISOString(),
-                instructorId
+                instructorId: user.userId
             }
         });
         

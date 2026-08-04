@@ -191,6 +191,26 @@ describe('POST /pass-threshold', () => {
 
         expect(res.status).toBe(403);
     });
+
+    test('attributes the change to the authenticated user, not instructorId from the body', async () => {
+        const db = memoryDb({ courses: [course()] });
+        const res = await request(app({ db, user: instructor }))
+            .post('/pass-threshold').send({ ...base, instructorId: 'forged-user' });
+
+        expect(res.status).toBe(200);
+        const updated = await db.collection('courses').findOne({ courseId: 'C1' });
+        expect(updated.lastUpdatedById).toBe('i1');
+        expect(res.body.data.instructorId).toBe('i1');
+    });
+
+    test('404 when the requested lecture does not exist', async () => {
+        const db = memoryDb({ courses: [course()] });
+        const res = await request(app({ db, user: instructor }))
+            .post('/pass-threshold').send({ ...base, lectureName: 'Missing Unit' });
+
+        expect(res.status).toBe(404);
+        expect(res.body.message).toMatch(/lecture not found/i);
+    });
 });
 
 describe('GET /pass-threshold', () => {

@@ -225,7 +225,7 @@ test.describe('updatePassThreshold (via POST /api/lectures/pass-threshold)', () 
         expect(res.status()).toBe(403);
     });
 
-    test('200 wrapper but model returns "Lecture not found" for unknown unit', async ({ request: api }) => {
+    test('404 when the model reports "Lecture not found" for an unknown unit', async ({ request: api }) => {
         await seedCourse({ courseId: COURSE_MAIN, instructorId });
         const res = await api.post('/api/lectures/pass-threshold', {
             data: {
@@ -235,7 +235,7 @@ test.describe('updatePassThreshold (via POST /api/lectures/pass-threshold)', () 
                 instructorId,
             },
         });
-        expect(res.status()).toBe(200);
+        expect(res.status()).toBe(404);
         const doc = await withDb((db) => db.collection('courses').findOne({ courseId: COURSE_MAIN }));
         const u1 = doc.lectures.find((l) => l.name === 'Unit 1');
         // Default threshold from seedCourse is 2 — unchanged.

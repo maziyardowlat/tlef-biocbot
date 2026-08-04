@@ -763,6 +763,17 @@ test.describe('exit teardown', () => {
 test.describe('preview UI', () => {
     test.use({ storageState: storageStatePath('instructor') });
 
+    test('an unmarked instructor tab cannot load a student HTML page while a preview grant exists', async ({ page, baseURL }) => {
+        const api = await apiAs(baseURL, 'instructor');
+        await startPreview(api);
+        await api.dispose();
+
+        // The grant is session-wide, but preview identity is deliberately
+        // tab-scoped. Without the marker this tab must remain an instructor tab.
+        await page.goto('/student/dashboard.html');
+        await expect(page).toHaveURL(/\/instructor/);
+    });
+
     test('the student page loads in preview mode with the banner', async ({ page, baseURL }) => {
         const api = await apiAs(baseURL, 'instructor');
         const { entryUrl } = await startPreview(api);
