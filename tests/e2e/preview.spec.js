@@ -204,6 +204,19 @@ test.beforeEach(async () => {
     await wipeSandbox();
 });
 
+test.afterEach(async ({ baseURL }) => {
+    // The grant lives on the server-side session, which every context built from
+    // the instructor storage state shares — including later spec files. Leaving
+    // one behind puts the shared instructor into preview mode for the rest of
+    // the run, which is enough to change how student page routes answer them.
+    const api = await apiAs(baseURL, 'instructor', true);
+    try {
+        await api.post('/api/preview/stop', { failOnStatusCode: false });
+    } finally {
+        await api.dispose();
+    }
+});
+
 test.afterAll(async () => {
     await cleanupCourses([COURSE_ID, FOREIGN_COURSE_ID]);
     await wipeSandbox();
