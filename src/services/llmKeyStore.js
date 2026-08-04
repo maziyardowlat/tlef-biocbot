@@ -243,7 +243,7 @@ function chatValidationBody() {
 
     if (String(model).startsWith('gpt-5')) {
         body.max_completion_tokens = 16;
-        body.reasoning_effort = model === 'gpt-5.4-nano' ? 'low' : 'minimal';
+        body.reasoning_effort = ['gpt-5.4-nano', 'gpt-5.6-luna'].includes(model) ? 'low' : 'minimal';
     } else {
         body.max_tokens = 1;
     }

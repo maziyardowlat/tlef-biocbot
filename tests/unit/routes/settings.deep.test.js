@@ -273,6 +273,28 @@ describe('global LLM model settings (configuration only)', () => {
         expect(llmRegistry.clear).toHaveBeenCalled();
     });
 
+    test('Luna is allowed and coerces unsupported minimal reasoning to low', async () => {
+        const db = memoryDb({ settings: [] });
+        const res = await request(app({ db, user: admin })).post('/llm').send({
+            model: 'gpt-5.6-luna', reasoningEffort: 'minimal'
+        });
+        expect(res.status).toBe(200);
+        expect(res.body.settings).toEqual({
+            model: 'gpt-5.6-luna', reasoningEffort: 'low', supportsReasoning: true
+        });
+        await expect(db.collection('settings').findOne({ _id: 'llm' })).resolves.toMatchObject({
+            model: 'gpt-5.6-luna', reasoningEffort: 'low'
+        });
+        await expect(request(app({ db, user: admin })).get('/llm')).resolves.toMatchObject({
+            status: 200,
+            body: { settings: { model: 'gpt-5.6-luna', reasoningEffort: 'low' } }
+        });
+        await expect(request(app({ db })).get('/llm-tag')).resolves.toMatchObject({
+            status: 200,
+            body: { success: true, llmIndex: 4, reasoningIndex: 2 }
+        });
+    });
+
     test('llm-tag exposes only numeric tags and works without a DB', async () => {
         const res = await request(app({ db: null })).get('/llm-tag');
         expect(res.status).toBe(200);

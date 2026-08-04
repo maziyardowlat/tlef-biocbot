@@ -195,8 +195,8 @@ class NotesQdrantService {
         if (!query || !limit || limit <= 0) return [];
 
         const queryVector = await this.embedQuery(query);
-        const results = await this.client.search(this.collectionName, {
-            vector: queryVector,
+        const { points: results } = await this.client.query(this.collectionName, {
+            query: queryVector,
             limit,
             with_payload: true,
             with_vector: false
@@ -239,7 +239,7 @@ class NotesQdrantService {
 
         const queryVector = await this.embedQuery(probeText);
         const searchParams = {
-            vector: queryVector,
+            query: queryVector,
             limit: 5,
             with_payload: true,
             with_vector: false
@@ -250,7 +250,7 @@ class NotesQdrantService {
             };
         }
 
-        const results = await this.client.search(this.collectionName, searchParams);
+        const { points: results } = await this.client.query(this.collectionName, searchParams);
         const top = results.find(result => result.score >= threshold);
         if (!top) return null;
 

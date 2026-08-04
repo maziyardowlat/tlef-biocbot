@@ -9,7 +9,7 @@ const config = require('./config');
 const prompts = require('./prompts');
 const { LlmKeyError, mapOpenAIErrorToStatus } = require('./llmKeyStore');
 
-const ALLOWED_LLM_MODELS = ['gpt-4.1-mini', 'gpt-5-nano', 'gpt-5.4-nano'];
+const ALLOWED_LLM_MODELS = ['gpt-4.1-mini', 'gpt-5-nano', 'gpt-5.4-nano', 'gpt-5.6-luna'];
 const ALLOWED_REASONING_EFFORTS = ['minimal', 'low', 'medium', 'high'];
 const MODEL_SETTINGS_TTL_MS = 30 * 1000; // Re-read at most every 30 seconds
 
@@ -88,11 +88,13 @@ class LLMService {
      * Returns the requested effort if supported, otherwise the closest fallback.
      * gpt-5-nano:    minimal, low, medium, high
      * gpt-5.4-nano:  none,    low, medium, high, xhigh   (no "minimal")
+     * gpt-5.6-luna:  none,    low, medium, high, xhigh   (no "minimal")
      */
     _coerceReasoningEffort(model, requested) {
         const supportedByModel = {
             'gpt-5-nano': ['minimal', 'low', 'medium', 'high'],
-            'gpt-5.4-nano': ['none', 'low', 'medium', 'high', 'xhigh']
+            'gpt-5.4-nano': ['none', 'low', 'medium', 'high', 'xhigh'],
+            'gpt-5.6-luna': ['none', 'low', 'medium', 'high', 'xhigh']
         };
         const supported = supportedByModel[model];
         if (!supported) return requested; // Unknown model — pass through

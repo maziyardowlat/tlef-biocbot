@@ -423,6 +423,13 @@ describe('llmKeyStore.validateApiKey — OpenAI provider with a mocked fetch (no
         });
 
         fetchMock.mockClear();
+        process.env.OPENAI_MODEL = 'gpt-5.6-luna';
+        await validateApiKey('sk-real');
+        expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({
+            model: 'gpt-5.6-luna', max_completion_tokens: 16, reasoning_effort: 'low',
+        });
+
+        fetchMock.mockClear();
         process.env.OPENAI_MODEL = 'gpt-5.2';
         await validateApiKey('sk-real');
         expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toMatchObject({

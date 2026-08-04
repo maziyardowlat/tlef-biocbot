@@ -907,11 +907,20 @@ router.post('/global', async (req, res) => {
     }
 });
 
-const ALLOWED_LLM_MODELS = ['gpt-4.1-mini', 'gpt-5-nano', 'gpt-5.4-nano'];
+const ALLOWED_LLM_MODELS = ['gpt-4.1-mini', 'gpt-5-nano', 'gpt-5.4-nano', 'gpt-5.6-luna'];
 const ALLOWED_REASONING_EFFORTS = ['minimal', 'low', 'medium', 'high'];
+const MODELS_WITHOUT_MINIMAL_REASONING = new Set(['gpt-5.4-nano', 'gpt-5.6-luna']);
 
 function isGpt5Family(model) {
     return typeof model === 'string' && model.startsWith('gpt-5');
+}
+
+function normalizeReasoningEffort(model, reasoningEffort) {
+    if (!isGpt5Family(model)) return 'minimal';
+    const fallback = MODELS_WITHOUT_MINIMAL_REASONING.has(model) ? 'low' : 'minimal';
+    if (!ALLOWED_REASONING_EFFORTS.includes(reasoningEffort)) return fallback;
+    if (reasoningEffort === 'minimal' && MODELS_WITHOUT_MINIMAL_REASONING.has(model)) return 'low';
+    return reasoningEffort;
 }
 
 // Obfuscated index maps for the body-class debug tag.
@@ -921,7 +930,8 @@ function isGpt5Family(model) {
 const LLM_TAG_INDEX = {
     'gpt-4.1-mini': 1,
     'gpt-5-nano': 2,
-    'gpt-5.4-nano': 3
+    'gpt-5.4-nano': 3,
+    'gpt-5.6-luna': 4
 };
 const REASONING_TAG_INDEX = {
     minimal: 1,
@@ -944,7 +954,7 @@ router.get('/llm-tag', async (req, res) => {
         const fallbackModel = ALLOWED_LLM_MODELS.includes(envDefault) ? envDefault : 'gpt-4.1-mini';
 
         let model = fallbackModel;
-        let reasoningEffort = 'minimal';
+        let reasoningEffort = normalizeReasoningEffort(model);
 
         if (db) {
             const settingsDoc = await db.collection('settings').findOne({ _id: 'llm' });
@@ -955,6 +965,7 @@ router.get('/llm-tag', async (req, res) => {
                 }
             }
         }
+        reasoningEffort = normalizeReasoningEffort(model, reasoningEffort);
 
         res.json({
             success: true,
@@ -989,9 +1000,7 @@ router.get('/llm', async (req, res) => {
         const model = (settingsDoc && ALLOWED_LLM_MODELS.includes(settingsDoc.model))
             ? settingsDoc.model
             : fallbackModel;
-        const reasoningEffort = (settingsDoc && ALLOWED_REASONING_EFFORTS.includes(settingsDoc.reasoningEffort))
-            ? settingsDoc.reasoningEffort
-            : 'minimal';
+        const reasoningEffort = normalizeReasoningEffort(model, settingsDoc && settingsDoc.reasoningEffort);
 
         res.json({
             success: true,
@@ -1040,8 +1049,7 @@ router.post('/llm', async (req, res) => {
         };
 
         if (isGpt5Family(model)) {
-            const effort = ALLOWED_REASONING_EFFORTS.includes(reasoningEffort) ? reasoningEffort : 'minimal';
-            update.reasoningEffort = effort;
+            update.reasoningEffort = normalizeReasoningEffort(model, reasoningEffort);
         } else {
             update.reasoningEffort = 'minimal';
         }

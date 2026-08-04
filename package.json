@@ -30,7 +30,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "@qdrant/js-client-rest": "^1.15.1",
+    "@qdrant/js-client-rest": "1.18.0",
     "bad-words": "^3.0.4",
     "bcryptjs": "^2.4.3",
     "connect-mongo": "^5.1.0",
@@ -50,7 +50,7 @@
     "ubc-genai-toolkit-core": "^0.1.0",
     "ubc-genai-toolkit-document-parsing": "^0.3.1",
     "ubc-genai-toolkit-embeddings": "^0.1.1",
-    "ubc-genai-toolkit-llm": "^0.3.0"
+    "ubc-genai-toolkit-llm": "^0.5.0"
   },
   "optionalDependencies": {
     "@ubc/ubc-genai-toolkit-course-list-sync": "^0.1.3"
