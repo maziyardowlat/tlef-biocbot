@@ -605,7 +605,7 @@ class QdrantService {
 
             // Build search parameters
             const searchParams = {
-                vector: queryVector,
+                query: queryVector,
                 limit: limit,
                 with_payload: true,
                 with_vector: false
@@ -677,7 +677,7 @@ class QdrantService {
             }
 
             // Perform search
-            const searchResults = await this.client.search(
+            const { points: searchResults } = await this.client.query(
                 this.collectionName,
                 searchParams
             );
@@ -720,8 +720,8 @@ class QdrantService {
 
         // Fan out across courses in parallel, reusing the single query vector.
         const perCourse = await Promise.all(courseIds.map(async (courseId) => {
-            const searchResults = await this.client.search(this.collectionName, {
-                vector: queryVector,
+            const { points: searchResults } = await this.client.query(this.collectionName, {
+                query: queryVector,
                 limit: perCourseLimit,
                 with_payload: true,
                 with_vector: false,

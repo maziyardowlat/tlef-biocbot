@@ -269,11 +269,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         reasoningItem.style.display = isGpt5Family(modelSelect.value) ? '' : 'none';
 
-        // gpt-5.4-nano does not support "minimal"; hide it and bump to "low".
+        // Newer GPT-5 models do not support "minimal"; hide it and bump to "low".
         if (reasoningSelect) {
             const minimalOption = reasoningSelect.querySelector('option[value="minimal"]');
             if (minimalOption) {
-                if (modelSelect.value === 'gpt-5.4-nano') {
+                if (['gpt-5.4-nano', 'gpt-5.6-luna'].includes(modelSelect.value)) {
                     minimalOption.hidden = true;
                     minimalOption.disabled = true;
                     if (reasoningSelect.value === 'minimal') reasoningSelect.value = 'low';

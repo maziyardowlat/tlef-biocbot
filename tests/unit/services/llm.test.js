@@ -72,6 +72,10 @@ describe('LLM model settings without provider traffic', () => {
         const service = readyService({ provider: 'openai', defaultModel: 'gpt-5.4-nano' });
         const result = await service._applyModelOptions({ temperature: 0.7, maxTokens: 20 });
         expect(result).toEqual({ model: 'gpt-5.4-nano', max_completion_tokens: 2000, reasoning_effort: 'low' });
+        const luna = readyService({ provider: 'openai', defaultModel: 'gpt-5.6-luna' });
+        await expect(luna._applyModelOptions({ maxTokens: 256 })).resolves.toEqual({
+            model: 'gpt-5.6-luna', max_completion_tokens: 2000, reasoning_effort: 'low'
+        });
         expect(service._coerceReasoningEffort('gpt-5-nano', 'xhigh')).toBe('high');
         expect(service._coerceReasoningEffort('unknown', 'custom')).toBe('custom');
     });

@@ -9,7 +9,7 @@ let currentLLMTagClasses = [];
 const LLM_TAG_CLASS_PATTERN = /^(llm|reasoning)-\d+$/;
 const LLM_TAG_TARGET_SELECTOR = 'body, .chat-container, #chat-messages, .quiz-chat-container, #quiz-chat-messages';
 const LLM_TAG_COMMENT_PREFIX = 'LLM tag map:';
-const LLM_TAG_COMMENT_TEXT = 'LLM tag map: llm-1 = gpt-4.1-mini; llm-2 = gpt-5-nano; llm-3 = gpt-5.4-nano; reasoning-* applies to GPT-5 models only; reasoning-1 = minimal; reasoning-2 = low; reasoning-3 = medium; reasoning-4 = high';
+const LLM_TAG_COMMENT_TEXT = 'LLM tag map: llm-1 = gpt-4.1-mini; llm-2 = gpt-5-nano; llm-3 = gpt-5.4-nano; llm-4 = gpt-5.6-luna; reasoning-* applies to GPT-5 models only; reasoning-1 = minimal; reasoning-2 = low; reasoning-3 = medium; reasoning-4 = high';
 
 function stripLLMTagClasses(element) {
     if (!element || !element.classList) return;

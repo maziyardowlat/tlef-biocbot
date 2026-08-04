@@ -16,7 +16,7 @@ function makeBase(overrides = {}) {
             createCollection: jest.fn(async () => {}),
             upsert: jest.fn(async () => {}),
             delete: jest.fn(async () => {}),
-            search: jest.fn(async () => []),
+            query: jest.fn(async () => ({ points: [] })),
             ...overrides.client,
         },
         embeddings: overrides.embeddings || { embed: jest.fn(async () => [[1, 2, 3]]) },
@@ -105,28 +105,29 @@ describe('NotesQdrantService with mocked vector boundaries', () => {
     });
 
     test('searchNotes maps results and applies minScore', async () => {
-        const base = makeBase({ client: { search: jest.fn(async () => [
+        const base = makeBase({ client: { query: jest.fn(async () => ({ points: [
             { id: 'p1', score: 0.9, payload: { noteId: 'n1', tags: ['a'], chunkText: 'high' } },
             { id: 'p2', score: 0.4, payload: { noteId: 'n2', chunkText: 'low' } },
-        ]) } });
+        ] })) } });
         const service = new NotesQdrantService();
         await service.initialize(base);
         await expect(service.searchNotes('', 5)).resolves.toEqual([]);
         const result = await service.searchNotes('ATP', 5, { minScore: 0.8 });
         expect(result).toEqual([expect.objectContaining({ id: 'p1', noteId: 'n1', sourceType: 'note', tags: ['a'] })]);
+        expect(base.client.query.mock.calls[0][1]).toMatchObject({ query: [1, 2, 3], limit: 5 });
     });
 
     test('findSimilarTo returns null below threshold and maps a top match', async () => {
-        const search = jest.fn()
-            .mockResolvedValueOnce([{ score: 0.5, payload: { noteId: 'low' } }])
-            .mockResolvedValueOnce([{ score: 0.95, payload: { noteId: 'n1', authorName: 'A', title: 'T', createdAt: 'now', chunkText: 'x'.repeat(300) } }]);
+        const query = jest.fn()
+            .mockResolvedValueOnce({ points: [{ score: 0.5, payload: { noteId: 'low' } }] })
+            .mockResolvedValueOnce({ points: [{ score: 0.95, payload: { noteId: 'n1', authorName: 'A', title: 'T', createdAt: 'now', chunkText: 'x'.repeat(300) } }] });
         const service = new NotesQdrantService();
-        await service.initialize(makeBase({ client: { search } }));
+        await service.initialize(makeBase({ client: { query } }));
         await expect(service.findSimilarTo('   ')).resolves.toBeNull();
         await expect(service.findSimilarTo('content')).resolves.toBeNull();
         const result = await service.findSimilarTo('content', { excludeNoteId: 'self', threshold: 0.9 });
         expect(result).toMatchObject({ noteId: 'n1', score: 0.95 });
         expect(result.excerpt).toHaveLength(240);
-        expect(search.mock.calls[1][1].filter).toEqual({ must_not: [{ key: 'noteId', match: { value: 'self' } }] });
+        expect(query.mock.calls[1][1].filter).toEqual({ must_not: [{ key: 'noteId', match: { value: 'self' } }] });
     });
 });

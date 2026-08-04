@@ -53,7 +53,7 @@ function makeService(overrides = {}) {
         createCollection: jest.fn(async () => {}),
         deleteCollection: jest.fn(async () => {}),
         upsert: jest.fn(async () => {}),
-        search: jest.fn(async () => []),
+        query: jest.fn(async () => ({ points: [] })),
         scroll: jest.fn(async () => ({ points: [], next_page_offset: null })),
         delete: jest.fn(async () => {}),
         ...overrides.client,
@@ -257,10 +257,10 @@ describe('QdrantService', () => {
     });
 
     test('searchDocuments builds all supported filters and transforms hits', async () => {
-        const service = makeService({ client: { search: jest.fn(async () => [hit()]) } });
+        const service = makeService({ client: { query: jest.fn(async () => ({ points: [hit()] })) } });
         const result = await service.searchDocuments('cells', { courseId: ['C1', 'C2'], lectureNames: ['U1'], excludeAdditionalMaterials: true }, 7);
         expect(result[0]).toMatchObject({ id: 'point-1', courseId: 'BIOC-1', chunkText: 'cell biology' });
-        expect(service.client.search.mock.calls[0][1]).toMatchObject({ limit: 7, filter: { must: [
+        expect(service.client.query.mock.calls[0][1]).toMatchObject({ query: [1, 2, 3], limit: 7, filter: { must: [
             { key: 'courseId', match: { any: ['C1', 'C2'] } },
             { key: 'lectureName', match: { any: ['U1'] } },
         ], must_not: expect.any(Array) } });
@@ -269,16 +269,16 @@ describe('QdrantService', () => {
     test('searchDocuments supports scalar and additional-only filters', async () => {
         const service = makeService();
         await service.searchDocuments('cells', { courseId: 'C', lectureName: 'U', additionalMaterialsOnly: true });
-        expect(service.client.search.mock.calls[0][1].filter.must).toHaveLength(3);
+        expect(service.client.query.mock.calls[0][1].filter.must).toHaveLength(3);
     });
 
     test('searchDocumentsByCourse embeds once and maps each course result', async () => {
-        const service = makeService({ client: { search: jest.fn(async (_name, params) => [hit({ courseId: params.filter.must[0].match.value })]) } });
+        const service = makeService({ client: { query: jest.fn(async (_name, params) => ({ points: [hit({ courseId: params.filter.must[0].match.value })] })) } });
         await expect(service.searchDocumentsByCourse('q', [])).resolves.toEqual(new Map());
         const result = await service.searchDocumentsByCourse('q', ['A', 'B'], 2);
         expect([...result.keys()]).toEqual(['A', 'B']);
         expect(service.embeddings.embed).toHaveBeenCalledTimes(1);
-        expect(service.client.search).toHaveBeenCalledTimes(2);
+        expect(service.client.query).toHaveBeenCalledTimes(2);
     });
 
     test('getDocumentChunks scrolls pages and sorts chunks', async () => {
@@ -469,7 +469,7 @@ describe('QdrantService coverage: stub embeddings, probe warnings, key failures,
         const filterFor = async (filters) => {
             const service = makeService();
             await service.searchDocuments('q', filters);
-            return service.client.search.mock.calls[0][1].filter;
+            return service.client.query.mock.calls[0][1].filter;
         };
         expect(await filterFor({ lectureName: 'U1' })).toEqual({ must: [{ key: 'lectureName', match: { value: 'U1' } }] });
         expect(await filterFor({ lectureNames: ['U1', 'U2'] })).toEqual({ must: [{ key: 'lectureName', match: { any: ['U1', 'U2'] } }] });
@@ -478,7 +478,7 @@ describe('QdrantService coverage: stub embeddings, probe warnings, key failures,
     });
 
     test('searchDocuments and getDocumentChunks rethrow client failures', async () => {
-        const searchFail = makeService({ client: { search: jest.fn(async () => { throw new Error('search down'); }) } });
+        const searchFail = makeService({ client: { query: jest.fn(async () => { throw new Error('search down'); }) } });
         await expect(searchFail.searchDocuments('q', {})).rejects.toThrow('search down');
         const scrollFail = makeService({ client: { scroll: jest.fn(async () => { throw new Error('scroll down'); }) } });
         await expect(scrollFail.getDocumentChunks('D')).rejects.toThrow('scroll down');

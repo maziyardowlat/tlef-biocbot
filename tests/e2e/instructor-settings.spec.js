@@ -1040,7 +1040,7 @@ test.describe('Instructor settings UI', () => {
         });
     });
 
-    test('shows admin settings, enforces gpt-5.4-nano reasoning rules, and saves global admin controls', async ({ page }) => {
+    test('shows admin settings, enforces newer GPT-5 reasoning rules, and saves global admin controls', async ({ page }) => {
         await setSystemAdmin(instructorId, true);
         await openSettings(page);
 
@@ -1071,7 +1071,7 @@ test.describe('Instructor settings UI', () => {
         await expect(page.locator('#llm-reasoning-item')).toBeVisible();
         await expect(page.locator('#llm-reasoning-select')).toHaveValue('minimal');
 
-        await page.locator('#llm-model-select').selectOption('gpt-5.4-nano');
+        await page.locator('#llm-model-select').selectOption('gpt-5.6-luna');
         await expect(page.locator('#llm-reasoning-select')).toHaveValue('low');
         await expect(page.locator('#llm-reasoning-select option[value="minimal"]')).toBeDisabled();
         await page.locator('#save-llm-settings').click();
@@ -1109,7 +1109,7 @@ test.describe('Instructor settings UI', () => {
             };
         }, { timeout: 10_000 }).toMatchObject({
             allowLocalLogin: false,
-            model: 'gpt-5.4-nano',
+            model: 'gpt-5.6-luna',
             reasoningEffort: 'low',
             studentTopK: 4,
         });
