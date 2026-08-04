@@ -121,27 +121,33 @@
     border-top: 1px solid rgba(255, 255, 255, 0.15);
 }
 
-.preview-explainer {
-    max-width: 78ch;
-    font-size: 0.8125rem;
-    line-height: 1.55;
+.preview-lede {
+    font-size: 0.875rem;
+    line-height: 1.5;
+    max-width: 90ch;
+    margin: 0 0 16px;
 }
 
-.preview-explainer h2 {
-    font-size: 0.9375rem;
-    margin: 0 0 4px;
+/* Sections sit side by side across the banner's full width. Stacked in one
+   narrow column they ran down the page and pushed the controls out of view. */
+.preview-explainer {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 8px 32px;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+}
+
+.preview-explainer section {
+    min-width: 0;
 }
 
 .preview-explainer h3 {
-    font-size: 0.8125rem;
+    font-size: 0.75rem;
     text-transform: uppercase;
     letter-spacing: 0.04em;
     color: var(--preview-accent);
-    margin: 14px 0 4px;
-}
-
-.preview-explainer p {
-    margin: 0;
+    margin: 0 0 6px;
 }
 
 /* style.css resets list styling globally, so restore bullets here — without
@@ -166,29 +172,6 @@
 
 /* Checkbox and its text stay on one line: an earlier grid layout let the label
    wrap one word per line beside a stranded checkbox. */
-.preview-check {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    white-space: nowrap;
-    cursor: pointer;
-}
-
-/* style.css applies `width: 100%` and text-input padding to every `input`,
-   which stretches a bare checkbox across its flex line and strands the label
-   far to the right. Size it back explicitly. */
-.preview-check input[type="checkbox"] {
-    width: 16px;
-    height: 16px;
-    min-width: 16px;
-    flex: 0 0 auto;
-    margin: 0;
-    padding: 0;
-    border: none;
-    border-radius: 0;
-    accent-color: var(--preview-accent);
-}
-
 .preview-panel-actions {
     display: flex;
     align-items: center;
@@ -201,11 +184,32 @@
     color: var(--preview-accent);
 }
 
-/* Shift the app shell down so the fixed banner never covers the sidebar or
-   the chat composer. */
+/* Make room for the banner by putting it in the flow as the first row of a
+   column layout, rather than offsetting the shell beneath a fixed element.
+   A margin-top on .app-container collapsed out through <body> instead, adding
+   the banner's height to the document and producing a second scrollbar. */
+body.preview-mode {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+body.preview-mode .preview-banner {
+    position: static;
+    flex: 0 0 auto;
+}
+
 body.preview-mode .app-container {
-    height: calc(100vh - var(--preview-banner-height));
-    margin-top: var(--preview-banner-height);
+    flex: 1 1 auto;
+    height: auto;
+    min-height: 0;
+}
+
+/* chat.css sizes the chat box against the full viewport (100vh - 120px). In
+   preview the banner takes a slice of that, so without this the box overflows
+   .main-content and it scrolls behind the chat's own scroller. */
+body.preview-mode .chat-container {
+    height: calc(100vh - 120px - var(--preview-banner-height));
 }
 
 @media (max-width: 768px) {

@@ -124,31 +124,63 @@ describe('resetPreviewData', () => {
     });
 });
 
-describe('preview settings', () => {
-    test('normalizes on save and reads back', async () => {
-        const db = memoryDb({ previewStates: [] });
-
-        const saved = await PreviewState.saveSettings(db, PREVIEW_ID, {
-            mode: 'protege',
-            showUnpublished: true,
-            promptOverride: '  '
-        });
-
-        expect(saved).toEqual({
-            mode: 'protege',
-            promptOverride: null,
-            showUnpublished: true
-        });
-
-        const state = await PreviewState.getState(db, PREVIEW_ID);
-        expect(state.settings).toEqual(saved);
-    });
-
-    test('an unknown sandbox reads as default, not an error', async () => {
+describe('preview state', () => {
+    test('an unknown sandbox reads as a first visit, not an error', async () => {
         const db = memoryDb({ previewStates: [] });
 
         const state = await PreviewState.getState(db, '__preview__nobody::X');
         expect(state.firstRunCompleted).toBe(false);
-        expect(state.settings.mode).toBe('tutor');
+    });
+
+    test('records first-run completion so a later visit skips the walkthrough', async () => {
+        const db = memoryDb({ previewStates: [] });
+
+        await PreviewState.setFirstRunCompleted(db, PREVIEW_ID, true);
+
+        const state = await PreviewState.getState(db, PREVIEW_ID);
+        expect(state.firstRunCompleted).toBe(true);
+    });
+});
+
+describe('destroySandbox', () => {
+    test('leaves nothing behind for the next preview to find', async () => {
+        const db = memoryDb({
+            chat_sessions: [
+                { sessionId: 'c1', studentId: PREVIEW_ID, courseId: COURSE_ID },
+                { sessionId: 'c2', studentId: 'real-student', courseId: COURSE_ID }
+            ],
+            quizAttempts: [{ studentId: PREVIEW_ID }],
+            users: [
+                { userId: PREVIEW_ID, isPreview: true, studentOnboardingComplete: true },
+                { userId: 'real-student', role: 'student' }
+            ],
+            previewStates: [{ previewUserId: PREVIEW_ID, firstRunCompleted: true }],
+            courses: []
+        });
+
+        await PreviewState.destroySandbox(db, PREVIEW_ID);
+
+        expect(await db.collection('chat_sessions').findOne({ studentId: PREVIEW_ID })).toBeNull();
+        expect(await db.collection('quizAttempts').findOne({ studentId: PREVIEW_ID })).toBeNull();
+        expect(await db.collection('users').findOne({ userId: PREVIEW_ID })).toBeNull();
+        expect(await db.collection('previewStates').findOne({ previewUserId: PREVIEW_ID })).toBeNull();
+
+        // A re-entered preview therefore starts as a first visit again.
+        const state = await PreviewState.getState(db, PREVIEW_ID);
+        expect(state.firstRunCompleted).toBe(false);
+    });
+
+    test('never touches a real student alongside the sandbox', async () => {
+        const db = memoryDb({
+            chat_sessions: [{ sessionId: 'c2', studentId: 'real-student', courseId: COURSE_ID }],
+            users: [{ userId: 'real-student', role: 'student' }],
+            previewStates: [],
+            courses: []
+        });
+
+        await PreviewState.destroySandbox(db, PREVIEW_ID);
+
+        expect(await db.collection('chat_sessions').findOne({ studentId: 'real-student' })).not.toBeNull();
+        expect(await db.collection('users').findOne({ userId: 'real-student' })).not.toBeNull();
     });
 });

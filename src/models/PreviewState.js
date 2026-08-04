@@ -1,21 +1,17 @@
 /**
  * PreviewState Model
  *
- * Per-previewer, per-course state for the "View as Student" sandbox: the
- * settings the previewer last used and whether they have already been through
- * the student first-run flow.
+ * Per-previewer, per-course state for the "View as Student" sandbox: whether
+ * the previewer has already been through the student first-run flow.
  *
  * Sandbox *content* (chats, quiz attempts, flashcard progress) is not stored
  * here — it lives in the ordinary student collections under the namespaced
  * preview user id. This document only records the state that has nowhere else
- * to live, plus it gives "Reset preview" a single place to start from.
+ * to live, plus it gives "Reset preview" and "Exit preview" a single place to
+ * start from.
  */
 
-const {
-    DEFAULT_PREVIEW_SETTINGS,
-    normalizeSettings,
-    buildPreviewUserDocument
-} = require('../services/previewSession');
+const { buildPreviewUserDocument } = require('../services/previewSession');
 
 const COLLECTION_NAME = 'previewStates';
 
@@ -70,15 +66,13 @@ async function getState(db, previewUserId) {
     if (!existing) {
         return {
             previewUserId,
-            firstRunCompleted: false,
-            settings: { ...DEFAULT_PREVIEW_SETTINGS }
+            firstRunCompleted: false
         };
     }
 
     return {
         ...existing,
-        firstRunCompleted: existing.firstRunCompleted === true,
-        settings: normalizeSettings(existing.settings)
+        firstRunCompleted: existing.firstRunCompleted === true
     };
 }
 
@@ -150,7 +144,6 @@ async function ensureState(db, grant) {
                 ownerUserId: grant.ownerUserId,
                 courseId: grant.courseId,
                 firstRunCompleted: false,
-                settings: { ...DEFAULT_PREVIEW_SETTINGS },
                 createdAt: now
             },
             $set: { lastOpenedAt: now }
@@ -159,25 +152,6 @@ async function ensureState(db, grant) {
     );
 
     return getState(db, grant.previewUserId);
-}
-
-/**
- * Persist preview settings (bot mode, prompt override, unpublished toggle)
- * @param {Object} db - MongoDB database instance
- * @param {string} previewUserId - Namespaced preview user id
- * @param {Object} settings - Settings to store
- * @returns {Promise<Object>} Normalized settings that were stored
- */
-async function saveSettings(db, previewUserId, settings) {
-    const normalized = normalizeSettings(settings);
-
-    await getPreviewStateCollection(db).updateOne(
-        { previewUserId },
-        { $set: { settings: normalized, updatedAt: new Date() } },
-        { upsert: true }
-    );
-
-    return normalized;
 }
 
 /**
@@ -201,8 +175,12 @@ async function setFirstRunCompleted(db, previewUserId, completed) {
 
 /**
  * Delete every trace of a preview sandbox: all student data written under the
- * preview id, plus the first-run flag. Settings are kept, since resetting the
- * data is not a request to re-configure the preview.
+ * preview id, plus the first-run flag.
+ *
+ * The sandbox's `users` document survives, cleared rather than removed, because
+ * "Reset preview data" reloads straight back into the same preview and the page
+ * scripts would 404 on a missing user. Exiting the preview has no such
+ * constraint — see destroySandbox.
  *
  * @param {Object} db - MongoDB database instance
  * @param {string} previewUserId - Namespaced preview user id
@@ -270,6 +248,43 @@ async function resetPreviewData(db, previewUserId) {
     return deleted;
 }
 
+/**
+ * Tear a preview sandbox down completely, for "Exit preview".
+ *
+ * Everything resetPreviewData removes, and then the two documents it has to
+ * leave behind: the sandbox's `users` record and its state document. Nothing
+ * survives, so re-entering the preview builds a genuinely new sandbox with no
+ * chat history, no quiz attempts, and the student first-run flow ahead of it.
+ *
+ * @param {Object} db - MongoDB database instance
+ * @param {string} previewUserId - Namespaced preview user id
+ * @returns {Promise<Object>} Per-collection deleted counts
+ */
+async function destroySandbox(db, previewUserId) {
+    const deleted = await resetPreviewData(db, previewUserId);
+
+    // isPreview is part of the filter as well as the id prefix: a real account
+    // can never hold an id in this namespace, but a delete of a `users` record
+    // is worth making impossible to aim at one by accident.
+    try {
+        const result = await db.collection('users').deleteOne({ userId: previewUserId, isPreview: true });
+        deleted.users = result.deletedCount || 0;
+    } catch (error) {
+        console.warn('[PREVIEW] Exit could not remove the sandbox user:', error.message);
+        deleted.users = 0;
+    }
+
+    try {
+        const result = await getPreviewStateCollection(db).deleteMany({ previewUserId });
+        deleted[COLLECTION_NAME] = result.deletedCount || 0;
+    } catch (error) {
+        console.warn('[PREVIEW] Exit could not remove the sandbox state:', error.message);
+        deleted[COLLECTION_NAME] = 0;
+    }
+
+    return deleted;
+}
+
 module.exports = {
     COLLECTION_NAME,
     PREVIEW_DATA_COLLECTIONS,
@@ -278,7 +293,7 @@ module.exports = {
     getState,
     ensurePreviewUser,
     ensureState,
-    saveSettings,
     setFirstRunCompleted,
-    resetPreviewData
+    resetPreviewData,
+    destroySandbox
 };

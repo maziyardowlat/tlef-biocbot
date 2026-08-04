@@ -7,9 +7,8 @@
  * turn its own preview off.
  *
  * - POST /api/preview/start     issue a grant for a course, return entry URL
- * - POST /api/preview/stop      revoke the grant
- * - GET  /api/preview/state     grant + settings + first-run status
- * - PUT  /api/preview/settings  bot mode / prompt override / unpublished toggle
+ * - POST /api/preview/stop      revoke the grant and destroy the sandbox
+ * - GET  /api/preview/state     grant + first-run status
  * - POST /api/preview/first-run mark first-run seen, or queue a replay
  * - POST /api/preview/reset     wipe all sandbox data for this course
  */
@@ -19,8 +18,6 @@ const router = express.Router();
 const previewSession = require('../services/previewSession');
 const PreviewState = require('../models/PreviewState');
 const CourseModel = require('../models/Course');
-
-const MAX_PROMPT_OVERRIDE_CHARS = 8000;
 
 /**
  * Resolve the human behind the request, looking past any active preview swap.
@@ -57,10 +54,11 @@ async function canPreviewCourse(db, user, courseId) {
         return { allowed: true };
     }
 
-    const courses = await CourseModel.getCoursesForUser(db, user.userId, user.role);
-    const isMember = Array.isArray(courses) && courses.some(entry => entry.courseId === courseId);
+    // Same check the rest of the instructor surface uses, so a course they can
+    // manage is always a course they can preview.
+    const hasAccess = await CourseModel.userHasCourseAccess(db, courseId, user.userId, user.role);
 
-    if (!isMember) {
+    if (!hasAccess) {
         return { allowed: false, message: 'You do not have access to this course.' };
     }
 
@@ -94,9 +92,6 @@ router.post('/start', async (req, res) => {
         await PreviewState.ensurePreviewUser(db, user, grant);
         const state = await PreviewState.ensureState(db, grant);
 
-        // Mirror stored settings onto the grant so per-request handling can read
-        // them from the session without a database round trip.
-        grant.settings = state.settings;
         req.session.preview = grant;
 
         req.session.save(error => {
@@ -112,7 +107,6 @@ router.post('/start', async (req, res) => {
                     previewUserId: grant.previewUserId,
                     startedAt: grant.startedAt
                 },
-                settings: state.settings,
                 firstRunCompleted: state.firstRunCompleted,
                 // The entry navigation carries the marker in the query string
                 // because a top-level page load cannot set a header.
@@ -127,24 +121,46 @@ router.post('/start', async (req, res) => {
 
 /**
  * POST /api/preview/stop
- * Revoke the grant. The sandbox data is left intact for next time.
+ *
+ * Revoke the grant and destroy the sandbox. Leaving the preview is a full
+ * teardown, not a pause: the next "View as Student" must open on a genuinely
+ * empty student account, with no chat history, quiz attempts, or flashcard
+ * progress carried over from the previous visit.
+ *
+ * The grant is dropped even if the teardown fails, so a database problem can
+ * never strand someone inside a preview they asked to leave.
  */
-router.post('/stop', (req, res) => {
+router.post('/stop', async (req, res) => {
+    const grant = previewSession.getGrant(req);
+    let deleted = null;
+
     try {
-        if (req.session) {
-            delete req.session.preview;
+        const db = req.app.locals.db;
+        const user = getRealUser(req);
+
+        // Only tear down a sandbox belonging to the caller. The grant comes off
+        // their own session so this should always hold, but the check is cheap
+        // next to a delete that spans ten collections.
+        if (db && user && grant && grant.previewUserId && grant.ownerUserId === user.userId) {
+            deleted = await PreviewState.destroySandbox(db, grant.previewUserId);
+        }
+    } catch (error) {
+        console.error('[PREVIEW] Could not destroy the sandbox on stop:', error);
+    }
+
+    try {
+        if (!req.session) {
+            return res.json({ success: true, deleted });
         }
 
-        if (!req.session) {
-            return res.json({ success: true });
-        }
+        delete req.session.preview;
 
         req.session.save(error => {
             if (error) {
                 console.error('[PREVIEW] Failed to clear grant:', error);
                 return res.status(500).json({ success: false, message: 'Could not stop preview' });
             }
-            res.json({ success: true });
+            res.json({ success: true, deleted });
         });
     } catch (error) {
         console.error('[PREVIEW] stop failed:', error);
@@ -154,7 +170,7 @@ router.post('/stop', (req, res) => {
 
 /**
  * GET /api/preview/state
- * Report whether a grant exists and what the sandbox is configured to do.
+ * Report whether a grant exists and how far through first-run the sandbox is.
  */
 router.get('/state', async (req, res) => {
     try {
@@ -182,59 +198,11 @@ router.get('/state', async (req, res) => {
             courseName: course ? (course.courseName || course.courseId) : grant.courseId,
             previewUserId: grant.previewUserId,
             startedAt: grant.startedAt,
-            settings: state.settings,
             firstRunCompleted: state.firstRunCompleted
         });
     } catch (error) {
         console.error('[PREVIEW] state failed:', error);
         res.status(500).json({ success: false, message: 'Could not read preview state' });
-    }
-});
-
-/**
- * PUT /api/preview/settings
- * Update the sandbox's bot mode, prompt override, and unpublished toggle.
- *
- * These are deliberately scoped to the preview: nothing here writes to course
- * settings, so experimenting cannot change what students currently see.
- */
-router.put('/settings', async (req, res) => {
-    try {
-        const db = req.app.locals.db;
-        const user = getRealUser(req);
-        const grant = previewSession.getGrant(req);
-
-        if (!user || !grant || grant.ownerUserId !== user.userId) {
-            return res.status(403).json({ success: false, message: 'No active preview session' });
-        }
-
-        const { mode, promptOverride, showUnpublished } = req.body || {};
-
-        if (typeof promptOverride === 'string' && promptOverride.length > MAX_PROMPT_OVERRIDE_CHARS) {
-            return res.status(400).json({
-                success: false,
-                message: `Prompt override must be ${MAX_PROMPT_OVERRIDE_CHARS} characters or fewer.`
-            });
-        }
-
-        const settings = await PreviewState.saveSettings(db, grant.previewUserId, {
-            mode,
-            promptOverride,
-            showUnpublished
-        });
-
-        // Keep the session copy in step so the next chat request picks it up.
-        req.session.preview = { ...grant, settings };
-
-        req.session.save(error => {
-            if (error) {
-                console.error('[PREVIEW] Failed to persist settings on session:', error);
-            }
-            res.json({ success: true, settings });
-        });
-    } catch (error) {
-        console.error('[PREVIEW] settings update failed:', error);
-        res.status(500).json({ success: false, message: 'Could not update preview settings' });
     }
 });
 

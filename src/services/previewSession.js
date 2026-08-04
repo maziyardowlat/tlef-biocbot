@@ -30,12 +30,6 @@ const PREVIEW_HEADER = 'x-preview-session';
 // effective instructor role (see services/authorization.js).
 const PREVIEW_CAPABLE_ROLES = ['instructor', 'ta'];
 
-const DEFAULT_PREVIEW_SETTINGS = {
-    mode: 'tutor',
-    promptOverride: null,
-    showUnpublished: false
-};
-
 /**
  * Build the namespaced user id used for all data written during a preview.
  *
@@ -130,25 +124,6 @@ function canPreview(user) {
     }
 
     return PREVIEW_CAPABLE_ROLES.includes(user.role);
-}
-
-/**
- * Normalize stored preview settings, dropping anything unrecognized.
- * @param {Object} settings - Raw settings
- * @returns {Object} Normalized settings
- */
-function normalizeSettings(settings) {
-    const source = settings || {};
-    const mode = source.mode === 'protege' ? 'protege' : 'tutor';
-    const promptOverride = typeof source.promptOverride === 'string' && source.promptOverride.trim()
-        ? source.promptOverride
-        : null;
-
-    return {
-        mode,
-        promptOverride,
-        showUnpublished: source.showUnpublished === true
-    };
 }
 
 /**
@@ -329,14 +304,12 @@ function isPreviewRequest(req) {
 module.exports = {
     PREVIEW_USER_PREFIX,
     PREVIEW_HEADER,
-    DEFAULT_PREVIEW_SETTINGS,
     buildPreviewUserId,
     isPreviewUserId,
     parsePreviewUserId,
     canPreview,
     excludePreviewFilter,
     withoutPreviewIds,
-    normalizeSettings,
     createGrant,
     getGrant,
     isPreviewMarked,

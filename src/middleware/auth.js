@@ -432,8 +432,7 @@ function createAuthMiddleware(db) {
                 active: true,
                 grant,
                 courseId: grant.courseId,
-                previewUserId: grant.previewUserId,
-                settings: previewSession.normalizeSettings(grant.settings)
+                previewUserId: grant.previewUserId
             };
             req.user = previewSession.buildPreviewUser(user, grant, persisted);
 
@@ -690,12 +689,13 @@ function createAuthMiddleware(db) {
                 return next();
             }
 
-            // A preview student has no enrollment record and never will —
-            // enrolling it would put a fake student in the course roster. The
-            // grant already proves the previewer has access to this course.
-            if (previewSession.isPreviewRequest(req)) {
-                return next();
-            }
+            // A preview student is deliberately NOT special-cased here. It has
+            // no enrollment record, but getStudentEnrollment answers for it
+            // directly (see models/Course.js) and reports it enrolled in the one
+            // course its id encodes. Short-circuiting instead would drop the
+            // course check entirely and let a preview tab read any course on the
+            // platform by swapping the courseId — /api/chat and /api/quiz have
+            // no other course gate.
 
             // Try to infer courseId
             const courseId = (req.body && req.body.courseId) || req.query.courseId || req.params.courseId;

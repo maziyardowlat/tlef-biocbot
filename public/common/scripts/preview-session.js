@@ -56,20 +56,16 @@
     }
 
     /**
-     * Erase every scrap of client state belonging to a preview sandbox.
+     * Erase the browser-side state owned by a preview sandbox.
      *
-     * Several independent paths can restore a course: the stored course id, the
-     * cached course name, and the autosaved chat, whose metadata carries its own
-     * courseId that the restore path writes back over anything this script
-     * clears. They have to go together or the page ends up in two states at once.
+     * Sandbox keys carry the preview id, so they are safe to match on: a real
+     * student's chat history and autosave on the same browser can never collide
+     * with the namespace, and the instructor's own keys are left alone.
      *
-     * Runs synchronously at parse time, ahead of every page script, so nothing
-     * reads a value that is about to disappear.
-     *
-     * Sandbox keys are recognised by the preview id embedded in them, so a real
-     * student's autosave on the same browser is never touched.
+     * This is the wipe that runs when the previewer leaves — server-side data is
+     * destroyed by /api/preview/stop, and this clears what the browser kept.
      */
-    function wipeSandboxState() {
+    function wipeSandboxKeys() {
         try {
             const doomed = [];
             for (let index = 0; index < localStorage.length; index += 1) {
@@ -80,11 +76,41 @@
             }
 
             doomed.forEach(key => localStorage.removeItem(key));
+        } catch (e) {
+            console.warn('[PREVIEW] Could not clear sandbox keys', e);
+        }
+    }
+
+    /**
+     * Everything wipeSandboxKeys clears, plus the course selection shared with
+     * the instructor's other tabs.
+     *
+     * Only for the first-run walkthrough, whose opening step asks the student to
+     * choose a course: that dropdown renders only when no course is stored.
+     * Clearing the stored course alone is not enough — the autosaved chat
+     * carries its own courseId and the restore path writes it straight back,
+     * leaving a course picker and a half-finished assessment on screen together.
+     *
+     * Runs synchronously at parse time, ahead of every page script, so nothing
+     * reads a value that is about to disappear.
+     */
+    function wipeSandboxState() {
+        wipeSandboxKeys();
+
+        try {
+            // selectedCourseId is shared with the instructor tabs, which read it
+            // to decide which course they are managing. Stash it before clearing
+            // so those pages can restore it instead of falling back to a stale
+            // course and having their requests refused.
+            const currentCourse = localStorage.getItem('selectedCourseId');
+            if (currentCourse) {
+                localStorage.setItem('biocbot_course_before_preview', currentCourse);
+            }
 
             ['selectedCourseId', 'selectedCourseName', 'selectedUnitName', 'lastModeChange']
                 .forEach(key => localStorage.removeItem(key));
         } catch (e) {
-            console.warn('[PREVIEW] Could not clear sandbox state', e);
+            console.warn('[PREVIEW] Could not clear the shared course selection', e);
         }
     }
 
@@ -168,20 +194,49 @@
         state: null,
         /**
          * Leave preview mode and return to the instructor UI.
+         *
+         * Leaving destroys the sandbox rather than parking it: /api/preview/stop
+         * deletes the server-side data, and the browser's copy goes with it, so
+         * opening "View as Student" again starts from an empty student account
+         * with no chat history to find.
+         *
+         * The awaited stop request has to land before the local wipe, because a
+         * failure there is the one case where sandbox data outlives the exit and
+         * the previewer should be told rather than silently returned.
+         *
          * @returns {Promise<void>}
          */
         exit: async function () {
+            let stopped = false;
+
             try {
-                await fetch('/api/preview/stop', { method: 'POST', credentials: 'include' });
+                const response = await fetch('/api/preview/stop', { method: 'POST', credentials: 'include' });
+                const result = await response.json();
+                stopped = !!(result && result.success);
             } catch (e) {
                 console.warn('[PREVIEW] stop request failed', e);
             }
+
+            if (!stopped) {
+                const leaveAnyway = window.confirm(
+                    'Preview data could not be deleted — the server did not respond. Leave the preview anyway? '
+                    + 'The sandbox may still hold this session\'s chats until you exit again.'
+                );
+                if (!leaveAnyway) {
+                    return;
+                }
+            }
+
+            wipeSandboxKeys();
+
             try {
                 sessionStorage.removeItem(STORAGE_KEY);
                 sessionStorage.removeItem(COURSE_KEY);
+                localStorage.removeItem(FIRST_RUN_PENDING_KEY);
             } catch (e) {
                 // Nothing to clean up if storage is unavailable.
             }
+
             window.location.href = '/instructor/home';
         }
     };
@@ -306,37 +361,6 @@
     }
 
     /**
-     * Persist a settings change for this preview.
-     * @param {Object} patch - Settings to merge and save
-     * @returns {Promise<Object|null>} Saved settings
-     */
-    async function saveSettings(patch) {
-        const current = (window.BiocBotPreview.state && window.BiocBotPreview.state.settings) || {};
-        const next = { ...current, ...patch };
-
-        try {
-            const response = await fetch('/api/preview/settings', {
-                method: 'PUT',
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(next)
-            });
-            const result = await response.json();
-
-            if (result && result.success) {
-                window.BiocBotPreview.state.settings = result.settings;
-                return result.settings;
-            }
-
-            console.warn('[PREVIEW] Settings not saved:', result && result.message);
-            return null;
-        } catch (e) {
-            console.warn('[PREVIEW] Settings request failed', e);
-            return null;
-        }
-    }
-
-    /**
      * Flag that the next preview load should replay the first-run walkthrough.
      *
      * The actual clearing happens in wipeSandboxState at bootstrap rather than
@@ -358,7 +382,6 @@
      * @returns {HTMLElement} The banner element
      */
     function buildBanner(state) {
-        const settings = state.settings || {};
         const banner = document.createElement('div');
         banner.className = 'preview-banner';
         banner.setAttribute('role', 'region');
@@ -372,46 +395,45 @@
                     as a student. Nothing here is recorded against a real student.
                 </span>
                 <div class="preview-actions">
-                    <button type="button" class="preview-btn" id="preview-toggle-panel" aria-expanded="false">Preview settings</button>
+                    <button type="button" class="preview-btn" id="preview-toggle-panel" aria-expanded="false">About this preview</button>
                     <button type="button" class="preview-btn preview-btn-exit" id="preview-exit">Exit preview</button>
                 </div>
             </div>
             <div class="preview-panel" id="preview-panel" hidden>
+                <p class="preview-lede">
+                    A sandbox copy of your course as a student sees it — chat, quiz, and flashcards.
+                    It is not a real student's account, and not any particular student's data.
+                </p>
                 <div class="preview-explainer">
-                    <h2>What this is</h2>
-                    <p>
-                        A sandbox copy of your course as a student sees it. You can chat with the bot,
-                        take the quiz, and work through flashcards. It is not a real student's account,
-                        and it is not any particular student's data.
-                    </p>
-
-                    <h3>Nothing here reaches you or your TAs</h3>
-                    <ul>
-                        <li><strong>Flagged messages</strong> — flagging behaves exactly as a student sees it, but no flag is recorded and nobody is notified. Your Flagged Content queue stays untouched.</li>
-                        <li><strong>Thumbs up / thumbs down</strong> — recorded against the sandbox only. It never counts toward your course's feedback list or ratings.</li>
-                        <li><strong>End-of-chat surveys</strong> — same: answered in the sandbox, excluded from your survey results and exports.</li>
-                        <li><strong>Wellbeing check-ins</strong> — detection is switched off entirely in preview, so nothing you type here can raise an alert.</li>
-                    </ul>
-
-                    <h3>Kept, but only for you</h3>
-                    <ul>
-                        <li>Chats, quiz attempts, flashcard progress, and struggle topics are saved so you can pick up where you left off. They are excluded from your dashboard, Student Hub, chat downloads, and every analytic on the instructor side.</li>
-                        <li>The preview student never appears in your course roster and is never enrolled.</li>
-                        <li><strong>Reset preview data</strong> deletes all of it and starts the sandbox over.</li>
-                    </ul>
-
-                    <h3>Worth knowing</h3>
-                    <ul>
-                        <li>Chats here use your course's real LLM settings and prompts, so they consume the same API budget as a student's.</li>
-                        <li>Super Course is not part of the preview — it spans courses beyond this one.</li>
-                        <li>Your instructor session stays signed in in its other tab; closing this one changes nothing.</li>
-                    </ul>
+                    <section>
+                        <h3>Never reaches you or your TAs</h3>
+                        <ul>
+                            <li><strong>Flags</strong> — behave exactly as a student sees, but nothing is recorded and nobody is notified.</li>
+                            <li><strong>Thumbs up / down</strong> — never counts toward your feedback list or ratings.</li>
+                            <li><strong>End-of-chat surveys</strong> — excluded from your results and exports.</li>
+                            <li><strong>Wellbeing detection</strong> — switched off here, so nothing you type can raise an alert.</li>
+                        </ul>
+                    </section>
+                    <section>
+                        <h3>Deleted when you leave</h3>
+                        <ul>
+                            <li><strong>Exit preview</strong> destroys the sandbox: chats, quiz attempts, flashcard progress, and struggle topics are all deleted.</li>
+                            <li>Opening the preview again starts from an empty student account, with the first-run experience ahead of it.</li>
+                            <li>While it exists, none of it reaches your dashboard, Student Hub, chat downloads, or any instructor-side analytic.</li>
+                            <li>The preview student never appears in your roster and is never enrolled.</li>
+                        </ul>
+                    </section>
+                    <section>
+                        <h3>Worth knowing</h3>
+                        <ul>
+                            <li>You see the course exactly as a student does — published units only.</li>
+                            <li>Chats use your course's real LLM settings and prompts, so they spend the same API budget a student would.</li>
+                            <li>Super Course is out of scope — it spans courses beyond this one.</li>
+                            <li>Your instructor session stays signed in in its own tab; closing this one changes nothing.</li>
+                        </ul>
+                    </section>
                 </div>
                 <div class="preview-controls">
-                    <label class="preview-check">
-                        <input type="checkbox" id="preview-show-unpublished">
-                        <span>Include unpublished units</span>
-                    </label>
                     <div class="preview-panel-actions">
                         <button type="button" class="preview-btn" id="preview-replay-first-run">Replay first-run experience</button>
                         <button type="button" class="preview-btn preview-btn-danger" id="preview-reset">Reset preview data</button>
@@ -421,10 +443,7 @@
             </div>
         `;
 
-        const unpublished = banner.querySelector('#preview-show-unpublished');
         const status = banner.querySelector('#preview-status');
-
-        unpublished.checked = settings.showUnpublished === true;
 
         /**
          * Show a short-lived confirmation next to the controls.
@@ -448,14 +467,6 @@
 
         banner.querySelector('#preview-exit').addEventListener('click', () => {
             window.BiocBotPreview.exit();
-        });
-
-        unpublished.addEventListener('change', async event => {
-            const saved = await saveSettings({ showUnpublished: event.target.checked });
-            if (saved) {
-                setStatus('Reloading with the new unit visibility…');
-                window.location.reload();
-            }
         });
 
         banner.querySelector('#preview-replay-first-run').addEventListener('click', async () => {

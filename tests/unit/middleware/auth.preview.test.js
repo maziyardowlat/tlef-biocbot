@@ -224,7 +224,7 @@ describe('allowStudentAssets', () => {
 });
 
 describe('requireStudentEnrolled', () => {
-    test('skips the enrollment check for a preview, which has no record', async () => {
+    test('lets a preview through for the course its grant names', async () => {
         const { middleware } = makeMiddleware();
         const grant = previewSession.createGrant(instructor, COURSE_ID);
         const req = makeRequest({ user: instructor, marked: true, grant });
@@ -237,6 +237,30 @@ describe('requireStudentEnrolled', () => {
 
         expect(next).toHaveBeenCalled();
         expect(res.statusCode).toBeNull();
+    });
+
+    test('refuses a preview reaching for a course outside its grant', async () => {
+        // The whole point of the enrollment check for a preview: /api/chat and
+        // /api/quiz have no course gate of their own, so a preview that skipped
+        // this could read any course on the platform by changing the courseId.
+        const { db, middleware } = makeMiddleware();
+        await db.collection('courses').insertOne({
+            courseId: 'OTHER-101',
+            status: 'active',
+            instructorId: 'someone-else'
+        });
+
+        const grant = previewSession.createGrant(instructor, COURSE_ID);
+        const req = makeRequest({ user: instructor, marked: true, grant });
+        req.body = { courseId: 'OTHER-101' };
+        const res = makeResponse();
+        const next = jest.fn();
+
+        await middleware.resolvePreview(req, makeResponse(), () => {});
+        await middleware.requireStudentEnrolled(req, res, next);
+
+        expect(next).not.toHaveBeenCalled();
+        expect(res.statusCode).toBe(403);
     });
 
     test('a real unenrolled student is still blocked', async () => {

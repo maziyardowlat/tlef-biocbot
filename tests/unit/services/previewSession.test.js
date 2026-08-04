@@ -201,45 +201,6 @@ describe('previewSession.excludePreviewFilter', () => {
     });
 });
 
-describe('previewSession.normalizeSettings', () => {
-    test('falls back to safe defaults', () => {
-        expect(previewSession.normalizeSettings(undefined)).toEqual({
-            mode: 'tutor',
-            promptOverride: null,
-            showUnpublished: false
-        });
-    });
-
-    test('keeps only recognized values', () => {
-        const settings = previewSession.normalizeSettings({
-            mode: 'nonsense',
-            promptOverride: '   ',
-            showUnpublished: 'yes',
-            injected: 'dropped'
-        });
-
-        expect(settings).toEqual({
-            mode: 'tutor',
-            promptOverride: null,
-            showUnpublished: false
-        });
-    });
-
-    test('preserves a real prompt override and protege mode', () => {
-        const settings = previewSession.normalizeSettings({
-            mode: 'protege',
-            promptOverride: 'Act as a confused first-year.',
-            showUnpublished: true
-        });
-
-        expect(settings).toEqual({
-            mode: 'protege',
-            promptOverride: 'Act as a confused first-year.',
-            showUnpublished: true
-        });
-    });
-});
-
 describe('previewSession.isPreviewRequest', () => {
     test('reports only on requests the middleware converted', () => {
         expect(previewSession.isPreviewRequest({ preview: { active: true } })).toBe(true);

@@ -146,6 +146,36 @@ function adjustNavigationForRole() {
     }
 }
 
+const PREVIEW_COURSE_BACKUP_KEY = 'biocbot_course_before_preview';
+
+/**
+ * Put the instructor's selected course back if a preview cleared it.
+ *
+ * A preview replaying the student first-run flow has to start with no course
+ * stored, but localStorage is shared with the instructor tabs, which read the
+ * same key. Without this, instructor pages opened afterwards fall back to a
+ * stale course and their requests are refused.
+ *
+ * Runs at parse time rather than after the auth check, because pages such as
+ * Flagged Content and Download Chats read the course on DOMContentLoaded and
+ * would otherwise race an async restore. Skipped inside a preview tab, which
+ * needs the key to stay empty until its course step is done.
+ */
+(function restoreCourseAfterPreview() {
+    try {
+        if (window.BiocBotPreview && window.BiocBotPreview.active) {
+            return;
+        }
+
+        const backup = localStorage.getItem(PREVIEW_COURSE_BACKUP_KEY);
+        if (backup && !localStorage.getItem('selectedCourseId')) {
+            localStorage.setItem('selectedCourseId', backup);
+        }
+    } catch (error) {
+        console.warn('Could not restore the selected course:', error);
+    }
+})();
+
 /**
  * Add the "View as Student" entry to the bottom of the sidebar nav.
  *
@@ -191,6 +221,14 @@ function seedPreviewWalkthrough(previewUserId, firstRunCompleted) {
     }
 
     try {
+        // Stash the course before the preview tab clears the shared key, so
+        // instructor pages can put it back rather than falling through to a
+        // stale one and having their requests refused.
+        const current = localStorage.getItem('selectedCourseId');
+        if (current) {
+            localStorage.setItem(PREVIEW_COURSE_BACKUP_KEY, current);
+        }
+
         localStorage.removeItem(`biocbot_student_guided_tour_${previewUserId}`);
         localStorage.setItem('biocbot_preview_first_run_pending', '1');
     } catch (error) {
@@ -209,7 +247,11 @@ function seedPreviewWalkthrough(previewUserId, firstRunCompleted) {
  * @returns {Promise<void>}
  */
 async function startStudentPreview(trigger) {
-    const courseId = getCurrentCourseId();
+    // Instructor pages do not all resolve course context the same way: the
+    // shared auth helper is synchronous, while Course Upload, Flagged Content,
+    // and Download Chats provide asynchronous resolvers. Awaiting works for
+    // both and prevents a Promise from being serialized as `courseId: {}`.
+    const courseId = await getCurrentCourseId();
 
     if (!courseId) {
         alert('Select a course first, then open the student preview.');
