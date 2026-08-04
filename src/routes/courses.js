@@ -11,6 +11,7 @@ const DocumentModel = require('../models/Document');
 const QdrantService = require('../services/qdrantService');
 const gridfs = require('../services/gridfs');
 const { hasSystemAdminAccess } = require('../services/authorization');
+const previewSession = require('../services/previewSession');
 const { createId } = require('../services/id');
 const {
     buildKeySubdocument,
@@ -1051,6 +1052,9 @@ router.get('/statistics', async (req, res) => {
         const chatSessionsCollection = db.collection('chat_sessions');
         const allSessions = await chatSessionsCollection.find({
             courseId: { $in: courseIds },
+            // Sandbox transcripts from "View as Student" would inflate student
+            // counts and skew every average below.
+            ...previewSession.excludePreviewFilter('studentId'),
             $or: [
                 { isDeleted: { $exists: false } },
                 { isDeleted: false }
@@ -2450,6 +2454,21 @@ router.get('/available/all', async (req, res) => {
             console.log(`TA ${user.userId} sees ${availableCourses.length} courses (from total ${courses.length})`);
         }
         
+        // In "View as Student" the selector offers the courses the previewer
+        // actually teaches, not every active course on the platform. Picking one
+        // re-points the preview grant, so the list has to stay within what they
+        // are allowed to preview.
+        if (previewSession.isPreviewRequest(req) && req.realUser) {
+            const owner = req.realUser;
+            const isAdmin = !!(owner.permissions && owner.permissions.systemAdmin === true);
+
+            if (!isAdmin) {
+                const ownCourses = await CourseModel.getCoursesForUser(db, owner.userId, owner.role);
+                const ownIds = new Set((ownCourses || []).map(course => course.courseId));
+                availableCourses = availableCourses.filter(course => ownIds.has(course.courseId));
+            }
+        }
+
         availableCourses = sortCoursesWithInactiveLast(availableCourses);
         const canBypassCourseCodes = await userCanBypassCourseCodes(db, user);
 
@@ -3440,17 +3459,30 @@ router.get('/:courseId/students', async (req, res) => {
         const coursesCol = db.collection('courses');
 
         const [prefStudents, chatStudents, courseDoc] = await Promise.all([
-            usersCol.find({ role: 'student', 'preferences.courseId': courseId, isActive: true })
+            // The "View as Student" sandbox has a real user record (parts of the
+            // student UI read from it), so it must be filtered out explicitly or
+            // it appears in this course's student list as a phantom student.
+            usersCol.find({ role: 'student', 'preferences.courseId': courseId, isActive: true, isPreview: { $ne: true } })
                 .project({ userId: 1, username: 1, email: 1, displayName: 1, role: 1, invitedCourses: 1, createdAt: 1, lastLogin: 1, struggleState: 1 })
                 .toArray(),
-            chatCol.distinct('studentId', { courseId }),
+            chatCol.distinct('studentId', { courseId, ...previewSession.excludePreviewFilter('studentId') }),
             coursesCol.findOne({ courseId }, { projection: { studentEnrollment: 1, courseName: 1 } })
         ]);
 
-        const enrollmentMap = (courseDoc && courseDoc.studentEnrollment) || {};
+        // Strip preview sandboxes out of the enrollment overrides before they
+        // reach the merge below. The fallback branch there renders any unknown
+        // enrollment key as a student row using the raw id as a display name,
+        // so a stray preview entry shows up as a student named after its
+        // internal id. Preview writes are blocked at the join route now; this
+        // also hides entries left over from before that guard existed.
+        const rawEnrollmentMap = (courseDoc && courseDoc.studentEnrollment) || {};
+        const enrollmentMap = Object.fromEntries(
+            Object.entries(rawEnrollmentMap)
+                .filter(([studentId]) => !previewSession.isPreviewUserId(studentId))
+        );
 
         const chatStudentUsers = chatStudents.length > 0
-            ? await usersCol.find({ userId: { $in: chatStudents }, role: 'student', isActive: true })
+            ? await usersCol.find({ userId: { $in: chatStudents }, role: 'student', isActive: true, isPreview: { $ne: true } })
                 .project({ userId: 1, username: 1, email: 1, displayName: 1, role: 1, invitedCourses: 1, createdAt: 1, lastLogin: 1, struggleState: 1 })
                 .toArray()
             : [];
@@ -3601,6 +3633,8 @@ router.get('/:courseId/student-enrollment', async (req, res) => {
             return res.status(503).json({ success: false, message: 'Database connection not available' });
         }
 
+        // Preview sandboxes are handled inside getStudentEnrollment, which
+        // reports them enrolled in the one course their id encodes.
         const result = await CourseModel.getStudentEnrollment(db, courseId, user.userId);
         if (!result.success) {
             return res.status(404).json({ success: false, message: 'Course not found' });

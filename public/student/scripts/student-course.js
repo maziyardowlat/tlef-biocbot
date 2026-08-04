@@ -814,8 +814,14 @@ async function getCurrentCourseId() {
 
         const courses = result.data;
 
-        // Only auto-select if there's exactly one course
-        if (courses.length === 1) {
+        // Only auto-select if there's exactly one course.
+        // Suppressed while a student preview is replaying the first-run
+        // walkthrough: its opening step asks the previewer to choose a course,
+        // and auto-selecting behind that step leaves the page showing a course
+        // picker and an already-started assessment at the same time.
+        const previewAwaitingCourseChoice = localStorage.getItem('biocbot_preview_first_run_pending') !== null;
+
+        if (courses.length === 1 && !previewAwaitingCourseChoice) {
 
             // Store it in localStorage for future use
             localStorage.setItem('selectedCourseId', courses[0].courseId);

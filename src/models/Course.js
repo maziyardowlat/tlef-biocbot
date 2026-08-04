@@ -6,6 +6,7 @@
 const { MongoClient } = require('mongodb');
 const { isAcademicApiEnabled } = require('../services/academicApi');
 const { createId } = require('../services/id');
+const { parsePreviewUserId } = require('../services/previewSession');
 
 const COURSE_STATUS = Object.freeze({
     ACTIVE: 'active',
@@ -1721,7 +1722,16 @@ async function getCoursesForUser(db, userId, role) {
  */
 async function userHasCourseAccess(db, courseId, userId, role) {
     const collection = getCoursesCollection(db);
-    
+
+    // A "View as Student" sandbox has no enrollment record, so grant it access
+    // to exactly the course its id encodes. This is self-limiting: the id names
+    // one course, real accounts can never hold an id in this namespace, and the
+    // middleware only assigns one after validating the preview grant.
+    const previewIdentity = parsePreviewUserId(userId);
+    if (previewIdentity) {
+        return previewIdentity.courseId === courseId;
+    }
+
     let query = { courseId, status: { $ne: COURSE_STATUS.DELETED } };
     if (role === 'instructor') {
         query.$or = [
@@ -1931,6 +1941,24 @@ async function getStudentEnrollment(db, courseId, studentId) {
         return { success: false, error: 'Course not found' };
     }
 
+    // A "View as Student" sandbox is enrolled by grant rather than by record —
+    // writing one would put a fake student in the roster. Handled here rather
+    // than at each caller because several route handlers check enrollment
+    // directly instead of going through userHasCourseAccess.
+    //
+    // Inactive courses stay previewable on purpose: instructors check how a
+    // course reads before switching it on. Deleted courses are gone for everyone.
+    const previewIdentity = parsePreviewUserId(studentId);
+    if (previewIdentity) {
+        const allowed = previewIdentity.courseId === courseId && course.status !== 'deleted';
+        return {
+            success: true,
+            enrolled: allowed,
+            status: allowed ? 'enrolled' : 'none',
+            preview: true
+        };
+    }
+
     if (course.status === 'inactive' || course.status === 'deleted') {
         return {
             success: true,
@@ -1972,6 +2000,19 @@ async function joinCourse(db, courseId, studentId, code, options = {}) {
     const collection = getCoursesCollection(db);
     const now = new Date();
     const { skipCodeValidation = false } = options;
+
+    // A "View as Student" sandbox must never enter the enrollment map — it has
+    // access by grant, and an entry here would surface it in the Student Hub
+    // roster as a real student. Report success so the student UI proceeds.
+    const previewIdentity = parsePreviewUserId(studentId);
+    if (previewIdentity) {
+        return {
+            success: previewIdentity.courseId === courseId,
+            enrolled: previewIdentity.courseId === courseId,
+            preview: true,
+            ...(previewIdentity.courseId === courseId ? {} : { error: 'Course not available in this preview' })
+        };
+    }
 
     const course = await collection.findOne({ courseId });
     if (!course) {

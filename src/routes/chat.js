@@ -18,6 +18,7 @@ const profanityFilter = new BadWordsFilter();
 const TrackerService = require('../services/tracker');
 const User = require('../models/User');
 const MentalHealthFlag = require('../models/MentalHealthFlag');
+const previewSession = require('../services/previewSession');
 const gridfs = require('../services/gridfs');
 const { resolveCourseAi, sendLlmKeyError } = require('./llmKeyMiddleware');
 const { evaluateObjectiveAnswer } = require('../services/objectiveAnswer');
@@ -1184,7 +1185,11 @@ router.post('/', async (req, res) => {
 
         // Fire-and-forget: parallel mental health detection LLM call
         // Only send trimmed context: most recent bot message + 2 most recent student messages
-        const appLLMForMH = llmService;
+        // Never runs for a preview: a sentence typed while testing the bot must
+        // not create a mental-health flag or page anyone. The student-facing
+        // safety response still comes through the mode prompts, so the
+        // previewer sees what a student would see.
+        const appLLMForMH = previewSession.isPreviewRequest(req) ? null : llmService;
         if (appLLMForMH && req.user) {
             (async () => {
                 try {
@@ -1231,7 +1236,15 @@ router.post('/', async (req, res) => {
             : false;
 
         // Build lectureNames filter using published units only, ordered by lectures array
-        const publishedLectures = (course.lectures || []).filter(l => l.isPublished).map(l => l.name);
+        // A previewer who turned on "show unpublished" can chat against draft
+        // units, which is the point of proofing content before publishing.
+        const previewShowsUnpublished = previewSession.isPreviewRequest(req)
+            && req.preview.settings.showUnpublished === true;
+
+        const publishedLectures = (course.lectures || [])
+            .filter(l => previewShowsUnpublished || l.isPublished)
+            .map(l => l.name);
+
         if (!publishedLectures.includes(unitName)) {
             return res.status(400).json({ success: false, message: 'Selected unit is not published or does not exist' });
         }
@@ -1395,6 +1408,21 @@ ${conversationHistory}`;
             if (course.prompts.directive) directivePrompt = course.prompts.directive;
         } else {
             console.log('[CHAT_API] Using default prompts');
+        }
+
+        // "View as Student" prompt override. Only honoured for a request that
+        // already proved a valid preview grant, so a student cannot steer the
+        // bot by posting a prompt of their own. It replaces the active mode's
+        // prompt for this request alone and never touches course settings —
+        // instructors iterate here without changing what students see.
+        if (previewSession.isPreviewRequest(req) && req.preview.settings.promptOverride) {
+            const override = req.preview.settings.promptOverride;
+            if (mode === 'protege') {
+                protegePrompt = override;
+            } else {
+                tutorPrompt = override;
+            }
+            console.log('🧪 [CHAT_API] Applied preview prompt override');
         }
 
         // Apply Directive Mode adjustments if active

@@ -5,6 +5,8 @@
 
 const AuthService = require('../services/authService');
 const { hasSystemAdminAccess } = require('../services/authorization');
+const previewSession = require('../services/previewSession');
+const PreviewState = require('../models/PreviewState');
 
 /**
  * Initialize authentication middleware
@@ -372,6 +374,195 @@ function createAuthMiddleware(db) {
     }
 
     /**
+     * Middleware that swaps in a sandboxed student identity for "View as
+     * Student" preview requests.
+     *
+     * Runs globally, before role gating, so that every downstream check —
+     * requireStudent, per-user data lookups, analytics writes — sees a plain
+     * student. The real user stays available on req.realUser for the preview
+     * control endpoints themselves.
+     *
+     * A request is only converted when it carries the per-tab marker AND the
+     * session holds a grant belonging to this same user; see
+     * services/previewSession.js for why both are required.
+     *
+     * @param {Object} req - Express request object
+     * @param {Object} res - Express response object
+     * @param {Function} next - Express next function
+     */
+    async function resolvePreview(req, res, next) {
+        try {
+            // Cheap bail-out: unmarked requests are the overwhelming majority
+            // and must not pay for a user lookup here.
+            if (!previewSession.isPreviewMarked(req)) {
+                return next();
+            }
+
+            let user = req.user;
+
+            if (!user && req.session && req.session.userId) {
+                user = await authService.getUserById(req.session.userId);
+            }
+
+            if (!user) {
+                return next();
+            }
+
+            const grant = previewSession.resolveGrantForRequest(req, user);
+            if (!grant) {
+                // Marked but not granted (e.g. a student sending the header, or
+                // a stale marker after the preview was stopped). Leave the
+                // request exactly as it was and let normal role gating answer.
+                return next();
+            }
+
+            // Load the sandbox's own record so the preview carries the state a
+            // real student would have — most importantly the welcome-flow flag,
+            // which the guided tour reads through /api/auth/me. A synthesized
+            // user without it skips the entire first-run experience.
+            let persisted = null;
+            try {
+                persisted = await authService.getUserById(grant.previewUserId);
+            } catch (error) {
+                console.error('Could not load preview user record:', error);
+            }
+
+            req.realUser = user;
+            req.preview = {
+                active: true,
+                grant,
+                courseId: grant.courseId,
+                previewUserId: grant.previewUserId,
+                settings: previewSession.normalizeSettings(grant.settings)
+            };
+            req.user = previewSession.buildPreviewUser(user, grant, persisted);
+
+            next();
+        } catch (error) {
+            console.error('Error in resolvePreview middleware:', error);
+            next();
+        }
+    }
+
+    /**
+     * Load the real user behind a request without disturbing an active preview swap.
+     * @param {Object} req - Express request object
+     * @returns {Promise<Object|null>} The real authenticated user, or null
+     */
+    async function loadRealUser(req) {
+        if (req.realUser) {
+            return req.realUser;
+        }
+
+        if (req.user && !req.user.isPreview) {
+            return req.user;
+        }
+
+        if (req.session && req.session.userId) {
+            return authService.getUserById(req.session.userId);
+        }
+
+        return null;
+    }
+
+    /**
+     * Whether this request comes from someone holding a valid preview grant.
+     *
+     * Unlike resolvePreview this does not require the per-request marker, so it
+     * must only gate responses that contain no user data — page shells and
+     * static assets. Every data-bearing API keeps the stricter marker+grant
+     * rule, because the marker is what confines the preview to one tab.
+     *
+     * @param {Object} req - Express request object
+     * @returns {Promise<boolean>} True when a usable grant exists
+     */
+    async function hasPreviewGrant(req) {
+        const grant = previewSession.getGrant(req);
+        if (!grant || !grant.ownerUserId) {
+            return false;
+        }
+
+        const user = await loadRealUser(req);
+        if (!user || grant.ownerUserId !== user.userId) {
+            return false;
+        }
+
+        return previewSession.canPreview(user);
+    }
+
+    /**
+     * Gate for student *page* routes that also admits an active previewer.
+     *
+     * Browsers cannot attach headers to a top-level navigation, so a previewer
+     * clicking through the student nav arrives unmarked. Rather than bounce
+     * them out of the preview, redirect once to the same URL carrying the
+     * marker — from there the client keeps the tab marked for its API calls.
+     *
+     * @param {Object} req - Express request object
+     * @param {Object} res - Express response object
+     * @param {Function} next - Express next function
+     */
+    async function requireStudentOrPreview(req, res, next) {
+        try {
+            if (req.user && req.user.role === 'student') {
+                return next();
+            }
+
+            if (await hasPreviewGrant(req)) {
+                // Guarantee the sandbox's user record exists before any page
+                // script runs. Doing this on the page request rather than from
+                // the client avoids a race where a page's first data call beats
+                // the preview bootstrap and 404s on a missing user.
+                try {
+                    await PreviewState.ensurePreviewUser(db, req.realUser || req.user, previewSession.getGrant(req));
+                } catch (error) {
+                    console.error('Failed to prepare preview user record:', error);
+                }
+
+                if (previewSession.isPreviewMarked(req)) {
+                    return next();
+                }
+
+                const separator = req.originalUrl.includes('?') ? '&' : '?';
+                return res.redirect(`${req.originalUrl}${separator}preview=1`);
+            }
+
+            return requireStudent(req, res, next);
+        } catch (error) {
+            console.error('Error in requireStudentOrPreview middleware:', error);
+            return requireStudent(req, res, next);
+        }
+    }
+
+    /**
+     * Gate for the static /student asset mount.
+     *
+     * Scripts and stylesheets are requested by the browser itself, with no
+     * marker available, so a previewer is admitted on the grant alone. These
+     * files are inert and identical for every student.
+     *
+     * @param {Object} req - Express request object
+     * @param {Object} res - Express response object
+     * @param {Function} next - Express next function
+     */
+    async function allowStudentAssets(req, res, next) {
+        try {
+            if (req.user && req.user.role === 'student') {
+                return next();
+            }
+
+            if (await hasPreviewGrant(req)) {
+                return next();
+            }
+
+            return requireStudent(req, res, next);
+        } catch (error) {
+            console.error('Error in allowStudentAssets middleware:', error);
+            return requireStudent(req, res, next);
+        }
+    }
+
+    /**
      * Middleware to check if user is already authenticated
      * Redirects authenticated users away from login page
      * @param {Object} req - Express request object
@@ -499,6 +690,13 @@ function createAuthMiddleware(db) {
                 return next();
             }
 
+            // A preview student has no enrollment record and never will —
+            // enrolling it would put a fake student in the course roster. The
+            // grant already proves the previewer has access to this course.
+            if (previewSession.isPreviewRequest(req)) {
+                return next();
+            }
+
             // Try to infer courseId
             const courseId = (req.body && req.body.courseId) || req.query.courseId || req.params.courseId;
             if (!courseId) {
@@ -570,6 +768,13 @@ function createAuthMiddleware(db) {
                 return next();
             }
 
+            // Previewing an inactive course is legitimate: instructors check
+            // how a course reads before switching it on. Deleted courses stay
+            // blocked for everyone.
+            if (course.status === 'inactive' && previewSession.isPreviewRequest(req)) {
+                return next();
+            }
+
             if (course.status === 'inactive' || course.status === 'deleted') {
                 return res.status(403).json({
                     success: false,
@@ -595,6 +800,9 @@ function createAuthMiddleware(db) {
         requireTA,
         requireInstructorOrTA,
         requireSystemAdmin,
+        resolvePreview,
+        requireStudentOrPreview,
+        allowStudentAssets,
         populateUser,
         redirectIfAuthenticated,
         requireCourseContext,

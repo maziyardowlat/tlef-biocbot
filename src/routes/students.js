@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const CourseModel = require('../models/Course');
 const { hasSystemAdminAccess } = require('../services/authorization');
+const previewSession = require('../services/previewSession');
 
 // Middleware to parse JSON bodies
 router.use(express.json());
@@ -153,8 +154,11 @@ router.get('/:courseId', async (req, res) => {
         
         // Get saved chat sessions for this course (excluding soft deleted)
         const chatSessionsCollection = db.collection('chat_sessions');
-        const chatSessions = await chatSessionsCollection.find({ 
+        const chatSessions = await chatSessionsCollection.find({
             courseId: courseId,
+            // Keep "View as Student" sandbox transcripts out of the roster —
+            // they belong to an instructor testing the bot, not a student.
+            ...previewSession.excludePreviewFilter('studentId'),
             $or: [
                 { isDeleted: { $exists: false } }, // Legacy sessions without isDeleted field
                 { isDeleted: false } // Non-deleted sessions
