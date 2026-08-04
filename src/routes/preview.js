@@ -89,6 +89,14 @@ router.post('/start', async (req, res) => {
         }
 
         const grant = previewSession.createGrant(user, courseId);
+
+        // Opening a preview always opens a new one. Exiting already destroys the
+        // sandbox, but nothing guarantees the previewer exited: closing the tab,
+        // a browser crash, or a request still in flight when /stop ran can all
+        // leave data behind. Clearing it here is what actually makes the promise
+        // hold — no chat history from a previous visit is ever reachable.
+        await PreviewState.destroySandbox(db, grant.previewUserId);
+
         await PreviewState.ensurePreviewUser(db, user, grant);
         const state = await PreviewState.ensureState(db, grant);
 
