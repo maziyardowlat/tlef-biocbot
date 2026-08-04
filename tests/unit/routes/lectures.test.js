@@ -14,6 +14,9 @@ const { makeRouteApp, request } = require('../helpers/route-app');
 const router = require('../../../src/routes/lectures');
 
 const instructor = { userId: 'i1', role: 'instructor' };
+// Enrolled in C1 below — the case that used to satisfy the course-access check
+// on these staff-only routes.
+const enrolledStudent = { userId: 's1', role: 'student' };
 const app = (opts) => makeRouteApp(router, opts);
 
 // Course owned by i1 with a Unit 1 lecture and a valid course key.
@@ -21,6 +24,8 @@ const course = (over = {}) => ({
     courseId: 'C1', courseName: 'Bio', instructorId: 'i1',
     llmApiKey: { status: 'valid', last4: '1234' },
     lectures: [{ name: 'Unit 1', isPublished: false }],
+    studentEnrollment: { s1: { enrolled: true } },
+    status: 'active',
     ...over,
 });
 
@@ -43,6 +48,17 @@ describe('POST /publish', () => {
 
         const stranger = { userId: 'nope', role: 'instructor' };
         expect((await request(app({ db: memoryDb({ courses: [course()] }), user: stranger })).post('/publish').send(body)).status).toBe(403);
+    });
+
+    test('403 for a student enrolled in the course', async () => {
+        // Regression: the gate used to pass req.user.role straight to
+        // userHasCourseAccess, which resolves 'student' through
+        // getStudentEnrollment — so being enrolled was enough to publish.
+        const db = memoryDb({ courses: [course()] });
+        const res = await request(app({ db, user: enrolledStudent }))
+            .post('/publish').send({ lectureName: 'Unit 1', isPublished: true, courseId: 'C1' });
+
+        expect(res.status).toBe(403);
     });
 
     test('publishing requires a valid course API key', async () => {
@@ -98,6 +114,12 @@ describe('GET /publish-status', () => {
         expect(res.status).toBe(403);
     });
 
+    test('403 for a student — the map names unpublished units', async () => {
+        const db = memoryDb({ courses: [course()] });
+        const res = await request(app({ db, user: enrolledStudent })).get('/publish-status?instructorId=i1&courseId=C1');
+        expect(res.status).toBe(403);
+    });
+
     test('returns the lecture→published map for the course instructor', async () => {
         const db = memoryDb({ courses: [course({ lectures: [
             { name: 'Unit 1', isPublished: true },
@@ -149,6 +171,26 @@ describe('POST /pass-threshold', () => {
         expect(res.status).toBe(200);
         expect(res.body.data).toMatchObject({ lectureName: 'Unit 1', passThreshold: 60 });
     });
+
+    test('401 without a user, 403 for a student, 403 for a stranger', async () => {
+        // This route had no authorization at all: the instructorId in the body
+        // was the only thing naming an author, and it was never checked against
+        // the session.
+        const db = memoryDb({ courses: [course()] });
+        expect((await request(app({ db })).post('/pass-threshold').send(base)).status).toBe(401);
+        expect((await request(app({ db, user: enrolledStudent })).post('/pass-threshold').send(base)).status).toBe(403);
+
+        const stranger = { userId: 'nope', role: 'instructor' };
+        expect((await request(app({ db, user: stranger })).post('/pass-threshold').send(base)).status).toBe(403);
+    });
+
+    test('a student cannot pass themselves off as the instructor via the body', async () => {
+        const db = memoryDb({ courses: [course()] });
+        const res = await request(app({ db, user: enrolledStudent }))
+            .post('/pass-threshold').send({ ...base, instructorId: 'i1', passThreshold: 0 });
+
+        expect(res.status).toBe(403);
+    });
 });
 
 describe('GET /pass-threshold', () => {
@@ -158,9 +200,15 @@ describe('GET /pass-threshold', () => {
 
     test('returns the stored threshold for a lecture', async () => {
         const db = memoryDb({ courses: [course({ lectures: [{ name: 'Unit 1', isPublished: true, passThreshold: 75 }] })] });
-        const res = await request(app({ db })).get('/pass-threshold?courseId=C1&lectureName=Unit 1');
+        const res = await request(app({ db, user: instructor })).get('/pass-threshold?courseId=C1&lectureName=Unit 1');
         expect(res.status).toBe(200);
         expect(res.body.data.passThreshold).toBe(75);
+    });
+
+    test('401 without a user, 403 for a student on the course', async () => {
+        const db = memoryDb({ courses: [course()] });
+        expect((await request(app({ db })).get('/pass-threshold?courseId=C1&lectureName=Unit 1')).status).toBe(401);
+        expect((await request(app({ db, user: enrolledStudent })).get('/pass-threshold?courseId=C1&lectureName=Unit 1')).status).toBe(403);
     });
 });
 
@@ -233,7 +281,7 @@ describe('db guards (503) and model failure paths (500)', () => {
 
     test('POST /pass-threshold 500 when the model throws', async () => {
         const spy = jest.spyOn(CourseModel, 'updatePassThreshold').mockRejectedValueOnce(new Error('mongo down'));
-        const res = await request(app({ db: memoryDb({}), user: instructor }))
+        const res = await request(app({ db: memoryDb({ courses: [course()] }), user: instructor }))
             .post('/pass-threshold').send({ courseId: 'C1', lectureName: 'Unit 1', passThreshold: 60, instructorId: 'i1' });
         expect(res.status).toBe(500);
         expect(res.body.message).toMatch(/updating pass threshold/i);
@@ -242,7 +290,7 @@ describe('db guards (503) and model failure paths (500)', () => {
 
     test('GET /pass-threshold 500 when the model throws', async () => {
         const spy = jest.spyOn(CourseModel, 'getPassThreshold').mockRejectedValueOnce(new Error('mongo down'));
-        const res = await request(app({ db: memoryDb({}), user: instructor })).get('/pass-threshold?courseId=C1&lectureName=Unit 1');
+        const res = await request(app({ db: memoryDb({ courses: [course()] }), user: instructor })).get('/pass-threshold?courseId=C1&lectureName=Unit 1');
         expect(res.status).toBe(500);
         expect(res.body.message).toMatch(/fetching pass threshold/i);
         spy.mockRestore();
