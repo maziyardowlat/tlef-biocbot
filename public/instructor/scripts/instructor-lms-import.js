@@ -52,6 +52,9 @@
         biocbotCourse: null,
         linkedCourse: null,
         files: [],
+        // Set on a successful import so the topic-review handoff knows what to
+        // extract topics from.
+        importedDocument: null,
         // Providers the deployment has configured at all; unconfigured ones
         // never get a launcher button.
         available: {}
@@ -492,12 +495,19 @@
             const chunkNote = finished.chunksStored
                 ? ` ${finished.chunksStored} searchable chunks were created.`
                 : ' No searchable chunks were created — the file may have no extractable text.';
+            // An LMS import lands in the same pipeline as a manual upload, so it
+            // gets the same topic review — otherwise struggle-topic tracking
+            // silently ignores everything brought in this way.
+            state.importedDocument = typeof runTopicReviewAfterUpload === 'function'
+                ? { documentId: finished.documentId, name: finished.filename, lectureName: finished.lectureName }
+                : null;
             element('lms-progress-result').textContent =
-                `Imported “${finished.filename}” into ${finished.lectureName}.${chunkNote}`;
+                `Imported “${finished.filename}” into ${finished.lectureName}.${chunkNote}`
+                + (state.importedDocument ? ' Next: review the topics found in it.' : '');
             setMessage('Import complete.', 'success');
             element('lms-import-next').hidden = false;
             element('lms-import-next').disabled = false;
-            element('lms-import-next').textContent = 'Done';
+            element('lms-import-next').textContent = state.importedDocument ? 'Review topics' : 'Done';
             if (typeof loadDocuments === 'function') await loadDocuments();
         } catch (error) {
             renderImportStages(lastStage, { failed: true });
@@ -532,10 +542,33 @@
         refreshNextButton();
     }
 
+    /**
+     * Hands off to the shared topic-review modal. The wizard closes first —
+     * stacking a second modal on top of this one would fight over the focus
+     * trap and leave the instructor unsure which dialog they are answering.
+     */
+    async function reviewImportedTopics() {
+        const imported = state.importedDocument;
+        closeModal();
+        if (!imported?.documentId) return;
+        try {
+            await runTopicReviewAfterUpload(
+                state.biocbotCourse.courseId,
+                imported.documentId,
+                imported.name,
+                imported.lectureName
+            );
+        } catch (error) {
+            console.error('Topic review after LMS import failed:', error);
+            showNotification('The file imported, but topic review could not be completed.', 'error');
+        }
+    }
+
     async function advance() {
         const next = element('lms-import-next');
         const stepId = WIZARD_STEPS[state.stepIndex].id;
 
+        if (next.textContent === 'Review topics') return reviewImportedTopics();
         if (next.textContent === 'Done') return closeModal();
 
         next.disabled = true;
@@ -564,6 +597,7 @@
         state.linkedCourse = null;
         state.files = [];
         state.importing = false;
+        state.importedDocument = null;
         lastFocusedElement = document.activeElement;
 
         const modal = element('lms-import-modal');
