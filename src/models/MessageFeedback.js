@@ -1,4 +1,5 @@
 const { createId } = require('../services/id');
+const { excludePreviewFilter } = require('../services/previewSession');
 
 /**
  * Message Feedback Model for MongoDB
@@ -165,7 +166,12 @@ async function getFeedbackForMessage(db, data) {
 
 async function listFeedbackForCourse(db, courseId, options = {}) {
     const collection = getMessageFeedbackCollection(db);
-    const filter = { courseId: normalizeText(courseId, 120) };
+    // A thumbs up/down given while testing the bot in "View as Student" is the
+    // instructor's own, and would otherwise be read as student feedback.
+    const filter = {
+        courseId: normalizeText(courseId, 120),
+        ...excludePreviewFilter('studentId')
+    };
 
     if (!options.includeCleared) {
         filter.isActive = true;
@@ -195,7 +201,10 @@ async function listFeedbackForCourse(db, courseId, options = {}) {
 
 async function getFeedbackStatsForCourse(db, courseId) {
     const collection = getMessageFeedbackCollection(db);
-    const feedback = await collection.find({ courseId: normalizeText(courseId, 120) }).toArray();
+    const feedback = await collection.find({
+        courseId: normalizeText(courseId, 120),
+        ...excludePreviewFilter('studentId')
+    }).toArray();
 
     return feedback.reduce((stats, item) => {
         stats.total += 1;

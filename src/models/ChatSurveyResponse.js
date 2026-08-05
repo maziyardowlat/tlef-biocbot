@@ -5,6 +5,7 @@
 
 const crypto = require('crypto');
 const { createId } = require('../services/id');
+const { excludePreviewFilter } = require('../services/previewSession');
 
 const COLLECTION_NAME = 'chatSurveyResponses';
 const VALID_EVENT_TYPES = new Set(['shown', 'dismissed', 'submitted']);
@@ -226,7 +227,12 @@ async function getSurveyResponseForSession(db, data = {}) {
 
 async function listSurveyResponsesForCourse(db, courseId, options = {}) {
     const collection = getChatSurveyResponseCollection(db);
-    const filter = { courseId: normalizeText(courseId, 120) };
+    // Survey answers given inside a "View as Student" preview are the
+    // instructor's, and would otherwise be read as student feedback.
+    const filter = {
+        courseId: normalizeText(courseId, 120),
+        ...excludePreviewFilter('studentId')
+    };
 
     if (options.studentId) {
         filter.studentId = normalizeText(options.studentId, 120);
@@ -257,7 +263,10 @@ async function listSurveyResponsesForCourse(db, courseId, options = {}) {
 
 async function getSurveyStatsForCourse(db, courseId) {
     const collection = getChatSurveyResponseCollection(db);
-    const responses = await collection.find({ courseId: normalizeText(courseId, 120) }).toArray();
+    const responses = await collection.find({
+        courseId: normalizeText(courseId, 120),
+        ...excludePreviewFilter('studentId')
+    }).toArray();
 
     const average = (values) => values.length
         ? Number((values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(2))

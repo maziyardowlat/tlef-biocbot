@@ -1,0 +1,233 @@
+/**
+ * Student preview ("View as Student") banner and controls.
+ *
+ * The banner is fixed to the top and the app shell is shifted down by exactly
+ * its collapsed height. The settings panel overlays the page instead of adding
+ * to the banner's height, so opening it never reflows the student UI underneath
+ * — the previewer is judging that layout, and it should not move.
+ */
+
+:root {
+    --preview-banner-height: 48px;
+    --preview-bg: #3d2f6b;
+    --preview-bg-panel: #2f2452;
+    --preview-text: #f4f2ff;
+    --preview-accent: #ffd24a;
+}
+
+.preview-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1200;
+    background-color: var(--preview-bg);
+    color: var(--preview-text);
+    font-size: 0.875rem;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+
+.preview-banner-main {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    height: var(--preview-banner-height);
+    padding: 0 16px;
+}
+
+.preview-badge {
+    flex: 0 0 auto;
+    background-color: var(--preview-accent);
+    color: #2b2140;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    font-size: 0.72rem;
+    padding: 3px 8px;
+    border-radius: 3px;
+}
+
+.preview-summary {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.preview-actions {
+    flex: 0 0 auto;
+    display: flex;
+    gap: 8px;
+}
+
+.preview-btn {
+    background-color: rgba(255, 255, 255, 0.12);
+    color: var(--preview-text);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 4px;
+    padding: 5px 12px;
+    font-size: 0.8125rem;
+    font-family: inherit;
+    cursor: pointer;
+}
+
+.preview-btn:hover {
+    background-color: rgba(255, 255, 255, 0.22);
+}
+
+.preview-btn:focus-visible {
+    outline: 2px solid var(--preview-accent);
+    outline-offset: 2px;
+}
+
+.preview-btn-exit {
+    background-color: var(--preview-accent);
+    color: #2b2140;
+    border-color: var(--preview-accent);
+    font-weight: 600;
+}
+
+.preview-btn-exit:hover {
+    background-color: #ffdd76;
+}
+
+.preview-btn-danger {
+    border-color: rgba(255, 143, 143, 0.7);
+    color: #ffdada;
+}
+
+/* Block layout, not flex: the panel stacks an explainer above a row of
+   controls. As a single flex row the explainer collapsed into a narrow column
+   with the controls stranded alongside it. */
+.preview-panel {
+    background-color: var(--preview-bg-panel);
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+    padding: 16px;
+    display: block;
+    /* The explainer makes the panel tall, so cap it against the viewport and
+       let it scroll rather than pushing the controls off screen. */
+    max-height: calc(100vh - var(--preview-banner-height));
+    overflow-y: auto;
+}
+
+.preview-controls {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px 20px;
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.preview-lede {
+    font-size: 0.875rem;
+    line-height: 1.5;
+    max-width: 90ch;
+    margin: 0 0 16px;
+}
+
+/* Sections sit side by side across the banner's full width. Stacked in one
+   narrow column they ran down the page and pushed the controls out of view. */
+.preview-explainer {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 8px 32px;
+    font-size: 0.8125rem;
+    line-height: 1.5;
+}
+
+.preview-explainer section {
+    min-width: 0;
+}
+
+.preview-explainer h3 {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--preview-accent);
+    margin: 0 0 6px;
+}
+
+/* style.css resets list styling globally, so restore bullets here — without
+   them these read as run-on paragraphs. */
+.preview-explainer ul {
+    margin: 0;
+    padding-left: 20px;
+    list-style: disc outside;
+}
+
+.preview-explainer li {
+    margin-bottom: 3px;
+}
+
+.preview-explainer li strong {
+    color: #fff;
+}
+
+.preview-panel[hidden] {
+    display: none;
+}
+
+/* Checkbox and its text stay on one line: an earlier grid layout let the label
+   wrap one word per line beside a stranded checkbox. */
+.preview-panel-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-left: auto;
+}
+
+.preview-status {
+    color: var(--preview-accent);
+}
+
+/* Make room for the banner by putting it in the flow as the first row of a
+   column layout, rather than offsetting the shell beneath a fixed element.
+   A margin-top on .app-container collapsed out through <body> instead, adding
+   the banner's height to the document and producing a second scrollbar. */
+body.preview-mode {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+body.preview-mode .preview-banner {
+    position: static;
+    flex: 0 0 auto;
+}
+
+body.preview-mode .app-container {
+    flex: 1 1 auto;
+    height: auto;
+    min-height: 0;
+}
+
+/* chat.css sizes the chat box against the full viewport (100vh - 120px). In
+   preview the banner takes a slice of that, so without this the box overflows
+   .main-content and it scrolls behind the chat's own scroller. */
+body.preview-mode .chat-container {
+    height: calc(100vh - 120px - var(--preview-banner-height));
+}
+
+@media (max-width: 768px) {
+    :root {
+        --preview-banner-height: 76px;
+    }
+
+    .preview-banner-main {
+        flex-wrap: wrap;
+        align-content: center;
+        padding: 8px 12px;
+        gap: 8px;
+    }
+
+    .preview-summary {
+        white-space: normal;
+        flex-basis: 100%;
+        order: 3;
+        font-size: 0.8125rem;
+    }
+}

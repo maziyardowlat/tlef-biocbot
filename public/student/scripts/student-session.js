@@ -924,6 +924,44 @@ function initializeNewSessionButton() {
 
 let isRotatingInactiveSession = false;
 
+// Rotating a session posts a notice and then kicks off a transcript rebuild
+// (checkPublishedUnitsAndLoadQuestions) that finishes asynchronously and clears
+// #chat-messages on its way through. The text is held here so the rebuild can
+// put it back, rather than the student watching it flash past and vanish.
+let pendingSessionRotationNotice = null;
+
+function renderSessionRotationNotice() {
+    addMessage(
+        pendingSessionRotationNotice,
+        'bot',
+        false,
+        false,
+        { source: 'System', description: 'System notification' }
+    );
+}
+
+/**
+ * Announce that the chat session was rotated.
+ * @param {string} text - Notice to show in the transcript
+ */
+function postSessionRotationNotice(text) {
+    pendingSessionRotationNotice = text;
+    renderSessionRotationNotice();
+}
+
+/**
+ * Put the rotation notice back into a transcript that has just been rebuilt.
+ *
+ * A no-op unless a rotation is what brought the student here, and it restores
+ * once — later rebuilds in the same session are ordinary navigation.
+ */
+function restoreSessionRotationNotice() {
+    if (!pendingSessionRotationNotice) return;
+
+    renderSessionRotationNotice();
+    pendingSessionRotationNotice = null;
+}
+
 /**
  * Start a clean session when a student returns to a tab after the continuation
  * window has elapsed. Browser timers may pause while a tab or computer sleeps,
@@ -1056,13 +1094,12 @@ async function handleNewSession(options = {}) {
         // Show notification
         showNewSessionNotification(reason);
 
+        // Posted through the pending-notice hand-off rather than written
+        // straight in: the timeout that just expired is the one worth naming,
+        // but the rebuild below reloads the course and can move it.
         if (reason === 'inactivity') {
-            addMessage(
-                `Your previous session ended after ${formatChatSessionTimeout()} of inactivity. A new session has started.`,
-                'bot',
-                false,
-                false,
-                { source: 'System', description: 'System notification' }
+            postSessionRotationNotice(
+                `Your previous session ended after ${formatChatSessionTimeout()} of inactivity. A new session has started.`
             );
         }
 

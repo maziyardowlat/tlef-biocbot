@@ -434,6 +434,12 @@ function showUnitSelectionWelcomeMessage() {
     // Use addMessage to ensure it's properly handled and auto-saved
     // sender='bot', hasFlagButton=false, skipAutoSave=false, sourceAttribution=null, isHtml=true
     addMessage(messageContent, 'bot', false, false, null, true);
+
+    // Both callers clear #chat-messages immediately before this, so this is the
+    // point where a session-rotation notice posted earlier has just been wiped.
+    if (typeof restoreSessionRotationNotice === 'function') {
+        restoreSessionRotationNotice();
+    }
 }
 
 /**

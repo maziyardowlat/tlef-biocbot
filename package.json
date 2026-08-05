@@ -30,7 +30,7 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "@qdrant/js-client-rest": "1.18.0",
+    "@qdrant/js-client-rest": "1.19.0",
     "bad-words": "^3.0.4",
     "bcryptjs": "^2.4.3",
     "connect-mongo": "^5.1.0",

@@ -8,6 +8,8 @@ const express = require('express');
 const passport = require('passport');
 const router = express.Router();
 const { normalizeErrorResponses } = require('../middleware/apiResponse');
+const { isPreviewUserId } = require('../services/previewSession');
+const PreviewState = require('../models/PreviewState');
 
 // Middleware to parse JSON bodies
 router.use(express.json());
@@ -445,6 +447,20 @@ router.post('/student-onboarding/complete', async (req, res) => {
         const result = await authService.completeStudentOnboarding(user.userId);
         if (!result.success) {
             return res.status(400).json({ success: false, error: result.error });
+        }
+
+        // A "View as Student" sandbox tracks the same milestone in its own state
+        // document, which is what the instructor tab reads before deciding
+        // whether to open the preview on the first-run walkthrough. Without this
+        // the two disagree forever: the walkthrough never replays, but the
+        // preview keeps setting itself up as though it were about to.
+        const db = req.app.locals.db;
+        if (db && isPreviewUserId(user.userId)) {
+            try {
+                await PreviewState.setFirstRunCompleted(db, user.userId, true);
+            } catch (error) {
+                console.error('[PREVIEW] Could not record first-run completion:', error);
+            }
         }
 
         return res.json({

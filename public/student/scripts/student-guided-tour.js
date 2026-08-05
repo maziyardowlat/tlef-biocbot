@@ -88,6 +88,14 @@
         return normalizePath(window.location.pathname) === step.path;
     }
 
+    // The walkthrough moves between student pages by assigning location.href,
+    // which drops the ?preview=1 marker an instructor's "View as Student" tab
+    // navigates with. Unmarked, the next page is refused and the tab is sent
+    // back to the instructor UI mid-tour.
+    function stepUrl(path) {
+        return window.BiocBotPreview?.url(path) || path;
+    }
+
     function saveStep(index) {
         stepIndex = index;
         localStorage.setItem(storageKey(), String(index));
@@ -221,7 +229,7 @@
         if (!step) return;
 
         if (!isCorrectPage(step)) {
-            window.location.href = step.path;
+            window.location.href = stepUrl(step.path);
             return;
         }
 
@@ -302,7 +310,7 @@
             localStorage.removeItem(storageKey());
             localStorage.setItem('studentMode', 'tutor');
             finishCleanup();
-            window.location.href = '/student';
+            window.location.href = stepUrl('/student');
         } catch (error) {
             console.error('Error completing student walkthrough:', error);
             const description = card?.querySelector('.student-tour-description');
@@ -346,7 +354,7 @@
             : 0;
 
         if (!isCorrectPage(steps[stepIndex])) {
-            window.location.href = steps[stepIndex].path;
+            window.location.href = stepUrl(steps[stepIndex].path);
             return;
         }
 

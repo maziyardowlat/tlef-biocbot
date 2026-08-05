@@ -37,6 +37,7 @@ const mentalHealthFlagsRoutes = require('./routes/mentalHealthFlags');
 const superChatNotesRoutes = require('./routes/superChatNotes');
 const superchatsRoutes = require('./routes/superchats');
 const academicSyncRoutes = require('./routes/academicSync');
+const previewRoutes = require('./routes/preview');
 const LLMService = require('./services/llm');
 const LlmRegistry = require('./services/llmRegistry');
 const AuthService = require('./services/authService');
@@ -294,6 +295,11 @@ app.get('/test-qdrant', async (req, res) => {
  * Set up protected routes after authentication middleware is initialized
  */
 function setupProtectedRoutes() {
+    // Runs ahead of every protected route below so that "View as Student"
+    // requests are already wearing the sandboxed student identity by the time
+    // role gating and data handlers see them.
+    app.use(authMiddleware.resolvePreview);
+
     const redirectTATo = (targetPath) => (req, res, next) => {
         if (req.user && req.user.role === 'ta') {
             return res.redirect(targetPath);
@@ -317,7 +323,7 @@ function setupProtectedRoutes() {
     });
 
     // Protected static files
-    app.use('/student', authMiddleware.requireStudent, express.static(path.join(__dirname, '../public/student')));
+    app.use('/student', authMiddleware.allowStudentAssets, express.static(path.join(__dirname, '../public/student')));
     app.use('/instructor', authMiddleware.requireInstructorOrTA, express.static(path.join(__dirname, '../public/instructor')));
     app.use('/ta', authMiddleware.requireTA, express.static(path.join(__dirname, '../public/ta')));
 
@@ -327,29 +333,31 @@ function setupProtectedRoutes() {
     });
 
     // Student routes (protected)
-    app.get('/student', authMiddleware.requireStudent, (req, res) => {
+    app.get('/student', authMiddleware.requireStudentOrPreview, (req, res) => {
         res.sendFile(path.join(__dirname, '../public/student/index.html'));
     });
 
-    app.get('/student/history', authMiddleware.requireStudent, (req, res) => {
+    app.get('/student/history', authMiddleware.requireStudentOrPreview, (req, res) => {
         res.sendFile(path.join(__dirname, '../public/student/history.html'));
     });
 
     // Student flagged content page
-    app.get('/student/flagged', authMiddleware.requireStudent, (req, res) => {
+    app.get('/student/flagged', authMiddleware.requireStudentOrPreview, (req, res) => {
         res.sendFile(path.join(__dirname, '../public/student/flagged.html'));
     });
 
     // Student quiz practice page
-    app.get('/student/quiz', authMiddleware.requireStudent, (req, res) => {
+    app.get('/student/quiz', authMiddleware.requireStudentOrPreview, (req, res) => {
         res.sendFile(path.join(__dirname, '../public/student/quiz.html'));
     });
 
-    app.get('/student/flashcards', authMiddleware.requireStudent, (req, res) => {
+    app.get('/student/flashcards', authMiddleware.requireStudentOrPreview, (req, res) => {
         res.sendFile(path.join(__dirname, '../public/student/flashcards.html'));
     });
 
     // Student Super Course chat page
+    // Super Course spans courses beyond the one being previewed, so it stays
+    // outside the preview sandbox; the nav item is hidden in preview too.
     app.get('/student/super-course', authMiddleware.requireStudent, (req, res) => {
         res.sendFile(path.join(__dirname, '../public/student/super-course.html'));
     });
@@ -592,6 +600,11 @@ function setupAPIRoutes() {
     app.use('/api/quiz', authMiddleware.requireAuth, authMiddleware.populateUser, authMiddleware.requireActiveCourseForNonInstructors, authMiddleware.requireStudentEnrolled, quizRoutes);
     app.use('/api/flashcards', authMiddleware.requireAuth, authMiddleware.populateUser, authMiddleware.requireActiveCourseForNonInstructors, authMiddleware.requireStudentEnrolled, flashcardRoutes);
     app.use('/api/mental-health-flags', authMiddleware.requireAuth, authMiddleware.populateUser, authMiddleware.requireActiveCourseForNonInstructors, mentalHealthFlagsRoutes);
+
+    // Preview control plane. Deliberately mounted without a role gate: calls
+    // arrive from a tab that is already wearing the sandboxed student identity,
+    // and each handler authorizes against the real user behind the preview.
+    app.use('/api/preview', authMiddleware.requireAuth, authMiddleware.populateUser, previewRoutes);
 
     // Test-only routes for scripting the LLM stub. Gated by BIOCBOT_TEST_LLM_STUB
     // so they are unreachable in production runs (no flag = no router mounted).

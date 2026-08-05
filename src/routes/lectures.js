@@ -4,9 +4,47 @@ const router = express.Router();
 // Import the Course model
 const CourseModel = require('../models/Course');
 const { isKeyValid, structuredKeyError } = require('../services/llmKeyStore');
+const { hasSystemAdminAccess } = require('../services/authorization');
 
 // Middleware for JSON parsing
 router.use(express.json());
+
+/**
+ * Whether a user may read or change the course-content settings in this router.
+ *
+ * Every route here is instructor-facing — publishing a unit and setting a pass
+ * threshold both change what students see, and the publish-status map lists
+ * unpublished unit names. The role has to be checked *before* course access:
+ * userHasCourseAccess resolves a 'student' role through getStudentEnrollment,
+ * so passing req.user.role straight through returns true for any enrolled
+ * student and hands them the instructor's controls.
+ *
+ * Mirrors the gate used by documents.js, questions.js, and qdrant.js.
+ *
+ * @param {Object} db - MongoDB database instance
+ * @param {Object} user - Authenticated user
+ * @param {string} courseId - Course being acted on
+ * @returns {Promise<boolean>} True when the user may manage this course
+ */
+async function canManageCourseContent(db, user, courseId) {
+    if (!user) {
+        return false;
+    }
+
+    if (hasSystemAdminAccess(user)) {
+        return true;
+    }
+
+    if (user.role === 'instructor') {
+        return CourseModel.userHasCourseAccess(db, courseId, user.userId, 'instructor');
+    }
+
+    if (user.role === 'ta') {
+        return CourseModel.checkTAPermission(db, courseId, user.userId, 'courses');
+    }
+
+    return false;
+}
 
 /**
  * POST /api/lectures/publish
@@ -38,7 +76,7 @@ router.post('/publish', async (req, res) => {
         if (!user) {
             return res.status(401).json({ success: false, message: 'Authentication required' });
         }
-        const hasAccess = await CourseModel.userHasCourseAccess(db, courseId, user.userId, user.role);
+        const hasAccess = await canManageCourseContent(db, user, courseId);
         if (!hasAccess) {
             return res.status(403).json({ success: false, message: 'No access to this course' });
         }
@@ -143,7 +181,9 @@ router.get('/publish-status', async (req, res) => {
             });
         }
 
-        const hasAccess = await CourseModel.userHasCourseAccess(db, courseId, user.userId, user.role);
+        // The map names every unit including the unpublished ones, so it stays
+        // on the staff side of the fence.
+        const hasAccess = await canManageCourseContent(db, user, courseId);
         if (!hasAccess) {
             return res.status(403).json({ success: false, message: 'No access to this course' });
         }
@@ -221,13 +261,13 @@ router.get('/student-visible', async (req, res) => {
  * Update the pass threshold for a specific lecture
  */
 router.post('/pass-threshold', async (req, res) => {
-    const { courseId, lectureName, passThreshold, instructorId } = req.body;
+    const { courseId, lectureName, passThreshold } = req.body;
     
     // Validate required fields
-    if (!courseId || !lectureName || typeof passThreshold !== 'number' || !instructorId) {
+    if (!courseId || !lectureName || typeof passThreshold !== 'number') {
         return res.status(400).json({
             success: false,
-            message: 'Missing required fields: courseId, lectureName, passThreshold (number), instructorId'
+            message: 'Missing required fields: courseId, lectureName, passThreshold (number)'
         });
     }
     
@@ -248,15 +288,36 @@ router.post('/pass-threshold', async (req, res) => {
                 message: 'Database connection not available'
             });
         }
-        
+
+        // Authorize and attribute the update from the session, never from a
+        // caller-supplied instructorId. Otherwise an authorized staff member
+        // could forge another user's id in the course audit metadata.
+        const user = req.user;
+        if (!user) {
+            return res.status(401).json({ success: false, message: 'Authentication required' });
+        }
+
+        const hasAccess = await canManageCourseContent(db, user, courseId);
+        if (!hasAccess) {
+            return res.status(403).json({ success: false, message: 'No access to this course' });
+        }
+
         // Update the pass threshold in MongoDB
         const result = await CourseModel.updatePassThreshold(
             db, 
             courseId, 
             lectureName, 
             passThreshold, 
-            instructorId
+            user.userId
         );
+
+        if (!result.success) {
+            const status = /not found|no longer exists/i.test(result.error || '') ? 404 : 400;
+            return res.status(status).json({
+                success: false,
+                message: result.error || 'Failed to update pass threshold'
+            });
+        }
         
         console.log(`Pass threshold updated for ${lectureName}: ${passThreshold}`);
         
@@ -268,7 +329,7 @@ router.post('/pass-threshold', async (req, res) => {
                 lectureName,
                 passThreshold,
                 updatedAt: new Date().toISOString(),
-                instructorId
+                instructorId: user.userId
             }
         });
         
@@ -305,9 +366,22 @@ router.get('/pass-threshold', async (req, res) => {
             });
         }
         
+        // Staff-only, like the POST above. Students receive the threshold for
+        // published units through /published-with-questions, which is scoped to
+        // what they are allowed to see.
+        const user = req.user;
+        if (!user) {
+            return res.status(401).json({ success: false, message: 'Authentication required' });
+        }
+
+        const hasAccess = await canManageCourseContent(db, user, courseId);
+        if (!hasAccess) {
+            return res.status(403).json({ success: false, message: 'No access to this course' });
+        }
+
         // Fetch pass threshold from MongoDB
         const passThreshold = await CourseModel.getPassThreshold(db, courseId, lectureName);
-        
+
         res.json({
             success: true,
             data: {

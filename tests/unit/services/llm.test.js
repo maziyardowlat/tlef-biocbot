@@ -279,22 +279,30 @@ describe('provider error handling', () => {
     test('describeImage retries a transient error and recovers', async () => {
         const service = readyService();
         // Run backoff sleeps instantly so the test doesn't wait on real timers.
-        const timeoutSpy = jest.spyOn(global, 'setTimeout').mockImplementation((fn) => { fn(); return 0; });
-        mockToolkitInstance.sendConversation
-            .mockRejectedValueOnce(new Error('429 rate limit'))
-            .mockResolvedValueOnce({ content: 'Recovered description.' });
-        await expect(service.describeImage('b64', 'image/png')).resolves.toBe('Recovered description.');
-        expect(mockToolkitInstance.sendConversation).toHaveBeenCalledTimes(2);
-        timeoutSpy.mockRestore();
+        const realSetTimeout = global.setTimeout;
+        global.setTimeout = (fn) => { fn(); return 0; };
+        try {
+            mockToolkitInstance.sendConversation
+                .mockRejectedValueOnce(new Error('429 rate limit'))
+                .mockResolvedValueOnce({ content: 'Recovered description.' });
+            await expect(service.describeImage('b64', 'image/png')).resolves.toBe('Recovered description.');
+            expect(mockToolkitInstance.sendConversation).toHaveBeenCalledTimes(2);
+        } finally {
+            global.setTimeout = realSetTimeout;
+        }
     });
 
     test('describeImage rethrows a persistent non-key error after exhausting retries', async () => {
         const service = readyService();
-        const timeoutSpy = jest.spyOn(global, 'setTimeout').mockImplementation((fn) => { fn(); return 0; });
-        mockToolkitInstance.sendConversation.mockRejectedValue(new Error('conversation network blip'));
-        await expect(service.describeImage('b64', 'image/png')).rejects.toThrow('conversation network blip');
-        expect(mockToolkitInstance.sendConversation).toHaveBeenCalledTimes(4);
-        timeoutSpy.mockRestore();
+        const realSetTimeout = global.setTimeout;
+        global.setTimeout = (fn) => { fn(); return 0; };
+        try {
+            mockToolkitInstance.sendConversation.mockRejectedValue(new Error('conversation network blip'));
+            await expect(service.describeImage('b64', 'image/png')).rejects.toThrow('conversation network blip');
+            expect(mockToolkitInstance.sendConversation).toHaveBeenCalledTimes(4);
+        } finally {
+            global.setTimeout = realSetTimeout;
+        }
     });
 
     test('describeImage does not retry an LlmKeyError', async () => {

@@ -101,6 +101,15 @@ function matchesOperators(docValue, cond) {
                     : new RegExp(val, cond.$options || '');
                 return typeof docValue === 'string' && pattern.test(docValue);
             }
+            case '$not': {
+                // Mongo's $not takes a regex or an operator document, and a
+                // missing field counts as "not matching" — so an absent field
+                // satisfies $not, unlike most operators here.
+                if (val instanceof RegExp) {
+                    return !(typeof docValue === 'string' && val.test(docValue));
+                }
+                return !matchesOperators(docValue, val);
+            }
             case '$options':
                 return true;
             default:

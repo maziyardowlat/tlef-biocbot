@@ -5,6 +5,8 @@
  * Maintains a set of unique student IDs to ensure each student is counted only once per topic.
  */
 
+const { isPreviewUserId } = require('../services/previewSession');
+
 const COLLECTION_NAME = 'persistenceTopics';
 
 /**
@@ -29,6 +31,13 @@ function escapeRegExp(value) {
  * @returns {Promise<Object>} Update result
  */
 async function incrementStudentCount(db, courseId, topic, userId) {
+    // studentCount is a materialized field, so a "View as Student" sandbox is
+    // excluded at write time rather than filtered on read — otherwise the
+    // stored count would permanently include the instructor.
+    if (isPreviewUserId(userId)) {
+        return { skipped: true, reason: 'preview' };
+    }
+
     const collection = getPersistenceTopicsCollection(db);
     const normalizedTopic = topic.toLowerCase().trim();
     const now = new Date();

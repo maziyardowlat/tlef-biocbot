@@ -10,6 +10,7 @@ const router = express.Router();
 const FlaggedQuestionModel = require('../models/FlaggedQuestion');
 const CourseModel = require('../models/Course');
 const { hasSystemAdminAccess } = require('../services/authorization');
+const previewSession = require('../services/previewSession');
 
 const SUPER_COURSE_FLAG_COURSE_ID = 'SUPER_COURSE';
 const VALID_BOT_MODES = new Set(['protege', 'tutor', 'supercourse-student', 'supercourse-instructor']);
@@ -264,6 +265,24 @@ router.post('/', async (req, res) => {
                     message: 'Course not found'
                 });
             }
+        }
+
+        // In "View as Student" the flag UI must behave exactly as a student
+        // sees it, but nothing may reach the real flag queue — an instructor
+        // testing the button should not create work for themselves or their
+        // TAs. Acknowledge and stop before both the enrollment check (a preview
+        // student has no enrollment record) and the write.
+        if (previewSession.isPreviewRequest(req)) {
+            console.log('🧪 [FLAGS] Preview flag acknowledged without persisting');
+            return res.json({
+                success: true,
+                message: 'Question flagged successfully!',
+                preview: true,
+                data: {
+                    questionId,
+                    courseId: effectiveCourseId
+                }
+            });
         }
 
         const hasCourseAccess = await canCreateFlagForCourse(db, user, effectiveCourseId, superCourseFlag);

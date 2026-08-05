@@ -137,8 +137,153 @@ function adjustNavigationForRole() {
             checkQuizNavVisibility();
             checkSuperCourseNavVisibility();
         }
+
+        if (currentUser.role === 'instructor' || currentUser.role === 'ta') {
+            addStudentPreviewNavItem();
+        }
     } catch (e) {
         console.warn('adjustNavigationForRole failed:', e);
+    }
+}
+
+const PREVIEW_COURSE_BACKUP_KEY = 'biocbot_course_before_preview';
+
+/**
+ * Put the instructor's selected course back if a preview cleared it.
+ *
+ * A preview replaying the student first-run flow has to start with no course
+ * stored, but localStorage is shared with the instructor tabs, which read the
+ * same key. Without this, instructor pages opened afterwards fall back to a
+ * stale course and their requests are refused.
+ *
+ * Runs at parse time rather than after the auth check, because pages such as
+ * Flagged Content and Download Chats read the course on DOMContentLoaded and
+ * would otherwise race an async restore. Skipped inside a preview tab, which
+ * needs the key to stay empty until its course step is done.
+ */
+(function restoreCourseAfterPreview() {
+    try {
+        if (window.BiocBotPreview && window.BiocBotPreview.active) {
+            return;
+        }
+
+        const backup = localStorage.getItem(PREVIEW_COURSE_BACKUP_KEY);
+        if (backup && !localStorage.getItem('selectedCourseId')) {
+            localStorage.setItem('selectedCourseId', backup);
+        }
+    } catch (error) {
+        console.warn('Could not restore the selected course:', error);
+    }
+})();
+
+/**
+ * Add the "View as Student" entry to the bottom of the sidebar nav.
+ *
+ * Injected here rather than hard-coded into each sidebar so the entry point
+ * cannot drift between the ten instructor pages and the three TA pages.
+ */
+function addStudentPreviewNavItem() {
+    const navList = document.querySelector('.main-nav ul');
+    if (!navList || document.getElementById('nav-student-preview')) {
+        return;
+    }
+
+    const item = document.createElement('li');
+    item.id = 'nav-student-preview-li';
+    item.innerHTML = '<a href="#" id="nav-student-preview">View as Student</a>';
+
+    // Sits last in the nav list, directly above the Settings/Logout block.
+    navList.appendChild(item);
+
+    item.querySelector('#nav-student-preview').addEventListener('click', async event => {
+        event.preventDefault();
+        await startStudentPreview(event.currentTarget);
+    });
+}
+
+/**
+ * Let a first-time preview open on the student walkthrough's course step.
+ *
+ * That step's dropdown only renders when no course is stored, so the preview
+ * tab must not pin one until the previewer has chosen it. Flagged from this tab
+ * because localStorage is shared between the two, and the preview tab cannot
+ * know whether this is a first run early enough in its own startup.
+ *
+ * The instructor's own stored course is left alone: the preview tab clears it
+ * for itself and restores pinning as soon as the step is done.
+ *
+ * @param {string} previewUserId - Namespaced preview user id
+ * @param {boolean} firstRunCompleted - Whether the walkthrough already ran
+ */
+function seedPreviewWalkthrough(previewUserId, firstRunCompleted) {
+    if (!previewUserId || firstRunCompleted) {
+        return;
+    }
+
+    try {
+        // Stash the course before the preview tab clears the shared key, so
+        // instructor pages can put it back rather than falling through to a
+        // stale one and having their requests refused.
+        const current = localStorage.getItem('selectedCourseId');
+        if (current) {
+            localStorage.setItem(PREVIEW_COURSE_BACKUP_KEY, current);
+        }
+
+        localStorage.removeItem(`biocbot_student_guided_tour_${previewUserId}`);
+        localStorage.setItem('biocbot_preview_first_run_pending', '1');
+    } catch (error) {
+        console.warn('Could not prepare the preview walkthrough:', error);
+    }
+}
+
+/**
+ * Open a sandboxed student view of the current course in a new tab.
+ *
+ * A new tab rather than a redirect: the point of the feature is to change a
+ * prompt on one side and watch the effect on the other, which needs both
+ * sessions alive at once.
+ *
+ * @param {HTMLElement} trigger - The clicked nav link, disabled while starting
+ * @returns {Promise<void>}
+ */
+async function startStudentPreview(trigger) {
+    // Instructor pages do not all resolve course context the same way: the
+    // shared auth helper is synchronous, while Course Upload, Flagged Content,
+    // and Download Chats provide asynchronous resolvers. Awaiting works for
+    // both and prevents a Promise from being serialized as `courseId: {}`.
+    const courseId = await getCurrentCourseId();
+
+    if (!courseId) {
+        alert('Select a course first, then open the student preview.');
+        return;
+    }
+
+    const originalText = trigger.textContent;
+    trigger.textContent = 'Opening…';
+    trigger.style.pointerEvents = 'none';
+
+    try {
+        const response = await fetch('/api/preview/start', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ courseId })
+        });
+
+        const result = await response.json();
+
+        if (result && result.success) {
+            seedPreviewWalkthrough(result.grant && result.grant.previewUserId, result.firstRunCompleted);
+            window.open(result.entryUrl, '_blank', 'noopener');
+        } else {
+            alert((result && result.message) || 'Could not open the student preview.');
+        }
+    } catch (error) {
+        console.error('Failed to start student preview:', error);
+        alert('Could not open the student preview.');
+    } finally {
+        trigger.textContent = originalText;
+        trigger.style.pointerEvents = '';
     }
 }
 

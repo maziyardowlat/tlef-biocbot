@@ -109,10 +109,14 @@ async function loadHarness(page, options = {}) {
         body: JSON.stringify({ success: true, llmIndex: null, reasoningIndex: null }),
     }));
 
+    // Shape has to match the real route ({ success, data: { hasAgreed } }).
+    // A flat hasAgreed makes the modal's status check throw, and it falls back
+    // to showing the agreement dialog, which then swallows clicks on the
+    // notifications under test.
     await page.route('**/api/user-agreement/status', (route) => route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify({ success: true, hasAgreed: true }),
+        body: JSON.stringify({ success: true, data: { hasAgreed: true } }),
     }));
 
     await page.route('**/api/courses/*/student-enrollment', (route) => route.fulfill({

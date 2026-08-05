@@ -5,6 +5,8 @@
  * Each entry represents a state change (Active/Inactive) for a topic.
  */
 
+const { excludePreviewFilter } = require('../services/previewSession');
+
 const COLLECTION_NAME = 'struggleActivity';
 
 /**
@@ -68,7 +70,9 @@ async function getActivityByCourse(db, courseId, options = {}) {
     const collection = getStruggleActivityCollection(db);
     const limit = options.limit || 100;
 
-    const query = { courseId };
+    // Struggle logged by a "View as Student" sandbox is an instructor probing
+    // the bot, not a student in difficulty — it must not reach the dashboard.
+    const query = { courseId, ...excludePreviewFilter('userId') };
     if (options.state) {
         query.state = options.state;
     }
@@ -166,7 +170,10 @@ async function getWeeklyActiveTopics(db, courseId, options = {}) {
 
     const match = {
         state: 'Active',
-        timestamp: { $gte: startDate }
+        timestamp: { $gte: startDate },
+        // Excluded here as well as in getActivityByCourse: this feeds the
+        // weekly student-count chart, where one sandbox would read as a student.
+        ...excludePreviewFilter('userId')
     };
     // Omit courseId to aggregate across every course (global Super Chat view).
     if (courseId) {

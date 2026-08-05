@@ -18,6 +18,7 @@ const profanityFilter = new BadWordsFilter();
 const TrackerService = require('../services/tracker');
 const User = require('../models/User');
 const MentalHealthFlag = require('../models/MentalHealthFlag');
+const previewSession = require('../services/previewSession');
 const gridfs = require('../services/gridfs');
 const { resolveCourseAi, sendLlmKeyError } = require('./llmKeyMiddleware');
 const { evaluateObjectiveAnswer } = require('../services/objectiveAnswer');
@@ -1184,7 +1185,11 @@ router.post('/', async (req, res) => {
 
         // Fire-and-forget: parallel mental health detection LLM call
         // Only send trimmed context: most recent bot message + 2 most recent student messages
-        const appLLMForMH = llmService;
+        // Never runs for a preview: a sentence typed while testing the bot must
+        // not create a mental-health flag or page anyone. The student-facing
+        // safety response still comes through the mode prompts, so the
+        // previewer sees what a student would see.
+        const appLLMForMH = previewSession.isPreviewRequest(req) ? null : llmService;
         if (appLLMForMH && req.user) {
             (async () => {
                 try {

@@ -209,7 +209,7 @@ test.describe('updateLearningObjectives (via POST /api/learning-objectives)', ()
 test.describe('updatePassThreshold (via POST /api/lectures/pass-threshold)', () => {
     test.use({ storageState: storageStatePath('instructor') });
 
-    test('200 wrapper but model returns "Course not found" for bogus courseId', async ({ request: api }) => {
+    test('403 for a bogus courseId — no access to a course that does not exist', async ({ request: api }) => {
         const res = await api.post('/api/lectures/pass-threshold', {
             data: {
                 courseId: COURSE_NONEXISTENT,
@@ -218,12 +218,14 @@ test.describe('updatePassThreshold (via POST /api/lectures/pass-threshold)', () 
                 instructorId,
             },
         });
-        // Route swallows the failure and replies 200 — driving the model's
-        // "Course not found" branch nonetheless.
-        expect(res.status()).toBe(200);
+        // This route used to have no authorization at all, so it reached the
+        // model and swallowed its "Course not found" into a 200. Now the access
+        // check runs first and nothing unknown gets that far. The model branch
+        // itself stays covered by tests/unit/models/Course.coverage.test.js.
+        expect(res.status()).toBe(403);
     });
 
-    test('200 wrapper but model returns "Lecture not found" for unknown unit', async ({ request: api }) => {
+    test('404 when the model reports "Lecture not found" for an unknown unit', async ({ request: api }) => {
         await seedCourse({ courseId: COURSE_MAIN, instructorId });
         const res = await api.post('/api/lectures/pass-threshold', {
             data: {
@@ -233,7 +235,7 @@ test.describe('updatePassThreshold (via POST /api/lectures/pass-threshold)', () 
                 instructorId,
             },
         });
-        expect(res.status()).toBe(200);
+        expect(res.status()).toBe(404);
         const doc = await withDb((db) => db.collection('courses').findOne({ courseId: COURSE_MAIN }));
         const u1 = doc.lectures.find((l) => l.name === 'Unit 1');
         // Default threshold from seedCourse is 2 — unchanged.
@@ -286,13 +288,15 @@ test.describe('getters return empty arrays / defaults for missing data', () => {
         expect(body.data.publishStatus).toEqual({});
     });
 
-    test('GET /api/lectures/pass-threshold returns 0 when course missing', async ({ request: api }) => {
+    test('GET /api/lectures/pass-threshold 403s for a course that does not exist', async ({ request: api }) => {
         const res = await api.get(
-            `/api/lectures/pass-threshold?courseId=${COURSE_NONEXISTENT}&lectureName=Unit%201`
+            `/api/lectures/pass-threshold?courseId=${COURSE_NONEXISTENT}&lectureName=Unit%201`,
+            { failOnStatusCode: false }
         );
-        expect(res.ok()).toBeTruthy();
-        const body = await res.json();
-        expect(body.data.passThreshold).toBe(0);
+        // Staff-only since the route gained an access check; the model's
+        // "missing course returns 0" branch is covered in
+        // tests/unit/models/Course.db.test.js.
+        expect(res.status()).toBe(403);
     });
 
     test('GET /api/lectures/pass-threshold returns 0 when lecture missing on real course', async ({ request: api }) => {
@@ -364,39 +368,39 @@ test.describe('getters return empty arrays / defaults for missing data', () => {
 });
 
 // ---------------------------------------------------------------------------
-// userHasCourseAccess — the student branch. POST /api/lectures/publish trusts
-// req.user.role and forwards it directly into the model.
+// userHasCourseAccess — the student branch, driven through GET /api/flags/my.
+//
+// This used to run through POST /api/lectures/publish, which forwarded
+// req.user.role straight into the model and so accepted any enrolled student —
+// a staff-only route a student could reach. That route is now gated on role
+// before course access, so it can no longer reach the student branch at all.
+// /api/flags/my is the right vehicle instead: it passes 'student' explicitly
+// and is genuinely a student endpoint, so the same model branches are exercised
+// without depending on a hole.
 // ---------------------------------------------------------------------------
-test.describe('userHasCourseAccess (student branch via POST /api/lectures/publish)', () => {
+test.describe('userHasCourseAccess (student branch via GET /api/flags/my)', () => {
     test.use({ storageState: storageStatePath('student') });
 
     test('403 when student is not enrolled — exercises status:active + missing studentEnrollment', async ({ request: api }) => {
         await seedCourse({ courseId: COURSE_MAIN, instructorId });
-        const res = await api.post('/api/lectures/publish', {
-            data: { courseId: COURSE_MAIN, lectureName: 'Unit 1', isPublished: true },
-        });
+        const res = await api.get(`/api/flags/my?courseId=${COURSE_MAIN}`);
         // The student branch finds an active course but no enrollment record.
         expect(res.status()).toBe(403);
     });
 
     test('403 when course is inactive — exercises status:active filter', async ({ request: api }) => {
         await seedCourse({ courseId: COURSE_MAIN, instructorId, status: 'inactive' });
-        const res = await api.post('/api/lectures/publish', {
-            data: { courseId: COURSE_MAIN, lectureName: 'Unit 1', isPublished: true },
-        });
+        const res = await api.get(`/api/flags/my?courseId=${COURSE_MAIN}`);
         expect(res.status()).toBe(403);
     });
 
-    test('enrolled student succeeds via POST /api/lectures/publish (exercises enrolled:true branch of userHasCourseAccess)', async ({ request: api }) => {
+    test('enrolled student succeeds (exercises enrolled:true branch of userHasCourseAccess)', async ({ request: api }) => {
         test.setTimeout(60_000);
         await seedCourse({ courseId: COURSE_MAIN, instructorId });
         await setStudentEnrollment(COURSE_MAIN, studentId, true);
-        const res = await api.post('/api/lectures/publish', {
-            data: { courseId: COURSE_MAIN, lectureName: 'Unit 1', isPublished: true },
-            timeout: 45_000,
-        });
+        const res = await api.get(`/api/flags/my?courseId=${COURSE_MAIN}`, { timeout: 45_000 });
         // userHasCourseAccess returns true on the student branch — the route
-        // then proceeds to update the lecture state.
+        // then proceeds to read the student's own flags.
         expect(res.status()).toBe(200);
     });
 
@@ -412,10 +416,7 @@ test.describe('userHasCourseAccess (student branch via POST /api/lectures/publis
             { $unset: { status: '' } }
         ));
         await setStudentEnrollment(COURSE_MAIN, studentId, true);
-        const res = await api.post('/api/lectures/publish', {
-            data: { courseId: COURSE_MAIN, lectureName: 'Unit 1', isPublished: true },
-            timeout: 45_000,
-        });
+        const res = await api.get(`/api/flags/my?courseId=${COURSE_MAIN}`, { timeout: 45_000 });
         expect(res.status()).toBe(200);
     });
 });
