@@ -14,6 +14,7 @@ const {
     cleanupCourses,
 } = require('./helpers/courses-test');
 const { seedSuperchat, cleanupSuperchats } = require('./helpers/superchats-test');
+const { stubAgreementAccepted } = require('./helpers/agreement');
 
 const PREFIX = 'BIOC-E2E-SCSWITCH';
 const BUCKET_A = `${PREFIX}-A`;
@@ -66,6 +67,8 @@ test.afterEach(async () => {
 });
 
 test('the picker offers both accessible buckets and switching swaps the source pool', async ({ page }) => {
+    // The agreement modal blocks pointer events on /student/super-course.
+    await stubAgreementAccepted(page);
     await page.goto('/student/super-course');
 
     const picker = page.locator('#superchat-picker');
@@ -88,6 +91,8 @@ test('the picker offers both accessible buckets and switching swaps the source p
 });
 
 test('the "above your level" notice toggles when switching buckets (not just on reload)', async ({ page }) => {
+    // The agreement modal blocks pointer events on /student/super-course.
+    await stubAgreementAccepted(page);
     await page.goto('/student/super-course');
 
     const picker = page.locator('#superchat-picker');

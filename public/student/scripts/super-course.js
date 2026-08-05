@@ -90,7 +90,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             applySuperchatKeys();
             // Reset the conversation for the newly-selected bucket.
             conversationMessages.length = 0;
-            messages.innerHTML = '';
+            renderIntroMessage();
             loadSourcePool();
             loadHistoryList();
             restoreRecentSession();
@@ -504,6 +504,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    /**
+     * Reset the transcript to the opening bot message. Every path that wipes
+     * #chat-messages goes through here so the AI-use notice is always the first
+     * thing in the chat, matching the static markup this replaces.
+     */
+    function renderIntroMessage() {
+        messages.innerHTML = `
+            <div class="message bot-message">
+                <div class="message-avatar">B</div>
+                <div class="message-content">
+                    <p>Ask about material across the Super Course. I will use opted-in uploaded course material when relevant and can draw on general biochemistry when the uploaded context is thin.</p>
+                    ${window.AI_USE_DISCLAIMER_HTML || ''}
+                </div>
+            </div>
+        `;
+    }
+
     function restoreRecentSession() {
         const chatData = getCurrentChatData();
         if (!chatData || !Array.isArray(chatData.messages) || chatData.messages.length === 0) {
@@ -532,7 +549,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function loadChatData(chatData) {
-        messages.innerHTML = '';
+        renderIntroMessage();
         conversationMessages.length = 0;
 
         const restorableMessages = chatData.messages.filter(messageData => !messageData.isError);
@@ -562,14 +579,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         localStorage.removeItem(currentChatKey);
         localStorage.removeItem(sessionKey);
         conversationMessages.length = 0;
-        messages.innerHTML = `
-            <div class="message bot-message">
-                <div class="message-avatar">B</div>
-                <div class="message-content">
-                    <p>Ask about material across the Super Course. I will use opted-in uploaded course material when relevant and can draw on general biochemistry when the uploaded context is thin.</p>
-                </div>
-            </div>
-        `;
+        renderIntroMessage();
         initializeAutoSave();
         loadHistoryList({ silent: true });
         input.focus();

@@ -171,6 +171,10 @@ function chatCssHarness() {
                                 <strong>Unit selection</strong>
                                 <div>Choose a published unit before asking a question.</div>
                             </div>
+                            <p class="ai-use-disclaimer">
+                                This AI tool generates responses using a large language model.
+                                <a href="#" class="ai-use-disclaimer-link" data-open-full-disclaimer>View Chat Rules</a>.
+                            </p>
                         </div>
                     </article>
 
@@ -352,6 +356,7 @@ test.describe('chat.css harness coverage', () => {
         await expect(page.locator('.flag-menu.show')).toBeVisible();
         await expect(page.locator('.practice-feedback-error')).toBeVisible();
         await expect(page.locator('.calibration-option.selected')).toBeVisible();
+        await expect(page.locator('.ai-use-disclaimer .ai-use-disclaimer-link')).toBeVisible();
         await expect(page.locator('.assessment-summary-container')).toBeVisible();
         await expect(page.locator('.summary-feedback-section.correct')).toBeVisible();
         await expect(page.locator('.summary-feedback-section.incorrect')).toBeVisible();
