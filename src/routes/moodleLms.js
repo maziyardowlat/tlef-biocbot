@@ -48,6 +48,30 @@ function createMoodleLmsRouter(
         res.json({ success: true, connected: true, provider: 'moodle' });
     });
 
+    /**
+     * Where to go in Moodle to get a token. Deliberately not behind
+     * `requireMoodleAuth` — an instructor needs these links precisely when they
+     * have no token yet. The router is already restricted to authenticated
+     * instructors, and a Moodle hostname is not a secret.
+     */
+    router.get('/info', (req, res) => {
+        const domain = moodle.baseUrl(config.moodleDomain);
+        res.json({
+            success: true,
+            data: {
+                domain,
+                // Preferences → User account → Security keys. Only visible to
+                // accounts holding moodle/webservice:createtoken.
+                tokenUrl: `${domain}/user/managetoken.php`,
+                // Site administration → Server → Web services → Manage tokens.
+                // The fallback when the page above is missing, and the path an
+                // admin has to use since their own Security keys page does not
+                // generate tokens for them.
+                manageTokensUrl: `${domain}/admin/webservice/tokens.php`
+            }
+        });
+    });
+
     router.get('/courses', requireMoodleAuth, async (req, res, next) => {
         try {
             const courses = await moodle.getCourses(req.moodleApi);

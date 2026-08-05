@@ -59,6 +59,13 @@ function initializeStudentHub() {
         });
     }
 
+    const gradeCourseSelect = document.getElementById('lms-grade-course');
+    if (gradeCourseSelect) {
+        addKeyboardPickerActivation(gradeCourseSelect);
+        gradeCourseSelect.addEventListener('change', updateLinkCourseButton);
+    }
+
+    document.getElementById('link-lms-grade-course')?.addEventListener('click', linkLmsGradeCourse);
     document.getElementById('match-lms-students')?.addEventListener('click', matchLmsStudents);
     document.getElementById('import-lms-grades')?.addEventListener('click', importLmsGrades);
 }
@@ -308,6 +315,111 @@ function renderUnmatchedPanel(match) {
     `;
 }
 
+/**
+ * Fills the course picker from the provider's own course list and preselects
+ * whichever course grades currently come from.
+ */
+async function loadGradeCourseOptions(courseId, provider) {
+    const select = document.getElementById('lms-grade-course');
+    const note = document.getElementById('lms-grades-source-note');
+    if (!select) return;
+
+    select.replaceChildren();
+    if (!provider) {
+        appendOption(select, '', 'No LMS configured');
+        select.disabled = true;
+        updateLinkCourseButton();
+        return;
+    }
+
+    select.disabled = true;
+    appendOption(select, '', 'Loading courses…');
+    try {
+        const response = await authenticatedFetch(
+            `/api/lms/grades/courses/${encodeURIComponent(courseId)}/available-courses?provider=${encodeURIComponent(provider)}`
+        );
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+            if (reauthorizeCanvas(provider, response)) return;
+            throw new Error(result.message || `HTTP ${response.status}`);
+        }
+
+        const current = result.data.current;
+        const courses = result.data.courses || [];
+        select.replaceChildren();
+        appendOption(select, '', courses.length ? 'Select a course…' : 'No courses available to this account');
+        for (const course of courses) {
+            appendOption(select, course.id, course.code ? `${course.code} — ${course.name}` : course.name, {
+                selected: current && String(current.courseId) === course.id
+            });
+        }
+        select.disabled = courses.length === 0;
+
+        if (note) {
+            note.textContent = !current
+                ? `No ${providerLabel(provider)} course is linked for grades yet — pick one above.`
+                : (current.inherited
+                    ? `Using ${current.code || current.name || current.courseId}, inherited from the course linked for file import. Pick a different one to override it.`
+                    : `Grades come from ${current.code || current.name || current.courseId}.`);
+        }
+    } catch (error) {
+        console.error('Error loading LMS grade courses:', error);
+        select.replaceChildren();
+        appendOption(select, '', 'Could not load courses');
+        select.disabled = true;
+        if (note) note.textContent = `Could not list ${providerLabel(provider)} courses: ${error.message}`;
+    }
+    updateLinkCourseButton();
+}
+
+function updateLinkCourseButton() {
+    const select = document.getElementById('lms-grade-course');
+    const button = document.getElementById('link-lms-grade-course');
+    if (button) button.disabled = !select?.value;
+}
+
+async function linkLmsGradeCourse() {
+    const provider = document.getElementById('lms-grade-provider')?.value;
+    const externalCourseId = document.getElementById('lms-grade-course')?.value;
+    const button = document.getElementById('link-lms-grade-course');
+    const status = document.getElementById('lms-grades-status');
+    if (!provider || !externalCourseId || !currentGradeCourseId || !button) return;
+
+    button.disabled = true;
+    button.textContent = 'Linking…';
+    try {
+        const response = await authenticatedFetch(
+            `/api/lms/grades/courses/${encodeURIComponent(currentGradeCourseId)}/source`,
+            {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ provider, externalCourseId })
+            }
+        );
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+            if (reauthorizeCanvas(provider, response)) return;
+            throw new Error(result.message || `HTTP ${response.status}`);
+        }
+
+        currentGradeSources = result.data.sources || currentGradeSources;
+        applyLmsGradeView(result.data);
+        renderUnmatchedPanel(null);
+        await loadGradeCourseOptions(currentGradeCourseId, provider);
+        showNotification(
+            `Grades will now come from ${result.data.source.code || result.data.source.name}. Run “Match students” next.`,
+            'success'
+        );
+    } catch (error) {
+        console.error('Error linking LMS grade course:', error);
+        if (status) status.textContent = `Could not link the course: ${error.message}`;
+        showNotification(`Could not link the ${providerLabel(provider)} course.`, 'error');
+    } finally {
+        button.textContent = 'Use this course';
+        updateLinkCourseButton();
+    }
+}
+
 function updateGradeProviderOptions(sources, selectedProvider) {
     const select = document.getElementById('lms-grade-provider');
     const importButton = document.getElementById('import-lms-grades');
@@ -321,8 +433,9 @@ function updateGradeProviderOptions(sources, selectedProvider) {
 
     select.replaceChildren();
     for (const source of usable) {
+        // An unlinked provider stays selectable — choosing it is how you get to
+        // the course picker that links it.
         appendOption(select, source.provider, `${providerLabel(source.provider)}${source.linked ? '' : ' — not linked'}`, {
-            disabled: !source.linked,
             selected: source.provider === selectedProvider
         });
     }
@@ -346,6 +459,7 @@ async function loadLmsGrades(courseId, provider = '') {
         currentGradeSources = result.data.sources || [];
         updateGradeProviderOptions(currentGradeSources, result.data.provider);
         applyLmsGradeView(result.data);
+        await loadGradeCourseOptions(courseId, document.getElementById('lms-grade-provider')?.value);
     } catch (error) {
         console.error('Error loading LMS grades:', error);
         if (status) status.textContent = `Could not load LMS grades: ${error.message}`;

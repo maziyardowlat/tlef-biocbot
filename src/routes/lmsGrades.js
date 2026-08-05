@@ -7,7 +7,8 @@ const {
     getStoredGradeView,
     importProviderGrades,
     listGradeSources,
-    normalizeProvider
+    normalizeProvider,
+    setGradeSource
 } = require('../services/lmsGradeImport');
 const { syncCourseRoster } = require('../services/lmsRosterMatch');
 
@@ -42,7 +43,8 @@ async function requireManagedCourseMiddleware(req, res, next) {
 
 function requireSelectedProviderAuth(integration) {
     return async function selectedProviderAuth(req, res, next) {
-        const provider = normalizeProvider(req.body?.provider);
+        // GET routes pass the provider as a query param, writes pass it in the body.
+        const provider = normalizeProvider(req.body?.provider || req.query?.provider);
         if (!provider) {
             return res.status(400).json({ success: false, message: 'provider must be canvas or moodle' });
         }
@@ -66,8 +68,20 @@ function createLmsGradesRouter(integration, dependencies = {}) {
     const importGrades = dependencies.importGrades || importProviderGrades;
     const loadStoredGrades = dependencies.loadStoredGrades || getStoredGradeView;
     const matchRoster = dependencies.matchRoster || syncCourseRoster;
+    const saveGradeSource = dependencies.saveGradeSource || setGradeSource;
 
     router.use(express.json());
+
+    /**
+     * The courses the connected LMS account can pull grades from. Canvas is
+     * restricted to courses the account teaches; Moodle has no equivalent
+     * teacher filter, so it lists enrolments and the link step re-checks.
+     */
+    function listProviderCourses(req) {
+        const { api } = req.lmsGradeIntegration;
+        const client = req.lmsGradeProvider === 'canvas' ? req.canvasApi : req.moodleApi;
+        return api.getCourses(client, ...(req.lmsGradeProvider === 'canvas' ? [{ enrollment_type: 'teacher' }] : []));
+    }
 
     router.get('/courses/:courseId', async (req, res, next) => {
         try {
@@ -85,6 +99,81 @@ function createLmsGradesRouter(integration, dependencies = {}) {
             next(error);
         }
     });
+
+    // Lets the Student Hub offer a course to pull grades from, rather than
+    // silently using whichever course was linked for file import.
+    router.get(
+        '/courses/:courseId/available-courses',
+        requireManagedCourseMiddleware,
+        requireSelectedProviderAuth(integration),
+        async (req, res, next) => {
+            try {
+                const courses = await listProviderCourses(req);
+                res.json({
+                    success: true,
+                    data: {
+                        provider: req.lmsGradeProvider,
+                        current: getGradeSource(req.lmsGradeCourse, req.lmsGradeProvider),
+                        courses: courses.map((course) => ({
+                            id: String(course.id),
+                            name: course.name || '',
+                            code: course.code || ''
+                        }))
+                    }
+                });
+            } catch (error) {
+                next(error);
+            }
+        }
+    );
+
+    router.put(
+        '/courses/:courseId/source',
+        requireManagedCourseMiddleware,
+        requireSelectedProviderAuth(integration),
+        async (req, res, next) => {
+            try {
+                const externalCourseId = String(req.body.externalCourseId || '').trim();
+                if (!externalCourseId) {
+                    return res.status(400).json({ success: false, message: 'externalCourseId is required' });
+                }
+
+                // A stored token is not proof the account may read this course's
+                // grades, so confirm the id against what the LMS reports first.
+                const courses = await listProviderCourses(req);
+                const externalCourse = courses.find((course) => String(course.id) === externalCourseId);
+                if (!externalCourse) {
+                    return res.status(403).json({
+                        success: false,
+                        provider: req.lmsGradeProvider,
+                        message: `The connected ${req.lmsGradeProvider} account cannot read grades for that course`
+                    });
+                }
+
+                const source = await saveGradeSource({
+                    db: req.app.locals.db,
+                    course: req.lmsGradeCourse,
+                    provider: req.lmsGradeProvider,
+                    externalCourse,
+                    linkedBy: req.user.userId
+                });
+                // Re-read so the response reflects the newly pinned source.
+                const course = await CourseModel.getCourseById(req.app.locals.db, req.params.courseId);
+                const view = await loadStoredGrades({
+                    db: req.app.locals.db,
+                    course,
+                    provider: req.lmsGradeProvider
+                });
+                res.json({
+                    success: true,
+                    message: 'LMS grade source linked',
+                    data: { sources: listGradeSources(course, integration), source, ...view }
+                });
+            } catch (error) {
+                next(error);
+            }
+        }
+    );
 
     // Grades are stored against BiocBot user ids, so a course has to be matched
     // before an import has anywhere to put the scores. This is deliberately a

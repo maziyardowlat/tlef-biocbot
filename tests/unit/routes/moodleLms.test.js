@@ -191,6 +191,25 @@ describe('Moodle LMS routes', () => {
         expect(response.body.code).toBe('MOODLE_FILE_ALREADY_IMPORTED');
     });
 
+    test('serves the Moodle token-page links without requiring a token first', async () => {
+        const harness = moodleHarness();
+        // An instructor needs these links precisely when they have no token, so
+        // this route must not sit behind requireAuth like the rest of the router.
+        harness.api.requireAuth = jest.fn(() => (req, res) => res.status(401).json({ success: false }));
+        harness.api.baseUrl = jest.fn((domain) => domain);
+        const app = makeRouteApp(createMoodleLmsRouter(harness.integration), {
+            db: memoryDb(),
+            user: instructor
+        });
+
+        const res = await request(app).get('/info').expect(200);
+        expect(res.body.data).toEqual({
+            domain: 'http://moodle.test',
+            tokenUrl: 'http://moodle.test/user/managetoken.php',
+            manageTokensUrl: 'http://moodle.test/admin/webservice/tokens.php'
+        });
+    });
+
     test('exposes the Moodle token connect and disconnect routes', async () => {
         const harness = moodleHarness();
         const app = makeRouteApp(createMoodleLmsRouter(harness.integration), {

@@ -8,6 +8,15 @@ function normalizeProvider(provider) {
     return SUPPORTED_GRADE_PROVIDERS.includes(normalized) ? normalized : null;
 }
 
+/**
+ * Resolves which external course this BiocBot course reads grades from.
+ *
+ * An explicit grade source wins. Failing that it inherits the course linked for
+ * file import, because in practice they are the same course and asking an
+ * instructor to link the identical course twice is a step nobody would
+ * understand. `inherited` tells the UI which of the two it got, so the Student
+ * Hub can show where the link came from and let it be overridden.
+ */
 function getGradeSource(course, provider) {
     const normalized = normalizeProvider(provider);
     if (!normalized) return null;
@@ -19,21 +28,61 @@ function getGradeSource(course, provider) {
             courseId: String(configured.courseId),
             name: configured.name || '',
             code: configured.code || '',
-            lastImportedAt: configured.lastImportedAt || null
+            lastImportedAt: configured.lastImportedAt || null,
+            inherited: false
         };
     }
 
-    if (normalized === 'canvas' && course?.lmsSync?.provider === 'canvas' && course.lmsSync.courseId) {
+    // `lmsFileSources` is what both import wizards write. `lmsSync` is the
+    // older Canvas-only field, still set alongside it for backward compatibility.
+    const fileSource = course?.lmsFileSources?.[normalized]
+        || (normalized === 'canvas' && course?.lmsSync?.provider === 'canvas' ? course.lmsSync : null);
+    if (fileSource?.courseId) {
         return {
-            provider: 'canvas',
-            courseId: String(course.lmsSync.courseId),
-            name: course.lmsSync.name || '',
-            code: course.lmsSync.code || '',
-            lastImportedAt: null
+            provider: normalized,
+            courseId: String(fileSource.courseId),
+            name: fileSource.name || '',
+            code: fileSource.code || '',
+            lastImportedAt: null,
+            inherited: true
         };
     }
 
     return null;
+}
+
+/** Pins this BiocBot course's grade source, overriding the inherited one. */
+async function setGradeSource({ db, course, provider, externalCourse, linkedBy }) {
+    const normalized = normalizeProvider(provider);
+    if (!normalized) throw new Error('Unsupported LMS grade provider');
+
+    const now = new Date();
+    const source = {
+        courseId: String(externalCourse.id),
+        name: externalCourse.name || '',
+        code: externalCourse.code || '',
+        linkedAt: now,
+        linkedBy: String(linkedBy)
+    };
+    await db.collection('courses').updateOne(
+        { courseId: course.courseId },
+        { $set: { [`lmsGradeSources.${normalized}`]: source, updatedAt: now } }
+    );
+
+    // Mappings and snapshots are scoped by external course id, so anything
+    // pointing at the previous source is now stale and would show grades from
+    // the wrong course alongside the new ones.
+    const staleFilter = {
+        courseId: course.courseId,
+        provider: normalized,
+        externalCourseId: { $ne: source.courseId }
+    };
+    await Promise.all([
+        db.collection('lms_identity_mappings').deleteMany(staleFilter),
+        db.collection('lms_grade_snapshots').deleteMany(staleFilter)
+    ]);
+
+    return { provider: normalized, ...source, inherited: false };
 }
 
 function listGradeSources(course, integration = {}) {
@@ -277,5 +326,6 @@ module.exports = {
     importProviderGrades,
     listGradeSources,
     normalizeProvider,
-    readProviderGrades
+    readProviderGrades,
+    setGradeSource
 };

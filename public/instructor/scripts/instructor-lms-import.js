@@ -226,6 +226,29 @@
 
     // ------------------------------------------------------------ step content
 
+    /**
+     * Turns the token-page instructions into real links once the server tells
+     * us which Moodle this deployment points at. Failure is non-fatal — the
+     * written-out navigation paths still stand on their own.
+     */
+    async function showMoodleTokenLinks() {
+        try {
+            const result = await providerRequest('/info');
+            const links = [
+                ['lms-token-url', result.data.tokenUrl],
+                ['lms-manage-tokens-url', result.data.manageTokensUrl]
+            ];
+            for (const [id, href] of links) {
+                const anchor = element(id);
+                if (!anchor || !href) continue;
+                anchor.href = href;
+                anchor.hidden = false;
+            }
+        } catch (error) {
+            console.warn('Could not resolve the Moodle token page links:', error.message);
+        }
+    }
+
     function renderConnectStep() {
         const provider = config();
         const isOauth = provider.connectStyle === 'oauth';
@@ -234,6 +257,7 @@
         element('lms-connected-state').hidden = !state.connected;
         element('lms-connected-note').textContent = provider.connectedNote;
         element('lms-disconnect-btn').textContent = `Disconnect ${provider.label}`;
+        if (!state.connected && !isOauth) showMoodleTokenLinks();
     }
 
     async function loadBiocBotCourse() {

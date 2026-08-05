@@ -131,7 +131,21 @@
                     </div>
 
                     <div id="lms-connect-token" hidden>
-                        <p class="lms-step-help">Moodle authorizes apps with a web-service token instead of a login prompt. Create one in Moodle under <em>Preferences → Security keys</em>, then paste it here. BiocBot stores it only to call the Moodle API on your behalf.</p>
+                        <p class="lms-step-help">Moodle uses a web-service token instead of a login prompt. One page <em>creates</em> tokens, a different page <em>reveals</em> their value — and neither works from a site-admin account.</p>
+                        <p class="lms-step-warning"><strong>Do not use a Moodle site-admin account for this.</strong> Moodle hides web-service tokens from site admins on the Security keys page, so an admin can create a token but can never read it back. Use your ordinary teacher account.</p>
+                        <ol class="lms-token-paths">
+                            <li>
+                                <strong>Create the token:</strong> a Moodle admin goes to <em>Site administration → Server → Web services → Manage tokens → Add</em> and assigns it to your teacher account
+                                <a id="lms-manage-tokens-url" class="lms-token-link" target="_blank" rel="noopener noreferrer" hidden>Open this page</a>
+                                <span class="lms-token-note">This list never shows token values — its first column is the token’s <em>name</em>, not the token itself.</span>
+                            </li>
+                            <li>
+                                <strong>Read the token:</strong> sign in as that teacher account, then go to <em>Preferences → User account → Security keys</em>
+                                <a id="lms-token-url" class="lms-token-link" target="_blank" rel="noopener noreferrer" hidden>Open this page</a>
+                                <span class="lms-token-note">This is the only page that prints the token string, and only for tokens owned by the account you are signed in as. Copy it from there into the box below.</span>
+                            </li>
+                        </ol>
+                        <p class="lms-step-help lms-token-troubleshoot">No “Security keys” under Preferences? You are signed in as a site admin (Moodle hides it from them), web services are off site-wide, or the account lacks Moodle’s <code>webservice:createtoken</code> permission.</p>
                         <label class="lms-field">
                             Moodle web-service token
                             <input type="password" id="lms-token-input" autocomplete="off" spellcheck="false" placeholder="Paste your token">

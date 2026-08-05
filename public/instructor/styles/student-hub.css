@@ -424,3 +424,18 @@
         align-items: flex-start;
     }
 }
+
+.lms-grade-course-label {
+    margin-left: 4px;
+}
+
+#lms-grade-course {
+    max-width: 260px;
+}
+
+.lms-grades-source-note {
+    flex-basis: 100%;
+    margin-top: 6px;
+    color: #5f666d;
+    font-size: 0.82rem;
+}
