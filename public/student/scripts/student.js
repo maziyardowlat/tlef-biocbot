@@ -308,7 +308,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 // Add click handler to go to dashboard
                 indicator.style.cursor = 'pointer';
                 indicator.addEventListener('click', () => {
-                    window.location.href = '/student/dashboard.html';
+                    // Keep the marker a "View as Student" preview tab carries.
+                    window.location.href = window.BiocBotPreview?.url('/student/dashboard.html')
+                        || '/student/dashboard.html';
                 });
 
                 // Insert before mode toggle

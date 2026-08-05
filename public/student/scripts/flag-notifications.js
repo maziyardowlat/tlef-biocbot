@@ -343,8 +343,10 @@ function showFlagStatusNotification(flag, statusText, responderName) {
         message,
         statusText === 'approved' ? 'success' : 'info',
         () => {
-            // Navigate to flagged page when clicked
-            window.location.href = '/student/flagged';
+            // Navigate to flagged page when clicked. A "View as Student"
+            // preview tab has to keep its marker or the server bounces it
+            // back to the instructor UI.
+            window.location.href = window.BiocBotPreview?.url('/student/flagged') || '/student/flagged';
         }
     );
     
@@ -366,8 +368,10 @@ function showFlagResponseNotification(flag, responderName, isUpdate = false) {
         message,
         'success',
         () => {
-            // Navigate to flagged page when clicked
-            window.location.href = '/student/flagged';
+            // Navigate to flagged page when clicked. A "View as Student"
+            // preview tab has to keep its marker or the server bounces it
+            // back to the instructor UI.
+            window.location.href = window.BiocBotPreview?.url('/student/flagged') || '/student/flagged';
         }
     );
     

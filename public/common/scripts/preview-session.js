@@ -189,9 +189,43 @@
         pinPreviewCourse();
     }
 
+    /**
+     * Keep the preview marker on a script-driven navigation.
+     *
+     * markStudentLinks below rewrites anchors, but a script that assigns
+     * window.location.href builds its own URL and would drop the flag. An
+     * unmarked student page is refused and bounced to the instructor UI, so
+     * every such navigation is routed through here first.
+     *
+     * Outside a preview tab, and for anything that is not a student page, the
+     * path is handed back untouched.
+     *
+     * @param {string} path - Navigation target, usually under /student
+     * @returns {string} The path, marked when this tab is previewing
+     */
+    function markUrl(path) {
+        if (!isPreviewTab || typeof path !== 'string' || !path) {
+            return path;
+        }
+
+        try {
+            const url = new URL(path, window.location.href);
+
+            if (url.origin !== window.location.origin || !url.pathname.startsWith('/student')) {
+                return path;
+            }
+
+            url.searchParams.set('preview', '1');
+            return `${url.pathname}${url.search}${url.hash}`;
+        } catch (e) {
+            return path;
+        }
+    }
+
     window.BiocBotPreview = {
         active: isPreviewTab,
         state: null,
+        url: markUrl,
         /**
          * Leave preview mode and return to the instructor UI.
          *

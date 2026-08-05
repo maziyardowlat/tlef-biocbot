@@ -1106,9 +1106,10 @@ function handleContinueChat() {
         // Store the chat data to be loaded
         sessionStorage.setItem('loadChatData', JSON.stringify(currentSelectedChat.chatData));
         
-        // Redirect to chat page
-        window.location.href = '/student';
-        
+        // Redirect to chat page, keeping the marker a "View as Student"
+        // preview tab navigates with.
+        window.location.href = window.BiocBotPreview?.url('/student') || '/student';
+
     } catch (error) {
         console.error('Error continuing chat:', error);
         alert('Error loading chat. Please try again.');
