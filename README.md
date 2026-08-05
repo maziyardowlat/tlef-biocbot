@@ -89,7 +89,7 @@ MOODLE_TOKEN_COLLECTION_NAME=lms_moodle_tokens
 The Canvas callback URI must exactly match the redirect URI registered on the Canvas Developer
 Key. The integration is disabled when no `CANVAS_*` application credentials are set and refuses
 to start partially configured. OAuth tokens are stored per authenticated BiocBot user in MongoDB;
-never commit Canvas credentials or package-registry tokens. See [`agents_canvas.md`](agents_canvas.md)
+never commit Canvas credentials or package-registry tokens. See [`agents_canvas.md`](https://github.com/ubc/ubc-genai-toolkit-lms-integration/blob/main/agents_canvas.md)
 for provider setup, required LMS permissions, security boundaries, and implementation details.
 
 Moodle uses an instructor-provided web-service token instead of OAuth. Instructors can connect or
@@ -127,12 +127,15 @@ npm run dev
 1. **Access**: Navigate to `/instructor`
 2. **Onboarding**: Complete the guided course setup wizard (AI-assisted topic extraction)
 3. **Upload Documents**: Add course materials to units/lectures
-   - When Canvas is configured, connect an instructor Canvas account, link a teacher-enrolled
-     Canvas course, and import supported course files through the same parsing/indexing pipeline.
-   - Logging out of the Canvas website does not revoke OAuth access. Use **Disconnect Canvas** in
-     BiocBot to revoke the stored Canvas authorization.
-   - When Moodle is configured, paste an instructor Moodle web-service token, link an enrolled
-     course, and import its supported file resources through the same document pipeline.
+   - When Canvas or Moodle is configured, a small **Canvas** / **Moodle** button appears above the
+     unit list. It opens a four-step wizard — connect, choose the course, choose the file, choose
+     the destination unit — and the import itself reports each stage (download, store, extract,
+     save, index) as it happens. Only providers this deployment has credentials for are shown.
+   - Canvas connects through OAuth; Moodle takes a web-service token pasted from
+     *Preferences → Security keys*. Both connections are reused after the first time, so the wizard
+     opens on the course step from then on.
+   - Logging out of the Canvas website does not revoke OAuth access. Use **Disconnect** in the
+     wizard's first step to revoke the stored Canvas authorization or delete the Moodle token.
 4. **Create Questions**: Build multiple-choice, true/false, and short-answer assessments
 5. **Publish Units**: Make content available to students
 6. **Quiz Settings**: Enable quiz practice, select testable units, and control material access for failed answers
@@ -140,6 +143,11 @@ npm run dev
 8. **Manage TAs**: Promote students to TAs via the TA Hub; assign course and flag permissions
 9. **Review Flags**: View and respond to student-flagged question issues
 10. **Monitor Students**: Use the Student Hub to review engagement and struggle activity
+11. **LMS Grades** (optional): In the Student Hub, run **Match students** to tie the linked LMS
+    roster to BiocBot accounts, then **Import grades** to pull a read-only snapshot. Grades appear
+    on each student's card, with the field that produced the match; anyone who could not be matched
+    is listed above the cards. Matching prefers the student number, then email, then username —
+    never the display name. See [`agents_canvas.md`](https://github.com/ubc/ubc-genai-toolkit-lms-integration/blob/main/agents_canvas.md) for the full rules.
 
 ### For Students
 
