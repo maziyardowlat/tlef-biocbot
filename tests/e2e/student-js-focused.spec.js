@@ -458,7 +458,6 @@ test.describe('Course/unit initialization and saved state', () => {
         }, { studentId, courseId: STU_COURSE_ID, oldSessionId });
 
         await expect(page.locator('#chat-messages')).not.toContainText('STALE TAB QUESTION');
-        await page.waitForTimeout(4000); // TEMP durability probe
         await expect(page.locator('#chat-messages')).toContainText(
             'Your previous session ended after 30 seconds of inactivity. A new session has started.'
         );
