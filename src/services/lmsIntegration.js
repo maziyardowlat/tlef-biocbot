@@ -1,8 +1,26 @@
-const {
-    canvas,
-    createMongoTokenStore,
-    moodle
-} = require('@ubc/ubc-genai-toolkit-lms-integration');
+let lmsToolkit;
+
+/**
+ * The toolkit is published to GitHub Packages, so an install without a registry
+ * token (CI, a fresh clone) cannot fetch it — hence it being an optional
+ * dependency. Requiring it lazily keeps this module importable when it is
+ * absent: the server still boots and the unit suite still runs, and only a
+ * deployment that has actually configured Canvas or Moodle needs it present.
+ * @returns {Object|null} The toolkit, or null when it is not installed
+ */
+function loadLmsToolkit() {
+    if (lmsToolkit === undefined) {
+        try {
+            lmsToolkit = require('@ubc/ubc-genai-toolkit-lms-integration');
+        } catch (error) {
+            if (error.code !== 'MODULE_NOT_FOUND') {
+                throw error;
+            }
+            lmsToolkit = null;
+        }
+    }
+    return lmsToolkit;
+}
 
 const CANVAS_ENV_KEYS = Object.freeze([
     'CANVAS_DOMAIN',
@@ -39,6 +57,21 @@ function createLmsIntegration(db) {
     const env = process.env;
     const canvasStatus = getCanvasConfigurationStatus(env);
     const moodleStatus = getMoodleConfigurationStatus(env);
+    const disabled = { canvas: null, canvasStatus, moodle: null, moodleStatus, toolkitMissing: false };
+
+    // Nothing is configured, so the toolkit is never needed - don't load it.
+    if (!canvasStatus.enabled && !moodleStatus.enabled) {
+        return disabled;
+    }
+
+    const toolkit = loadLmsToolkit();
+    if (!toolkit) {
+        // Configured but unusable. Reported as disabled rather than thrown so a
+        // missing optional dependency cannot stop the rest of the app booting.
+        return { ...disabled, toolkitMissing: true };
+    }
+
+    const { canvas, createMongoTokenStore, moodle } = toolkit;
 
     const canvasIntegration = canvasStatus.enabled
         ? {
@@ -70,7 +103,8 @@ function createLmsIntegration(db) {
         canvas: canvasIntegration,
         canvasStatus,
         moodle: moodleIntegration,
-        moodleStatus
+        moodleStatus,
+        toolkitMissing: false
     };
 }
 
@@ -111,5 +145,6 @@ module.exports = {
     ensureLmsIndexes,
     getBiocBotUserKey,
     getCanvasConfigurationStatus,
-    getMoodleConfigurationStatus
+    getMoodleConfigurationStatus,
+    loadLmsToolkit
 };

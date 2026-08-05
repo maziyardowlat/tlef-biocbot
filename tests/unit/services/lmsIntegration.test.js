@@ -1,5 +1,6 @@
 const {
     CANVAS_ENV_KEYS,
+    createLmsIntegration,
     ensureLmsIndexes,
     getBiocBotUserKey,
     getCanvasConfigurationStatus
@@ -20,6 +21,49 @@ describe('lmsIntegration configuration', () => {
             partial: true
         });
         expect(getCanvasConfigurationStatus(partial).missing).toContain('CANVAS_CLIENT_ID');
+    });
+
+    // The toolkit is an optional dependency from GitHub Packages, so an install
+    // without a registry token leaves it absent. Nothing here may require it.
+    test('reports both providers disabled without loading the toolkit when nothing is configured', () => {
+        const previous = { ...process.env };
+        for (const key of [...CANVAS_ENV_KEYS, 'MOODLE_DOMAIN']) delete process.env[key];
+
+        try {
+            expect(createLmsIntegration({})).toMatchObject({
+                canvas: null,
+                moodle: null,
+                toolkitMissing: false
+            });
+        } finally {
+            Object.assign(process.env, previous);
+        }
+    });
+
+    test('disables LMS integration instead of throwing when the toolkit is not installed', () => {
+        jest.isolateModules(() => {
+            jest.doMock('@ubc/ubc-genai-toolkit-lms-integration', () => {
+                const error = new Error('Cannot find module');
+                error.code = 'MODULE_NOT_FOUND';
+                throw error;
+            }, { virtual: true });
+
+            const service = require('../../../src/services/lmsIntegration');
+            const previous = process.env.MOODLE_DOMAIN;
+            process.env.MOODLE_DOMAIN = 'http://moodle.test';
+
+            try {
+                expect(service.loadLmsToolkit()).toBeNull();
+                expect(service.createLmsIntegration({})).toMatchObject({
+                    canvas: null,
+                    moodle: null,
+                    toolkitMissing: true
+                });
+            } finally {
+                if (previous === undefined) delete process.env.MOODLE_DOMAIN;
+                else process.env.MOODLE_DOMAIN = previous;
+            }
+        });
     });
 
     test('uses BiocBot userId as the token-store key', () => {

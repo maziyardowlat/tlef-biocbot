@@ -189,6 +189,14 @@ async function initializeLms() {
         await ensureLmsIndexes(db);
     }
 
+    if (lmsIntegration.toolkitMissing) {
+        console.warn(
+            '⚠️ Canvas/Moodle are configured but @ubc/ubc-genai-toolkit-lms-integration is not installed, so LMS integration is disabled. ' +
+            'It is an optional dependency from GitHub Packages — install it with a registry token to enable LMS features.'
+        );
+        return;
+    }
+
     if (lmsIntegration.canvas) {
         console.log('✅ Canvas LMS integration configured');
     } else if (lmsIntegration.canvasStatus.partial) {
