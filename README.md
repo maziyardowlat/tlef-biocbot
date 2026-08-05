@@ -73,7 +73,20 @@ LLM_PROVIDER=openai
 LLM_API_KEY=your-openai-api-key
 OPENAI_MODEL=gpt-4.1-mini
 LLM_EMBEDDING_MODEL=text-embedding-3-small
+
+# Optional Canvas integration (all four values are required to enable it)
+CANVAS_DOMAIN=canvas.example.edu
+CANVAS_CLIENT_ID=your-canvas-developer-key-id
+CANVAS_CLIENT_SECRET=your-canvas-developer-key-secret
+CANVAS_REDIRECT_URI=http://localhost:8080/api/lms/canvas/auth/callback
+CANVAS_TOKEN_COLLECTION_NAME=lms_canvas_tokens
 ```
+
+The Canvas callback URI must exactly match the redirect URI registered on the Canvas Developer
+Key. The integration is disabled when no `CANVAS_*` application credentials are set and refuses
+to start partially configured. OAuth tokens are stored per authenticated BiocBot user in MongoDB;
+never commit Canvas credentials or package-registry tokens. See [`agents_canvas.md`](agents_canvas.md)
+for provider setup, required LMS permissions, security boundaries, and implementation details.
 
 ### 3. Start Services
 
@@ -94,6 +107,10 @@ npm run dev
 1. **Access**: Navigate to `/instructor`
 2. **Onboarding**: Complete the guided course setup wizard (AI-assisted topic extraction)
 3. **Upload Documents**: Add course materials to units/lectures
+   - When Canvas is configured, connect an instructor Canvas account, link a teacher-enrolled
+     Canvas course, and import supported course files through the same parsing/indexing pipeline.
+   - Logging out of the Canvas website does not revoke OAuth access. Use **Disconnect Canvas** in
+     BiocBot to revoke the stored Canvas authorization.
 4. **Create Questions**: Build multiple-choice, true/false, and short-answer assessments
 5. **Publish Units**: Make content available to students
 6. **Quiz Settings**: Enable quiz practice, select testable units, and control material access for failed answers

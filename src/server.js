@@ -38,10 +38,12 @@ const superChatNotesRoutes = require('./routes/superChatNotes');
 const superchatsRoutes = require('./routes/superchats');
 const academicSyncRoutes = require('./routes/academicSync');
 const previewRoutes = require('./routes/preview');
+const { createCanvasLmsRouter } = require('./routes/canvasLms');
 const LLMService = require('./services/llm');
 const LlmRegistry = require('./services/llmRegistry');
 const AuthService = require('./services/authService');
 const { isAcademicApiEnabled } = require('./services/academicApi');
+const { createLmsIntegration, ensureLmsIndexes } = require('./services/lmsIntegration');
 const createAuthMiddleware = require('./middleware/auth');
 const initializePassport = require('./config/passport');
 
@@ -73,6 +75,7 @@ let llmRegistry;
 let authService;
 let authMiddleware;
 let passport;
+let lmsIntegration;
 
 /**
  * Initialize the LLM service
@@ -173,6 +176,20 @@ async function initializeAuth() {
     } catch (error) {
         console.error('❌ Failed to initialize authentication service:', error.message);
         throw error;
+    }
+}
+
+async function initializeLms() {
+    lmsIntegration = createLmsIntegration(db);
+    app.locals.lmsIntegration = lmsIntegration;
+
+    if (lmsIntegration.canvas) {
+        await ensureLmsIndexes(db);
+        console.log('✅ Canvas LMS integration configured');
+    } else if (lmsIntegration.canvasStatus.partial) {
+        console.warn(`⚠️ Canvas LMS integration disabled; missing: ${lmsIntegration.canvasStatus.missing.join(', ')}`);
+    } else {
+        console.log('ℹ️ Canvas LMS integration is not configured');
     }
 }
 
@@ -591,6 +608,15 @@ function setupAPIRoutes() {
     app.use('/api/superchat-notes', authMiddleware.requireAuth, authMiddleware.populateUser, authMiddleware.requireInstructorOrTA, superChatNotesRoutes);
     app.use('/api/superchats', authMiddleware.requireAuth, authMiddleware.populateUser, superchatsRoutes);
     app.use('/api/academic-sync', authMiddleware.requireAuth, authMiddleware.populateUser, authMiddleware.requireInstructor, academicSyncRoutes);
+    if (lmsIntegration.canvas) {
+        app.use(
+            '/api/lms/canvas',
+            authMiddleware.requireAuth,
+            authMiddleware.populateUser,
+            authMiddleware.requireInstructor,
+            createCanvasLmsRouter(lmsIntegration.canvas)
+        );
+    }
     app.use('/api/student/super-course', authMiddleware.requireAuth, authMiddleware.populateUser, studentSuperCourseRoutes);
     app.use('/api/students', authMiddleware.requireAuth, authMiddleware.populateUser, authMiddleware.requireActiveCourseForNonInstructors, authMiddleware.requireStudentEnrolled, studentsRoutes);
     app.use('/api/user-agreement', authMiddleware.requireAuth, userAgreementRoutes);
@@ -639,6 +665,7 @@ async function startServer() {
         // Initialize other services
         await initializeLLM();
         await initializeAuth();
+        await initializeLms();
 
         // Run migrations
         await ensureCourseCodes(db);

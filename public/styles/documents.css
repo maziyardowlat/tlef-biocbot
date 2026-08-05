@@ -2132,3 +2132,165 @@ fieldset.radio-group-fieldset {
     font-style: italic;
     margin-top: 0.75rem;
 }
+
+/* Canvas course/file import */
+.canvas-import-panel {
+    margin: 1.25rem 0 1.5rem;
+    padding: 1.25rem;
+    border: 1px solid #d5dee8;
+    border-radius: 10px;
+    background: #f8fbff;
+}
+
+.canvas-import-heading {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.canvas-import-heading h2 {
+    margin: 0 0 0.25rem;
+    font-size: 1.15rem;
+    color: #1f3349;
+}
+
+.canvas-import-heading p,
+.canvas-import-help {
+    margin: 0;
+    color: #5f666d;
+    font-size: 0.9rem;
+}
+
+.canvas-connection-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.65rem;
+    flex-wrap: wrap;
+}
+
+.canvas-disconnect-btn {
+    padding: 0.35rem 0.65rem;
+    font-size: 0.8rem;
+}
+
+.canvas-authorization-help {
+    margin-bottom: 0.85rem;
+}
+
+.canvas-connection-status {
+    flex: 0 0 auto;
+    padding: 0.3rem 0.65rem;
+    border-radius: 999px;
+    background: #e8edf2;
+    color: #4b5560;
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+.canvas-connection-status[data-state="connected"] {
+    background: #daf2df;
+    color: #216e39;
+}
+
+.canvas-connection-status[data-state="disconnected"],
+.canvas-connection-status[data-state="error"] {
+    background: #fce4e4;
+    color: #9d2929;
+}
+
+#canvas-connect-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    flex-wrap: wrap;
+}
+
+#canvas-connect-controls[hidden],
+#canvas-import-controls[hidden] {
+    display: none;
+}
+
+.canvas-import-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.9rem 1rem;
+}
+
+.canvas-import-grid label {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    color: #2f3a45;
+    font-size: 0.85rem;
+    font-weight: 700;
+}
+
+.canvas-import-grid select,
+.canvas-import-grid input {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 2.5rem;
+    padding: 0.55rem 0.65rem;
+    border: 1px solid #b7c4d0;
+    border-radius: 6px;
+    background: #fff;
+    color: #222;
+    font: inherit;
+    font-weight: 400;
+}
+
+.canvas-link-action {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.75rem;
+    padding-bottom: 0.1rem;
+}
+
+#canvas-linked-course {
+    color: #52616f;
+    font-size: 0.85rem;
+}
+
+.optional-label {
+    color: #6f7780;
+    font-weight: 400;
+}
+
+.canvas-import-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.85rem;
+    margin-top: 1rem;
+}
+
+.canvas-import-message {
+    color: #56616c;
+    font-size: 0.88rem;
+}
+
+.canvas-import-message.success {
+    color: #216e39;
+}
+
+.canvas-import-message.error {
+    color: #a22b2b;
+}
+
+@media (max-width: 760px) {
+    .canvas-import-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .canvas-import-heading,
+    .canvas-import-actions {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .canvas-connection-actions {
+        justify-content: flex-start;
+    }
+}

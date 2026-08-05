@@ -66,9 +66,67 @@
                 <span id="published-units-summary" style="font-size: 0.9em; color: #5f666d;">Loading published status...</span>
             </div>
 
+            <section class="canvas-import-panel" id="canvas-import-panel" aria-labelledby="canvas-import-title">
+                <div class="canvas-import-heading">
+                    <div>
+                        <h2 id="canvas-import-title">Import from Canvas</h2>
+                        <p>Bring an instructor-owned Canvas course file into this BiocBot course.</p>
+                    </div>
+                    <div class="canvas-connection-actions">
+                        <span class="canvas-connection-status" id="canvas-connection-status">Checking authorization…</span>
+                        <button type="button" class="btn-secondary canvas-disconnect-btn" id="canvas-disconnect-btn" hidden>Disconnect Canvas</button>
+                    </div>
+                </div>
 
+                <div id="canvas-connect-controls" hidden>
+                    <button type="button" class="btn-primary" id="canvas-connect-btn">Connect Canvas</button>
+                    <p class="canvas-import-help">Canvas will ask you to authorize BiocBot. Your Canvas password is never shared with BiocBot.</p>
+                </div>
 
-            
+                <div id="canvas-import-controls" hidden>
+                    <p class="canvas-import-help canvas-authorization-help">Canvas authorization remains active if you only log out of the Canvas website. Use “Disconnect Canvas” above to revoke BiocBot's access.</p>
+                    <div class="canvas-import-grid">
+                        <label>
+                            Canvas course
+                            <select id="canvas-course-select">
+                                <option value="">Select a Canvas course…</option>
+                            </select>
+                        </label>
+                        <div class="canvas-link-action">
+                            <button type="button" class="btn-secondary" id="canvas-link-course-btn">Link course</button>
+                            <span id="canvas-linked-course" aria-live="polite"></span>
+                        </div>
+                        <label>
+                            Canvas file
+                            <select id="canvas-file-select" disabled>
+                                <option value="">Link a Canvas course first…</option>
+                            </select>
+                        </label>
+                        <label>
+                            BiocBot unit
+                            <select id="canvas-unit-select">
+                                <option value="">Select a unit…</option>
+                            </select>
+                        </label>
+                        <label>
+                            Material type
+                            <select id="canvas-document-type-select">
+                                <option value="lecture-notes">Lecture Notes</option>
+                                <option value="practice-quiz">Practice Questions/Tutorial</option>
+                                <option value="additional">Additional Material</option>
+                            </select>
+                        </label>
+                        <label>
+                            Display name <span class="optional-label">(optional)</span>
+                            <input type="text" id="canvas-file-title" placeholder="Use the Canvas filename">
+                        </label>
+                    </div>
+                    <div class="canvas-import-actions">
+                        <button type="button" class="btn-primary" id="canvas-import-file-btn" disabled>Import file</button>
+                        <span id="canvas-import-message" role="status" aria-live="polite"></span>
+                    </div>
+                </div>
+            </section>
 
             <!-- Action Buttons -->
             <div class="action-buttons-container">
@@ -511,6 +569,7 @@
     <script src="./scripts/instructor-publish.js"></script>
     <script src="./scripts/instructor-units.js"></script>
     <script src="./scripts/instructor-documents.js"></script>
+    <script src="./scripts/instructor-canvas.js"></script>
     <script src="./scripts/instructor-upload-topics.js"></script>
     <script src="./scripts/instructor-objectives.js"></script>
     <script src="./scripts/instructor-questions.js"></script>
