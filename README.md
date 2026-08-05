@@ -80,6 +80,10 @@ CANVAS_CLIENT_ID=your-canvas-developer-key-id
 CANVAS_CLIENT_SECRET=your-canvas-developer-key-secret
 CANVAS_REDIRECT_URI=http://localhost:8080/api/lms/canvas/auth/callback
 CANVAS_TOKEN_COLLECTION_NAME=lms_canvas_tokens
+
+# Optional Moodle integration
+MOODLE_DOMAIN=https://moodle.example.edu
+MOODLE_TOKEN_COLLECTION_NAME=lms_moodle_tokens
 ```
 
 The Canvas callback URI must exactly match the redirect URI registered on the Canvas Developer
@@ -87,6 +91,22 @@ Key. The integration is disabled when no `CANVAS_*` application credentials are 
 to start partially configured. OAuth tokens are stored per authenticated BiocBot user in MongoDB;
 never commit Canvas credentials or package-registry tokens. See [`agents_canvas.md`](agents_canvas.md)
 for provider setup, required LMS permissions, security boundaries, and implementation details.
+
+Moodle uses an instructor-provided web-service token instead of OAuth. Instructors can connect or
+disconnect it from the Course Upload page. Canvas and Moodle course-file links are stored
+independently, so both providers can remain linked to the same BiocBot course.
+
+For the bundled local Canvas and Moodle environments, seed the BIOC 302 demo courses, five student
+enrollments, grades, and Moodle note resources with:
+
+```bash
+npm run seed:local-lms-grades
+```
+
+The fixture scripts are idempotent and intentionally kept in the repository so a new local LMS or
+database can be rebuilt. Use `node scripts/seed-local-lms-grades.js --yes --moodle-only` when the
+local Canvas instructor has not been connected, or `--canvas-only` to skip Moodle. The script
+refuses non-local LMS URLs.
 
 ### 3. Start Services
 
@@ -111,6 +131,8 @@ npm run dev
      Canvas course, and import supported course files through the same parsing/indexing pipeline.
    - Logging out of the Canvas website does not revoke OAuth access. Use **Disconnect Canvas** in
      BiocBot to revoke the stored Canvas authorization.
+   - When Moodle is configured, paste an instructor Moodle web-service token, link an enrolled
+     course, and import its supported file resources through the same document pipeline.
 4. **Create Questions**: Build multiple-choice, true/false, and short-answer assessments
 5. **Publish Units**: Make content available to students
 6. **Quiz Settings**: Enable quiz practice, select testable units, and control material access for failed answers

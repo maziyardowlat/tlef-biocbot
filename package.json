@@ -9,6 +9,7 @@
     "dev:server": "cross-env NODE_ENV=development nodemon src/server.js",
     "dev:client": "browser-sync start --proxy 'http://localhost:8050' --files 'public' --browser 'Google Chrome'",
     "grant:system-admin": "node scripts/grant-system-admin.js",
+    "seed:local-lms-grades": "node scripts/seed-local-lms-grades.js --yes",
     "test": "playwright test",
     "test:e2e": "playwright test",
     "test:a11y": "playwright test --config=playwright.a11y.config.js",

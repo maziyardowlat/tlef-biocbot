@@ -10,6 +10,8 @@ let anonymizeStudentsEnabled = false;
 let currentSurveyCourseId = null;
 let currentSurveyResponses = [];
 let currentSurveyStats = null;
+let currentGradeCourseId = null;
+let currentGradeSources = [];
 const dirtyEnrollment = new Map(); // studentId -> boolean (enrolled)
 
 document.addEventListener('DOMContentLoaded', async function() {
@@ -45,6 +47,16 @@ function initializeStudentHub() {
     if (downloadSurveyButton) {
         downloadSurveyButton.addEventListener('click', downloadChatSurveyResponses);
     }
+
+    const providerSelect = document.getElementById('lms-grade-provider');
+    if (providerSelect) {
+        addKeyboardPickerActivation(providerSelect);
+        providerSelect.addEventListener('change', () => {
+            if (currentGradeCourseId) loadLmsGrades(currentGradeCourseId, providerSelect.value);
+        });
+    }
+
+    document.getElementById('import-lms-grades')?.addEventListener('click', importLmsGrades);
 }
 
 function addKeyboardPickerActivation(selectElement) {
@@ -60,6 +72,15 @@ function addKeyboardPickerActivation(selectElement) {
             // Preserve the browser's native select behavior when unavailable.
         }
     });
+}
+
+function appendOption(select, value, label, { disabled = false, selected = false } = {}) {
+    const item = document.createElement('option');
+    item.value = value;
+    item.textContent = label;
+    item.disabled = disabled;
+    item.selected = selected;
+    select.appendChild(item);
 }
 
 async function loadInstructorCourses() {
@@ -161,10 +182,147 @@ async function loadStudents(courseId) {
         currentStudents = [...currentTAs, ...uniqueStudents];
         
         renderStudents(courseId);
+        await loadLmsGrades(courseId);
         await loadChatSurveyResponses(courseId);
     } catch (err) {
         console.error('Error loading students:', err);
         showNotification('Error loading students. Please try again.', 'error');
+    }
+}
+
+function gradeLabel(value) {
+    if (!value) return '—';
+    if (typeof value.score === 'number' && typeof value.maxScore === 'number') {
+        return `${value.score.toFixed(1).replace(/\.0$/, '')}/${value.maxScore.toFixed(1).replace(/\.0$/, '')}`;
+    }
+    if (typeof value.score === 'number') return value.score.toFixed(1).replace(/\.0$/, '');
+    return value.grade || '—';
+}
+
+function renderLmsGrades(view) {
+    const container = document.getElementById('lms-grades-container');
+    const status = document.getElementById('lms-grades-status');
+    if (!container || !status) return;
+
+    if (!view.source) {
+        container.innerHTML = '';
+        status.textContent = `No ${view.provider || 'LMS'} grade source is linked to this BiocBot course.`;
+        return;
+    }
+    if (!view.students?.length) {
+        container.innerHTML = '';
+        status.textContent = `No mapped ${view.provider} students or imported grades are available yet.`;
+        return;
+    }
+
+    const imported = view.importedAt ? new Date(view.importedAt).toLocaleString() : null;
+    status.textContent = imported
+        ? `Showing a read-only ${view.provider} snapshot imported ${imported}.`
+        : `Students are mapped to ${view.provider}; import grades to load the first snapshot.`;
+    const itemHeaders = (view.gradeItems || []).map((item) =>
+        `<th scope="col">${escapeHTML(item.name)}${typeof item.maxScore === 'number' ? `<span class="grade-max"> / ${item.maxScore}</span>` : ''}</th>`
+    ).join('');
+    const rows = view.students.map((student) => `
+        <tr>
+            <th scope="row">
+                ${escapeHTML(student.displayName)}
+                <span class="grade-student-id">${escapeHTML(student.username || student.localUserId)}</span>
+            </th>
+            <td>${escapeHTML(gradeLabel(student.total))}</td>
+            ${(view.gradeItems || []).map((item) => `<td>${escapeHTML(gradeLabel(student.grades?.[item.key]))}</td>`).join('')}
+        </tr>
+    `).join('');
+
+    container.innerHTML = `
+        <table class="lms-grades-table">
+            <thead>
+                <tr>
+                    <th scope="col">Student</th>
+                    <th scope="col">Course total</th>
+                    ${itemHeaders}
+                </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+        </table>
+    `;
+}
+
+function updateGradeProviderOptions(sources, selectedProvider) {
+    const select = document.getElementById('lms-grade-provider');
+    const button = document.getElementById('import-lms-grades');
+    if (!select || !button) return;
+
+    select.replaceChildren();
+    for (const source of sources) {
+        const label = `${source.provider === 'canvas' ? 'Canvas' : 'Moodle'}${source.linked ? '' : ' — not linked'}${source.configured ? '' : ' — not configured'}`;
+        appendOption(select, source.provider, label, {
+            disabled: !source.linked || !source.configured,
+            selected: source.provider === selectedProvider
+        });
+    }
+    const selected = sources.find((source) => source.provider === select.value);
+    button.disabled = !selected?.linked || !selected?.configured;
+}
+
+async function loadLmsGrades(courseId, provider = '') {
+    currentGradeCourseId = courseId;
+    const status = document.getElementById('lms-grades-status');
+    const params = new URLSearchParams();
+    if (provider) params.set('provider', provider);
+    if (status) status.textContent = 'Loading LMS grade snapshot…';
+
+    try {
+        const suffix = params.toString() ? `?${params}` : '';
+        const response = await authenticatedFetch(`/api/lms/grades/courses/${encodeURIComponent(courseId)}${suffix}`);
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.message || `HTTP ${response.status}`);
+        currentGradeSources = result.data.sources || [];
+        updateGradeProviderOptions(currentGradeSources, result.data.provider);
+        renderLmsGrades(result.data);
+    } catch (error) {
+        console.error('Error loading LMS grades:', error);
+        if (status) status.textContent = `Could not load LMS grades: ${error.message}`;
+        document.getElementById('lms-grades-container').innerHTML = '';
+    }
+}
+
+async function importLmsGrades() {
+    const provider = document.getElementById('lms-grade-provider')?.value;
+    const button = document.getElementById('import-lms-grades');
+    const status = document.getElementById('lms-grades-status');
+    if (!provider || !currentGradeCourseId || !button) return;
+
+    button.disabled = true;
+    button.textContent = 'Importing…';
+    if (status) status.textContent = `Reading grades from ${provider}…`;
+    try {
+        const response = await authenticatedFetch(
+            `/api/lms/grades/courses/${encodeURIComponent(currentGradeCourseId)}/import`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ provider })
+            }
+        );
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+            if (response.status === 401 && provider === 'canvas') {
+                const returnTo = `${window.location.pathname}${window.location.search}`;
+                window.location.assign(`/api/lms/canvas/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
+                return;
+            }
+            throw new Error(result.message || result.error || `HTTP ${response.status}`);
+        }
+        renderLmsGrades(result.data);
+        const summary = result.data.summary;
+        showNotification(`Imported ${summary.importedGrades} grades for ${summary.mappedStudents} students from ${provider}.`, 'success');
+    } catch (error) {
+        console.error('Error importing LMS grades:', error);
+        if (status) status.textContent = `Grade import failed: ${error.message}`;
+        showNotification(`Could not import ${provider} grades.`, 'error');
+    } finally {
+        button.disabled = false;
+        button.textContent = 'Import grades';
     }
 }
 

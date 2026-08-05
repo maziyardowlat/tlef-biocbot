@@ -64,6 +64,24 @@
                 <div id="students-container" class="students-grid"></div>
             </div>
 
+            <section class="dashboard-section lms-grades-section" aria-labelledby="lms-grades-title">
+                <div class="lms-grades-header">
+                    <div>
+                        <h2 id="lms-grades-title">LMS Grades</h2>
+                        <div class="section-description">
+                            <p>Import a read-only grade snapshot from the linked Canvas or Moodle course.</p>
+                        </div>
+                    </div>
+                    <div class="lms-grades-actions">
+                        <label for="lms-grade-provider">Provider</label>
+                        <select id="lms-grade-provider" aria-describedby="lms-grades-status"></select>
+                        <button id="import-lms-grades" class="btn-small btn-primary" type="button">Import grades</button>
+                    </div>
+                </div>
+                <div id="lms-grades-status" class="lms-grades-status" role="status" aria-live="polite">Loading LMS grade sources…</div>
+                <div id="lms-grades-container" class="lms-grades-table-wrap"></div>
+            </section>
+
             <div class="dashboard-section survey-responses-section">
                 <div class="survey-section-header">
                     <div>

@@ -128,6 +128,74 @@
                 </div>
             </section>
 
+            <section class="canvas-import-panel" id="moodle-import-panel" aria-labelledby="moodle-import-title">
+                <div class="canvas-import-heading">
+                    <div>
+                        <h2 id="moodle-import-title">Import from Moodle</h2>
+                        <p>Bring an instructor-accessible Moodle course note into this BiocBot course.</p>
+                    </div>
+                    <div class="canvas-connection-actions">
+                        <span class="canvas-connection-status" id="moodle-connection-status">Checking authorization…</span>
+                        <button type="button" class="btn-secondary canvas-disconnect-btn" id="moodle-disconnect-btn" hidden>Disconnect Moodle</button>
+                    </div>
+                </div>
+
+                <div id="moodle-connect-controls" hidden>
+                    <div class="moodle-connect-row">
+                        <label>
+                            Moodle web-service token
+                            <input type="password" id="moodle-token-input" autocomplete="off" spellcheck="false">
+                        </label>
+                        <button type="button" class="btn-primary" id="moodle-connect-btn">Connect Moodle</button>
+                    </div>
+                    <p class="canvas-import-help">Create a token from Moodle’s Security keys page. BiocBot stores it only for LMS API access.</p>
+                </div>
+
+                <div id="moodle-import-controls" hidden>
+                    <p class="canvas-import-help canvas-authorization-help">Moodle tokens remain active until removed here or revoked in Moodle.</p>
+                    <div class="canvas-import-grid">
+                        <label>
+                            Moodle course
+                            <select id="moodle-course-select">
+                                <option value="">Select a Moodle course…</option>
+                            </select>
+                        </label>
+                        <div class="canvas-link-action">
+                            <button type="button" class="btn-secondary" id="moodle-link-course-btn">Link course</button>
+                            <span id="moodle-linked-course" aria-live="polite"></span>
+                        </div>
+                        <label>
+                            Moodle file
+                            <select id="moodle-file-select" disabled>
+                                <option value="">Link a Moodle course first…</option>
+                            </select>
+                        </label>
+                        <label>
+                            BiocBot unit
+                            <select id="moodle-unit-select">
+                                <option value="">Select a unit…</option>
+                            </select>
+                        </label>
+                        <label>
+                            Material type
+                            <select id="moodle-document-type-select">
+                                <option value="lecture-notes">Lecture Notes</option>
+                                <option value="practice-quiz">Practice Questions/Tutorial</option>
+                                <option value="additional">Additional Material</option>
+                            </select>
+                        </label>
+                        <label>
+                            Display name <span class="optional-label">(optional)</span>
+                            <input type="text" id="moodle-file-title" placeholder="Use the Moodle filename">
+                        </label>
+                    </div>
+                    <div class="canvas-import-actions">
+                        <button type="button" class="btn-primary" id="moodle-import-file-btn" disabled>Import file</button>
+                        <span id="moodle-import-message" class="canvas-import-message" role="status" aria-live="polite"></span>
+                    </div>
+                </div>
+            </section>
+
             <!-- Action Buttons -->
             <div class="action-buttons-container">
                 <!-- Mode calibration now handled within each week's calibration quiz -->
@@ -570,6 +638,7 @@
     <script src="./scripts/instructor-units.js"></script>
     <script src="./scripts/instructor-documents.js"></script>
     <script src="./scripts/instructor-canvas.js"></script>
+    <script src="./scripts/instructor-moodle.js"></script>
     <script src="./scripts/instructor-upload-topics.js"></script>
     <script src="./scripts/instructor-objectives.js"></script>
     <script src="./scripts/instructor-questions.js"></script>

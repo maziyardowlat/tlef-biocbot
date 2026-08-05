@@ -76,6 +76,76 @@
     word-break: break-word;
 }
 
+.lms-grades-section {
+    margin-top: 36px;
+}
+
+.lms-grades-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 18px;
+    margin-bottom: 16px;
+}
+
+.lms-grades-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.lms-grades-actions label {
+    font-weight: 600;
+}
+
+.lms-grades-actions select {
+    width: auto;
+    min-width: 190px;
+}
+
+.lms-grades-status {
+    margin-bottom: 12px;
+    color: #5f666d;
+}
+
+.lms-grades-table-wrap {
+    max-width: 100%;
+    overflow-x: auto;
+}
+
+.lms-grades-table {
+    width: 100%;
+    min-width: 680px;
+    border-collapse: collapse;
+    background: #fff;
+}
+
+.lms-grades-table th,
+.lms-grades-table td {
+    padding: 12px 14px;
+    border: 1px solid #e5e7eb;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.lms-grades-table thead th {
+    background: #f8fafc;
+    color: #344054;
+}
+
+.grade-max,
+.grade-student-id {
+    color: #667085;
+    font-size: 0.78rem;
+    font-weight: 400;
+}
+
+.grade-student-id {
+    display: block;
+    margin-top: 3px;
+}
+
 .survey-responses-section {
     margin-top: 36px;
 }
@@ -270,13 +340,17 @@
 
     .survey-section-header,
     .survey-section-actions,
-    .survey-response-main {
+    .survey-response-main,
+    .lms-grades-header,
+    .lms-grades-actions {
         flex-direction: column;
         align-items: stretch;
     }
 
     .survey-section-actions select,
-    .survey-section-actions button {
+    .survey-section-actions button,
+    .lms-grades-actions select,
+    .lms-grades-actions button {
         width: 100%;
     }
 

@@ -2208,6 +2208,38 @@ fieldset.radio-group-fieldset {
     flex-wrap: wrap;
 }
 
+#moodle-connect-controls {
+    margin-top: 16px;
+}
+
+#moodle-connect-controls[hidden],
+#moodle-import-controls[hidden] {
+    display: none;
+}
+
+.moodle-connect-row {
+    display: flex;
+    align-items: end;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.moodle-connect-row label {
+    display: grid;
+    gap: 6px;
+    min-width: min(100%, 360px);
+    color: #2f3742;
+    font-weight: 600;
+}
+
+.moodle-connect-row input {
+    min-height: 42px;
+    padding: 8px 10px;
+    border: 1px solid #c8cdd4;
+    border-radius: 6px;
+    font: inherit;
+}
+
 #canvas-connect-controls[hidden],
 #canvas-import-controls[hidden] {
     display: none;

@@ -46,6 +46,11 @@ async function requireManagedCourse(req, res, courseId) {
     return course;
 }
 
+function getCanvasFileSource(course = {}) {
+    return course.lmsFileSources?.canvas
+        || (course.lmsSync?.provider === 'canvas' ? course.lmsSync : null);
+}
+
 function createCanvasLmsRouter(
     integration,
     {
@@ -112,7 +117,7 @@ function createCanvasLmsRouter(
                 success: true,
                 data: {
                     courseId: course.courseId,
-                    lmsSync: course.lmsSync?.provider === 'canvas' ? course.lmsSync : null
+                    lmsSync: getCanvasFileSource(course)
                 }
             });
         } catch (error) {
@@ -149,7 +154,7 @@ function createCanvasLmsRouter(
             };
             await req.app.locals.db.collection('courses').updateOne(
                 { courseId: course.courseId },
-                { $set: { lmsSync, updatedAt: now } }
+                { $set: { lmsSync, 'lmsFileSources.canvas': lmsSync, updatedAt: now } }
             );
             res.json({ success: true, data: { courseId: course.courseId, lmsSync } });
         } catch (error) {
@@ -162,7 +167,8 @@ function createCanvasLmsRouter(
             const db = req.app.locals.db;
             const course = await requireManagedCourse(req, res, req.params.biocbotCourseId);
             if (!course) return;
-            if (course.lmsSync?.provider !== 'canvas' || !course.lmsSync.courseId) {
+            const canvasSource = getCanvasFileSource(course);
+            if (!canvasSource?.courseId) {
                 return res.status(400).json({ success: false, message: 'This BiocBot course is not linked to Canvas' });
             }
 
@@ -179,7 +185,7 @@ function createCanvasLmsRouter(
                 return res.status(400).json({ success: false, message: 'Selected BiocBot unit does not exist' });
             }
 
-            const canvasCourseId = String(course.lmsSync.courseId);
+            const canvasCourseId = String(canvasSource.courseId);
             const files = await canvas.getCourseFiles(req.canvasApi, canvasCourseId, {
                 contentTypes: SUPPORTED_DOCUMENT_MIME_TYPES
             });
@@ -278,6 +284,7 @@ function createCanvasLmsRouter(
 
 module.exports = {
     createCanvasLmsRouter,
+    getCanvasFileSource,
     normalizeCanvasFile,
     requireManagedCourse
 };

@@ -39,6 +39,8 @@ const superchatsRoutes = require('./routes/superchats');
 const academicSyncRoutes = require('./routes/academicSync');
 const previewRoutes = require('./routes/preview');
 const { createCanvasLmsRouter } = require('./routes/canvasLms');
+const { createLmsGradesRouter } = require('./routes/lmsGrades');
+const { createMoodleLmsRouter } = require('./routes/moodleLms');
 const LLMService = require('./services/llm');
 const LlmRegistry = require('./services/llmRegistry');
 const AuthService = require('./services/authService');
@@ -183,13 +185,22 @@ async function initializeLms() {
     lmsIntegration = createLmsIntegration(db);
     app.locals.lmsIntegration = lmsIntegration;
 
-    if (lmsIntegration.canvas) {
+    if (lmsIntegration.canvas || lmsIntegration.moodle) {
         await ensureLmsIndexes(db);
+    }
+
+    if (lmsIntegration.canvas) {
         console.log('✅ Canvas LMS integration configured');
     } else if (lmsIntegration.canvasStatus.partial) {
         console.warn(`⚠️ Canvas LMS integration disabled; missing: ${lmsIntegration.canvasStatus.missing.join(', ')}`);
     } else {
         console.log('ℹ️ Canvas LMS integration is not configured');
+    }
+
+    if (lmsIntegration.moodle) {
+        console.log('✅ Moodle LMS integration configured');
+    } else {
+        console.log('ℹ️ Moodle LMS integration is not configured');
     }
 }
 
@@ -615,6 +626,24 @@ function setupAPIRoutes() {
             authMiddleware.populateUser,
             authMiddleware.requireInstructor,
             createCanvasLmsRouter(lmsIntegration.canvas)
+        );
+    }
+    if (lmsIntegration.moodle) {
+        app.use(
+            '/api/lms/moodle',
+            authMiddleware.requireAuth,
+            authMiddleware.populateUser,
+            authMiddleware.requireInstructor,
+            createMoodleLmsRouter(lmsIntegration.moodle)
+        );
+    }
+    if (lmsIntegration.canvas || lmsIntegration.moodle) {
+        app.use(
+            '/api/lms/grades',
+            authMiddleware.requireAuth,
+            authMiddleware.populateUser,
+            authMiddleware.requireInstructor,
+            createLmsGradesRouter(lmsIntegration)
         );
     }
     app.use('/api/student/super-course', authMiddleware.requireAuth, authMiddleware.populateUser, studentSuperCourseRoutes);
