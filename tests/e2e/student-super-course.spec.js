@@ -31,6 +31,7 @@ const {
     cleanupSuperchats,
     cleanupSuperCourseSessions,
 } = require('./helpers/superchats-test');
+const { stubAgreementAccepted } = require('./helpers/agreement');
 
 const PREFIX = 'BIOC-E2E-SC';
 // Buckets
@@ -104,6 +105,12 @@ test.afterAll(async () => {
 test.describe('Super Course nav + page gating', () => {
     test.use({ storageState: storageStatePath('student') });
 
+    // /student/super-course now carries the agreement modal, which blocks the
+    // page until dismissed. None of these tests are about the agreement.
+    test.beforeEach(async ({ page }) => {
+        await stubAgreementAccepted(page);
+    });
+
     test('nav item is visible when the student can access a visible bucket', async ({ page }) => {
         await page.goto('/student');
         await expect(page.locator('#super-course-nav-item')).toBeVisible({ timeout: 10_000 });
@@ -162,6 +169,22 @@ test.describe('Super Course nav + page gating', () => {
         await page.waitForURL((url) => url.pathname === '/student' || url.pathname === '/student/', {
             timeout: 10_000,
         });
+    });
+
+    test('the opening message carries the AI-use notice, and it survives New Chat', async ({ page }) => {
+        await page.goto('/student/super-course');
+        await expect(page.locator('#super-course-pool-list')).toContainText('BIOC 202 Opted In', { timeout: 10_000 });
+
+        const notice = page.locator('#chat-messages .ai-use-disclaimer');
+        await expect(notice).toContainText('This AI tool generates responses using a large language model');
+
+        // startNewChat() rebuilds the transcript from scratch, so the notice has
+        // to be part of what it rebuilds.
+        await page.locator('#new-super-course-chat').click();
+        await expect(notice).toContainText('This AI tool generates responses using a large language model');
+
+        await page.locator('#chat-messages .ai-use-disclaimer-link').click();
+        await expect(page.locator('#agreement-modal-overlay')).toBeVisible({ timeout: 10_000 });
     });
 
     test('sends a chat message and renders the bot response', async ({ page, baseURL }) => {

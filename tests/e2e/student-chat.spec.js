@@ -1307,6 +1307,34 @@ test.describe('Student chat page — UI controls', () => {
         await expect(modal.locator('#close-modal-btn')).toBeVisible();
     });
 
+    test('the welcome message carries the AI-use notice, and its link opens the full terms', async ({ page }) => {
+        await loginAsStudent(page);
+        await page.addInitScript((id) => {
+            try { localStorage.setItem('selectedCourseId', id); } catch (_) {}
+        }, STU_COURSE_ID);
+        await page.goto('/student');
+
+        // The notice has to be part of the message that opens the chat, not
+        // only the standing footer under the composer.
+        const welcome = page.locator('.bot-message').filter({ hasText: 'Welcome to BiocBot!' });
+        await expect(welcome).toHaveCount(1, { timeout: 15_000 });
+        await expect(welcome.locator('.ai-use-disclaimer')).toContainText(
+            'This AI tool generates responses using a large language model'
+        );
+
+        const modal = page.locator('#agreement-modal-overlay');
+        await expect(modal).toBeHidden();
+
+        await welcome.locator('.ai-use-disclaimer-link').click();
+        await expect(modal).toBeVisible({ timeout: 10_000 });
+
+        // The long form the short notice points at.
+        await expect(modal).toContainText('retrieval-augmented generation (RAG)');
+        await expect(modal).toContainText('Not a Substitute for Official Sources');
+        await expect(modal).toContainText('Freedom of Information and Protection of Privacy Act');
+        await expect(modal.locator('#close-modal-btn')).toBeVisible();
+    });
+
     test('new session button is visible on the chat page', async ({ page }) => {
         await loginAsStudent(page);
         await page.addInitScript((id) => {

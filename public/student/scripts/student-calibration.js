@@ -3,6 +3,15 @@
  * study-mode calculation/toggle.
  */
 
+/**
+ * Short AI-use notice that opens every chat. Defined by agreement-modal.js, which
+ * also owns the full terms the notice links to; empty when that script is absent.
+ * @returns {string} Disclaimer markup, safe to concatenate into message HTML
+ */
+function getAIUseDisclaimerHtml() {
+    return window.AI_USE_DISCLAIMER_HTML || '';
+}
+
 async function shouldPrepareFirstStudentGuidedChat() {
     const user = typeof waitForCurrentUser === 'function'
         ? await waitForCurrentUser()
@@ -40,7 +49,8 @@ async function prepareFirstStudentGuidedChat(unitName) {
 
     addMessage(
         `<strong>Tutor mode is ready</strong><br>` +
-        `You're ready to ask questions about ${safeUnitName}. You can switch between Tutor and Protégé mode whenever you want.`,
+        `You're ready to ask questions about ${safeUnitName}. You can switch between Tutor and Protégé mode whenever you want.` +
+        getAIUseDisclaimerHtml(),
         'bot',
         false,
         false,
@@ -427,7 +437,8 @@ function showUnitSelectionWelcomeMessage() {
 
 
     const messageContent = `<strong>Welcome to BiocBot!</strong><br>
-    I can see you have access to published units. Please select a unit from the dropdown above to start your assessment, or feel free to chat with me about any topics you'd like to discuss.`;
+    I can see you have access to published units. Please select a unit from the dropdown above to start your assessment, or feel free to chat with me about any topics you'd like to discuss.
+    ${getAIUseDisclaimerHtml()}`;
 
     // Use addMessage to ensure it's properly handled and auto-saved
     // sender='bot', hasFlagButton=false, skipAutoSave=false

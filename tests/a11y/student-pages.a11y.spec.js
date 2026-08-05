@@ -10,6 +10,7 @@ const {
     seedSuperchat,
     cleanupSuperchats,
 } = require('../e2e/helpers/superchats-test');
+const { stubAgreementAccepted } = require('../e2e/helpers/agreement');
 const { expectNoA11yViolations } = require('./axe-helper');
 
 const SUPER_COURSE_ID = 'BIOC-A11Y-SUPER-COURSE';
@@ -77,6 +78,10 @@ test.describe('Accessibility: student Super Course page', () => {
                 }
             } catch (_) {}
         });
+
+        // Scan the page itself, not the agreement overlay that would otherwise
+        // cover it. The modal has its own scans in modals.a11y.spec.js.
+        await stubAgreementAccepted(page);
 
         await page.goto('/student/super-course');
         await page.waitForLoadState('load');
