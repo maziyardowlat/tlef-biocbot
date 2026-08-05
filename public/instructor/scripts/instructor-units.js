@@ -80,6 +80,41 @@ function focusUnitFromURL() {
 }
 
 /**
+ * Pull the leading number out of a unit name ("Unit 10" -> 10) so units sort
+ * numerically instead of lexically (which would put "Unit 10" before "Unit 2").
+ * @param {string} name - Unit name
+ * @returns {number} The unit number, or Number.MAX_SAFE_INTEGER when there isn't one
+ */
+function getUnitNumber(name) {
+    const match = /\d+/.exec(name || '');
+    return match ? parseInt(match[0], 10) : Number.MAX_SAFE_INTEGER;
+}
+
+/**
+ * Build the ordered list of units to render. Prefers the course's actual
+ * lectures so the page shows exactly what exists in the database; falls back to
+ * the 1..totalUnits numbering only when a course has no lectures yet.
+ * @param {Object} courseStructure - Course structure (may carry totalUnits)
+ * @param {Array} lectures - The course's lectures/units
+ * @returns {Array<{name: string, data: Object|null}>} Units in display order
+ */
+function getRenderableUnits(courseStructure, lectures) {
+    if (Array.isArray(lectures) && lectures.length > 0) {
+        return lectures
+            .filter(lecture => lecture && lecture.name)
+            .sort((a, b) => getUnitNumber(a.name) - getUnitNumber(b.name) || a.name.localeCompare(b.name))
+            .map(lecture => ({ name: lecture.name, data: lecture }));
+    }
+
+    const totalUnits = (courseStructure && courseStructure.totalUnits) || 0;
+    const units = [];
+    for (let i = 1; i <= totalUnits; i++) {
+        units.push({ name: `Unit ${i}`, data: null });
+    }
+    return units;
+}
+
+/**
  * Generate units dynamically from onboarding data
  * @param {Object} onboardingData - Onboarding data with course structure
  */
@@ -100,16 +135,19 @@ function generateUnitsFromOnboarding(onboardingData) {
     container.innerHTML = '';
     
     const { courseStructure, lectures } = onboardingData;
-    const totalUnits = courseStructure.totalUnits;
-    
+
+    // Render the units that actually exist rather than counting 1..totalUnits.
+    // Deleting a unit leaves a gap in the numbering (e.g. "Unit 7" is gone while
+    // "Unit 19" is still there), so a positional loop invents units that have no
+    // record behind them - those can never be deleted, the API 404s on them - and
+    // hides real units whose number is past the count.
+    const unitList = getRenderableUnits(courseStructure, lectures);
+
     // Generate each unit
-    for (let i = 1; i <= totalUnits; i++) {
-        const unitName = `Unit ${i}`;
-        const unitData = lectures ? lectures.find(l => l.name === unitName) : null;
-        
-        const unitElement = createUnitElement(unitName, unitData, i === 1); // First unit is expanded
+    unitList.forEach((unit, index) => {
+        const unitElement = createUnitElement(unit.name, unit.data, index === 0); // First unit is expanded
         container.appendChild(unitElement);
-    }
+    });
 
     // Add "Add Unit" button at the end
     const addUnitContainer = document.createElement('div');

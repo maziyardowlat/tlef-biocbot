@@ -12,6 +12,9 @@ let currentSurveyResponses = [];
 let currentSurveyStats = null;
 let currentGradeCourseId = null;
 let currentGradeSources = [];
+let currentGradeView = null;
+// LMS grades keyed by BiocBot user id so a student card can find its own row.
+let gradesByLocalUserId = new Map();
 const dirtyEnrollment = new Map(); // studentId -> boolean (enrolled)
 
 document.addEventListener('DOMContentLoaded', async function() {
@@ -56,6 +59,7 @@ function initializeStudentHub() {
         });
     }
 
+    document.getElementById('match-lms-students')?.addEventListener('click', matchLmsStudents);
     document.getElementById('import-lms-grades')?.addEventListener('click', importLmsGrades);
 }
 
@@ -199,69 +203,132 @@ function gradeLabel(value) {
     return value.grade || '—';
 }
 
-function renderLmsGrades(view) {
-    const container = document.getElementById('lms-grades-container');
+const MATCH_STRATEGY_LABELS = {
+    sis: 'student number',
+    email: 'email',
+    username: 'username',
+    'email-local-part': 'email name'
+};
+
+function providerLabel(provider) {
+    return provider === 'canvas' ? 'Canvas' : (provider === 'moodle' ? 'Moodle' : 'LMS');
+}
+
+/**
+ * Stores the grade view and re-renders the student cards, which is where the
+ * grades actually live — a student's LMS scores belong next to their name, not
+ * in a separate table the instructor has to cross-reference by hand.
+ */
+function applyLmsGradeView(view) {
+    currentGradeView = view;
+    gradesByLocalUserId = new Map((view?.students || []).map((student) => [String(student.localUserId), student]));
+
     const status = document.getElementById('lms-grades-status');
-    if (!container || !status) return;
-
-    if (!view.source) {
-        container.innerHTML = '';
-        status.textContent = `No ${view.provider || 'LMS'} grade source is linked to this BiocBot course.`;
-        return;
+    if (status) {
+        if (!view?.source) {
+            status.textContent = `Not linked — link a ${providerLabel(view?.provider)} course on the Course Upload page first.`;
+        } else if (!view.students?.length) {
+            status.textContent = `Linked to ${view.source.code || view.source.name || view.source.courseId}. No students matched yet — run “Match students”.`;
+        } else if (view.importedAt) {
+            status.textContent = `${view.students.length} students matched · snapshot imported ${new Date(view.importedAt).toLocaleString()}`;
+        } else {
+            status.textContent = `${view.students.length} students matched · no grades imported yet`;
+        }
     }
-    if (!view.students?.length) {
-        container.innerHTML = '';
-        status.textContent = `No mapped ${view.provider} students or imported grades are available yet.`;
-        return;
+
+    if (currentGradeCourseId) renderStudents(currentGradeCourseId);
+}
+
+/** The LMS grade block shown inside one student card. */
+function renderStudentGrades(userId) {
+    const student = gradesByLocalUserId.get(String(userId));
+    const provider = providerLabel(currentGradeView?.provider);
+    if (!currentGradeView?.source) return '';
+
+    if (!student) {
+        return `
+                    <div class="student-lms-grades" data-state="unmatched">
+                        <strong>${escapeHTML(provider)} grades</strong>
+                        <p class="lms-grade-empty">Not matched to a ${escapeHTML(provider)} student.</p>
+                    </div>
+        `;
     }
 
-    const imported = view.importedAt ? new Date(view.importedAt).toLocaleString() : null;
-    status.textContent = imported
-        ? `Showing a read-only ${view.provider} snapshot imported ${imported}.`
-        : `Students are mapped to ${view.provider}; import grades to load the first snapshot.`;
-    const itemHeaders = (view.gradeItems || []).map((item) =>
-        `<th scope="col">${escapeHTML(item.name)}${typeof item.maxScore === 'number' ? `<span class="grade-max"> / ${item.maxScore}</span>` : ''}</th>`
-    ).join('');
-    const rows = view.students.map((student) => `
-        <tr>
-            <th scope="row">
-                ${escapeHTML(student.displayName)}
-                <span class="grade-student-id">${escapeHTML(student.username || student.localUserId)}</span>
-            </th>
-            <td>${escapeHTML(gradeLabel(student.total))}</td>
-            ${(view.gradeItems || []).map((item) => `<td>${escapeHTML(gradeLabel(student.grades?.[item.key]))}</td>`).join('')}
-        </tr>
+    const items = currentGradeView.gradeItems || [];
+    const chips = items.map((item) => `
+                            <div class="lms-grade-chip">
+                                <span class="lms-grade-chip-name">${escapeHTML(item.name)}</span>
+                                <span class="lms-grade-chip-value">${escapeHTML(gradeLabel(student.grades?.[item.key]))}</span>
+                            </div>
     `).join('');
+    const matchNote = student.matchedBy
+        ? `Matched by ${escapeHTML(MATCH_STRATEGY_LABELS[student.matchedBy] || student.matchedBy)}${student.externalEmail ? ` · ${escapeHTML(student.externalEmail)}` : ''}`
+        : `Matched to ${escapeHTML(student.externalLabel || `${provider} user ${student.externalUserId}`)}`;
 
-    container.innerHTML = `
-        <table class="lms-grades-table">
-            <thead>
-                <tr>
-                    <th scope="col">Student</th>
-                    <th scope="col">Course total</th>
-                    ${itemHeaders}
-                </tr>
-            </thead>
-            <tbody>${rows}</tbody>
-        </table>
+    return `
+                    <div class="student-lms-grades" data-state="matched">
+                        <div class="lms-grade-heading">
+                            <strong>${escapeHTML(provider)} grades</strong>
+                            <span class="lms-grade-total">${escapeHTML(gradeLabel(student.total))}</span>
+                        </div>
+                        ${items.length
+                            ? `<div class="lms-grade-chips">${chips}</div>`
+                            : '<p class="lms-grade-empty">No grade items imported yet.</p>'}
+                        <p class="lms-grade-match">${matchNote}</p>
+                    </div>
+    `;
+}
+
+function renderUnmatchedPanel(match) {
+    const panel = document.getElementById('lms-unmatched-panel');
+    const summary = document.getElementById('lms-unmatched-summary');
+    const body = document.getElementById('lms-unmatched-body');
+    if (!panel || !summary || !body) return;
+
+    const lms = match?.unmatchedLmsStudents || [];
+    const local = match?.unmatchedBiocBotStudents || [];
+    if (!lms.length && !local.length) {
+        panel.hidden = true;
+        return;
+    }
+
+    const provider = providerLabel(match.provider);
+    panel.hidden = false;
+    summary.textContent = `${lms.length + local.length} students could not be matched`;
+    const list = (entries, describe) => entries.map((entry) => `<li>${describe(entry)}</li>`).join('');
+    body.innerHTML = `
+        ${lms.length ? `
+            <p><strong>In ${escapeHTML(provider)} but not in BiocBot (${lms.length})</strong> — they have no BiocBot account with a matching email, username, or student number.</p>
+            <ul>${list(lms, (entry) => `${escapeHTML(entry.name)}${entry.email ? ` &lt;${escapeHTML(entry.email)}&gt;` : ' (no email visible to BiocBot)'}`)}</ul>
+        ` : ''}
+        ${local.length ? `
+            <p><strong>In BiocBot but not in ${escapeHTML(provider)} (${local.length})</strong> — no ${escapeHTML(provider)} student row matched them.</p>
+            <ul>${list(local, (entry) => `${escapeHTML(entry.displayName)}${entry.email ? ` &lt;${escapeHTML(entry.email)}&gt;` : ' (no email on file)'}`)}</ul>
+        ` : ''}
     `;
 }
 
 function updateGradeProviderOptions(sources, selectedProvider) {
     const select = document.getElementById('lms-grade-provider');
-    const button = document.getElementById('import-lms-grades');
-    if (!select || !button) return;
+    const importButton = document.getElementById('import-lms-grades');
+    const matchButton = document.getElementById('match-lms-students');
+    const bar = document.getElementById('lms-grades-bar');
+    if (!select || !importButton || !matchButton) return;
+
+    // Nothing to offer when the deployment has no LMS configured at all.
+    const usable = sources.filter((source) => source.configured);
+    if (bar) bar.hidden = usable.length === 0;
 
     select.replaceChildren();
-    for (const source of sources) {
-        const label = `${source.provider === 'canvas' ? 'Canvas' : 'Moodle'}${source.linked ? '' : ' — not linked'}${source.configured ? '' : ' — not configured'}`;
-        appendOption(select, source.provider, label, {
-            disabled: !source.linked || !source.configured,
+    for (const source of usable) {
+        appendOption(select, source.provider, `${providerLabel(source.provider)}${source.linked ? '' : ' — not linked'}`, {
+            disabled: !source.linked,
             selected: source.provider === selectedProvider
         });
     }
-    const selected = sources.find((source) => source.provider === select.value);
-    button.disabled = !selected?.linked || !selected?.configured;
+    const selected = usable.find((source) => source.provider === select.value);
+    matchButton.disabled = !selected?.linked;
+    importButton.disabled = !selected?.linked;
 }
 
 async function loadLmsGrades(courseId, provider = '') {
@@ -278,11 +345,64 @@ async function loadLmsGrades(courseId, provider = '') {
         if (!response.ok || !result.success) throw new Error(result.message || `HTTP ${response.status}`);
         currentGradeSources = result.data.sources || [];
         updateGradeProviderOptions(currentGradeSources, result.data.provider);
-        renderLmsGrades(result.data);
+        applyLmsGradeView(result.data);
     } catch (error) {
         console.error('Error loading LMS grades:', error);
         if (status) status.textContent = `Could not load LMS grades: ${error.message}`;
-        document.getElementById('lms-grades-container').innerHTML = '';
+        applyLmsGradeView(null);
+    }
+}
+
+/**
+ * Canvas access can lapse while the page is open. Bouncing through its OAuth
+ * flow and back is the only way to recover, so it is handled here rather than
+ * surfacing a bare 401 the instructor cannot act on.
+ */
+function reauthorizeCanvas(provider, response) {
+    if (response.status !== 401 || provider !== 'canvas') return false;
+    const returnTo = `${window.location.pathname}${window.location.search}`;
+    window.location.assign(`/api/lms/canvas/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
+    return true;
+}
+
+async function matchLmsStudents() {
+    const provider = document.getElementById('lms-grade-provider')?.value;
+    const button = document.getElementById('match-lms-students');
+    const status = document.getElementById('lms-grades-status');
+    if (!provider || !currentGradeCourseId || !button) return;
+
+    button.disabled = true;
+    button.textContent = 'Matching…';
+    if (status) status.textContent = `Reading the ${providerLabel(provider)} roster…`;
+    try {
+        const response = await authenticatedFetch(
+            `/api/lms/grades/courses/${encodeURIComponent(currentGradeCourseId)}/match-students`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ provider })
+            }
+        );
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+            if (reauthorizeCanvas(provider, response)) return;
+            throw new Error(result.message || result.error || `HTTP ${response.status}`);
+        }
+
+        const match = result.data.match;
+        applyLmsGradeView(result.data);
+        renderUnmatchedPanel(match);
+        showNotification(
+            `Matched ${match.matchedCount} of ${match.rosterSize} ${providerLabel(provider)} students.`,
+            match.matchedCount ? 'success' : 'error'
+        );
+    } catch (error) {
+        console.error('Error matching LMS students:', error);
+        if (status) status.textContent = `Student matching failed: ${error.message}`;
+        showNotification(`Could not match ${providerLabel(provider)} students.`, 'error');
+    } finally {
+        button.disabled = false;
+        button.textContent = '1. Match students';
     }
 }
 
@@ -294,7 +414,7 @@ async function importLmsGrades() {
 
     button.disabled = true;
     button.textContent = 'Importing…';
-    if (status) status.textContent = `Reading grades from ${provider}…`;
+    if (status) status.textContent = `Reading grades from ${providerLabel(provider)}…`;
     try {
         const response = await authenticatedFetch(
             `/api/lms/grades/courses/${encodeURIComponent(currentGradeCourseId)}/import`,
@@ -306,23 +426,29 @@ async function importLmsGrades() {
         );
         const result = await response.json();
         if (!response.ok || !result.success) {
-            if (response.status === 401 && provider === 'canvas') {
-                const returnTo = `${window.location.pathname}${window.location.search}`;
-                window.location.assign(`/api/lms/canvas/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
-                return;
-            }
+            if (reauthorizeCanvas(provider, response)) return;
             throw new Error(result.message || result.error || `HTTP ${response.status}`);
         }
-        renderLmsGrades(result.data);
+        applyLmsGradeView(result.data);
         const summary = result.data.summary;
-        showNotification(`Imported ${summary.importedGrades} grades for ${summary.mappedStudents} students from ${provider}.`, 'success');
+        if (!summary.mappedStudents) {
+            showNotification(
+                `No grades were stored — no ${providerLabel(provider)} student is matched to a BiocBot account yet. Run “Match students” first.`,
+                'error'
+            );
+            return;
+        }
+        showNotification(
+            `Imported ${summary.importedGrades} grades for ${summary.mappedStudents} students from ${providerLabel(provider)}.`,
+            'success'
+        );
     } catch (error) {
         console.error('Error importing LMS grades:', error);
         if (status) status.textContent = `Grade import failed: ${error.message}`;
-        showNotification(`Could not import ${provider} grades.`, 'error');
+        showNotification(`Could not import ${providerLabel(provider)} grades.`, 'error');
     } finally {
         button.disabled = false;
-        button.textContent = 'Import grades';
+        button.textContent = '2. Import grades';
     }
 }
 
@@ -573,6 +699,7 @@ function renderStudents(courseId) {
                     <p><strong>Username:</strong> ${escapeHTML(s.username || '—')}</p>
                     <p><strong>Email:</strong> ${escapeHTML(s.email || '—')}</p>
                     <p><strong>Last Login:</strong> ${s.lastLogin ? new Date(s.lastLogin).toLocaleString() : '—'}</p>
+                    ${isTA ? '' : renderStudentGrades(s.userId)}
                     ${struggleTopicsSection}
                 </div>
                 <div class="student-actions">

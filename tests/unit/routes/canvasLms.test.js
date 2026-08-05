@@ -223,6 +223,107 @@ describe('Canvas LMS routes', () => {
             .expect(403);
     });
 
+    test('streams per-stage progress when the client asks for NDJSON', async () => {
+        const file = {
+            id: '31',
+            name: 'Week 1 Notes.txt',
+            filename: 'week-1.txt',
+            mimeType: 'text/plain',
+            size: 17
+        };
+        const harness = canvasHarness({
+            getFiles: jest.fn(async () => [file]),
+            downloadFile: jest.fn(async () => ({
+                data: new Uint8Array(Buffer.from('Canvas notes body')),
+                size: 17
+            }))
+        });
+        // Replays the phases the real ingestion service emits so the route's
+        // translation from ingestion phase to import stage is exercised.
+        const ingestFile = jest.fn(async ({ onProgress }) => {
+            onProgress({ phase: 'storing' });
+            onProgress({ phase: 'extracting' });
+            onProgress({ phase: 'extracted', characters: 17, slides: 0 });
+            onProgress({ phase: 'saving' });
+            onProgress({ phase: 'indexing' });
+            return {
+                result: { documentId: 'doc-1', filename: 'Week 1 Notes.txt' },
+                courseResult: { success: true },
+                qdrantResult: { success: true, chunksStored: 3 }
+            };
+        });
+        const db = memoryDb({
+            courses: [course({ lmsSync: { provider: 'canvas', courseId: '10' } })],
+            documents: []
+        });
+        const router = createCanvasLmsRouter(harness.integration, {
+            ingestFile,
+            resolveAi: jest.fn(async () => ({ llm: {}, qdrant: {} }))
+        });
+        const app = makeRouteApp(router, { db, user: instructor });
+
+        const res = await request(app)
+            .post('/courses/BIOC-1/import-file')
+            .set('Accept', 'application/x-ndjson')
+            .send({ canvasFileId: '31', lectureName: 'Unit 1' })
+            .expect(200);
+
+        expect(res.headers['content-type']).toContain('application/x-ndjson');
+        const events = res.text.trim().split('\n').map((line) => JSON.parse(line));
+        expect(events.filter((event) => event.type === 'step').map((event) => event.step))
+            .toEqual(['download', 'store', 'extract', 'save', 'index']);
+        expect(events).toContainEqual({ type: 'detail', step: 'extract', detail: '17 characters read' });
+        expect(events.at(-1)).toEqual({
+            type: 'done',
+            data: expect.objectContaining({ documentId: 'doc-1', lectureName: 'Unit 1', chunksStored: 3 })
+        });
+    });
+
+    test('reports a mid-stream failure in band rather than as a dead connection', async () => {
+        const harness = canvasHarness({
+            getFiles: jest.fn(async () => [{
+                id: '31',
+                name: 'notes.txt',
+                filename: 'notes.txt',
+                mimeType: 'text/plain',
+                size: 10
+            }]),
+            downloadFile: jest.fn(async () => { throw new Error('Canvas file download returned 502'); })
+        });
+        const db = memoryDb({
+            courses: [course({ lmsSync: { provider: 'canvas', courseId: '10' } })],
+            documents: []
+        });
+        const router = createCanvasLmsRouter(harness.integration, {
+            resolveAi: jest.fn(async () => ({ llm: {}, qdrant: {} }))
+        });
+        const app = makeRouteApp(router, { db, user: instructor });
+
+        const res = await request(app)
+            .post('/courses/BIOC-1/import-file')
+            .set('Accept', 'application/x-ndjson')
+            .send({ canvasFileId: '31', lectureName: 'Unit 1' })
+            .expect(200);
+
+        const events = res.text.trim().split('\n').map((line) => JSON.parse(line));
+        expect(events.at(-1)).toEqual({ type: 'error', message: 'Canvas file download returned 502' });
+    });
+
+    test('validation still fails with a real status code before the stream opens', async () => {
+        const harness = canvasHarness({ getFiles: jest.fn(async () => []) });
+        const db = memoryDb({
+            courses: [course({ lmsSync: { provider: 'canvas', courseId: '10' } })],
+            documents: []
+        });
+        const app = makeRouteApp(createCanvasLmsRouter(harness.integration), { db, user: instructor });
+
+        await request(app)
+            .post('/courses/BIOC-1/import-file')
+            .set('Accept', 'application/x-ndjson')
+            .send({ canvasFileId: 'missing', lectureName: 'Unit 1' })
+            .expect(404);
+    });
+
     test('rejects external OAuth return paths', async () => {
         const harness = canvasHarness();
         const app = makeRouteApp(createCanvasLmsRouter(harness.integration), {

@@ -105,6 +105,21 @@ async function parseDocumentBuffer({ buffer, originalName, mimeType, llmService 
     }
 }
 
+/**
+ * Wraps a caller-supplied progress callback so a failing or missing listener
+ * can never break an ingestion that is otherwise succeeding.
+ */
+function createProgressEmitter(onProgress) {
+    if (typeof onProgress !== 'function') return () => {};
+    return (phase, details = {}) => {
+        try {
+            onProgress({ phase, ...details });
+        } catch (error) {
+            console.warn(`⚠️ Ingestion progress listener failed on "${phase}": ${error.message}`);
+        }
+    };
+}
+
 async function ingestDocument({
     db,
     qdrantService,
@@ -112,8 +127,11 @@ async function ingestDocument({
     storedInstructorId,
     linkTitle,
     qdrantData,
-    indexDocument
+    indexDocument,
+    onProgress
 }) {
+    const emit = createProgressEmitter(onProgress);
+    emit('saving');
     const result = await DocumentModel.uploadDocument(db, documentData);
     const courseResult = await CourseModel.addDocumentToUnit(
         db,
@@ -135,6 +153,7 @@ async function ingestDocument({
 
     let qdrantResult = null;
     if (documentData.content) {
+        emit('indexing');
         try {
             const payload = { ...qdrantData, documentId: result.documentId, type: result.type };
             qdrantResult = indexDocument
@@ -162,8 +181,10 @@ async function ingestFileBuffer({
     documentType,
     instructorId,
     title,
-    metadata = {}
+    metadata = {},
+    onProgress
 }) {
+    const emit = createProgressEmitter(onProgress);
     if (!Buffer.isBuffer(buffer)) {
         throw new TypeError('Document buffer is required');
     }
@@ -180,6 +201,7 @@ async function ingestFileBuffer({
 
     const effectiveSize = Number(size) || buffer.length;
     const effectiveName = path.basename(originalName || 'document');
+    emit('storing', { filename: effectiveName, size: effectiveSize });
     const gridfsFileId = await gridfs.uploadBuffer(db, buffer, effectiveName, {
         contentType: mimeType,
         metadata: { courseId, lectureName, originalName: effectiveName }
@@ -187,6 +209,7 @@ async function ingestFileBuffer({
 
     let textContent = '';
     let parsedSlides = [];
+    emit('extracting', { mimeType });
     try {
         ({ textContent, parsedSlides } = await parseDocumentBuffer({
             buffer,
@@ -197,6 +220,7 @@ async function ingestFileBuffer({
     } catch (error) {
         console.error(`❌ Error extracting text from ${mimeType}:`, error);
     }
+    emit('extracted', { characters: textContent.length, slides: parsedSlides.length });
 
     const filename = title || effectiveName;
     const documentData = {
@@ -259,7 +283,8 @@ async function ingestFileBuffer({
             mimeType,
             documentType
         },
-        indexDocument: indexSlides
+        indexDocument: indexSlides,
+        onProgress
     });
 }
 
@@ -268,6 +293,7 @@ module.exports = {
     PPTX_MIME_TYPE,
     SUPPORTED_DOCUMENT_MIME_TYPES,
     createDocumentParser,
+    createProgressEmitter,
     ingestDocument,
     ingestFileBuffer,
     isSupportedDocumentMimeType,

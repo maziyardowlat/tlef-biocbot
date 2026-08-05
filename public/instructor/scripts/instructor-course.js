@@ -149,8 +149,9 @@ async function loadOnboardingData() {
         const onboardingData = result.data;
         window.currentCourseData = onboardingData;
         
-        // Generate units dynamically based on course structure
-        if (onboardingData.courseStructure && onboardingData.courseStructure.totalUnits > 0) {
+        // Generate units dynamically from the course's units (falling back to the
+        // structure's count for a course whose units haven't been created yet)
+        if (onboardingData.lectures?.length > 0 || onboardingData.courseStructure?.totalUnits > 0) {
             generateUnitsFromOnboarding(onboardingData);
         }
         
@@ -242,8 +243,9 @@ async function loadSpecificCourse(courseId) {
             courseTitleElement.textContent = courseData.courseName;
         }
         
-        // Generate units dynamically based on course structure
-        if (courseData.courseStructure && courseData.courseStructure.totalUnits > 0) {
+        // Generate units dynamically from the course's units (falling back to the
+        // structure's count for a course whose units haven't been created yet)
+        if (courseData.lectures?.length > 0 || courseData.courseStructure?.totalUnits > 0) {
             generateUnitsFromOnboarding(courseData);
             
             // Load existing data for the units (learning objectives, publish status, etc.)

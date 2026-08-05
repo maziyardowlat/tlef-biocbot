@@ -209,6 +209,11 @@ function buildGradeView({ provider, source, mappings, snapshots, users }) {
             externalUserId: String(mapping.externalUserId),
             displayName: user.displayName || user.username || localUserId,
             username: user.username || '',
+            // How this student was tied to their LMS identity, so the Student
+            // Hub can show the evidence behind a grade rather than a bare score.
+            externalLabel: mapping.externalLabel || '',
+            externalEmail: mapping.externalEmail || '',
+            matchedBy: mapping.matchedBy || '',
             total: toValue(studentGrades.get(GRADE_TOTAL_KEY)),
             grades: Object.fromEntries(gradeItems.map((item) => [item.key, toValue(studentGrades.get(item.key))]))
         };

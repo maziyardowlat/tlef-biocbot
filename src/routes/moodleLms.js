@@ -8,6 +8,7 @@ const {
 } = require('../services/documentIngestion');
 const { resolveCourseAi, sendLlmKeyError } = require('./llmKeyMiddleware');
 const { requireManagedCourse } = require('./canvasLms');
+const { createImportProgressStream } = require('./lmsImportProgress');
 
 function normalizeMoodleFile(file = {}) {
     const mimeType = file.mimeType || '';
@@ -118,6 +119,7 @@ function createMoodleLmsRouter(
     });
 
     router.post('/courses/:biocbotCourseId/import-file', requireMoodleAuth, async (req, res, next) => {
+        let progress = null;
         try {
             const db = req.app.locals.db;
             const course = await requireManagedCourse(req, res, req.params.biocbotCourseId);
@@ -171,6 +173,11 @@ function createMoodleLmsRouter(
 
             const ai = await resolveAi(req, res, course.courseId);
             if (!ai) return;
+
+            // Everything that can still fail with a meaningful HTTP status has
+            // now passed, so it is safe to commit the response to 200 + stream.
+            progress = createImportProgressStream(req, res);
+            progress?.step('download', `${normalized.name} from Moodle`);
             const download = await moodle.downloadFile(
                 req.moodleApi,
                 moodleCourseId,
@@ -182,6 +189,7 @@ function createMoodleLmsRouter(
                 db,
                 ai,
                 buffer,
+                onProgress: progress?.onIngestionProgress,
                 originalName: normalized.filename || normalized.name,
                 mimeType: normalized.mimeType,
                 size: normalized.size || buffer.length,
@@ -202,18 +210,22 @@ function createMoodleLmsRouter(
                 }
             });
 
+            const data = {
+                documentId: result.documentId,
+                filename: result.filename,
+                lectureName,
+                linkedToCourse: courseResult.success,
+                qdrantProcessed: qdrantResult?.success === true,
+                chunksStored: qdrantResult?.chunksStored || 0
+            };
+            if (progress) return progress.done(data);
             res.status(201).json({
                 success: true,
                 message: 'Moodle file imported into BiocBot',
-                data: {
-                    documentId: result.documentId,
-                    filename: result.filename,
-                    linkedToCourse: courseResult.success,
-                    qdrantProcessed: qdrantResult?.success === true,
-                    chunksStored: qdrantResult?.chunksStored || 0
-                }
+                data
             });
         } catch (error) {
+            if (progress) return progress.fail(error);
             if (sendLlmKeyError(res, error)) return;
             next(error);
         }

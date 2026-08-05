@@ -517,6 +517,45 @@ class MemoryCollection {
         return { deletedCount: 1 };
     }
 
+    /**
+     * Applies the operations in order, which is enough for the unordered
+     * upsert batches this codebase writes (LMS grade snapshots and identity
+     * mappings). Only the operation types those callers use are supported.
+     */
+    async bulkWrite(operations = []) {
+        const result = {
+            insertedCount: 0,
+            matchedCount: 0,
+            modifiedCount: 0,
+            upsertedCount: 0,
+            deletedCount: 0
+        };
+
+        for (const operation of operations) {
+            if (operation.insertOne) {
+                await this.insertOne(operation.insertOne.document);
+                result.insertedCount += 1;
+            } else if (operation.updateOne) {
+                const { filter, update, upsert } = operation.updateOne;
+                const outcome = await this.updateOne(filter, update, { upsert });
+                result.matchedCount += outcome.matchedCount;
+                result.modifiedCount += outcome.modifiedCount;
+                result.upsertedCount += outcome.upsertedCount;
+            } else if (operation.updateMany) {
+                const outcome = await this.updateMany(operation.updateMany.filter, operation.updateMany.update);
+                result.matchedCount += outcome.matchedCount;
+                result.modifiedCount += outcome.modifiedCount;
+            } else if (operation.deleteOne) {
+                result.deletedCount += (await this.deleteOne(operation.deleteOne.filter)).deletedCount;
+            } else if (operation.deleteMany) {
+                result.deletedCount += (await this.deleteMany(operation.deleteMany.filter)).deletedCount;
+            } else {
+                throw new Error(`memory-db bulkWrite does not support ${Object.keys(operation).join(', ')}`);
+            }
+        }
+        return result;
+    }
+
     async deleteMany(query = {}) {
         const before = this.docs.length;
         this.docs = this.docs.filter((doc) => !matchesQuery(doc, query));

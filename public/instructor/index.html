@@ -66,135 +66,20 @@
                 <span id="published-units-summary" style="font-size: 0.9em; color: #5f666d;">Loading published status...</span>
             </div>
 
-            <section class="canvas-import-panel" id="canvas-import-panel" aria-labelledby="canvas-import-title">
-                <div class="canvas-import-heading">
-                    <div>
-                        <h2 id="canvas-import-title">Import from Canvas</h2>
-                        <p>Bring an instructor-owned Canvas course file into this BiocBot course.</p>
-                    </div>
-                    <div class="canvas-connection-actions">
-                        <span class="canvas-connection-status" id="canvas-connection-status">Checking authorization…</span>
-                        <button type="button" class="btn-secondary canvas-disconnect-btn" id="canvas-disconnect-btn" hidden>Disconnect Canvas</button>
-                    </div>
-                </div>
-
-                <div id="canvas-connect-controls" hidden>
-                    <button type="button" class="btn-primary" id="canvas-connect-btn">Connect Canvas</button>
-                    <p class="canvas-import-help">Canvas will ask you to authorize BiocBot. Your Canvas password is never shared with BiocBot.</p>
-                </div>
-
-                <div id="canvas-import-controls" hidden>
-                    <p class="canvas-import-help canvas-authorization-help">Canvas authorization remains active if you only log out of the Canvas website. Use “Disconnect Canvas” above to revoke BiocBot's access.</p>
-                    <div class="canvas-import-grid">
-                        <label>
-                            Canvas course
-                            <select id="canvas-course-select">
-                                <option value="">Select a Canvas course…</option>
-                            </select>
-                        </label>
-                        <div class="canvas-link-action">
-                            <button type="button" class="btn-secondary" id="canvas-link-course-btn">Link course</button>
-                            <span id="canvas-linked-course" aria-live="polite"></span>
-                        </div>
-                        <label>
-                            Canvas file
-                            <select id="canvas-file-select" disabled>
-                                <option value="">Link a Canvas course first…</option>
-                            </select>
-                        </label>
-                        <label>
-                            BiocBot unit
-                            <select id="canvas-unit-select">
-                                <option value="">Select a unit…</option>
-                            </select>
-                        </label>
-                        <label>
-                            Material type
-                            <select id="canvas-document-type-select">
-                                <option value="lecture-notes">Lecture Notes</option>
-                                <option value="practice-quiz">Practice Questions/Tutorial</option>
-                                <option value="additional">Additional Material</option>
-                            </select>
-                        </label>
-                        <label>
-                            Display name <span class="optional-label">(optional)</span>
-                            <input type="text" id="canvas-file-title" placeholder="Use the Canvas filename">
-                        </label>
-                    </div>
-                    <div class="canvas-import-actions">
-                        <button type="button" class="btn-primary" id="canvas-import-file-btn" disabled>Import file</button>
-                        <span id="canvas-import-message" role="status" aria-live="polite"></span>
-                    </div>
-                </div>
-            </section>
-
-            <section class="canvas-import-panel" id="moodle-import-panel" aria-labelledby="moodle-import-title">
-                <div class="canvas-import-heading">
-                    <div>
-                        <h2 id="moodle-import-title">Import from Moodle</h2>
-                        <p>Bring an instructor-accessible Moodle course note into this BiocBot course.</p>
-                    </div>
-                    <div class="canvas-connection-actions">
-                        <span class="canvas-connection-status" id="moodle-connection-status">Checking authorization…</span>
-                        <button type="button" class="btn-secondary canvas-disconnect-btn" id="moodle-disconnect-btn" hidden>Disconnect Moodle</button>
-                    </div>
-                </div>
-
-                <div id="moodle-connect-controls" hidden>
-                    <div class="moodle-connect-row">
-                        <label>
-                            Moodle web-service token
-                            <input type="password" id="moodle-token-input" autocomplete="off" spellcheck="false">
-                        </label>
-                        <button type="button" class="btn-primary" id="moodle-connect-btn">Connect Moodle</button>
-                    </div>
-                    <p class="canvas-import-help">Create a token from Moodle’s Security keys page. BiocBot stores it only for LMS API access.</p>
-                </div>
-
-                <div id="moodle-import-controls" hidden>
-                    <p class="canvas-import-help canvas-authorization-help">Moodle tokens remain active until removed here or revoked in Moodle.</p>
-                    <div class="canvas-import-grid">
-                        <label>
-                            Moodle course
-                            <select id="moodle-course-select">
-                                <option value="">Select a Moodle course…</option>
-                            </select>
-                        </label>
-                        <div class="canvas-link-action">
-                            <button type="button" class="btn-secondary" id="moodle-link-course-btn">Link course</button>
-                            <span id="moodle-linked-course" aria-live="polite"></span>
-                        </div>
-                        <label>
-                            Moodle file
-                            <select id="moodle-file-select" disabled>
-                                <option value="">Link a Moodle course first…</option>
-                            </select>
-                        </label>
-                        <label>
-                            BiocBot unit
-                            <select id="moodle-unit-select">
-                                <option value="">Select a unit…</option>
-                            </select>
-                        </label>
-                        <label>
-                            Material type
-                            <select id="moodle-document-type-select">
-                                <option value="lecture-notes">Lecture Notes</option>
-                                <option value="practice-quiz">Practice Questions/Tutorial</option>
-                                <option value="additional">Additional Material</option>
-                            </select>
-                        </label>
-                        <label>
-                            Display name <span class="optional-label">(optional)</span>
-                            <input type="text" id="moodle-file-title" placeholder="Use the Moodle filename">
-                        </label>
-                    </div>
-                    <div class="canvas-import-actions">
-                        <button type="button" class="btn-primary" id="moodle-import-file-btn" disabled>Import file</button>
-                        <span id="moodle-import-message" class="canvas-import-message" role="status" aria-live="polite"></span>
-                    </div>
-                </div>
-            </section>
+            <!-- LMS import launcher: one small button per configured provider.
+                 The full workflow lives in #lms-import-modal so this page stays
+                 focused on course material. -->
+            <div class="lms-import-bar" id="lms-import-bar" hidden>
+                <span class="lms-import-bar-label">Import from your LMS:</span>
+                <button type="button" class="lms-import-chip" data-lms-provider="canvas" hidden>
+                    <span class="lms-chip-name">Canvas</span>
+                    <span class="lms-chip-state" data-state="checking">Checking…</span>
+                </button>
+                <button type="button" class="lms-import-chip" data-lms-provider="moodle" hidden>
+                    <span class="lms-chip-name">Moodle</span>
+                    <span class="lms-chip-state" data-state="checking">Checking…</span>
+                </button>
+            </div>
 
             <!-- Action Buttons -->
             <div class="action-buttons-container">
@@ -224,6 +109,100 @@
         </main>
     </div>
     
+    <!-- LMS Import Modal (shared by Canvas and Moodle) -->
+    <div id="lms-import-modal" class="modal">
+        <div class="modal-content lms-import-modal-content" role="dialog" aria-modal="true" aria-labelledby="lms-import-title">
+            <div class="modal-header">
+                <div class="lms-import-heading">
+                    <h2 id="lms-import-title">Import from Canvas</h2>
+                    <p class="lms-import-subtitle" id="lms-import-subtitle">Step 1 of 4 · Connect your account</p>
+                </div>
+                <button type="button" class="modal-close" id="lms-import-close" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+            </div>
+
+            <ol class="lms-stepper" id="lms-stepper" aria-label="Import progress"></ol>
+
+            <div class="modal-body lms-import-body">
+                <!-- Step 1: connect -->
+                <section class="lms-step-panel" data-step="connect" hidden>
+                    <div id="lms-connect-oauth" hidden>
+                        <p class="lms-step-help">BiocBot needs your permission before it can read anything from Canvas. Canvas will ask you to approve, then send you straight back here — your Canvas password is never shared with BiocBot.</p>
+                        <button type="button" class="btn-primary" id="lms-connect-oauth-btn">Authorize with Canvas</button>
+                    </div>
+
+                    <div id="lms-connect-token" hidden>
+                        <p class="lms-step-help">Moodle authorizes apps with a web-service token instead of a login prompt. Create one in Moodle under <em>Preferences → Security keys</em>, then paste it here. BiocBot stores it only to call the Moodle API on your behalf.</p>
+                        <label class="lms-field">
+                            Moodle web-service token
+                            <input type="password" id="lms-token-input" autocomplete="off" spellcheck="false" placeholder="Paste your token">
+                        </label>
+                        <button type="button" class="btn-primary" id="lms-connect-token-btn">Connect Moodle</button>
+                    </div>
+
+                    <div id="lms-connected-state" hidden>
+                        <p class="lms-step-help lms-connected-note" id="lms-connected-note">BiocBot is authorized. Continue to pick a course.</p>
+                        <button type="button" class="btn-secondary" id="lms-disconnect-btn">Disconnect</button>
+                    </div>
+                </section>
+
+                <!-- Step 2: choose the LMS course -->
+                <section class="lms-step-panel" data-step="course" hidden>
+                    <p class="lms-step-help">Choose the course this BiocBot course mirrors. Only courses you teach are listed.</p>
+                    <label class="lms-field">
+                        <span id="lms-course-label">Canvas course</span>
+                        <select id="lms-course-select"></select>
+                    </label>
+                    <p class="lms-linked-note" id="lms-linked-note" aria-live="polite"></p>
+                </section>
+
+                <!-- Step 3: choose the file -->
+                <section class="lms-step-panel" data-step="file" hidden>
+                    <p class="lms-step-help">Pick one file to bring across. Files BiocBot cannot read — unsupported formats, or anything over 50 MB — are shown but cannot be selected.</p>
+                    <label class="lms-field">
+                        <span id="lms-file-label">Canvas file</span>
+                        <select id="lms-file-select" disabled></select>
+                    </label>
+                    <label class="lms-field">
+                        Display name <span class="optional-label">(optional)</span>
+                        <input type="text" id="lms-file-title" placeholder="Leave blank to keep the original filename">
+                    </label>
+                </section>
+
+                <!-- Step 4: choose where it lands in BiocBot -->
+                <section class="lms-step-panel" data-step="destination" hidden>
+                    <p class="lms-step-help">Where should this land in BiocBot? The material type decides how the bot uses it when answering students.</p>
+                    <label class="lms-field">
+                        BiocBot unit
+                        <select id="lms-unit-select"></select>
+                    </label>
+                    <label class="lms-field">
+                        Material type
+                        <select id="lms-document-type-select">
+                            <option value="lecture-notes">Lecture Notes</option>
+                            <option value="practice-quiz">Practice Questions/Tutorial</option>
+                            <option value="additional">Additional Material</option>
+                        </select>
+                    </label>
+                    <dl class="lms-summary" id="lms-summary"></dl>
+                </section>
+
+                <!-- Import run: live per-stage progress -->
+                <section class="lms-step-panel" data-step="progress" hidden>
+                    <ol class="lms-progress-list" id="lms-progress-list" aria-live="polite"></ol>
+                    <p class="lms-progress-result" id="lms-progress-result"></p>
+                </section>
+            </div>
+
+            <div class="modal-footer lms-import-footer">
+                <span id="lms-import-message" class="lms-import-message" role="status" aria-live="polite"></span>
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary" id="lms-import-back">Back</button>
+                    <button type="button" class="btn-primary" id="lms-import-next">Next</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Question Creation Modal -->
     <div id="question-modal" class="modal">
         <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="question-modal-title">
@@ -637,8 +616,7 @@
     <script src="./scripts/instructor-publish.js"></script>
     <script src="./scripts/instructor-units.js"></script>
     <script src="./scripts/instructor-documents.js"></script>
-    <script src="./scripts/instructor-canvas.js"></script>
-    <script src="./scripts/instructor-moodle.js"></script>
+    <script src="./scripts/instructor-lms-import.js"></script>
     <script src="./scripts/instructor-upload-topics.js"></script>
     <script src="./scripts/instructor-objectives.js"></script>
     <script src="./scripts/instructor-questions.js"></script>
