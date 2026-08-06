@@ -2,7 +2,7 @@
 
 These prompts replace the now-stale first-round list. Do not start them during the audit-only pass. Run in the order shown unless a task says it is independent.
 
-Change here just to make a PR
+Change here just to make a PR. Check now.
 
 ## General rules (prepend to every implementation prompt)
 
