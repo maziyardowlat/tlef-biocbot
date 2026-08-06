@@ -94,6 +94,19 @@ function appendOption(select, value, label, { disabled = false, selected = false
     select.appendChild(item);
 }
 
+async function readLmsJson(response) {
+    const text = await response.text();
+    if (!text) return {};
+    try {
+        return JSON.parse(text);
+    } catch (error) {
+        throw new Error(
+            `LMS endpoint returned HTTP ${response.status} with a non-JSON response. ` +
+            'Check the staging LMS startup diagnostics to confirm its routes were mounted.'
+        );
+    }
+}
+
 async function loadInstructorCourses() {
     try {
         // Get selected course ID from URL or localStorage
@@ -338,7 +351,7 @@ async function loadGradeCourseOptions(courseId, provider) {
         const response = await authenticatedFetch(
             `/api/lms/grades/courses/${encodeURIComponent(courseId)}/available-courses?provider=${encodeURIComponent(provider)}`
         );
-        const result = await response.json();
+        const result = await readLmsJson(response);
         if (!response.ok || !result.success) {
             if (reauthorizeCanvas(provider, response)) return;
             throw new Error(result.message || `HTTP ${response.status}`);
@@ -396,7 +409,7 @@ async function linkLmsGradeCourse() {
                 body: JSON.stringify({ provider, externalCourseId })
             }
         );
-        const result = await response.json();
+        const result = await readLmsJson(response);
         if (!response.ok || !result.success) {
             if (reauthorizeCanvas(provider, response)) return;
             throw new Error(result.message || `HTTP ${response.status}`);
@@ -454,7 +467,7 @@ async function loadLmsGrades(courseId, provider = '') {
     try {
         const suffix = params.toString() ? `?${params}` : '';
         const response = await authenticatedFetch(`/api/lms/grades/courses/${encodeURIComponent(courseId)}${suffix}`);
-        const result = await response.json();
+        const result = await readLmsJson(response);
         if (!response.ok || !result.success) throw new Error(result.message || `HTTP ${response.status}`);
         currentGradeSources = result.data.sources || [];
         updateGradeProviderOptions(currentGradeSources, result.data.provider);
@@ -497,7 +510,7 @@ async function matchLmsStudents() {
                 body: JSON.stringify({ provider })
             }
         );
-        const result = await response.json();
+        const result = await readLmsJson(response);
         if (!response.ok || !result.success) {
             if (reauthorizeCanvas(provider, response)) return;
             throw new Error(result.message || result.error || `HTTP ${response.status}`);
@@ -538,7 +551,7 @@ async function importLmsGrades() {
                 body: JSON.stringify({ provider })
             }
         );
-        const result = await response.json();
+        const result = await readLmsJson(response);
         if (!response.ok || !result.success) {
             if (reauthorizeCanvas(provider, response)) return;
             throw new Error(result.message || result.error || `HTTP ${response.status}`);

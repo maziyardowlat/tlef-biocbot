@@ -24,50 +24,34 @@ function getDocumentTypeLabel(documentType) {
  */
 async function loadDocuments() {
     try {
-        console.log('📁 [DOCUMENTS] Starting to load documents...');
         const courseId = await getCurrentCourseId();
-        console.log(`📁 [DOCUMENTS] Course ID: ${courseId}`);
         
         // Get all accordion items (units/weeks)
         const accordionItems = document.querySelectorAll('.accordion-item');
-        console.log(`📁 [DOCUMENTS] Found ${accordionItems.length} accordion items (units/weeks)`);
         
         for (const item of accordionItems) {
             // Use data-unit-name attribute for internal name (e.g., "Unit 1")
             const lectureName = item.getAttribute('data-unit-name');
             if (!lectureName) {
-                console.warn(`⚠️ [DOCUMENTS] No unit name found for accordion item`);
                 continue;
             }
             
-            console.log(`📁 [DOCUMENTS] Processing lecture/unit: ${lectureName}`);
-            
             // Load documents from the course structure instead of separate API
-            console.log(`📡 [MONGODB] Making API request to /api/courses/${courseId}?instructorId=${getCurrentInstructorId()}`);
             const response = await fetch(`/api/courses/${courseId}?instructorId=${getCurrentInstructorId()}`);
-            console.log(`📡 [MONGODB] API response status: ${response.status} ${response.statusText}`);
-            console.log(`📡 [MONGODB] API response headers:`, Object.fromEntries(response.headers.entries()));
             
             if (response.ok) {
                 const result = await response.json();
-                console.log(`📡 [MONGODB] Course data for ${lectureName}:`, result);
                 const course = result.data;
                 
                 if (course && course.lectures) {
-                    console.log(`🔍 [DOCUMENTS] Course has ${course.lectures.length} lectures:`, course.lectures.map(l => ({ name: l.name, documentsCount: l.documents?.length || 0 })));
                     const unit = course.lectures.find(l => l.name === lectureName);
-                    console.log(`🔍 [DOCUMENTS] Looking for unit "${lectureName}" in lectures:`, unit);
                     const documents = unit ? (unit.documents || []) : [];
-                    console.log(`📁 [DOCUMENTS] Found ${documents.length} documents for ${lectureName}:`, documents);
                     
                     // Find the course materials section
                     const courseMaterialsSection = item.querySelector('.course-materials-section .section-content');
                     if (courseMaterialsSection) {
-                        console.log(`📁 [DOCUMENTS] Course materials section found for ${lectureName}`);
-                        
                         // Clear ALL existing document items (both placeholders and actual documents)
                         const existingItems = courseMaterialsSection.querySelectorAll('.file-item');
-                        console.log(`📁 [DOCUMENTS] Clearing ${existingItems.length} existing document items for ${lectureName}`);
                         
                         existingItems.forEach(item => {
                             item.remove();
@@ -81,57 +65,22 @@ async function loadDocuments() {
                         
                         // ADD ALL DOCUMENTS - BACKEND HANDLES DELETION FROM BOTH DBs
                         if (documents && documents.length > 0) {
-                            console.log(`📁 [DOCUMENTS] Adding ${documents.length} documents to UI for ${lectureName}`);
-                            
                             // Add all documents - backend ensures they exist in both databases
-                            documents.forEach((doc, index) => {
-                                console.log(`📁 [DOCUMENTS] Adding document ${index + 1} to UI:`, doc);
+                            documents.forEach((doc) => {
                                 const documentItem = createDocumentItem(doc);
                                 courseMaterialsSection.appendChild(documentItem);
                             });
-                            console.log(`✅ [DOCUMENTS] Successfully added ${documents.length} documents to UI for ${lectureName}`);
-                        } else {
-                            console.log(`📁 [DOCUMENTS] No documents to add for ${lectureName}`);
                         }
                         
                         // ALWAYS check for missing placeholders, regardless of whether documents exist
                         // This ensures placeholders appear for individual missing document types
-                        console.log(`🔍 [DOCUMENTS] Checking for missing placeholders in ${lectureName}`);
                         addRequiredPlaceholders(courseMaterialsSection, lectureName);
                         
 
                         
                         // ALWAYS add the "Add Additional Material" button and "Confirm Course Materials" button LAST
                         // This ensures they stay at the bottom, regardless of whether there are documents
-                        console.log(`🔧 [DOCUMENTS] Adding action buttons for ${lectureName} - this should be LAST`);
                         addActionButtonsIfMissing(courseMaterialsSection, lectureName);
-                        console.log(`✅ [DOCUMENTS] Action buttons added for ${lectureName}`);
-                        
-                        // Debug: Log the final DOM order to verify button positioning
-                        console.log(`🔍 [DOCUMENTS] Final DOM order for ${lectureName}:`);
-                        const finalItems = courseMaterialsSection.querySelectorAll('.file-item, .add-content-section, .save-objectives, .cleanup-section');
-                        finalItems.forEach((item, index) => {
-                            const itemType = item.classList.contains('file-item') ? 'File' : 
-                                           item.classList.contains('add-content-section') ? 'Add Content' :
-                                           item.classList.contains('save-objectives') ? 'Confirm Button' :
-                                           item.classList.contains('cleanup-section') ? 'Cleanup' : 'Unknown';
-                            console.log(`  ${index + 1}. ${itemType}: ${item.textContent.substring(0, 50)}...`);
-                        });
-                        
-                        // Additional debug: Check if buttons are actually at the bottom
-                        const allChildren = Array.from(courseMaterialsSection.children);
-                        const lastChild = allChildren[allChildren.length - 1];
-                        const secondLastChild = allChildren[allChildren.length - 2];
-                        
-                        console.log(`🔍 [DOCUMENTS] Last child: ${lastChild.className} - ${lastChild.textContent.substring(0, 30)}...`);
-                        console.log(`🔍 [DOCUMENTS] Second last child: ${secondLastChild.className} - ${secondLastChild.textContent.substring(0, 30)}...`);
-                        
-                        // Verify button positioning
-                        if (lastChild.classList.contains('save-objectives')) {
-                            console.log(`✅ [DOCUMENTS] Confirm button is correctly at the bottom!`);
-                        } else {
-                            console.warn(`⚠️ [DOCUMENTS] Confirm button is NOT at the bottom! Last child is: ${lastChild.className}`);
-                        }
                     } else {
                         console.error('Course materials section not found for', lectureName);
                     }
@@ -144,8 +93,6 @@ async function loadDocuments() {
                 // Even if API fails, still add the required buttons and placeholders
                 const courseMaterialsSection = item.querySelector('.course-materials-section .section-content');
                 if (courseMaterialsSection) {
-                    console.log(`🔧 [DOCUMENTS] API failed for ${lectureName}, adding buttons anyway`);
-                    
                     // Add required placeholders
                     addRequiredPlaceholders(courseMaterialsSection, lectureName);
                     
@@ -156,7 +103,6 @@ async function loadDocuments() {
         }
         
         // Ensure all units have action buttons, regardless of API success/failure
-        console.log(`🔧 [DOCUMENTS] Final check: Ensuring all units have action buttons`);
         const allAccordionItems = document.querySelectorAll('.accordion-item');
         allAccordionItems.forEach(accordionItem => {
             // Use data-unit-name attribute for internal name (e.g., "Unit 1")
@@ -170,19 +116,13 @@ async function loadDocuments() {
                 const hasActionButtons = courseMaterialsSection.querySelector('.add-content-section, .save-objectives');
                 
                 if (!hasActionButtons) {
-                    console.log(`🔧 [DOCUMENTS] Adding missing action buttons for ${unitName} (final check)`);
                     addActionButtonsIfMissing(courseMaterialsSection, unitName);
                 }
             }
         });
         
         // After all documents are loaded and accordion items exist, load thresholds
-        console.log('🔄 [DOCUMENTS] All documents loaded, now loading thresholds after delay...');
         setTimeout(() => {
-            console.log('🔄 [DOCUMENTS] Loading thresholds now...');
-            const accordionCount = document.querySelectorAll('.accordion-item').length;
-            const thresholdInputCount = document.querySelectorAll('input[id^="pass-threshold-"]').length;
-            console.log(`🔄 [DOCUMENTS] Found ${accordionCount} accordion items, ${thresholdInputCount} threshold inputs before loading`);
             loadPassThresholds();
         }, 800);
         
@@ -521,7 +461,6 @@ function findUnitElementByName(unitName) {
  */
 function removeExistingPlaceholders(container) {
     const existingPlaceholders = container.querySelectorAll('.file-item.placeholder-item');
-    console.log(`🧹 [PLACEHOLDERS] Removing ${existingPlaceholders.length} existing placeholders`);
     
     existingPlaceholders.forEach(placeholder => {
         placeholder.remove();

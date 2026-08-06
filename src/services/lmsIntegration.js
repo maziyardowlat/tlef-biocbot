@@ -1,4 +1,5 @@
 let lmsToolkit;
+let lmsToolkitLoadError;
 
 /**
  * The toolkit is published to GitHub Packages, so an install without a registry
@@ -16,6 +17,7 @@ function loadLmsToolkit() {
             if (error.code !== 'MODULE_NOT_FOUND') {
                 throw error;
             }
+            lmsToolkitLoadError = error;
             lmsToolkit = null;
         }
     }
@@ -30,8 +32,8 @@ const CANVAS_ENV_KEYS = Object.freeze([
 ]);
 
 function getCanvasConfigurationStatus(env = process.env) {
-    const configured = CANVAS_ENV_KEYS.filter((key) => Boolean(env[key]));
-    const missing = CANVAS_ENV_KEYS.filter((key) => !env[key]);
+    const configured = CANVAS_ENV_KEYS.filter((key) => Boolean(String(env[key] || '').trim()));
+    const missing = CANVAS_ENV_KEYS.filter((key) => !String(env[key] || '').trim());
     return {
         enabled: configured.length === CANVAS_ENV_KEYS.length,
         partial: configured.length > 0 && missing.length > 0,
@@ -40,9 +42,43 @@ function getCanvasConfigurationStatus(env = process.env) {
 }
 
 function getMoodleConfigurationStatus(env = process.env) {
+    const enabled = Boolean(String(env.MOODLE_DOMAIN || '').trim());
     return {
-        enabled: Boolean(env.MOODLE_DOMAIN),
-        missing: env.MOODLE_DOMAIN ? [] : ['MOODLE_DOMAIN']
+        enabled,
+        partial: false,
+        missing: enabled ? [] : ['MOODLE_DOMAIN']
+    };
+}
+
+function getProviderDiagnostic(status, mounted) {
+    const environment = status.enabled ? 'complete' : (status.partial ? 'partial' : 'absent');
+    let reason = null;
+    if (!mounted) {
+        reason = status.enabled ? 'toolkit_unavailable' : `environment_${environment}`;
+    }
+    return {
+        enabled: Boolean(mounted),
+        environment,
+        missing: status.missing,
+        reason
+    };
+}
+
+/**
+ * Non-secret deployment state suitable for startup logs and authenticated
+ * diagnostics. Values and URLs are deliberately omitted; only key names and
+ * package/provider availability are reported.
+ */
+function getLmsDiagnostics(integration = {}) {
+    const toolkit = integration.toolkitStatus
+        || (integration.toolkitMissing ? 'missing' : 'not-required');
+    return {
+        toolkit,
+        toolkitErrorCode: integration.toolkitError?.code || null,
+        providers: {
+            canvas: getProviderDiagnostic(integration.canvasStatus || getCanvasConfigurationStatus(), integration.canvas),
+            moodle: getProviderDiagnostic(integration.moodleStatus || getMoodleConfigurationStatus(), integration.moodle)
+        }
     };
 }
 
@@ -57,7 +93,15 @@ function createLmsIntegration(db) {
     const env = process.env;
     const canvasStatus = getCanvasConfigurationStatus(env);
     const moodleStatus = getMoodleConfigurationStatus(env);
-    const disabled = { canvas: null, canvasStatus, moodle: null, moodleStatus, toolkitMissing: false };
+    const disabled = {
+        canvas: null,
+        canvasStatus,
+        moodle: null,
+        moodleStatus,
+        toolkitMissing: false,
+        toolkitStatus: 'not-required',
+        toolkitError: null
+    };
 
     // Nothing is configured, so the toolkit is never needed - don't load it.
     if (!canvasStatus.enabled && !moodleStatus.enabled) {
@@ -68,7 +112,12 @@ function createLmsIntegration(db) {
     if (!toolkit) {
         // Configured but unusable. Reported as disabled rather than thrown so a
         // missing optional dependency cannot stop the rest of the app booting.
-        return { ...disabled, toolkitMissing: true };
+        return {
+            ...disabled,
+            toolkitMissing: true,
+            toolkitStatus: 'missing',
+            toolkitError: lmsToolkitLoadError || null
+        };
     }
 
     const { canvas, createMongoTokenStore, moodle } = toolkit;
@@ -104,7 +153,9 @@ function createLmsIntegration(db) {
         canvasStatus,
         moodle: moodleIntegration,
         moodleStatus,
-        toolkitMissing: false
+        toolkitMissing: false,
+        toolkitStatus: 'loaded',
+        toolkitError: null
     };
 }
 
@@ -145,6 +196,7 @@ module.exports = {
     ensureLmsIndexes,
     getBiocBotUserKey,
     getCanvasConfigurationStatus,
+    getLmsDiagnostics,
     getMoodleConfigurationStatus,
     loadLmsToolkit
 };
