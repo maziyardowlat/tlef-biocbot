@@ -280,15 +280,23 @@ describe('Canvas LMS routes', () => {
     });
 
     test('reports a mid-stream failure in band rather than as a dead connection', async () => {
+        const errorLog = jest.spyOn(console, 'error').mockImplementation(() => {});
         const harness = canvasHarness({
             getFiles: jest.fn(async () => [{
                 id: '31',
                 name: 'notes.txt',
                 filename: 'notes.txt',
                 mimeType: 'text/plain',
-                size: 10
+                size: 10,
+                raw: { url: 'https://files.canvas.test/notes.txt?verifier=secret' }
             }]),
-            downloadFile: jest.fn(async () => { throw new Error('Canvas file download returned 502'); })
+            downloadFile: jest.fn(async () => {
+                const error = new Error('Canvas file download returned 502');
+                error.name = 'CanvasApiError';
+                error.statusCode = 502;
+                error.provider = 'canvas';
+                throw error;
+            })
         });
         const db = memoryDb({
             courses: [course({ lmsSync: { provider: 'canvas', courseId: '10' } })],
@@ -306,7 +314,23 @@ describe('Canvas LMS routes', () => {
             .expect(200);
 
         const events = res.text.trim().split('\n').map((line) => JSON.parse(line));
-        expect(events.at(-1)).toEqual({ type: 'error', message: 'Canvas file download returned 502' });
+        expect(events.at(-1)).toMatchObject({
+            type: 'error',
+            message: 'Canvas file download returned 502',
+            diagnostic: {
+                reference: expect.any(String),
+                provider: 'canvas',
+                stage: 'download',
+                errorName: 'CanvasApiError',
+                statusCode: 502,
+                fileHost: 'https://files.canvas.test',
+                lmsHost: 'http://canvas.test',
+                occurredAt: expect.any(String)
+            }
+        });
+        expect(errorLog).toHaveBeenCalledWith(expect.stringContaining(events.at(-1).diagnostic.reference));
+        expect(errorLog.mock.calls[0][0]).not.toContain('verifier=secret');
+        errorLog.mockRestore();
     });
 
     test('validation still fails with a real status code before the stream opens', async () => {
