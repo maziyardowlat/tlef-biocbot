@@ -12,3 +12,4 @@
 /playwright/.auth
 package-lock.json
 .claude/
+.npmrc
