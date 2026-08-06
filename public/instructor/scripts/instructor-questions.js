@@ -70,16 +70,12 @@ function loadAssessmentQuestionsFromCourseData(courseData) {
  */
 async function loadAssessmentQuestions() {
     try {
-        console.log('❓ [ASSESSMENT_QUESTIONS] Starting to load assessment questions...');
         const courseId = await getCurrentCourseId();
-        console.log(`❓ [ASSESSMENT_QUESTIONS] Course ID: ${courseId}`);
         
         // Get all accordion items (units/weeks)
         const accordionItems = document.querySelectorAll('.accordion-item');
-        console.log(`❓ [ASSESSMENT_QUESTIONS] Found ${accordionItems.length} accordion items (units/weeks)`);
         
         if (accordionItems.length === 0) {
-            console.log('❓ [ASSESSMENT_QUESTIONS] No accordion items found, skipping assessment questions loading');
             return;
         }
         
@@ -87,24 +83,16 @@ async function loadAssessmentQuestions() {
             // Use data-unit-name attribute for internal name (e.g., "Unit 1")
             const lectureName = item.getAttribute('data-unit-name');
             if (!lectureName) {
-                console.warn(`⚠️ [ASSESSMENT_QUESTIONS] No unit name found for accordion item`);
                 continue;
             }
-            
-            console.log(`❓ [ASSESSMENT_QUESTIONS] Processing lecture/unit: ${lectureName}`);
-            
-            console.log(`📡 [MONGODB] Making API request to ${API_BASE_URL}/api/questions/lecture?courseId=${courseId}&lectureName=${encodeURIComponent(lectureName)}`);
+
             const response = await fetch(`${API_BASE_URL}/api/questions/lecture?courseId=${courseId}&lectureName=${encodeURIComponent(lectureName)}`);
-            console.log(`📡 [MONGODB] API response status: ${response.status} ${response.statusText}`);
-            console.log(`📡 [MONGODB] API response headers:`, Object.fromEntries(response.headers.entries()));
             
             if (response.ok) {
                 const result = await response.json();
-                console.log(`📡 [MONGODB] Assessment questions data for ${lectureName}:`, result);
                 const questions = result.data.questions;
                 
                 if (questions && questions.length > 0) {
-                    console.log(`❓ [ASSESSMENT_QUESTIONS] Found ${questions.length} questions for ${lectureName}:`, questions);
                     // Store questions in the assessmentQuestions object
                     if (!assessmentQuestions[lectureName]) {
                         assessmentQuestions[lectureName] = [];
@@ -114,8 +102,7 @@ async function loadAssessmentQuestions() {
                     assessmentQuestions[lectureName] = [];
                     
                     // Keep the API/storage question shape in local state.
-                    questions.forEach((dbQuestion, index) => {
-                        console.log(`❓ [ASSESSMENT_QUESTIONS] Converting question ${index + 1} for ${lectureName}:`, dbQuestion);
+                    questions.forEach((dbQuestion) => {
                         const localQuestion = {
                             id: dbQuestion.questionId,
                             questionId: dbQuestion.questionId,
@@ -125,29 +112,23 @@ async function loadAssessmentQuestions() {
                             options: dbQuestion.options || {},
                             learningObjective: dbQuestion.learningObjective || ''
                         };
-                        console.log(`❓ [ASSESSMENT_QUESTIONS] Converted question ${index + 1}:`, localQuestion);
                         assessmentQuestions[lectureName].push(localQuestion);
                     });
                     
-                    console.log(`✅ [ASSESSMENT_QUESTIONS] Successfully processed ${questions.length} questions for ${lectureName}`);
                     // Update the display for this lecture
                     updateQuestionsDisplay(lectureName);
                 } else {
                     // No questions found - explicitly set threshold to 0 for this unit
-                    console.log(`❓ [ASSESSMENT_QUESTIONS] No questions found for ${lectureName}`);
                     const weekId = lectureName.toLowerCase().replace(/\s+/g, '-');
                     const thresholdInput = document.getElementById(`pass-threshold-${weekId}`);
                     if (thresholdInput) {
                         thresholdInput.value = 0;
-                        console.log(`[ASSESSMENT_QUESTIONS] No questions for ${lectureName}, set threshold to 0`);
                     }
                 }
             } else {
                 console.warn(`⚠️ [MONGODB] Failed to load assessment questions for ${lectureName}: ${response.status} ${response.statusText}`);
             }
         }
-        
-        console.log('✅ [ASSESSMENT_QUESTIONS] Assessment questions loading process completed');
         
         // After all questions are loaded, force-check and update all thresholds
         // This ensures units with 0 questions have threshold set to 0
@@ -163,16 +144,11 @@ async function loadAssessmentQuestions() {
  * Force update all thresholds to 0 for units with no questions
  */
 function forceUpdateThresholdsForZeroQuestions() {
-    console.log('🔧 [FORCE_UPDATE] Starting force update of thresholds...');
     const thresholdInputs = document.querySelectorAll('input[id^="pass-threshold-"]');
-    console.log(`🔧 [FORCE_UPDATE] Found ${thresholdInputs.length} threshold inputs`);
     
     thresholdInputs.forEach(thresholdInput => {
         const weekId = thresholdInput.id.replace('pass-threshold-', '');
         const lectureName = weekId.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-        const currentValue = thresholdInput.value;
-        
-        console.log(`🔧 [FORCE_UPDATE] Checking ${lectureName} (ID: ${weekId}), current threshold: ${currentValue}`);
         
         // Check both DOM and object
         const questionsContainer = document.getElementById(`assessment-questions-${weekId}`);
@@ -180,18 +156,10 @@ function forceUpdateThresholdsForZeroQuestions() {
         const objectQuestions = assessmentQuestions[lectureName] ? assessmentQuestions[lectureName].length : 0;
         const totalQuestions = Math.max(domQuestions, objectQuestions);
         
-        console.log(`🔧 [FORCE_UPDATE] ${lectureName}: DOM questions=${domQuestions}, Object questions=${objectQuestions}, Total=${totalQuestions}, assessmentQuestions keys:`, Object.keys(assessmentQuestions));
-        
         if (totalQuestions === 0) {
-            const oldValue = thresholdInput.value;
             thresholdInput.value = 0;
-            console.log(`🔧 [FORCE_UPDATE] ✅ FORCED threshold from ${oldValue} to 0 for ${lectureName} (no questions found)`);
-            console.log(`🔧 [FORCE_UPDATE] Verification - threshold input value is now: ${thresholdInput.value}`);
-        } else {
-            console.log(`🔧 [FORCE_UPDATE] ⏭️ Skipping ${lectureName} - has ${totalQuestions} questions, threshold remains: ${thresholdInput.value}`);
         }
     });
-    console.log('🔧 [FORCE_UPDATE] Force update completed');
 }
 
 /**
@@ -308,8 +276,6 @@ async function reloadPassThresholds() {
                 
                 if (thresholdInput) {
                     thresholdInput.value = passThreshold;
-                    console.log(`[RELOAD_PASS_THRESHOLDS] Updated threshold input for ${lectureName}: ${passThreshold}`);
-                    
                     // Threshold input updated
                 }
             }
@@ -345,8 +311,6 @@ async function loadPassThresholds() {
             
             if (thresholdInput) {
                 const weekId = thresholdInput.id.replace('pass-threshold-', '');
-                const currentValue = thresholdInput.value;
-                console.log(`📊 [LOAD_PASS_THRESHOLDS] Processing ${lectureName} (ID: ${weekId}), current input value: ${currentValue}`);
                 
                 // Check how many questions exist for this unit (check both the assessmentQuestions object and DOM)
                 const questionsContainer = document.getElementById(`assessment-questions-${weekId}`);
@@ -354,45 +318,27 @@ async function loadPassThresholds() {
                 const objectQuestions = assessmentQuestions[lectureName] ? assessmentQuestions[lectureName].length : 0;
                 const totalQuestions = Math.max(domQuestions, objectQuestions);
                 
-                console.log(`📊 [LOAD_PASS_THRESHOLDS] ${lectureName}: DOM questions=${domQuestions}, Object questions=${objectQuestions}, Total=${totalQuestions}`);
-                console.log(`📊 [LOAD_PASS_THRESHOLDS] assessmentQuestions object keys:`, Object.keys(assessmentQuestions));
-                console.log(`📊 [LOAD_PASS_THRESHOLDS] assessmentQuestions[${lectureName}]:`, assessmentQuestions[lectureName]);
-                
                 // If there are no questions, ALWAYS set threshold to 0 (ignore any saved value)
                 if (totalQuestions === 0) {
-                    const oldValue = thresholdInput.value;
                     thresholdInput.value = 0;
-                    console.log(`📊 [LOAD_PASS_THRESHOLDS] ✅ FORCED threshold from ${oldValue} to 0 for ${lectureName} (no questions found)`);
-                    console.log(`📊 [LOAD_PASS_THRESHOLDS] Verification - threshold input value after setting: ${thresholdInput.value}`);
                 } else if (response.ok) {
                     const result = await response.json();
                     const passThreshold = result.data.passThreshold;
                     
-                    console.log(`📊 [LOAD_PASS_THRESHOLDS] API response for ${lectureName}:`, result);
-                    console.log(`📊 [LOAD_PASS_THRESHOLDS] API returned passThreshold: ${passThreshold}`);
-                    
                     // Update threshold input with loaded value (but only if questions exist)
                     thresholdInput.value = passThreshold;
-                    console.log(`📊 [LOAD_PASS_THRESHOLDS] Updated threshold input for ${lectureName} to: ${passThreshold}`);
                 } else {
                     // No threshold set yet, default to 0 but don't save it
-                    console.log(`📊 [LOAD_PASS_THRESHOLDS] No API threshold set for ${lectureName}, defaulting to 0`);
                     thresholdInput.value = 0;
                 }
-            } else {
-                console.log(`❌ [LOAD_PASS_THRESHOLDS] Threshold input not found for ${lectureName} (ID: ${thresholdId})`);
             }
         }
-        
-        console.log('📊 [LOAD_PASS_THRESHOLDS] Finished loading all thresholds, running force update...');
         
         // Force update thresholds again after loading (to catch any units with 0 questions)
         forceUpdateThresholdsForZeroQuestions();
         
-        console.log('📊 [LOAD_PASS_THRESHOLDS] All threshold loading completed');
-        
     } catch (error) {
-        console.error('❌ [LOAD_PASS_THRESHOLDS] Error loading pass thresholds:', error);
+        console.error('Error loading pass thresholds:', error);
         showNotification('Error loading pass thresholds. Using default values.', 'warning');
     }
 }

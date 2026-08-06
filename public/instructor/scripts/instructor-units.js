@@ -182,7 +182,6 @@ function generateUnitsFromOnboarding(onboardingData) {
         loadDocuments().then(() => {
             // After documents are loaded (which creates the accordion items), load thresholds
             setTimeout(() => {
-                console.log('🔄 [DELAYED_LOAD] Loading thresholds after documents rendered...');
                 loadPassThresholds();
             }, 300);
             
@@ -560,8 +559,6 @@ function addRequiredPlaceholders(container, unitName) {
             const isPlaceholder = item.classList.contains('placeholder-item');
             const documentType = item.dataset.documentType || '';
             
-            console.log(`🔍 [PLACEHOLDERS] Checking item: "${titleText}" - Status: "${status}" - Type: "${documentType}" - IsPlaceholder: ${isPlaceholder}`);
-            
             // Check for lecture notes - look for both document type and title patterns
             const isLectureNotes = documentType === 'lecture_notes' || 
                                   documentType === 'lecture-notes' ||
@@ -575,28 +572,21 @@ function addRequiredPlaceholders(container, unitName) {
                                       titleText.includes('practice_quiz') ||
                                       ((titleText.includes('Practice Questions') || titleText.includes('Practice Questions/Tutorial')) && !isPlaceholder && status !== 'Not Uploaded');
             
-            console.log(`🔍 [PLACEHOLDERS] Item "${titleText}": isLectureNotes=${isLectureNotes}, isPracticeQuestions=${isPracticeQuestions}`);
-            
             if (isLectureNotes) {
                 hasLectureNotes = true;
-                console.log(`✅ [PLACEHOLDERS] Found actual lecture notes with type: "${documentType}" and status: "${status}"`);
             }
             
             if (isPracticeQuestions) {
                 hasPracticeQuestions = true;
-                console.log(`✅ [PLACEHOLDERS] Found actual practice questions with type: "${documentType}" and status: "${status}"`);
             }
         }
     });
-    
-    console.log(`🔍 [PLACEHOLDERS] Status check for ${unitName}: Lecture Notes: ${hasLectureNotes}, Practice Questions: ${hasPracticeQuestions}`);
     
     // Remove any existing placeholders first to ensure clean state
     removeExistingPlaceholders(container);
     
     // Add lecture notes placeholder if it doesn't exist
     if (!hasLectureNotes) {
-        console.log(`📝 [PLACEHOLDERS] Adding lecture notes placeholder for ${unitName} - no actual content found`);
         const lectureNotesItem = document.createElement('div');
         lectureNotesItem.className = 'file-item placeholder-item';
         lectureNotesItem.innerHTML = `
@@ -611,14 +601,10 @@ function addRequiredPlaceholders(container, unitName) {
             </div>
         `;
         container.appendChild(lectureNotesItem);
-        console.log(`✅ [PLACEHOLDERS] Lecture notes placeholder added for ${unitName}`);
-    } else {
-        console.log(`✅ [PLACEHOLDERS] No lecture notes placeholder needed for ${unitName} - actual content exists`);
     }
     
     // Add practice questions placeholder if it doesn't exist
     if (!hasPracticeQuestions) {
-        console.log(`📝 [PLACEHOLDERS] Adding practice questions placeholder for ${unitName} - no actual content found`);
         const practiceQuestionsItem = document.createElement('div');
         practiceQuestionsItem.className = 'file-item placeholder-item';
         practiceQuestionsItem.innerHTML = `
@@ -633,9 +619,6 @@ function addRequiredPlaceholders(container, unitName) {
             </div>
         `;
         container.appendChild(practiceQuestionsItem);
-        console.log(`✅ [PLACEHOLDERS] Practice questions placeholder added for ${unitName}`);
-    } else {
-        console.log(`✅ [PLACEHOLDERS] No practice questions placeholder needed for ${unitName} - actual content exists`);
     }
 }
 
@@ -695,8 +678,6 @@ function addActionButtonsIfMissing(container, unitName) {
  * Ensure action buttons exist for all units (fallback function)
  */
 function ensureActionButtonsExist() {
-    console.log('🔧 [FALLBACK] Ensuring action buttons exist for all units...');
-    
     const accordionItems = document.querySelectorAll('.accordion-item');
     accordionItems.forEach(item => {
         // Use data-unit-name attribute for internal name (e.g., "Unit 1")
@@ -710,13 +691,10 @@ function ensureActionButtonsExist() {
             const hasActionButtons = courseMaterialsSection.querySelector('.add-content-section, .save-objectives');
             
             if (!hasActionButtons) {
-                console.log(`🔧 [FALLBACK] Adding missing action buttons for ${unitName}`);
                 addActionButtonsIfMissing(courseMaterialsSection, unitName);
             }
         }
     });
-    
-    console.log('✅ [FALLBACK] Action buttons check completed');
 }
 
 /**

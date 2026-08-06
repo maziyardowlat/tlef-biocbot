@@ -45,7 +45,7 @@ const LLMService = require('./services/llm');
 const LlmRegistry = require('./services/llmRegistry');
 const AuthService = require('./services/authService');
 const { isAcademicApiEnabled } = require('./services/academicApi');
-const { createLmsIntegration, ensureLmsIndexes } = require('./services/lmsIntegration');
+const { createLmsIntegration, ensureLmsIndexes, getLmsDiagnostics } = require('./services/lmsIntegration');
 const createAuthMiddleware = require('./middleware/auth');
 const initializePassport = require('./config/passport');
 
@@ -185,15 +185,23 @@ async function initializeLms() {
     lmsIntegration = createLmsIntegration(db);
     app.locals.lmsIntegration = lmsIntegration;
 
+    const diagnostics = getLmsDiagnostics(lmsIntegration);
+    console.log('[LMS] Startup diagnostics:', JSON.stringify(diagnostics));
+
     if (lmsIntegration.canvas || lmsIntegration.moodle) {
         await ensureLmsIndexes(db);
     }
 
     if (lmsIntegration.toolkitMissing) {
-        console.warn(
-            '⚠️ Canvas/Moodle are configured but @ubc/ubc-genai-toolkit-lms-integration is not installed, so LMS integration is disabled. ' +
-            'It is an optional dependency from GitHub Packages — install it with a registry token to enable LMS features.'
+        console.error(
+            '[LMS] Canvas/Moodle environment configuration was found, but ' +
+            '@ubc/ubc-genai-toolkit-lms-integration could not be loaded. LMS provider routes are disabled. ' +
+            'Because this is an optional GitHub Packages dependency, npm may finish successfully after skipping it. ' +
+            'Make a GitHub Packages read token available during the staging build, then confirm the package is present in the built image.'
         );
+        if (lmsIntegration.toolkitError) {
+            console.error('[LMS] Toolkit load error:', lmsIntegration.toolkitError.message);
+        }
         return;
     }
 
@@ -210,6 +218,33 @@ async function initializeLms() {
     } else {
         console.log('ℹ️ Moodle LMS integration is not configured');
     }
+}
+
+function disabledLmsProviderHandler(provider) {
+    return (req, res) => {
+        const diagnostic = getLmsDiagnostics(lmsIntegration).providers[provider];
+        const status = diagnostic.environment === 'absent' ? 404 : 503;
+        const message = diagnostic.reason === 'toolkit_unavailable'
+            ? `${provider} is configured, but the LMS integration package is unavailable in this deployment`
+            : diagnostic.reason === 'environment_partial'
+                ? `${provider} configuration is incomplete; missing: ${diagnostic.missing.join(', ')}`
+                : `${provider} is not configured for this deployment`;
+
+        console.warn('[LMS] Request reached a disabled provider route:', JSON.stringify({
+            method: req.method,
+            path: req.originalUrl,
+            provider,
+            status,
+            reason: diagnostic.reason,
+            missing: diagnostic.missing
+        }));
+        res.status(status).json({
+            success: false,
+            provider,
+            code: diagnostic.reason,
+            message
+        });
+    };
 }
 
 /**
@@ -627,6 +662,13 @@ function setupAPIRoutes() {
     app.use('/api/superchat-notes', authMiddleware.requireAuth, authMiddleware.populateUser, authMiddleware.requireInstructorOrTA, superChatNotesRoutes);
     app.use('/api/superchats', authMiddleware.requireAuth, authMiddleware.populateUser, superchatsRoutes);
     app.use('/api/academic-sync', authMiddleware.requireAuth, authMiddleware.populateUser, authMiddleware.requireInstructor, academicSyncRoutes);
+    app.get(
+        '/api/lms/configuration',
+        authMiddleware.requireAuth,
+        authMiddleware.populateUser,
+        authMiddleware.requireInstructor,
+        (req, res) => res.json({ success: true, data: getLmsDiagnostics(lmsIntegration) })
+    );
     if (lmsIntegration.canvas) {
         app.use(
             '/api/lms/canvas',
@@ -634,6 +676,15 @@ function setupAPIRoutes() {
             authMiddleware.populateUser,
             authMiddleware.requireInstructor,
             createCanvasLmsRouter(lmsIntegration.canvas)
+        );
+    }
+    if (!lmsIntegration.canvas) {
+        app.use(
+            '/api/lms/canvas',
+            authMiddleware.requireAuth,
+            authMiddleware.populateUser,
+            authMiddleware.requireInstructor,
+            disabledLmsProviderHandler('canvas')
         );
     }
     if (lmsIntegration.moodle) {
@@ -645,15 +696,25 @@ function setupAPIRoutes() {
             createMoodleLmsRouter(lmsIntegration.moodle)
         );
     }
-    if (lmsIntegration.canvas || lmsIntegration.moodle) {
+    if (!lmsIntegration.moodle) {
         app.use(
-            '/api/lms/grades',
+            '/api/lms/moodle',
             authMiddleware.requireAuth,
             authMiddleware.populateUser,
             authMiddleware.requireInstructor,
-            createLmsGradesRouter(lmsIntegration)
+            disabledLmsProviderHandler('moodle')
         );
     }
+    // Keep this mounted even when no provider is available. Its read endpoint
+    // can still return an empty/configuration-aware view, and clients receive
+    // JSON diagnostics instead of Express's HTML 404 page.
+    app.use(
+        '/api/lms/grades',
+        authMiddleware.requireAuth,
+        authMiddleware.populateUser,
+        authMiddleware.requireInstructor,
+        createLmsGradesRouter(lmsIntegration)
+    );
     app.use('/api/student/super-course', authMiddleware.requireAuth, authMiddleware.populateUser, studentSuperCourseRoutes);
     app.use('/api/students', authMiddleware.requireAuth, authMiddleware.populateUser, authMiddleware.requireActiveCourseForNonInstructors, authMiddleware.requireStudentEnrolled, studentsRoutes);
     app.use('/api/user-agreement', authMiddleware.requireAuth, userAgreementRoutes);

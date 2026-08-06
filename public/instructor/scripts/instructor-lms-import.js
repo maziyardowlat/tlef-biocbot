@@ -120,19 +120,38 @@
         const chip = document.querySelector(`.lms-import-chip[data-lms-provider="${provider}"]`);
         if (!chip) return;
         chip.hidden = false;
+        chip.disabled = stateName === 'error';
         element('lms-import-bar').hidden = false;
         const badge = chip.querySelector('.lms-chip-state');
         badge.textContent = text;
         badge.dataset.state = stateName;
     }
 
-    /**
-     * Probes each provider once on page load. A 404 means the deployment has no
-     * credentials for that LMS, so its button stays hidden entirely instead of
-     * advertising something nobody here can use.
+    /** Read deployment state first so an intentionally unconfigured provider
+     * never generates a noisy 404 in the browser console. Provider status is
+     * probed only after the server confirms that its router is mounted.
      */
     async function detectProviders() {
+        let deployment;
+        try {
+            const response = await fetch('/api/lms/configuration', { credentials: 'same-origin' });
+            deployment = (await parseResponse(response)).data;
+            console.info('[LMS] Deployment diagnostics:', deployment);
+        } catch (error) {
+            console.warn('[LMS] Could not read deployment diagnostics:', error.message);
+            return;
+        }
+
         await Promise.all(Object.keys(PROVIDERS).map(async (provider) => {
+            const diagnostic = deployment.providers?.[provider];
+            if (!diagnostic?.enabled) {
+                state.available[provider] = false;
+                if (diagnostic?.environment !== 'absent') {
+                    setChipState(provider, 'Unavailable', 'error');
+                }
+                return;
+            }
+
             const previous = state.provider;
             state.provider = provider;
             try {
@@ -143,8 +162,6 @@
                 if (error.status === 401) {
                     state.available[provider] = true;
                     setChipState(provider, 'Not connected', 'disconnected');
-                } else if (error.status === 404) {
-                    state.available[provider] = false;
                 } else {
                     state.available[provider] = true;
                     setChipState(provider, 'Unavailable', 'error');

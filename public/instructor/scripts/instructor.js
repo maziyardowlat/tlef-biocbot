@@ -352,7 +352,6 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 document.addEventListener('DOMContentLoaded', async () => {
-    console.log('📄 [DOCUMENTS] DOM fully loaded and parsed');
     
     // Wait for authentication to be ready
     await waitForAuth();
