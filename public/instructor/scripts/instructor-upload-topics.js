@@ -68,7 +68,15 @@ function openTopicReviewModal(courseId, sourceName, existingTopics, suggestedTop
     });
 }
 
-async function runTopicReviewAfterUpload(courseId, documentId, sourceName) {
+/**
+ * Runs topic extraction and review in a standalone modal.
+ *
+ * The in-page upload flow reviews topics inline inside its own modal; this is
+ * the equivalent for callers that have no modal of their own to transition
+ * within, such as the Canvas/Moodle import. `unitId` must be passed explicitly
+ * by those callers, since `currentWeek` is only set by the upload modal.
+ */
+async function runTopicReviewAfterUpload(courseId, documentId, sourceName, unitId = currentWeek) {
     if (!courseId) return;
 
     let existingTopics = [];
@@ -87,7 +95,7 @@ async function runTopicReviewAfterUpload(courseId, documentId, sourceName) {
     }
 
     // Modal only shows NEW topics from this upload (existing are hidden)
-    const reviewedNewTopics = await openTopicReviewModal(courseId, sourceName, existingTopics, suggestedTopics, currentWeek);
+    const reviewedNewTopics = await openTopicReviewModal(courseId, sourceName, existingTopics, suggestedTopics, unitId);
     if (!reviewedNewTopics) {
         showNotification('Topic review skipped. Existing course topics were unchanged.', 'info');
         return;

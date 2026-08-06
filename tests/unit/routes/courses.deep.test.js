@@ -510,6 +510,20 @@ describe('POST /:courseId/units — add a unit', () => {
         expect(saved.lectures.map(l => l.name)).toEqual(['Unit 1', 'Unit 2']);
         expect(saved.courseStructure.totalUnits).toBe(2);
     });
+
+    test('numbers past the highest unit in use rather than reusing a deleted name', async () => {
+        // "Unit 2" was deleted, so counting units would hand out "Unit 3" again
+        const db = memoryDb({ courses: [{
+            courseId: 'C1', instructorId: 'i1',
+            lectures: [{ name: 'Unit 1' }, { name: 'Unit 3' }], courseStructure: { totalUnits: 2 },
+        }] });
+        const res = await request(app({ db, user: instructor })).post('/C1/units').send({ instructorId: 'i1' });
+        expect(res.status).toBe(200);
+        expect(res.body.data.unit.name).toBe('Unit 4');
+        const saved = await db.collection('courses').findOne({ courseId: 'C1' });
+        expect(saved.lectures.map(l => l.name)).toEqual(['Unit 1', 'Unit 3', 'Unit 4']);
+        expect(saved.courseStructure.totalUnits).toBe(3);
+    });
 });
 
 describe('DELETE /:courseId/units/:unitName', () => {
@@ -535,6 +549,21 @@ describe('DELETE /:courseId/units/:unitName', () => {
         const saved = await db.collection('courses').findOne({ courseId: 'C1' });
         expect(saved.lectures.map(l => l.name)).toEqual(['Unit 2']);
         expect(saved.courseStructure.totalUnits).toBe(1);
+    });
+
+    test('sets totalUnits from what remains when the numbering already has gaps', async () => {
+        // totalUnits had drifted below the unit numbers in use; decrementing it
+        // would keep it out of step with the units that actually exist
+        const db = memoryDb({ courses: [{
+            courseId: 'C1', instructorId: 'i1',
+            lectures: [{ name: 'Unit 1', documents: [] }, { name: 'Unit 9', documents: [] }, { name: 'Unit 19', documents: [] }],
+            courseStructure: { totalUnits: 2 },
+        }] });
+        const res = await request(app({ db, user: instructor })).delete('/C1/units/Unit 9?instructorId=i1');
+        expect(res.status).toBe(200);
+        const saved = await db.collection('courses').findOne({ courseId: 'C1' });
+        expect(saved.lectures.map(l => l.name)).toEqual(['Unit 1', 'Unit 19']);
+        expect(saved.courseStructure.totalUnits).toBe(2);
     });
 });
 

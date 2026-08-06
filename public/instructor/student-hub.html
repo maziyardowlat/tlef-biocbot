@@ -61,6 +61,29 @@
                     <select id="student-course-select"></select>
                 </div>
 
+                <!-- LMS grades control strip. Grades themselves render on each
+                     student card below, so this stays a thin toolbar. -->
+                <div class="lms-grades-bar" id="lms-grades-bar">
+                    <div class="lms-grades-actions">
+                        <label for="lms-grade-provider">LMS grades:</label>
+                        <select id="lms-grade-provider" aria-describedby="lms-grades-status"></select>
+                        <label for="lms-grade-course" class="lms-grade-course-label">Course:</label>
+                        <select id="lms-grade-course" aria-describedby="lms-grades-source-note">
+                            <option value="">Loading courses…</option>
+                        </select>
+                        <button id="link-lms-grade-course" class="btn-small btn-secondary" type="button" disabled>Use this course</button>
+                        <button id="match-lms-students" class="btn-small btn-secondary" type="button">1. Match students</button>
+                        <button id="import-lms-grades" class="btn-small btn-primary" type="button">2. Import grades</button>
+                    </div>
+                    <div id="lms-grades-source-note" class="lms-grades-source-note"></div>
+                    <div id="lms-grades-status" class="lms-grades-status" role="status" aria-live="polite">Loading LMS grade sources…</div>
+                </div>
+
+                <details class="lms-unmatched-panel" id="lms-unmatched-panel" hidden>
+                    <summary id="lms-unmatched-summary">Unmatched students</summary>
+                    <div id="lms-unmatched-body"></div>
+                </details>
+
                 <div id="students-container" class="students-grid"></div>
             </div>
 

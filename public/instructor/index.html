@@ -66,9 +66,20 @@
                 <span id="published-units-summary" style="font-size: 0.9em; color: #5f666d;">Loading published status...</span>
             </div>
 
-
-
-            
+            <!-- LMS import launcher: one small button per configured provider.
+                 The full workflow lives in #lms-import-modal so this page stays
+                 focused on course material. -->
+            <div class="lms-import-bar" id="lms-import-bar" hidden>
+                <span class="lms-import-bar-label">Import from your LMS:</span>
+                <button type="button" class="lms-import-chip" data-lms-provider="canvas" hidden>
+                    <span class="lms-chip-name">Canvas</span>
+                    <span class="lms-chip-state" data-state="checking">Checking…</span>
+                </button>
+                <button type="button" class="lms-import-chip" data-lms-provider="moodle" hidden>
+                    <span class="lms-chip-name">Moodle</span>
+                    <span class="lms-chip-state" data-state="checking">Checking…</span>
+                </button>
+            </div>
 
             <!-- Action Buttons -->
             <div class="action-buttons-container">
@@ -98,6 +109,114 @@
         </main>
     </div>
     
+    <!-- LMS Import Modal (shared by Canvas and Moodle) -->
+    <div id="lms-import-modal" class="modal">
+        <div class="modal-content lms-import-modal-content" role="dialog" aria-modal="true" aria-labelledby="lms-import-title">
+            <div class="modal-header">
+                <div class="lms-import-heading">
+                    <h2 id="lms-import-title">Import from Canvas</h2>
+                    <p class="lms-import-subtitle" id="lms-import-subtitle">Step 1 of 4 · Connect your account</p>
+                </div>
+                <button type="button" class="modal-close" id="lms-import-close" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+            </div>
+
+            <ol class="lms-stepper" id="lms-stepper" aria-label="Import progress"></ol>
+
+            <div class="modal-body lms-import-body">
+                <!-- Step 1: connect -->
+                <section class="lms-step-panel" data-step="connect" hidden>
+                    <div id="lms-connect-oauth" hidden>
+                        <p class="lms-step-help">BiocBot needs your permission before it can read anything from Canvas. Canvas will ask you to approve, then send you straight back here — your Canvas password is never shared with BiocBot.</p>
+                        <button type="button" class="btn-primary" id="lms-connect-oauth-btn">Authorize with Canvas</button>
+                    </div>
+
+                    <div id="lms-connect-token" hidden>
+                        <p class="lms-step-help">Moodle uses a web-service token instead of a login prompt. One page <em>creates</em> tokens, a different page <em>reveals</em> their value — and neither works from a site-admin account.</p>
+                        <p class="lms-step-warning"><strong>Do not use a Moodle site-admin account for this.</strong> Moodle hides web-service tokens from site admins on the Security keys page, so an admin can create a token but can never read it back. Use your ordinary teacher account.</p>
+                        <ol class="lms-token-paths">
+                            <li>
+                                <strong>Create the token:</strong> a Moodle admin goes to <em>Site administration → Server → Web services → Manage tokens → Add</em> and assigns it to your teacher account
+                                <a id="lms-manage-tokens-url" class="lms-token-link" target="_blank" rel="noopener noreferrer" hidden>Open this page</a>
+                                <span class="lms-token-note">This list never shows token values — its first column is the token’s <em>name</em>, not the token itself.</span>
+                            </li>
+                            <li>
+                                <strong>Read the token:</strong> sign in as that teacher account, then go to <em>Preferences → User account → Security keys</em>
+                                <a id="lms-token-url" class="lms-token-link" target="_blank" rel="noopener noreferrer" hidden>Open this page</a>
+                                <span class="lms-token-note">This is the only page that prints the token string, and only for tokens owned by the account you are signed in as. Copy it from there into the box below.</span>
+                            </li>
+                        </ol>
+                        <p class="lms-step-help lms-token-troubleshoot">No “Security keys” under Preferences? You are signed in as a site admin (Moodle hides it from them), web services are off site-wide, or the account lacks Moodle’s <code>webservice:createtoken</code> permission.</p>
+                        <label class="lms-field">
+                            Moodle web-service token
+                            <input type="password" id="lms-token-input" autocomplete="off" spellcheck="false" placeholder="Paste your token">
+                        </label>
+                        <button type="button" class="btn-primary" id="lms-connect-token-btn">Connect Moodle</button>
+                    </div>
+
+                    <div id="lms-connected-state" hidden>
+                        <p class="lms-step-help lms-connected-note" id="lms-connected-note">BiocBot is authorized. Continue to pick a course.</p>
+                        <button type="button" class="btn-secondary" id="lms-disconnect-btn">Disconnect</button>
+                    </div>
+                </section>
+
+                <!-- Step 2: choose the LMS course -->
+                <section class="lms-step-panel" data-step="course" hidden>
+                    <p class="lms-step-help">Choose the course this BiocBot course mirrors. Only courses you teach are listed.</p>
+                    <label class="lms-field">
+                        <span id="lms-course-label">Canvas course</span>
+                        <select id="lms-course-select"></select>
+                    </label>
+                    <p class="lms-linked-note" id="lms-linked-note" aria-live="polite"></p>
+                </section>
+
+                <!-- Step 3: choose the file -->
+                <section class="lms-step-panel" data-step="file" hidden>
+                    <p class="lms-step-help">Pick one file to bring across. Files BiocBot cannot read — unsupported formats, or anything over 50 MB — are shown but cannot be selected.</p>
+                    <label class="lms-field">
+                        <span id="lms-file-label">Canvas file</span>
+                        <select id="lms-file-select" disabled></select>
+                    </label>
+                    <label class="lms-field">
+                        Display name <span class="optional-label">(optional)</span>
+                        <input type="text" id="lms-file-title" placeholder="Leave blank to keep the original filename">
+                    </label>
+                </section>
+
+                <!-- Step 4: choose where it lands in BiocBot -->
+                <section class="lms-step-panel" data-step="destination" hidden>
+                    <p class="lms-step-help">Where should this land in BiocBot? The material type decides how the bot uses it when answering students.</p>
+                    <label class="lms-field">
+                        BiocBot unit
+                        <select id="lms-unit-select"></select>
+                    </label>
+                    <label class="lms-field">
+                        Material type
+                        <select id="lms-document-type-select">
+                            <option value="lecture-notes">Lecture Notes</option>
+                            <option value="practice-quiz">Practice Questions/Tutorial</option>
+                            <option value="additional">Additional Material</option>
+                        </select>
+                    </label>
+                    <dl class="lms-summary" id="lms-summary"></dl>
+                </section>
+
+                <!-- Import run: live per-stage progress -->
+                <section class="lms-step-panel" data-step="progress" hidden>
+                    <ol class="lms-progress-list" id="lms-progress-list" aria-live="polite"></ol>
+                    <p class="lms-progress-result" id="lms-progress-result"></p>
+                </section>
+            </div>
+
+            <div class="modal-footer lms-import-footer">
+                <span id="lms-import-message" class="lms-import-message" role="status" aria-live="polite"></span>
+                <div class="modal-actions">
+                    <button type="button" class="btn-secondary" id="lms-import-back">Back</button>
+                    <button type="button" class="btn-primary" id="lms-import-next">Next</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Question Creation Modal -->
     <div id="question-modal" class="modal">
         <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="question-modal-title">
@@ -511,6 +630,7 @@
     <script src="./scripts/instructor-publish.js"></script>
     <script src="./scripts/instructor-units.js"></script>
     <script src="./scripts/instructor-documents.js"></script>
+    <script src="./scripts/instructor-lms-import.js"></script>
     <script src="./scripts/instructor-upload-topics.js"></script>
     <script src="./scripts/instructor-objectives.js"></script>
     <script src="./scripts/instructor-questions.js"></script>

@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const fs = require('fs');
 const path = require('path');
 
 // Import the Document model and Course model
@@ -12,8 +11,13 @@ const { hasSystemAdminAccess } = require('../services/authorization');
 const { QUESTION_EXTRACTION_SYSTEM_PROMPT, buildQuestionExtractionPrompt } = require('../services/prompts');
 const { resolveCourseAi, sendLlmKeyError } = require('./llmKeyMiddleware');
 const { encodingForModel } = require('js-tiktoken');
-
-const PPTX_MIME_TYPE = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
+const {
+    MAX_DOCUMENT_BYTES,
+    PPTX_MIME_TYPE,
+    ingestDocument,
+    ingestFileBuffer,
+    isSupportedDocumentMimeType
+} = require('../services/documentIngestion');
 
 // Token encoder using cl100k_base (same as tokencounter.space)
 const tokenEncoder = encodingForModel('gpt-4o');
@@ -153,52 +157,6 @@ function getStoredFileBuffer(fileData) {
     return null;
 }
 
-async function ingestDocument({
-    db,
-    qdrantService,
-    documentData,
-    storedInstructorId,
-    linkTitle,
-    qdrantData,
-    indexDocument
-}) {
-    const result = await DocumentModel.uploadDocument(db, documentData);
-    const courseResult = await CourseModel.addDocumentToUnit(
-        db,
-        documentData.courseId,
-        documentData.lectureName,
-        {
-            documentId: result.documentId,
-            documentType: documentData.documentType,
-            ...(linkTitle ? { title: linkTitle } : {}),
-            filename: documentData.filename,
-            originalName: documentData.originalName,
-            mimeType: documentData.mimeType,
-            size: documentData.size,
-            status: 'uploaded',
-            metadata: documentData.metadata
-        },
-        storedInstructorId
-    );
-
-    let qdrantResult = null;
-    if (documentData.content) {
-        try {
-            const payload = { ...qdrantData, documentId: result.documentId, type: result.type };
-            qdrantResult = indexDocument
-                ? await indexDocument(payload)
-                : await qdrantService.processAndStoreDocument(payload);
-        } catch (error) {
-            if (error?.name === 'LlmKeyError') throw error;
-            console.warn('Warning: Document uploaded but Qdrant processing failed:', error.message);
-        }
-    }
-
-    await FlashcardDeck.markUnitStale(db, documentData.courseId, documentData.lectureName);
-
-    return { result, courseResult, qdrantResult };
-}
-
 /**
  * Count tokens accurately using tiktoken (cl100k_base encoding)
  * @param {string} text - Text to count tokens for
@@ -208,72 +166,18 @@ function countTokens(text) {
     return tokenEncoder.encode(text).length;
 }
 
-// Import UBC GenAI Toolkit document parsing module
-const { DocumentParsingModule } = require('ubc-genai-toolkit-document-parsing');
-const { ConsoleLogger } = require('ubc-genai-toolkit-core');
-
 // GridFS storage for uploaded file binaries (keeps raw files out of the 16MB
 // per-document BSON limit; the document only keeps a `fileId` reference).
 const gridfs = require('../services/gridfs');
-
-function createDocumentParser(options = {}) {
-    const llmService = options.llmService || null;
-    return new DocumentParsingModule({
-        logger: new ConsoleLogger(),
-        debug: true,
-        // Describe embedded images in parallel so image-heavy documents finish
-        // quickly instead of one-call-at-a-time. Kept modest so bursts of large
-        // vision payloads don't trip provider per-minute rate limits (which
-        // would otherwise drop images); describeImage also retries transient
-        // failures with backoff.
-        imageConcurrency: 4,
-        onSlide: options.onSlide,
-        // `imageDescriber` is provider-agnostic. BiocBot's LLM service decides
-        // which configured multimodal provider/model actually handles the image.
-        // Covers images embedded in PPTX slides, DOCX documents and PDF pages.
-        imageDescriber: async (image) => {
-            try {
-                if (!llmService || typeof llmService.isReady !== 'function' || !llmService.isReady()) {
-                    return null;
-                }
-                return await llmService.describeImage(image.data, image.mimeType, {
-                    slideNumber: image.slideNumber,
-                    pageNumber: image.pageNumber,
-                    source: image.source
-                });
-            } catch (err) {
-                if (err && err.name === 'LlmKeyError') {
-                    throw err;
-                }
-                const where = image.slideNumber
-                    ? `slide ${image.slideNumber}`
-                    : (image.pageNumber ? `page ${image.pageNumber}` : `image ${image.imageIndex}`);
-                console.warn(`⚠️ imageDescriber failed (${where}): ${err.message}`);
-                return null;
-            }
-        }
-    });
-}
 
 // Configure multer for file uploads
 const upload = multer({
     storage: multer.memoryStorage(),
     limits: {
-        fileSize: 50 * 1024 * 1024, // 50MB limit (increased from 10MB)
+        fileSize: MAX_DOCUMENT_BYTES,
     },
     fileFilter: (req, file, cb) => {
-        // Allow common document types
-        const allowedTypes = [
-            'application/pdf',
-            'application/msword',
-            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            PPTX_MIME_TYPE, // .pptx
-            'text/plain',
-            'text/markdown',
-            'application/rtf'
-        ];
-
-        if (allowedTypes.includes(file.mimetype)) {
+        if (isSupportedDocumentMimeType(file.mimetype)) {
             cb(null, true);
         } else {
             cb(new Error('Invalid file type. Only PDF, DOC, DOCX, PPTX, TXT, MD, and RTF files are allowed.'), false);
@@ -315,176 +219,29 @@ router.post('/upload', upload.single('file'), async (req, res) => {
 
         const ai = await resolveCourseAi(req, res, courseId);
         if (!ai) return;
-        const qdrantService = ai.qdrant;
 
         const storedInstructorId = access.user.role === 'instructor'
             ? access.user.userId
             : (access.course?.instructorId || instructorId);
-        
-        // Determine filename
-        let filename = file.originalname;
-        if (req.body.title) {
-            // If title is provided, use it. Append extension if it doesn't have one and we can determine it from original
-            filename = req.body.title;
-            // Optional: preserve extension if the strict title doesn't include it. 
-            // In this case, the frontend strict titles (*Lecture Notes - Week 1) don't have extensions.
-            // But for file download/viewing, extension might be useful. 
-            // However, the user specifically wants the DISPLAY name to be the strict title.
-            // Let's stick to the title as provided for the "filename" field which is likely used for display.
-            // The 'originalName' usually tracks the actual uploaded file. But DocumentModel might use filename for display.
-        }
-
-        // Store the raw file in GridFS (not inline in the document) so large
-        // uploads aren't blocked by MongoDB's 16MB per-document limit. The
-        // document keeps only the resulting `fileId` reference.
-        const gridfsFileId = await gridfs.uploadBuffer(db, file.buffer, file.originalname, {
-            contentType: file.mimetype,
-            metadata: { courseId, lectureName, originalName: file.originalname },
-        });
-        console.log(`💾 Stored file in GridFS: ${gridfsFileId} (${(file.size / 1024 / 1024).toFixed(2)} MB)`);
-
-        // Prepare document data
-        const documentData = {
+        const { result, courseResult, qdrantResult } = await ingestFileBuffer({
+            db,
+            ai,
+            buffer: file.buffer,
+            originalName: file.originalname,
+            mimeType: file.mimetype,
+            size: file.size,
             courseId,
             lectureName,
             documentType,
             instructorId: storedInstructorId,
-            contentType: 'file',
-            filename: filename,       // Use the determined filename (strict title or original)
-            originalName: file.originalname, // Keep the actual original filename for reference
-            fileId: gridfsFileId,     // Reference to the binary stored in GridFS
-            mimeType: file.mimetype,
-            size: file.size,
-            content: '', // Initialize content field for extracted text
+            title: req.body.title,
             metadata: {
                 description: req.body.description || '',
                 tags: req.body.tags ? req.body.tags.split(',').map(tag => tag.trim()) : [],
-                learningObjectives: req.body.learningObjectives ? req.body.learningObjectives.split(',').map(obj => obj.trim()) : []
-            }
-        };
-        
-        // Note: The DocumentModel.uploadDocument() function will automatically add the 'type' field
-        // based on the documentType using the mapContentTypeToDocumentType function
-        
-        // Extract text content from file using UBC GenAI Toolkit BEFORE creating the document
-        let textContent = '';
-        const parsedSlides = [];
-        try {
-            if (file.mimetype === 'text/plain' || file.mimetype === 'text/markdown') {
-                // Handle text files directly
-                textContent = file.buffer.toString('utf8');
-                console.log(`✅ Text content extracted from ${file.mimetype}: ${textContent.length} characters`);
-            } else {
-                // Use UBC GenAI Toolkit for PDF, DOCX, and other document types
-                console.log(`🔄 Extracting text from ${file.mimetype} using UBC GenAI Toolkit...`);
-                console.log(`📊 File size: ${(file.size / 1024 / 1024).toFixed(2)} MB`);
-                
-                // Create a temporary file path for the parser
-                const tempFilePath = `/tmp/${Date.now()}_${file.originalname}`;
-                
-                try {
-                    // Write buffer to temporary file
-                    console.log(`💾 Writing file to temporary path: ${tempFilePath}`);
-                    fs.writeFileSync(tempFilePath, file.buffer);
-                    console.log(`✅ File written to temp path successfully`);
-                    
-                    // Parse document to extract text with timeout. Image-heavy
-                    // decks describe images in parallel but can still take a
-                    // while, so allow a generous ceiling (5 min).
-                    console.log(`🔍 Starting document parsing...`);
-                    const PARSE_TIMEOUT_MS = 5 * 60 * 1000;
-                    const parser = createDocumentParser({
-                        llmService: ai.llm,
-                        onSlide: file.mimetype === PPTX_MIME_TYPE
-                            ? async (slide) => {
-                                if (slide && typeof slide.text === 'string' && slide.text.trim()) {
-                                    parsedSlides.push(slide);
-                                }
-                            }
-                            : undefined
-                    });
-                    const parsePromise = parser.parse({ filePath: tempFilePath }, 'text');
-                    let timeoutId;
-                    const timeoutPromise = new Promise((_, reject) => {
-                        timeoutId = setTimeout(() => reject(new Error('Document parsing timed out after 5 minutes')), PARSE_TIMEOUT_MS);
-                    });
-
-                    let parseResult;
-                    try {
-                        parseResult = await Promise.race([parsePromise, timeoutPromise]);
-                    } finally {
-                        clearTimeout(timeoutId);
-                    }
-                    
-                    if (parseResult && parseResult.content) {
-                        textContent = parseResult.content;
-                        console.log(`✅ Text content extracted from ${file.mimetype}: ${textContent.length} characters`);
-                        console.log(`📝 Content preview: ${textContent.substring(0, 200)}...`);
-                    } else {
-                        throw new Error('Failed to extract text content from document');
-                    }
-                } finally {
-                    // Clean up temporary file
-                    try {
-                        fs.unlinkSync(tempFilePath);
-                        console.log(`🧹 Temporary file cleaned up: ${tempFilePath}`);
-                    } catch (cleanupError) {
-                        console.warn(`⚠️ Failed to clean up temp file: ${cleanupError.message}`);
-                    }
-                }
-            }
-        } catch (parseError) {
-            console.error(`❌ Error extracting text from ${file.mimetype}:`, parseError);
-            // Continue without text extraction - document will still be stored in MongoDB
-        }
-        
-        // Update documentData with extracted content
-        if (textContent) {
-            documentData.content = textContent;
-            console.log(`📝 Document will be created with ${textContent.length} characters of extracted text`);
-        }
-        
-        const indexSlides = file.mimetype === PPTX_MIME_TYPE && parsedSlides.length > 0
-            ? async qdrantDocumentData => {
-                const slideChunks = parsedSlides.map(slide => slide.text.trim()).filter(Boolean);
-                const slideMetadata = parsedSlides
-                    .filter(slide => slide.text && slide.text.trim())
-                    .map(slide => ({
-                        sourceUnit: 'slide',
-                        slideNumber: slide.slideNumber,
-                        describedImageCount: slide.describedImageCount || 0
-                    }));
-                const embeddings = await qdrantService.generateEmbeddings(slideChunks);
-                const storedChunks = await qdrantService.storeChunks(
-                    { ...qdrantDocumentData, chunkMetadata: slideMetadata },
-                    slideChunks,
-                    embeddings,
-                    'pptx-slide'
-                );
-                return {
-                    success: true,
-                    chunksProcessed: slideChunks.length,
-                    chunksStored: storedChunks.length,
-                    message: `PowerPoint processed and ${storedChunks.length} slide chunks stored successfully`
-                };
-            }
-            : null;
-
-        const { result, courseResult, qdrantResult } = await ingestDocument({
-            db,
-            qdrantService,
-            documentData,
-            storedInstructorId,
-            linkTitle: req.body.title || documentData.filename,
-            qdrantData: {
-                courseId,
-                lectureName,
-                content: textContent,
-                fileName: documentData.filename,
-                mimeType: file.mimetype,
-                documentType
+                learningObjectives: req.body.learningObjectives
+                    ? req.body.learningObjectives.split(',').map(obj => obj.trim())
+                    : []
             },
-            indexDocument: indexSlides
         });
         
         console.log(`Document uploaded: ${file.originalname} for ${lectureName}`);
@@ -494,7 +251,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
             message: 'Document uploaded successfully!',
             data: {
                 documentId: result.documentId,
-                filename: documentData.filename, // Return the stored filename (strict title)
+                filename: result.filename,
                 size: file.size,
                 uploadDate: result.uploadDate,
                 linkedToCourse: courseResult.success,

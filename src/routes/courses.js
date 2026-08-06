@@ -3711,10 +3711,16 @@ router.post('/:courseId/units', async (req, res) => {
             });
         }
         
-        // Calculate new unit number
-        const currentUnitsCount = course.lectures ? course.lectures.length : 0;
+        // Calculate new unit number. Deletes leave gaps in the numbering, so this
+        // has to come from the highest number in use - counting units instead would
+        // hand out a name that already exists once anything has been deleted.
+        const existingUnits = course.lectures || [];
+        const highestUnitNum = existingUnits.reduce((highest, lecture) => {
+            const match = /\d+/.exec(lecture?.name || '');
+            return match ? Math.max(highest, parseInt(match[0], 10)) : highest;
+        }, 0);
         const structureUnitsCount = course.courseStructure ? course.courseStructure.totalUnits : 0;
-        const newUnitNum = Math.max(currentUnitsCount, structureUnitsCount) + 1;
+        const newUnitNum = Math.max(highestUnitNum, structureUnitsCount) + 1;
         const newUnitName = `Unit ${newUnitNum}`;
         
         const now = new Date();
@@ -3729,24 +3735,26 @@ router.post('/:courseId/units', async (req, res) => {
             assessmentQuestions: []
         };
         
-        // Update course: add unit to lectures array AND update courseStructure
+        // Update course: add unit to lectures array AND update courseStructure.
+        // totalUnits counts the units that exist; it is not the highest unit number,
+        // which runs ahead of the count once a unit has been deleted.
+        const newTotalUnits = existingUnits.length + 1;
         const result = await collection.updateOne(
             { courseId },
             {
                 $push: { lectures: newUnit },
-                $inc: { 'courseStructure.totalUnits': 1 },
-                $set: { updatedAt: now }
+                $set: { 'courseStructure.totalUnits': newTotalUnits, updatedAt: now }
             }
         );
-        
+
         console.log(`Added ${newUnitName} to course ${courseId}`);
-        
+
         res.json({
             success: true,
             message: `${newUnitName} added successfully`,
             data: {
                 unit: newUnit,
-                totalUnits: newUnitNum
+                totalUnits: newTotalUnits
             }
         });
         
@@ -3858,14 +3866,16 @@ router.delete('/:courseId/units/:unitName', async (req, res) => {
         }
         
         const now = new Date();
-        
-        // 2. Remove the unit from the course
+
+        // 2. Remove the unit from the course. totalUnits is set from what actually
+        // remains rather than decremented, so it can't drift away from the units
+        // themselves and leave the instructor page rendering units that don't exist.
+        const remainingUnits = course.lectures.filter(l => l.name !== unitName).length;
         const updateResult = await collection.updateOne(
             { courseId },
             {
                 $pull: { lectures: { name: unitName } },
-                $inc: { 'courseStructure.totalUnits': -1 },
-                $set: { updatedAt: now }
+                $set: { 'courseStructure.totalUnits': remainingUnits, updatedAt: now }
             }
         );
         
