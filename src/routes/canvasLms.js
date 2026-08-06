@@ -10,6 +10,7 @@ const {
 } = require('../services/documentIngestion');
 const { resolveCourseAi, sendLlmKeyError } = require('./llmKeyMiddleware');
 const { createImportProgressStream } = require('./lmsImportProgress');
+const { createLmsImportDiagnostics } = require('../services/lmsImportDiagnostics');
 
 function normalizeCanvasFile(file = {}) {
     const mimeType = file.mimeType || '';
@@ -165,6 +166,7 @@ function createCanvasLmsRouter(
 
     router.post('/courses/:biocbotCourseId/import-file', requireCanvasAuth, async (req, res, next) => {
         let progress = null;
+        let diagnostics = null;
         try {
             const db = req.app.locals.db;
             const course = await requireManagedCourse(req, res, req.params.biocbotCourseId);
@@ -223,8 +225,19 @@ function createCanvasLmsRouter(
 
             // Everything that can still fail with a meaningful HTTP status has
             // now passed, so it is safe to commit the response to 200 + stream.
-            progress = createImportProgressStream(req, res);
-            progress?.step('download', `${normalized.name} from Canvas`);
+            diagnostics = createLmsImportDiagnostics({
+                req,
+                provider: 'canvas',
+                biocbotCourseId: course.courseId,
+                externalCourseId: canvasCourseId,
+                externalFileId: canvasFileId,
+                fileUrl: file.raw?.url || file.url,
+                lmsDomain: config.canvasDomain,
+                allowedDownloadHostSuffixes: config.allowedDownloadHostSuffixes
+            });
+            progress = createImportProgressStream(req, res, { diagnostics });
+            if (progress) progress.step('download', `${normalized.name} from Canvas`);
+            else diagnostics.step('download', { detail: `${normalized.name} from Canvas` });
             const download = await canvas.downloadFile(
                 req.canvasApi,
                 canvasCourseId,
@@ -236,7 +249,7 @@ function createCanvasLmsRouter(
                 db,
                 ai,
                 buffer,
-                onProgress: progress?.onIngestionProgress,
+                onProgress: progress?.onIngestionProgress || diagnostics.onIngestionProgress,
                 originalName: normalized.filename || normalized.name,
                 mimeType: normalized.mimeType,
                 size: normalized.size || buffer.length,
@@ -266,6 +279,7 @@ function createCanvasLmsRouter(
                 chunksStored: qdrantResult?.chunksStored || 0
             };
             if (progress) return progress.done(data);
+            diagnostics.done(data);
             res.status(201).json({
                 success: true,
                 message: 'Canvas file imported into BiocBot',
@@ -273,6 +287,7 @@ function createCanvasLmsRouter(
             });
         } catch (error) {
             if (progress) return progress.fail(error);
+            diagnostics?.fail(error);
             if (sendLlmKeyError(res, error)) return;
             next(error);
         }

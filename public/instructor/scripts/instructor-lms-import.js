@@ -426,6 +426,68 @@
         if (target) target.textContent = detail;
     }
 
+    function clearImportDiagnostics() {
+        const details = element('lms-import-diagnostics');
+        const list = element('lms-import-diagnostic-list');
+        if (list) list.replaceChildren();
+        if (details) {
+            details.hidden = true;
+            details.open = false;
+        }
+    }
+
+    /**
+     * Gives an instructor a safe reference they can match to server logs. The
+     * server deliberately omits stacks, paths, and signed URL query strings
+     * from this payload; those remain server-only.
+     */
+    function renderImportDiagnostics(error, provider, fallbackStage) {
+        const details = element('lms-import-diagnostics');
+        const list = element('lms-import-diagnostic-list');
+        if (!details || !list) return null;
+
+        const diagnostic = error.diagnostic || {};
+        const stage = diagnostic.stage || fallbackStage || 'unknown';
+        const stageLabel = IMPORT_STAGES.find((candidate) => candidate.id === stage)?.label
+            .replace('{provider}', provider.label) || stage;
+        const rows = [
+            ['Reference', diagnostic.reference],
+            ['Provider', diagnostic.provider || provider.label],
+            ['Failed stage', stageLabel],
+            ['Error type', diagnostic.errorName],
+            ['Error code', diagnostic.code || error.code],
+            ['HTTP status', diagnostic.statusCode || error.status],
+            ['Toolkit version', diagnostic.toolkitVersion],
+            ['File host', diagnostic.fileHost],
+            ['Configured LMS', diagnostic.lmsHost],
+            ['Allowed file hosts', diagnostic.allowedDownloadHostSuffixes?.join(', ')],
+            ['Time', diagnostic.occurredAt]
+        ].filter(([, value]) => value !== undefined && value !== null && value !== '');
+
+        list.replaceChildren();
+        for (const [label, value] of rows) {
+            const term = document.createElement('dt');
+            const description = document.createElement('dd');
+            term.textContent = label;
+            description.textContent = String(value);
+            list.append(term, description);
+        }
+        details.hidden = rows.length === 0;
+        details.open = rows.length > 0;
+
+        console.error('[LMS import] Import failed', {
+            provider: diagnostic.provider || state.provider,
+            stage,
+            reference: diagnostic.reference || null,
+            code: diagnostic.code || error.code || null,
+            statusCode: diagnostic.statusCode || error.status || null,
+            fileHost: diagnostic.fileHost || null,
+            lmsHost: diagnostic.lmsHost || null,
+            error
+        });
+        return diagnostic.reference || null;
+    }
+
     /**
      * Reads the server's newline-delimited progress stream. Each line is one
      * complete JSON event, but a chunk can split mid-line, so the tail is held
@@ -459,6 +521,7 @@
         renderStep();
         renderImportStages('download');
         element('lms-progress-result').textContent = '';
+        clearImportDiagnostics();
         setMessage('');
 
         let lastStage = 'download';
@@ -487,6 +550,8 @@
                 const body = await response.json().catch(() => ({}));
                 const error = new Error(body.message || `Import failed (${response.status})`);
                 error.status = response.status;
+                error.code = body.code;
+                error.diagnostic = body.diagnostic;
                 throw error;
             }
 
@@ -502,7 +567,11 @@
                 } else if (event.type === 'done') {
                     finished = event.data;
                 } else if (event.type === 'error') {
-                    failure = Object.assign(new Error(event.message), { code: event.code });
+                    failure = Object.assign(new Error(event.message), {
+                        code: event.code,
+                        status: event.diagnostic?.statusCode,
+                        diagnostic: event.diagnostic
+                    });
                 }
             });
             if (failure) throw failure;
@@ -531,8 +600,9 @@
             const message = error.status === 409
                 ? `That ${provider.label} file is already in this BiocBot course.`
                 : error.message;
+            const reference = renderImportDiagnostics(error, provider, lastStage);
             element('lms-progress-result').textContent = message;
-            setMessage(message, 'error');
+            setMessage(reference ? `Import failed · reference ${reference}` : 'Import failed.', 'error');
             element('lms-import-back').hidden = false;
             element('lms-import-back').textContent = 'Back to the file list';
         } finally {
@@ -615,6 +685,7 @@
         state.files = [];
         state.importing = false;
         state.importedDocument = null;
+        clearImportDiagnostics();
         lastFocusedElement = document.activeElement;
 
         const modal = element('lms-import-modal');

@@ -49,7 +49,7 @@ function describeExtraction({ characters = 0, slides = 0 }) {
  * that still needs a real HTTP status code (400/404/409), because a stream is
  * committed to `200` the moment its headers go out.
  */
-function createImportProgressStream(req, res) {
+function createImportProgressStream(req, res, { diagnostics = null } = {}) {
     if (!wantsProgressStream(req)) return null;
 
     res.status(200);
@@ -71,10 +71,12 @@ function createImportProgressStream(req, res) {
     return {
         /** Marks `stepId` as the step now running; earlier steps are complete. */
         step(stepId, detail = '') {
+            diagnostics?.step(stepId, detail ? { detail } : {});
             write({ type: 'step', step: stepId, ...(detail ? { detail } : {}) });
         },
         /** An ingestion progress listener that forwards phases as steps. */
         onIngestionProgress({ phase, ...details }) {
+            diagnostics?.onIngestionProgress({ phase, ...details });
             if (phase === 'extracted') {
                 write({ type: 'detail', step: 'extract', detail: describeExtraction(details) });
                 return;
@@ -83,15 +85,18 @@ function createImportProgressStream(req, res) {
             if (stepId) write({ type: 'step', step: stepId });
         },
         done(data) {
+            diagnostics?.done(data);
             write({ type: 'done', data });
             closed = true;
             res.end();
         },
         fail(error) {
+            const diagnostic = diagnostics?.fail(error) || null;
             write({
                 type: 'error',
                 message: error?.message || 'LMS import failed',
-                ...(error?.code ? { code: error.code } : {})
+                ...(error?.code ? { code: error.code } : {}),
+                ...(diagnostic ? { diagnostic } : {})
             });
             closed = true;
             res.end();

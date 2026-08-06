@@ -9,6 +9,7 @@ const {
 const { resolveCourseAi, sendLlmKeyError } = require('./llmKeyMiddleware');
 const { requireManagedCourse } = require('./canvasLms');
 const { createImportProgressStream } = require('./lmsImportProgress');
+const { createLmsImportDiagnostics } = require('../services/lmsImportDiagnostics');
 
 function normalizeMoodleFile(file = {}) {
     const mimeType = file.mimeType || '';
@@ -144,6 +145,7 @@ function createMoodleLmsRouter(
 
     router.post('/courses/:biocbotCourseId/import-file', requireMoodleAuth, async (req, res, next) => {
         let progress = null;
+        let diagnostics = null;
         try {
             const db = req.app.locals.db;
             const course = await requireManagedCourse(req, res, req.params.biocbotCourseId);
@@ -200,8 +202,18 @@ function createMoodleLmsRouter(
 
             // Everything that can still fail with a meaningful HTTP status has
             // now passed, so it is safe to commit the response to 200 + stream.
-            progress = createImportProgressStream(req, res);
-            progress?.step('download', `${normalized.name} from Moodle`);
+            diagnostics = createLmsImportDiagnostics({
+                req,
+                provider: 'moodle',
+                biocbotCourseId: course.courseId,
+                externalCourseId: moodleCourseId,
+                externalFileId: moodleFileId,
+                fileUrl: file.raw?.content?.fileurl || file.raw?.fileurl || file.fileurl,
+                lmsDomain: config.moodleDomain
+            });
+            progress = createImportProgressStream(req, res, { diagnostics });
+            if (progress) progress.step('download', `${normalized.name} from Moodle`);
+            else diagnostics.step('download', { detail: `${normalized.name} from Moodle` });
             const download = await moodle.downloadFile(
                 req.moodleApi,
                 moodleCourseId,
@@ -213,7 +225,7 @@ function createMoodleLmsRouter(
                 db,
                 ai,
                 buffer,
-                onProgress: progress?.onIngestionProgress,
+                onProgress: progress?.onIngestionProgress || diagnostics.onIngestionProgress,
                 originalName: normalized.filename || normalized.name,
                 mimeType: normalized.mimeType,
                 size: normalized.size || buffer.length,
@@ -243,6 +255,7 @@ function createMoodleLmsRouter(
                 chunksStored: qdrantResult?.chunksStored || 0
             };
             if (progress) return progress.done(data);
+            diagnostics.done(data);
             res.status(201).json({
                 success: true,
                 message: 'Moodle file imported into BiocBot',
@@ -250,6 +263,7 @@ function createMoodleLmsRouter(
             });
         } catch (error) {
             if (progress) return progress.fail(error);
+            diagnostics?.fail(error);
             if (sendLlmKeyError(res, error)) return;
             next(error);
         }
