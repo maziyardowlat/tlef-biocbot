@@ -1,6 +1,6 @@
 # BiocBot accessibility audit — round 2
 
-**Date:** 2026-07-20
+**Date:** 2026-07-20. testing
 **Audited revision:** `833ea14` (`ivan_edit`)
 **Scope:** All 20 HTML files under `public/`, role-specific dynamic UI, modal/focus helpers, and `tests/a11y/`.
 **Implementation changes in this pass:** none. Only this audit and `a11y-task-prompts.md` were updated.
