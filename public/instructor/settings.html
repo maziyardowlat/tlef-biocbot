@@ -234,11 +234,11 @@
 
                             <section class="settings-section" id="course-llm-key-section">
                                 <h3>Course API key</h3>
-                                <p class="section-description">AI is unavailable for this course until a valid key is saved. Contact <a href="mailto:LT.hub@ubc.ca">LT.hub@ubc.ca</a> for a new or replacement key.</p>
+                                <p class="section-description">Choose the AI platform this course runs on, then save that platform’s API key. AI is unavailable until a valid key is saved.</p>
                                 <div class="settings-content">
                                     <div class="setting-item vertical">
                                         <div class="setting-info">
-                                            <h4 id="course-llm-key-label">OpenAI API key</h4>
+                                            <h4 id="course-llm-key-label">Platform API key</h4>
                                             <p id="course-llm-key-status" class="llm-key-status">Loading key status...</p>
                                         </div>
                                         <div class="setting-controls full-width-control llm-key-controls">
@@ -613,7 +613,7 @@
                                         </div>
                                         <div class="setting-controls superchat-manage-controls">
                                             <input type="text" id="new-superchat-name" class="text-input" placeholder="New bucket name" aria-labelledby="new-superchat-label" aria-describedby="new-superchat-desc">
-                                            <input type="password" id="new-superchat-key" class="text-input llm-key-input" placeholder="OpenAI key" autocomplete="off" aria-label="New bucket OpenAI API key">
+                                            <input type="password" id="new-superchat-key" class="text-input llm-key-input" placeholder="sk-..." autocomplete="off" aria-label="New bucket API key">
                                             <button type="button" id="new-superchat-btn" class="secondary-button">Create bucket</button>
                                         </div>
                                     </div>
@@ -845,7 +845,7 @@
                                                     >
                                                 </div>
                                                 <div class="transfer-field-group">
-                                                    <label for="transfer-course-api-key">New course OpenAI API key</label>
+                                                    <label for="transfer-course-api-key">New course API key</label>
                                                     <input
                                                         type="password"
                                                         id="transfer-course-api-key"
@@ -955,7 +955,7 @@
                                 <div class="settings-content">
                                     <div class="setting-item vertical">
                                         <div class="setting-info">
-                                            <h4 id="notes-llm-key-label">OpenAI API key</h4>
+                                            <h4 id="notes-llm-key-label">Platform API key</h4>
                                             <p id="notes-llm-key-status" class="llm-key-status">Loading key status...</p>
                                         </div>
                                         <div class="setting-controls full-width-control llm-key-controls">
@@ -973,7 +973,7 @@
                                 <div class="settings-content">
                                     <div class="setting-item vertical">
                                         <div class="setting-info">
-                                            <h4 id="instructor-superchat-llm-key-label">OpenAI API key</h4>
+                                            <h4 id="instructor-superchat-llm-key-label">Platform API key</h4>
                                             <p id="instructor-superchat-llm-key-status" class="llm-key-status">Loading key status...</p>
                                         </div>
                                         <div class="setting-controls full-width-control llm-key-controls">
@@ -1221,6 +1221,7 @@
          documents-page functionality and is intentionally not loaded here. -->
     <script src="./scripts/instructor-state.js"></script>
     <script src="./scripts/instructor-course.js"></script>
+    <script src="../common/scripts/llm-platform.js"></script>
     <script src="./scripts/settings.js"></script>
 </body>
 </html>
