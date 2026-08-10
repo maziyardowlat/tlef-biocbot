@@ -30,6 +30,7 @@ const MODEL_NAMES = [
 ];
 
 let instructorId;
+let originalAcademicApiEnabled = false;
 
 async function withDb(fn) {
     if (!process.env.MONGO_URI) {
@@ -51,6 +52,34 @@ async function setSystemAdmin(userId, isAdmin) {
             { $set: { 'permissions.systemAdmin': isAdmin === true, updatedAt: new Date() } }
         );
     });
+}
+
+/**
+ * The "Set up another section" path (`?addCourse=true`) is only honoured when the
+ * academic API gate is on; otherwise the server redirects a completed instructor
+ * straight to Course Upload. These specs seed a completed course, so they need
+ * the gate to reach the onboarding form at all.
+ */
+async function setAcademicApiEnabled(enabled) {
+    await withDb(async (db) => {
+        await db.collection('settings').updateOne(
+            { _id: 'global' },
+            { $set: { academicApiEnabled: enabled === true, updatedAt: new Date() } },
+            { upsert: true }
+        );
+    });
+}
+
+/**
+ * Open onboarding at Step 2 (Course Setup), which is where the platform choice
+ * and API-key field live. Step 1 is the welcome screen.
+ */
+async function openOnboardingCourseSetup(page) {
+    await setAcademicApiEnabled(true);
+    await page.goto('/instructor/onboarding?addCourse=true');
+    await expect(page.locator('#step-1')).toBeVisible({ timeout: 15_000 });
+    await page.getByRole('button', { name: 'Get Started' }).click();
+    await expect(page.locator('#course-api-key-section')).toBeVisible({ timeout: 15_000 });
 }
 
 async function seedCourse() {
@@ -139,11 +168,15 @@ test.beforeAll(async () => {
         db.collection('users').findOne({ username: TEST_USERS.instructor.username }));
     if (!instructor) throw new Error('E2E instructor user not found.');
     instructorId = instructor.userId;
+
+    const globalSettings = await withDb(async (db) => db.collection('settings').findOne({ _id: 'global' }));
+    originalAcademicApiEnabled = globalSettings?.academicApiEnabled === true;
 });
 
 test.afterAll(async () => {
     await withDb(async (db) => { await db.collection('courses').deleteMany({ courseId: COURSE_ID }); });
     await setSystemAdmin(instructorId, false);
+    await setAcademicApiEnabled(originalAcademicApiEnabled);
 });
 
 test.describe('Instructor platform selection', () => {
@@ -155,11 +188,8 @@ test.describe('Instructor platform selection', () => {
     });
 
     test('onboarding offers GPT and Sandbox with platform-specific help text', async ({ page }) => {
-        // The seeded course has isOnboardingComplete, so a bare visit renders the
-        // "already complete" view. addCourse=true starts a fresh course setup,
-        // which is where the platform choice lives.
-        await page.goto('/instructor/onboarding?addCourse=true');
-        await expect(page.locator('#onboarding-llm-platform')).toBeVisible({ timeout: 15_000 });
+        await openOnboardingCourseSetup(page);
+        await expect(page.locator('#onboarding-llm-platform')).toBeVisible();
 
         // GPT is the default choice.
         await expect(page.locator('#onboarding-llm-provider-openai')).toBeChecked();
@@ -179,8 +209,8 @@ test.describe('Instructor platform selection', () => {
     });
 
     test('onboarding never exposes a chat or embedding model name', async ({ page }) => {
-        await page.goto('/instructor/onboarding?addCourse=true');
-        await expect(page.locator('#onboarding-llm-platform')).toBeVisible({ timeout: 15_000 });
+        await openOnboardingCourseSetup(page);
+        await expect(page.locator('#onboarding-llm-platform')).toBeVisible();
 
         const visibleText = await page.locator('body').innerText();
         for (const modelName of MODEL_NAMES) {
@@ -246,22 +276,23 @@ test.describe('Instructor platform selection', () => {
         await expect(page.locator('#course-llm-prepare')).toHaveText('Refresh OpenAI Chat GPT material');
     });
 
-    test('a saved platform key gets an explicit confirmed switch action without key re-entry', async ({ page }) => {
-        let switchRequest = null;
+    test('preparing a stored platform starts a migration without re-entering the key', async ({ page }) => {
+        let prepareRequest = null;
         await mockCourseKeyState(page, baseState({
             llmKeysByProvider: {
                 openai: { status: 'valid', last4: '1111', validatedAt: null, updatedAt: null },
                 'ubc-llm-sandbox': { status: 'valid', last4: '2222', validatedAt: null, updatedAt: null },
             },
         }));
-        await page.route('**/api/courses/*/llm-provider', async (route) => {
-            switchRequest = JSON.parse(route.request().postData() || '{}');
+        await page.route('**/api/courses/*/llm-provider/prepare', async (route) => {
+            prepareRequest = JSON.parse(route.request().postData() || '{}');
             await route.fulfill({
                 status: 202,
                 contentType: 'application/json',
                 body: JSON.stringify({
                     success: true,
-                    message: 'Preparing course material for UBC On-Premise LLM.',
+                    message: 'Preparing course material for UBC On-Premise LLM. '
+                        + 'It will switch automatically when preparation finishes.',
                     ...baseState({
                         pendingLlmProvider: 'ubc-llm-sandbox',
                         providerMigrationId: 'mig_saved_switch',
@@ -272,7 +303,8 @@ test.describe('Instructor platform selection', () => {
                     }),
                     migration: {
                         migrationId: 'mig_saved_switch', status: 'queued', toProvider: 'ubc-llm-sandbox',
-                        total: 0, completed: 0, failed: 0, failures: [],
+                        total: 2, completed: 0, failed: 0, failures: [],
+                        targetProfile: { provider: 'ubc-llm-sandbox' },
                     },
                 }),
             });
@@ -281,17 +313,20 @@ test.describe('Instructor platform selection', () => {
         await openCourseKeySettings(page);
         await page.locator('#course-llm-provider-ubc-llm-sandbox').check();
 
-        await expect(page.locator('#save-course-llm-key')).toHaveText('Switch to Sandbox');
-        await expect(page.locator('#course-llm-key-input'))
-            .toHaveAttribute('placeholder', 'Optional: enter a replacement Sandbox key');
+        // The key is already stored, so saving is only ever a replacement...
+        await expect(page.locator('#save-course-llm-key')).toHaveText('Replace UBC On-Premise LLM key');
+        // ...and the switch happens through the explicit prepare action.
+        await expect(page.locator('#course-llm-prepare')).toBeEnabled();
 
         page.once('dialog', async (dialog) => {
-            expect(dialog.message()).toContain('Switch to Sandbox using the saved key?');
+            expect(dialog.message()).toContain('Prepare all current material for UBC On-Premise LLM?');
             await dialog.accept();
         });
-        await page.locator('#save-course-llm-key').click();
+        await page.locator('#course-llm-prepare').click();
 
-        await expect.poll(() => switchRequest).toEqual({ llmProvider: 'ubc-llm-sandbox' });
+        await expect.poll(() => prepareRequest).toEqual({ llmProvider: 'ubc-llm-sandbox' });
+        // Progress replaces the button state; no key was ever re-entered.
+        await expect(page.locator('#course-llm-migration')).toBeVisible();
         await expect(page.locator('#course-llm-key-input')).toHaveValue('');
     });
 
