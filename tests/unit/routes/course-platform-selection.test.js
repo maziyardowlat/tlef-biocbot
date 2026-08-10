@@ -135,13 +135,13 @@ describe('onboarding: choosing a platform then entering its key', () => {
         expect(res.body.providers).toEqual([
             expect.objectContaining({
                 provider: OPENAI,
-                label: 'GPT',
+                label: 'OpenAI Chat GPT',
                 helpText: 'Feel free to use your own OpenAI API key, or contact the support team for assistance.',
                 supportEmail: 'LT.hub@ubc.ca',
             }),
             expect.objectContaining({
                 provider: SANDBOX,
-                label: 'Sandbox',
+                label: 'UBC On-Premise LLM',
                 helpText: 'Contact the LTIC team to request a UBC LLM Sandbox API key.',
             }),
         ]);
@@ -176,7 +176,7 @@ describe('course key settings', () => {
         expect(res.body).toMatchObject({ llmProvider: SANDBOX, aiAvailable: true });
         expect(res.body.llmKeysByProvider[OPENAI].last4).toBe('1111');
         expect(res.body.llmKeysByProvider[SANDBOX].last4).toBe('2222');
-        expect(res.body.providers.map(provider => provider.label)).toEqual(['GPT', 'Sandbox']);
+        expect(res.body.providers.map(provider => provider.label)).toEqual(['OpenAI Chat GPT', 'UBC On-Premise LLM']);
 
         const serialised = JSON.stringify(res.body);
         expect(serialised).not.toContain('ciphertext');

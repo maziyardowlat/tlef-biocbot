@@ -49,7 +49,8 @@ class LlmKeyError extends Error {
 
 /**
  * Safe browser-facing diagnostic for a key problem. Names the platform the
- * instructor picked ("GPT" / "Sandbox") rather than leaking model details.
+ * instructor picked ("OpenAI Chat GPT" / "UBC On-Premise LLM") rather than
+ * leaking model details.
  * @param {string} status
  * @param {string|null} [provider]
  */
@@ -62,7 +63,9 @@ function messageForStatus(status, provider = null) {
             return `The ${platform}API key for this AI surface is out of credits. Contact ${CONTACT_EMAIL} for help.`;
         case KEY_STATUSES.MISSING:
         default:
-            return `AI is disabled until ${platform ? `a ${platform.trim()} ` : 'an '}API key is added. Contact ${CONTACT_EMAIL} for a key.`;
+            // "a valid X" avoids an a/an choice: the platform labels start with
+            // both vowels ("OpenAI…") and consonant-sounding letters ("UBC…").
+            return `AI is disabled until a valid ${platform}API key is added. Contact ${CONTACT_EMAIL} for a key.`;
     }
 }
 

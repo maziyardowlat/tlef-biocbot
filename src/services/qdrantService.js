@@ -1032,7 +1032,11 @@ class QdrantService {
      */
     async deleteDocumentChunks(documentId, courseId = null) {
         try {
-            console.log(`Deleting chunks for document: ${documentId}${courseId ? ` in course: ${courseId}` : ''}`);
+            console.log(
+                `Removing stale/partial target chunks for document: ${documentId}`
+                + `${courseId ? ` in course: ${courseId}` : ''}`
+                + ` from collection: ${this.collectionName} (other provider collections are untouched)`
+            );
 
             const filter = {
                 must: [
@@ -1074,6 +1078,7 @@ class QdrantService {
 
                 if (points.length === 0) {
                     if (loopCount === 1) {
+                        console.log(`No existing target chunks found for document: ${documentId}`);
                         return {
                             success: true,
                             message: 'No chunks found for document',

@@ -9,7 +9,6 @@ describe('LLM platform saved-key actions', () => {
         elements['course-llm-key-input'] = { value: '', placeholder: '' };
         elements['save-course-llm-key'] = { disabled: false, textContent: 'Save key' };
         elements['course-llm-prepare'] = { disabled: false, textContent: '', title: '' };
-        elements['course-llm-switch'] = { disabled: false, hidden: true, textContent: '' };
         elements['course-llm-platform-change-note'] = { hidden: true, textContent: '' };
         elements['course-llm-provider-ubc-llm-sandbox'] = {
             checked: true,
@@ -31,7 +30,7 @@ describe('LLM platform saved-key actions', () => {
         delete global.LlmPlatform;
     });
 
-    test('shows separate replace, prepare, and switch actions for a stored alternate key', () => {
+    test('shows separate key replacement and prepare-and-switch actions', () => {
         global.LlmPlatform.refreshSelector('course', {
             llmProvider: 'openai',
             llmKeysByProvider: {
@@ -39,18 +38,15 @@ describe('LLM platform saved-key actions', () => {
             }
         });
 
-        expect(elements['save-course-llm-key'].textContent).toBe('Replace Sandbox key');
+        expect(elements['save-course-llm-key'].textContent).toBe('Replace UBC On-Premise LLM key');
         expect(elements['save-course-llm-key'].disabled).toBe(true);
         expect(elements['course-llm-prepare']).toMatchObject({
-            disabled: false, textContent: 'Prepare material for Sandbox'
-        });
-        expect(elements['course-llm-switch']).toMatchObject({
-            disabled: false, hidden: false, textContent: 'Switch to Sandbox'
+            disabled: false, textContent: 'Prepare material and switch to UBC On-Premise LLM'
         });
         expect(elements['course-llm-key-input'].placeholder)
-            .toBe('Optional: enter a replacement Sandbox key');
+            .toBe('Optional: enter a replacement UBC On-Premise LLM key');
         expect(elements['course-llm-platform-change-note'].textContent)
-            .toContain('Prepare the material, then switch');
+            .toContain('switch to UBC On-Premise LLM automatically');
     });
 
     test('changes back to saving when a replacement key is entered', () => {
@@ -63,7 +59,7 @@ describe('LLM platform saved-key actions', () => {
             }
         });
 
-        expect(elements['save-course-llm-key'].textContent).toBe('Replace Sandbox key');
+        expect(elements['save-course-llm-key'].textContent).toBe('Replace UBC On-Premise LLM key');
         expect(elements['save-course-llm-key'].disabled).toBe(false);
     });
 });

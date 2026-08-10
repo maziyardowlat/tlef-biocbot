@@ -7,8 +7,8 @@
  *
  *   - save a key for a chosen platform (validated against THAT platform)
  *   - test the stored key for the active platform
- *   - switch platforms, which stages the new credential and runs a migration
- *     before the new platform becomes active
+ *   - explicitly prepare a stored platform, then activate it automatically
+ *     only after all required vectors are ready
  *
  * Keys are never shared between surfaces, and no route ever returns ciphertext
  * or a decrypted key.
@@ -153,8 +153,7 @@ async function saveSurfaceKey(db, {
     provider,
     apiKey,
     updatedBy = null,
-    registry = null,
-    allowMigration = true
+    registry = null
 }) {
     const requestedProvider = normalizeProvider(provider);
     const { target, doc } = await loadSurface(db, scope);
@@ -205,8 +204,9 @@ async function saveSurfaceKey(db, {
 }
 
 /**
- * Prepare all content visible to a surface for a stored provider without
- * changing which provider currently answers requests.
+ * Prepare all content visible to a surface for a stored provider. The current
+ * provider remains active while work runs; the runner switches atomically only
+ * after every item is ready.
  */
 async function prepareStoredProvider(db, { scope, provider, requestedBy = null }) {
     const requestedProvider = normalizeProvider(provider);
@@ -282,7 +282,8 @@ async function prepareStoredProvider(db, { scope, provider, requestedBy = null }
         httpStatus: 202,
         body: {
             success: true,
-            message: `Preparing course material for ${providerLabel(requestedProvider)}.`,
+            message: `Preparing course material for ${providerLabel(requestedProvider)}. `
+                + `It will switch automatically when preparation finishes.`,
             ...publicProviderKeyState(updated),
             migration: migrations.publicMigrationView(job)
         }

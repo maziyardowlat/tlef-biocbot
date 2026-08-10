@@ -1,9 +1,9 @@
 /**
  * LLM platform selector
  *
- * Shared UI for every keyed surface: pick a platform (GPT or Sandbox), see that
- * platform's help text and key status, and watch the migration that prepares
- * course material when the platform changes.
+ * Shared UI for every keyed surface: pick a platform (OpenAI Chat GPT or UBC
+ * On-Premise LLM), see that platform's help text and key status, and watch the
+ * migration that prepares course material when the platform changes.
  *
  * Instructors choose a platform label only — this module never displays chat or
  * embedding model names. Those are system-admin settings.
@@ -16,13 +16,13 @@
     const PROVIDERS = [
         {
             provider: 'openai',
-            label: 'GPT',
+            label: 'OpenAI Chat GPT',
             helpText: 'Feel free to use your own OpenAI API key, or contact the support team for assistance.',
             keyPlaceholder: 'sk-...'
         },
         {
             provider: 'ubc-llm-sandbox',
-            label: 'Sandbox',
+            label: 'UBC On-Premise LLM',
             helpText: 'Contact the LTIC team to request a UBC LLM Sandbox API key.',
             keyPlaceholder: 'UBC LLM Sandbox API key'
         }
@@ -90,8 +90,7 @@
         const actions = document.createElement('div');
         actions.className = 'llm-platform-actions';
         actions.innerHTML = [
-            `<button type="button" class="secondary-button" id="${prefix}-llm-prepare">Prepare material</button>`,
-            `<button type="button" class="primary-button" id="${prefix}-llm-switch" hidden>Switch platform</button>`
+            `<button type="button" class="primary-button" id="${prefix}-llm-prepare">Prepare material</button>`
         ].join('');
 
         wrapper.appendChild(fieldset);
@@ -188,18 +187,13 @@
 
         const prepareButton = document.getElementById(`${prefix}-llm-prepare`);
         if (prepareButton) {
-            prepareButton.textContent = `Prepare material for ${meta.label}`;
+            prepareButton.textContent = provider === activeProvider
+                ? `Refresh ${meta.label} material`
+                : `Prepare material and switch to ${meta.label}`;
             prepareButton.disabled = !hasValidKey || migrationActive;
             prepareButton.title = hasValidKey
-                ? `Create or update ${meta.label} embeddings without switching platforms`
+                ? `Create or update ${meta.label} embeddings and activate ${meta.label} when ready`
                 : `Save and validate a ${meta.label} key first`;
-        }
-
-        const switchButton = document.getElementById(`${prefix}-llm-switch`);
-        if (switchButton) {
-            switchButton.hidden = provider === activeProvider;
-            switchButton.disabled = !hasValidKey || migrationActive;
-            switchButton.textContent = `Switch to ${meta.label}`;
         }
 
         const note = document.getElementById(`${prefix}-llm-platform-change-note`);
@@ -207,10 +201,10 @@
             if (provider !== activeProvider) {
                 note.hidden = false;
                 note.textContent = hasStoredKey
-                    ? `Your saved ${meta.label} key is kept separately. Prepare the material, then switch when it is ready. `
-                        + `${providerLabel(activeProvider)} keeps answering until you switch.`
-                    : `Save a ${meta.label} key, prepare the material, then switch. `
-                        + `${providerLabel(activeProvider)} keeps answering until you switch.`;
+                    ? `Your saved ${meta.label} key is kept separately. Preparing the material will switch to ${meta.label} `
+                        + `automatically when it is ready; ${providerLabel(activeProvider)} keeps answering until then.`
+                    : `Save a ${meta.label} key, then prepare the material. It will switch automatically when ready; `
+                        + `${providerLabel(activeProvider)} keeps answering until then.`;
             } else {
                 note.hidden = true;
                 note.textContent = '';
@@ -257,7 +251,7 @@
         const target = providerLabel(migration.toProvider || (migration.targetProfile || {}).provider);
 
         if (migration.status === 'completed') {
-            return `${target} is ready. ${done} of ${total} item(s) prepared.`;
+            return `${target} is ready and active. ${done} of ${total} item(s) prepared.`;
         }
         if (migration.status === 'failed') {
             return `Preparing material for ${target} stopped with ${failed} failure(s). `

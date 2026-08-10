@@ -65,8 +65,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Element-id prefixes for each platform's admin model controls. GPT keeps
     // the historical un-prefixed ids.
     const LLM_PLATFORM_UI = {
-        openai: { idPrefix: 'llm', label: 'GPT' },
-        'ubc-llm-sandbox': { idPrefix: 'sandbox-llm', label: 'Sandbox' }
+        openai: { idPrefix: 'llm', label: 'OpenAI Chat GPT' },
+        'ubc-llm-sandbox': { idPrefix: 'sandbox-llm', label: 'UBC On-Premise LLM' }
     };
     // Latest per-platform settings from /api/settings/llm, keyed by provider.
     let llmPlatformSettings = {};
@@ -346,7 +346,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const provider = selectedLlmProvider(prefix);
         const label = llmProviderLabel(provider);
         const prompt = action === 'prepare'
-            ? `Prepare all current material for ${label}? This does not switch the active platform.`
+            ? `Prepare all current material for ${label}? The platform will switch automatically when it is ready.`
             : `Switch this AI surface to ${label}?`;
         if (!confirm(prompt)) return;
 
@@ -427,23 +427,6 @@ document.addEventListener('DOMContentLoaded', async () => {
                         await runLlmProviderAction(surface.prefix, 'prepare');
                     } catch (error) {
                         showNotification(error.message || 'Could not prepare material', 'error');
-                    } finally {
-                        window.LlmPlatform.refreshSelector(
-                            surface.prefix,
-                            llmSurfaceState[surface.prefix] || {}
-                        );
-                    }
-                });
-            }
-
-            const switchButton = document.getElementById(`${surface.prefix}-llm-switch`);
-            if (switchButton) {
-                switchButton.addEventListener('click', async () => {
-                    switchButton.disabled = true;
-                    try {
-                        await runLlmProviderAction(surface.prefix, 'switch');
-                    } catch (error) {
-                        showNotification(error.message || 'Could not switch platform', 'error');
                     } finally {
                         window.LlmPlatform.refreshSelector(
                             surface.prefix,
@@ -580,15 +563,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function llmProviderLabel(provider) {
-        return window.LlmPlatform ? window.LlmPlatform.providerLabel(provider) : 'GPT';
+        return window.LlmPlatform ? window.LlmPlatform.providerLabel(provider) : 'OpenAI Chat GPT';
     }
 
     /**
      * Save a key for the platform selected on this surface.
      *
-     * When the selected platform differs from the active one, the server stages
-     * the key and starts a migration (HTTP 202) instead of switching straight
-     * away — course material has to be prepared for the new platform first.
+     * This action only saves/replaces the selected platform's encrypted key.
+     * Preparing material and changing the active platform is a separate action.
      */
     async function saveLlmKey({ inputId, statusPrefix, url, successMessage }) {
         const input = document.getElementById(inputId);
@@ -620,6 +602,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             successMessage || result.message || 'API key saved',
             'success'
         );
+        // wireSectionButton restores its generic enabled state in `finally`;
+        // repaint on the next turn so an empty replacement field ends disabled.
+        setTimeout(() => {
+            if (window.LlmPlatform) {
+                window.LlmPlatform.refreshSelector(statusPrefix, llmSurfaceState[statusPrefix] || {});
+            }
+        }, 0);
         return result;
     }
 

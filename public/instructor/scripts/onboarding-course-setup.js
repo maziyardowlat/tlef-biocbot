@@ -439,7 +439,7 @@ function selectedOnboardingProvider() {
 
 function onboardingProviderLabel(provider) {
     if (window.LlmPlatform) return window.LlmPlatform.providerLabel(provider);
-    return provider === 'ubc-llm-sandbox' ? 'Sandbox' : 'GPT';
+    return provider === 'ubc-llm-sandbox' ? 'UBC On-Premise LLM' : 'OpenAI Chat GPT';
 }
 
 /**

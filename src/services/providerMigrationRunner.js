@@ -460,7 +460,7 @@ async function runMigration(db, migrationId, options = {}) {
         return migrations.getMigration(db, migrationId);
     }
 
-    if (job.kind === 'provider' && job.toProvider) {
+    if ((job.kind === 'provider' || job.kind === 'prepare') && job.toProvider) {
         try {
             await migrations.activateProvider(db, job.scope, job.toProvider);
         } catch (error) {
@@ -472,10 +472,6 @@ async function runMigration(db, migrationId, options = {}) {
 
     if (job.kind === 'embedding-model') {
         await adminModelSettings.activatePendingEmbedding(db, job.targetProfile.provider);
-    }
-
-    if (job.kind === 'prepare') {
-        await migrations.abandonPendingProvider(db, job.scope);
     }
 
     await migrations.finishMigration(db, migrationId, MIGRATION_STATUSES.COMPLETED);

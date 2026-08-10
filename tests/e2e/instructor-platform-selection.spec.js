@@ -2,7 +2,8 @@
 /**
  * Browser coverage for the AI platform selector.
  *
- * Instructors choose a platform label (GPT / Sandbox) and enter that platform's
+ * Instructors choose a platform label (OpenAI Chat GPT / UBC On-Premise LLM)
+ * and enter that platform's
  * key — they never see or choose a chat or embedding model. Admins configure
  * models per platform on the same page, grouped by platform.
  *
@@ -160,13 +161,13 @@ test.describe('Instructor platform selection', () => {
         // GPT is the default choice.
         await expect(page.locator('#onboarding-llm-provider-openai')).toBeChecked();
         await expect(page.locator('#onboarding-llm-platform-help')).toContainText(GPT_HELP);
-        await expect(page.locator('#course-api-key-label')).toContainText('GPT');
+        await expect(page.locator('#course-api-key-label')).toContainText('OpenAI Chat GPT');
         await expect(page.locator('#course-api-key')).toHaveAttribute('placeholder', 'sk-...');
 
         // Selecting Sandbox swaps the help text, label and placeholder.
         await page.locator('#onboarding-llm-provider-ubc-llm-sandbox').check();
         await expect(page.locator('#onboarding-llm-platform-help')).toHaveText(SANDBOX_HELP);
-        await expect(page.locator('#course-api-key-label')).toContainText('Sandbox');
+        await expect(page.locator('#course-api-key-label')).toContainText('UBC On-Premise LLM');
         await expect(page.locator('#course-api-key')).toHaveAttribute('placeholder', 'UBC LLM Sandbox API key');
 
         // Switching back restores the GPT copy.
@@ -191,7 +192,7 @@ test.describe('Instructor platform selection', () => {
         await expect(page.locator('#course-llm-platform')).toBeVisible();
         await expect(page.locator('#course-llm-provider-openai')).toBeChecked();
         await expect(page.locator('#course-llm-platform-help')).toContainText(GPT_HELP);
-        await expect(page.locator('#course-llm-key-status')).toContainText('Valid GPT key ending 1111');
+        await expect(page.locator('#course-llm-key-status')).toContainText('Valid OpenAI Chat GPT key ending 1111');
         // No warning while the selected platform is the active one.
         await expect(page.locator('#course-llm-platform-change-note')).toBeHidden();
     });
@@ -206,9 +207,9 @@ test.describe('Instructor platform selection', () => {
         await expect(page.locator('#course-llm-platform-change-note')).toBeVisible();
         await expect(page.locator('#course-llm-platform-change-note'))
             .toContainText('Course material must be prepared for the new platform');
-        await expect(page.locator('#course-llm-platform-change-note')).toContainText('GPT keeps answering until then');
+        await expect(page.locator('#course-llm-platform-change-note')).toContainText('OpenAI Chat GPT keeps answering until then');
         // The status line follows the selected platform, not the active one.
-        await expect(page.locator('#course-llm-key-status')).toContainText('No Sandbox key saved');
+        await expect(page.locator('#course-llm-key-status')).toContainText('No UBC On-Premise LLM key saved');
         await expect(page.locator('#course-llm-key-input')).toHaveAttribute('placeholder', 'UBC LLM Sandbox API key');
     });
 
@@ -227,7 +228,7 @@ test.describe('Instructor platform selection', () => {
                 contentType: 'application/json',
                 body: JSON.stringify({
                     success: true,
-                    message: 'Preparing course material for Sandbox.',
+                    message: 'Preparing course material for UBC On-Premise LLM.',
                     ...baseState({
                         pendingLlmProvider: 'ubc-llm-sandbox',
                         providerMigrationId: 'mig_saved_switch',
@@ -319,7 +320,7 @@ test.describe('Instructor platform selection', () => {
         // Initial state from the surface payload.
         await expect(page.locator('#course-llm-migration')).toBeVisible();
         await expect(page.locator('#course-llm-migration-status'))
-            .toContainText('Preparing course material for Sandbox: 1 of 4 done');
+            .toContainText('Preparing course material for UBC On-Premise LLM: 1 of 4 done');
         await expect(page.locator('#course-llm-migration-status')).toContainText('Lecture 2.pdf');
         // While migrating, the selector shows the platform being migrated TO.
         await expect(page.locator('#course-llm-provider-ubc-llm-sandbox')).toBeChecked();
@@ -375,7 +376,7 @@ test.describe('Instructor platform selection', () => {
             .toBeVisible({ timeout: 10_000 });
         expect(retried).toBe(true);
         await expect(page.locator('#course-llm-migration-status'))
-            .toContainText('Preparing course material for Sandbox: 1 of 2 done');
+            .toContainText('Preparing course material for UBC On-Premise LLM: 1 of 2 done');
     });
 });
 
@@ -397,7 +398,7 @@ test.describe('Admin platform and model settings', () => {
                     success: true,
                     platforms: [
                         {
-                            provider: 'openai', label: 'GPT',
+                            provider: 'openai', label: 'OpenAI Chat GPT',
                             chatModel: 'gpt-5-nano', embeddingModel: 'text-embedding-3-small',
                             reasoningEffort: 'minimal', supportsReasoning: true,
                             allowedModels: ['gpt-4.1-mini', 'gpt-5-nano'],
@@ -407,7 +408,7 @@ test.describe('Admin platform and model settings', () => {
                             collection: 'biocbot_documents', vectorSize: 1536, pendingEmbedding: null,
                         },
                         {
-                            provider: 'ubc-llm-sandbox', label: 'Sandbox',
+                            provider: 'ubc-llm-sandbox', label: 'UBC On-Premise LLM',
                             chatModel: 'qwen3.6-35b-a3b', embeddingModel: 'qwen3-embedding-0.6b',
                             reasoningEffort: 'none', supportsReasoning: true,
                             allowedModels: ['qwen3.6-35b-a3b', 'gpt-oss-120b'],
@@ -429,14 +430,14 @@ test.describe('Admin platform and model settings', () => {
 
         // GPT group.
         await expect(page.locator('#llm-model-section')).toBeVisible();
-        await expect(page.locator('#llm-model-section h3')).toHaveText('GPT models');
+        await expect(page.locator('#llm-model-section h3')).toHaveText('OpenAI Chat GPT models');
         await expect(page.locator('#llm-model-select')).toHaveValue('gpt-5-nano');
         await expect(page.locator('#llm-embedding-select')).toHaveValue('text-embedding-3-small');
         await expect(page.locator('#llm-embedding-collection')).toContainText('biocbot_documents (1536 dimensions)');
 
         // Sandbox group, with its own separate collection and dimensionality.
         await expect(page.locator('#sandbox-llm-model-section')).toBeVisible();
-        await expect(page.locator('#sandbox-llm-model-section h3')).toHaveText('Sandbox models');
+        await expect(page.locator('#sandbox-llm-model-section h3')).toHaveText('UBC On-Premise LLM models');
         await expect(page.locator('#sandbox-llm-model-select')).toHaveValue('qwen3.6-35b-a3b');
         await expect(page.locator('#sandbox-llm-embedding-select')).toHaveValue('qwen3-embedding-0.6b');
         await expect(page.locator('#sandbox-llm-embedding-collection'))
@@ -457,7 +458,7 @@ test.describe('Admin platform and model settings', () => {
                 body: JSON.stringify({
                     success: true,
                     platforms: [{
-                        provider: 'openai', label: 'GPT',
+                        provider: 'openai', label: 'OpenAI Chat GPT',
                         chatModel: 'gpt-4.1-mini', embeddingModel: 'text-embedding-3-small',
                         reasoningEffort: 'minimal', supportsReasoning: false,
                         allowedModels: ['gpt-4.1-mini'],

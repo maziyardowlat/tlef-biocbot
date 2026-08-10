@@ -518,7 +518,7 @@ describe('restart resumability', () => {
 });
 
 describe('explicit preparation and cancellation', () => {
-    test('prepare-only completes the target index without activating that provider', async () => {
+    test('preparation keeps the old provider active while running, then activates the target', async () => {
         const db = memoryDb({
             courses: [dualKeyCourse('openai', { pendingLlmProvider: 'ubc-llm-sandbox' })],
             documents: [{ documentId: 'A', courseId: 'C1', content: 'text' }],
@@ -539,7 +539,7 @@ describe('explicit preparation and cancellation', () => {
         const finished = await runner.runMigration(db, job.migrationId);
         expect(finished.status).toBe('completed');
         const course = await db.collection('courses').findOne({ courseId: 'C1' });
-        expect(course.activeLlmProvider).toBe('openai');
+        expect(course.activeLlmProvider).toBe('ubc-llm-sandbox');
         expect(course.pendingLlmProvider).toBeNull();
         expect(course.providerMigrationId).toBeNull();
     });

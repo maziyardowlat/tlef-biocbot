@@ -177,7 +177,7 @@ describe('no key material in API responses', () => {
         expect(serialised).not.toContain('ciphertext');
         expect(state).toMatchObject({
             llmProvider: SANDBOX,
-            llmProviderLabel: 'Sandbox',
+            llmProviderLabel: 'UBC On-Premise LLM',
             aiAvailable: true,
         });
         expect(state.llmKeysByProvider[OPENAI].last4).toBe('-gpt');
@@ -265,7 +265,7 @@ describe('provider-aware validation', () => {
         expect(result.status).toBe(KEY_STATUSES.INVALID);
         expect(result.provider).toBe(SANDBOX);
         expect(result.message).toBe(messageForStatus(KEY_STATUSES.INVALID, SANDBOX));
-        expect(result.message).toContain('Sandbox');
+        expect(result.message).toContain('UBC On-Premise LLM');
     });
 
     test('a Sandbox 429 maps to quota exhausted', async () => {
@@ -325,7 +325,7 @@ describe('key enforcement and diagnostics', () => {
     test('LlmKeyError carries the platform so diagnostics name it', () => {
         const error = new LlmKeyError(KEY_STATUSES.INVALID, { type: 'course', id: 'C1' }, SANDBOX);
         expect(error.provider).toBe(SANDBOX);
-        expect(error.message).toContain('Sandbox');
+        expect(error.message).toContain('UBC On-Premise LLM');
         expect(error.httpStatus).toBe(403);
         expect(error.code).toBe('LLM_KEY_INVALID');
     });

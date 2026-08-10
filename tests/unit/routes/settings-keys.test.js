@@ -20,6 +20,7 @@ jest.mock('../../../src/services/llmKeyStore', () => {
 const { memoryDb } = require('../helpers/memory-db');
 const { makeRouteApp, request } = require('../helpers/route-app');
 const settingsRouter = require('../../../src/routes/settings');
+const { providerLabel } = require('../../../src/services/llmProviders');
 
 const admin = {
     userId: 'admin1',
@@ -90,7 +91,9 @@ describe.each([
         expect(res.body).toMatchObject({ success: true, aiAvailable: false, llmProvider: 'openai' });
         // Instructors/admins choose a platform label; no model names are exposed.
         expect(res.body.providers.map(p => p.provider)).toEqual(['openai', 'ubc-llm-sandbox']);
-        expect(res.body.providers.map(p => p.label)).toEqual(['GPT', 'Sandbox']);
+        expect(res.body.providers.map(p => p.label)).toEqual([
+            providerLabel('openai'), providerLabel('ubc-llm-sandbox')
+        ]);
         expect(JSON.stringify(res.body)).not.toMatch(/text-embedding|gpt-5|qwen3/);
 
         // A legacy llmApiKey with no provider metadata reads as an OpenAI key.

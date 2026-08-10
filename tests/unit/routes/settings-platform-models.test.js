@@ -18,6 +18,7 @@ jest.mock('../../../src/services/config', () => ({
 const adminModelSettings = require('../../../src/services/adminModelSettings');
 const migrations = require('../../../src/services/providerMigrationService');
 const { buildKeySubdocument } = require('../../../src/services/llmKeyStore');
+const { providerLabel } = require('../../../src/services/llmProviders');
 const settingsRouter = require('../../../src/routes/settings');
 const { makeRouteApp, request } = require('../helpers/route-app');
 const { memoryDb } = require('../helpers/memory-db');
@@ -51,14 +52,14 @@ describe('GET /llm — grouped by platform', () => {
 
         const [gpt, sandbox] = res.body.platforms;
         expect(gpt).toMatchObject({
-            label: 'GPT',
+            label: providerLabel(OPENAI),
             chatModel: 'gpt-4.1-mini',
             embeddingModel: 'text-embedding-3-small',
             collection: 'biocbot_documents',
             vectorSize: 1536,
         });
         expect(sandbox).toMatchObject({
-            label: 'Sandbox',
+            label: providerLabel(SANDBOX),
             chatModel: 'qwen3.6-35b-a3b',
             embeddingModel: 'qwen3-embedding-0.6b',
             collection: 'biocbot_documents_qwen3_embedding_0_6b',
@@ -201,7 +202,7 @@ describe('POST /llm/embedding/impact — preview before confirming', () => {
         const res = await request(app())
             .post('/llm/embedding/impact').send({ provider: OPENAI, embeddingModel: 'qwen3-embedding-0.6b' });
         expect(res.status).toBe(400);
-        expect(res.body.error).toMatch(/Invalid embedding model for GPT/);
+        expect(res.body.error).toContain(`Invalid embedding model for ${providerLabel(OPENAI)}`);
     });
 });
 
@@ -270,7 +271,9 @@ describe('instructors never see exact models', () => {
         const res = await request(app({ db })).get('/notes-llm-key');
 
         expect(res.status).toBe(200);
-        expect(res.body.providers.map(provider => provider.label)).toEqual(['GPT', 'Sandbox']);
+        expect(res.body.providers.map(provider => provider.label)).toEqual([
+            providerLabel(OPENAI), providerLabel(SANDBOX)
+        ]);
 
         const serialised = JSON.stringify(res.body);
         for (const modelName of ['gpt-4.1-mini', 'gpt-5-nano', 'qwen3.6-35b-a3b', 'text-embedding-3-small', 'qwen3-embedding-0.6b']) {

@@ -27,6 +27,7 @@ const providerKeys = require('../../../src/services/providerKeyService');
 const migrations = require('../../../src/services/providerMigrationService');
 const adminModelSettings = require('../../../src/services/adminModelSettings');
 const { buildKeySubdocument } = require('../../../src/services/llmKeyStore');
+const { providerLabel } = require('../../../src/services/llmProviders');
 const { buildEmbeddingProfile } = require('../../../src/services/embeddingConfig');
 const { buildIndexRecord, contentHash, INDEX_STATUSES } = require('../../../src/services/embeddingIndexService');
 const { memoryDb } = require('../helpers/memory-db');
@@ -158,7 +159,7 @@ describe('saving a key', () => {
         });
 
         expect(result.httpStatus).toBe(200);
-        expect(result.body.message).toMatch(/Sandbox API key saved/);
+        expect(result.body.message).toBe(`${providerLabel(SANDBOX)} API key saved`);
         expect(startedMigrations).toHaveLength(0);
 
         const course = await db.collection('courses').findOne({ courseId: 'C1' });
@@ -252,7 +253,7 @@ describe('switching back to a stored platform', () => {
         });
 
         expect(result.httpStatus).toBe(200);
-        expect(result.body.message).toMatch(/Now using GPT/);
+        expect(result.body.message).toBe(`Now using ${providerLabel(OPENAI)}.`);
         expect((await db.collection('courses').findOne({ courseId: 'C1' })).activeLlmProvider).toBe(OPENAI);
         expect(startedMigrations).toEqual([]);
         expect(mockValidateProviderKey).not.toHaveBeenCalled();
@@ -271,7 +272,7 @@ describe('switching back to a stored platform', () => {
 
         expect(result.httpStatus).toBe(400);
         expect(result.body.code).toBe('LLM_KEY_MISSING');
-        expect(result.body.message).toMatch(/No Sandbox API key is saved/);
+        expect(result.body.message).toContain(`No ${providerLabel(SANDBOX)} API key is saved`);
         expect(startedMigrations).toEqual([]);
     });
 
@@ -280,7 +281,7 @@ describe('switching back to a stored platform', () => {
         const result = await providerKeys.switchToStoredProvider(db, { scope: COURSE_SCOPE, provider: SANDBOX });
 
         expect(result.httpStatus).toBe(200);
-        expect(result.body.message).toMatch(/Already using Sandbox/);
+        expect(result.body.message).toContain(`Already using ${providerLabel(SANDBOX)}`);
         expect(startedMigrations).toEqual([]);
     });
 });

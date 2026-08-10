@@ -5,9 +5,10 @@
  * instructors see them called, and the help text shown next to each platform's
  * API-key field.
  *
- * Instructors choose a *platform label* ("GPT" / "Sandbox"). They never pick a
- * chat or embedding model — system admins configure those per platform in the
- * Platforms and Models settings (see services/adminModelSettings.js).
+ * Instructors choose a *platform label* ("OpenAI Chat GPT" / "UBC On-Premise
+ * LLM"). They never pick a chat or embedding model — system admins configure
+ * those per platform in the Platforms and Models settings (see
+ * services/adminModelSettings.js).
  */
 
 const PROVIDERS = Object.freeze({
@@ -21,9 +22,11 @@ const SELECTABLE_PROVIDERS = Object.freeze([PROVIDERS.OPENAI, PROVIDERS.SANDBOX]
 
 const DEFAULT_PROVIDER = PROVIDERS.OPENAI;
 
+// Instructor-facing platform names. The internal provider ids above never
+// change with these — only what a person reads.
 const PROVIDER_LABELS = Object.freeze({
-    [PROVIDERS.OPENAI]: 'GPT',
-    [PROVIDERS.SANDBOX]: 'Sandbox',
+    [PROVIDERS.OPENAI]: 'OpenAI Chat GPT',
+    [PROVIDERS.SANDBOX]: 'UBC On-Premise LLM',
     ollama: 'Ollama (local)'
 });
 
