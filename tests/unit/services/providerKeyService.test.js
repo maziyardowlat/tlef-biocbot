@@ -1,0 +1,393 @@
+/**
+ * Surface-level key operations: saving a key for a platform, switching
+ * platforms (which stages rather than flips), testing a stored key, and working
+ * out which content a surface's migration has to cover.
+ */
+const startedMigrations = [];
+jest.mock('../../../src/services/providerMigrationRunner', () => ({
+    // The runner is exercised in its own suite; here we only assert that the
+    // request does NOT wait for a whole course to be re-indexed.
+    startMigration: jest.fn((db, migrationId) => { startedMigrations.push(migrationId); }),
+}));
+jest.mock('../../../src/services/config', () => ({
+    getProviderInfra: jest.fn((provider) => ({
+        provider,
+        endpoint: provider === 'ubc-llm-sandbox' ? 'https://sandbox.example/v1' : null,
+        bootstrapApiKey: undefined,
+    })),
+}));
+
+const mockValidateProviderKey = jest.fn();
+jest.mock('../../../src/services/llmKeyStore', () => {
+    const actual = jest.requireActual('../../../src/services/llmKeyStore');
+    return { ...actual, validateProviderKey: (...args) => mockValidateProviderKey(...args) };
+});
+
+const providerKeys = require('../../../src/services/providerKeyService');
+const migrations = require('../../../src/services/providerMigrationService');
+const adminModelSettings = require('../../../src/services/adminModelSettings');
+const { buildKeySubdocument } = require('../../../src/services/llmKeyStore');
+const { memoryDb } = require('../helpers/memory-db');
+
+const OPENAI = 'openai';
+const SANDBOX = 'ubc-llm-sandbox';
+const COURSE_SCOPE = { type: 'course', id: 'C1' };
+
+beforeEach(() => {
+    startedMigrations.length = 0;
+    mockValidateProviderKey.mockReset().mockResolvedValue({ ok: true, status: 'valid', provider: OPENAI });
+    adminModelSettings.invalidateCache();
+});
+
+function registry() {
+    return {
+        evictCourse: jest.fn(),
+        evictSuperchat: jest.fn(),
+        evictNotes: jest.fn(),
+        evictSuperCourseChat: jest.fn(),
+    };
+}
+
+describe('validating against the right platform', () => {
+    test('a Sandbox key is probed with the Sandbox models and endpoint', async () => {
+        const db = memoryDb({ settings: [] });
+        await providerKeys.validateForProvider(db, SANDBOX, 'sbx-key');
+
+        expect(mockValidateProviderKey).toHaveBeenCalledWith({
+            provider: SANDBOX,
+            apiKey: 'sbx-key',
+            chatModel: 'qwen3.6-35b-a3b',
+            embeddingModel: 'qwen3-embedding-0.6b',
+            endpoint: 'https://sandbox.example/v1',
+        });
+    });
+
+    test('a GPT key is probed with the GPT models and no endpoint', async () => {
+        const db = memoryDb({ settings: [] });
+        await providerKeys.validateForProvider(db, OPENAI, 'sk-key');
+
+        expect(mockValidateProviderKey).toHaveBeenCalledWith({
+            provider: OPENAI,
+            apiKey: 'sk-key',
+            chatModel: 'gpt-4.1-mini',
+            embeddingModel: 'text-embedding-3-small',
+            endpoint: null,
+        });
+    });
+
+    test('the admin\'s configured models are what get probed', async () => {
+        const db = memoryDb({
+            settings: [{ _id: 'llm', providers: { [OPENAI]: { chatModel: 'gpt-5-nano', embeddingModel: 'text-embedding-3-large' } } }],
+        });
+        await providerKeys.validateForProvider(db, OPENAI, 'sk-key');
+
+        expect(mockValidateProviderKey).toHaveBeenCalledWith(expect.objectContaining({
+            chatModel: 'gpt-5-nano', embeddingModel: 'text-embedding-3-large',
+        }));
+    });
+});
+
+describe('saving a key', () => {
+    test('the first key for a surface activates immediately — no migration', async () => {
+        const db = memoryDb({ courses: [{ courseId: 'C1' }] });
+        const reg = registry();
+
+        const result = await providerKeys.saveSurfaceKey(db, {
+            scope: COURSE_SCOPE, provider: OPENAI, apiKey: 'sk-first-key', updatedBy: 'i1', registry: reg,
+        });
+
+        expect(result.httpStatus).toBe(200);
+        expect(result.body.migration).toBeNull();
+        expect(startedMigrations).toEqual([]);
+        expect(reg.evictCourse).toHaveBeenCalledWith('C1');
+
+        const course = await db.collection('courses').findOne({ courseId: 'C1' });
+        expect(course.activeLlmProvider).toBe(OPENAI);
+        expect(course.llmCredentials[OPENAI].ciphertext).toBeTruthy();
+    });
+
+    test('replacing the key for the SAME platform activates immediately', async () => {
+        const db = memoryDb({
+            courses: [{
+                courseId: 'C1',
+                activeLlmProvider: OPENAI,
+                llmCredentials: { [OPENAI]: buildKeySubdocument('sk-old-key', 'i1', OPENAI) },
+            }],
+        });
+
+        const result = await providerKeys.saveSurfaceKey(db, {
+            scope: COURSE_SCOPE, provider: OPENAI, apiKey: 'sk-new-key', updatedBy: 'i1',
+        });
+
+        expect(result.httpStatus).toBe(200);
+        expect(startedMigrations).toEqual([]);
+        expect(result.body.llmKey.last4).toBe('-key');
+    });
+
+    test('an invalid key is refused and nothing is written', async () => {
+        mockValidateProviderKey.mockResolvedValue({
+            ok: false, status: 'quota_exhausted', message: 'out of credits', provider: SANDBOX,
+        });
+        const db = memoryDb({ courses: [{ courseId: 'C1' }] });
+
+        const result = await providerKeys.saveSurfaceKey(db, {
+            scope: COURSE_SCOPE, provider: SANDBOX, apiKey: 'sbx-spent',
+        });
+
+        expect(result.httpStatus).toBe(400);
+        expect(result.body).toMatchObject({ code: 'LLM_KEY_QUOTA', llmProvider: SANDBOX });
+        const course = await db.collection('courses').findOne({ courseId: 'C1' });
+        expect(course.llmCredentials).toBeUndefined();
+    });
+
+    test('choosing a NEW platform stages the key and starts a migration without flipping over', async () => {
+        const db = memoryDb({
+            courses: [{
+                courseId: 'C1',
+                activeLlmProvider: OPENAI,
+                llmCredentials: { [OPENAI]: buildKeySubdocument('sk-gpt-key', 'i1', OPENAI) },
+            }],
+            documents: [{ documentId: 'd1', courseId: 'C1', content: 'course text' }],
+        });
+
+        const result = await providerKeys.saveSurfaceKey(db, {
+            scope: COURSE_SCOPE, provider: SANDBOX, apiKey: 'sbx-new-key', updatedBy: 'i1',
+        });
+
+        // 202: the request returns immediately; re-indexing happens in the background.
+        expect(result.httpStatus).toBe(202);
+        expect(result.body.message).toMatch(/keeps using GPT until preparation finishes/);
+        expect(startedMigrations).toHaveLength(1);
+
+        const course = await db.collection('courses').findOne({ courseId: 'C1' });
+        expect(course.activeLlmProvider).toBe(OPENAI);           // still serving on GPT
+        expect(course.pendingLlmProvider).toBe(SANDBOX);
+        expect(course.providerMigrationId).toBe(startedMigrations[0]);
+        expect(course.llmCredentials[SANDBOX].ciphertext).toBeTruthy();  // staged
+
+        const job = await migrations.getMigration(db, startedMigrations[0]);
+        expect(job).toMatchObject({ fromProvider: OPENAI, toProvider: SANDBOX, courseIds: ['C1'] });
+        expect(job.items.map(item => item.itemId)).toEqual(['d1']);
+    });
+
+    test('no key material appears in the response', async () => {
+        const db = memoryDb({ courses: [{ courseId: 'C1' }] });
+        const result = await providerKeys.saveSurfaceKey(db, {
+            scope: COURSE_SCOPE, provider: OPENAI, apiKey: 'sk-super-secret-value',
+        });
+
+        const serialised = JSON.stringify(result.body);
+        expect(serialised).not.toContain('sk-super-secret-value');
+        expect(serialised).not.toContain('ciphertext');
+    });
+});
+
+describe('switching back to a stored platform', () => {
+    function dualKeyCourse() {
+        return {
+            courseId: 'C1',
+            activeLlmProvider: SANDBOX,
+            llmCredentials: {
+                [OPENAI]: buildKeySubdocument('sk-gpt-key', 'i1', OPENAI),
+                [SANDBOX]: buildKeySubdocument('sbx-key', 'i1', SANDBOX),
+            },
+        };
+    }
+
+    test('switching back needs no key re-entry and still runs a migration', async () => {
+        const db = memoryDb({
+            courses: [dualKeyCourse()],
+            documents: [{ documentId: 'd1', courseId: 'C1', content: 'text' }],
+        });
+
+        const result = await providerKeys.switchToStoredProvider(db, {
+            scope: COURSE_SCOPE, provider: OPENAI, requestedBy: 'i1', registry: registry(),
+        });
+
+        expect(result.httpStatus).toBe(202);
+        expect(startedMigrations).toHaveLength(1);
+        expect(mockValidateProviderKey).not.toHaveBeenCalled();
+
+        const course = await db.collection('courses').findOne({ courseId: 'C1' });
+        expect(course.activeLlmProvider).toBe(SANDBOX);   // unchanged until migration completes
+        expect(course.pendingLlmProvider).toBe(OPENAI);
+    });
+
+    test('switching to a platform with no stored key asks for one', async () => {
+        const db = memoryDb({
+            courses: [{
+                courseId: 'C1',
+                activeLlmProvider: OPENAI,
+                llmCredentials: { [OPENAI]: buildKeySubdocument('sk-gpt-key', 'i1', OPENAI) },
+            }],
+        });
+
+        const result = await providerKeys.switchToStoredProvider(db, { scope: COURSE_SCOPE, provider: SANDBOX });
+
+        expect(result.httpStatus).toBe(400);
+        expect(result.body.code).toBe('LLM_KEY_MISSING');
+        expect(result.body.message).toMatch(/No Sandbox API key is saved/);
+        expect(startedMigrations).toEqual([]);
+    });
+
+    test('switching to the platform already in use is a no-op', async () => {
+        const db = memoryDb({ courses: [dualKeyCourse()] });
+        const result = await providerKeys.switchToStoredProvider(db, { scope: COURSE_SCOPE, provider: SANDBOX });
+
+        expect(result.httpStatus).toBe(200);
+        expect(result.body.message).toMatch(/Already using Sandbox/);
+        expect(startedMigrations).toEqual([]);
+    });
+});
+
+describe('testing a stored key', () => {
+    test('a passing test records validity for that platform only', async () => {
+        const db = memoryDb({
+            courses: [{
+                courseId: 'C1',
+                activeLlmProvider: SANDBOX,
+                llmCredentials: {
+                    [OPENAI]: buildKeySubdocument('sk-gpt-key', 'i1', OPENAI),
+                    [SANDBOX]: buildKeySubdocument('sbx-key', 'i1', SANDBOX),
+                },
+            }],
+        });
+        mockValidateProviderKey.mockResolvedValue({ ok: true, status: 'valid', provider: SANDBOX });
+
+        const result = await providerKeys.testSurfaceKey(db, { scope: COURSE_SCOPE, registry: registry() });
+
+        expect(result.httpStatus).toBe(200);
+        expect(result.body.llmProvider).toBe(SANDBOX);
+        expect(mockValidateProviderKey).toHaveBeenCalledWith(expect.objectContaining({
+            provider: SANDBOX, apiKey: 'sbx-key',
+        }));
+        const course = await db.collection('courses').findOne({ courseId: 'C1' });
+        expect(course.llmCredentials[SANDBOX].validatedAt).toBeInstanceOf(Date);
+    });
+
+    test('a failing test records the status without deleting the key', async () => {
+        const db = memoryDb({
+            courses: [{
+                courseId: 'C1',
+                activeLlmProvider: OPENAI,
+                llmCredentials: { [OPENAI]: buildKeySubdocument('sk-gpt-key', 'i1', OPENAI) },
+            }],
+        });
+        mockValidateProviderKey.mockResolvedValue({ ok: false, status: 'invalid', message: 'bad key', provider: OPENAI });
+
+        const result = await providerKeys.testSurfaceKey(db, { scope: COURSE_SCOPE });
+
+        expect(result.httpStatus).toBe(400);
+        expect(result.body).toMatchObject({ code: 'LLM_KEY_INVALID', aiAvailable: false });
+        const course = await db.collection('courses').findOne({ courseId: 'C1' });
+        expect(course.llmCredentials[OPENAI].status).toBe('invalid');
+        expect(course.llmCredentials[OPENAI].ciphertext).toBeTruthy();
+    });
+
+    test('testing a platform with no stored key reports LLM_KEY_MISSING', async () => {
+        const db = memoryDb({ courses: [{ courseId: 'C1' }] });
+        const result = await providerKeys.testSurfaceKey(db, { scope: COURSE_SCOPE, provider: SANDBOX });
+        expect(result.body.code).toBe('LLM_KEY_MISSING');
+    });
+
+    test('a legacy key still tests, and the legacy field stays in sync', async () => {
+        const db = memoryDb({
+            courses: [{ courseId: 'C1', llmApiKey: buildKeySubdocument('sk-legacy-key', 'i1') }],
+        });
+        mockValidateProviderKey.mockResolvedValue({ ok: false, status: 'invalid', message: 'bad', provider: OPENAI });
+
+        await providerKeys.testSurfaceKey(db, { scope: COURSE_SCOPE });
+
+        const course = await db.collection('courses').findOne({ courseId: 'C1' });
+        expect(course.llmApiKey.status).toBe('invalid');
+        expect(course.llmCredentials[OPENAI].status).toBe('invalid');
+    });
+});
+
+describe('what a surface migration has to cover', () => {
+    test('a course covers only its own documents', async () => {
+        const db = memoryDb({});
+        expect(await providerKeys.migrationScopeContent(db, COURSE_SCOPE))
+            .toEqual({ courseIds: ['C1'], includeNotes: false });
+    });
+
+    test('Notes cover the shared notes only', async () => {
+        const db = memoryDb({});
+        expect(await providerKeys.migrationScopeContent(db, { type: 'notes', id: 'notesLlm' }))
+            .toEqual({ courseIds: [], includeNotes: true });
+    });
+
+    test('a bucket covers every member course, whatever platform those courses use', async () => {
+        const db = memoryDb({
+            superchats: [{ superchatId: 'S1', courseIds: ['C1', 'C2'], includeNotes: true }],
+        });
+
+        expect(await providerKeys.migrationScopeContent(db, { type: 'superchat', id: 'S1' }))
+            .toEqual({ courseIds: ['C1', 'C2'], includeNotes: true });
+    });
+
+    test('the instructor Super Course chat pools every course, plus Notes by default', async () => {
+        const db = memoryDb({
+            courses: [{ courseId: 'C1' }, { courseId: 'C2' }, { courseId: 'C3', isDeleted: true }],
+            settings: [{ _id: 'superCourseChat' }],
+        });
+
+        expect(await providerKeys.migrationScopeContent(db, { type: 'superCourseChat', id: 'superCourseChat' }))
+            .toEqual({ courseIds: ['C1', 'C2'], includeNotes: true });
+    });
+
+    test('the instructor Super Course chat can exclude Notes', async () => {
+        const db = memoryDb({
+            courses: [{ courseId: 'C1' }],
+            settings: [{ _id: 'superCourseChat', includeNotes: false }],
+        });
+
+        expect(await providerKeys.migrationScopeContent(db, { type: 'superCourseChat', id: 'superCourseChat' }))
+            .toMatchObject({ includeNotes: false });
+    });
+
+    test('an unknown scope covers nothing', async () => {
+        expect(await providerKeys.migrationScopeContent(memoryDb({}), { type: 'mystery' }))
+            .toEqual({ courseIds: [], includeNotes: false });
+    });
+});
+
+describe('surface state for the UI', () => {
+    test('reports the platform, per-platform key status and any live migration', async () => {
+        const db = memoryDb({
+            courses: [{
+                courseId: 'C1',
+                activeLlmProvider: OPENAI,
+                pendingLlmProvider: SANDBOX,
+                llmCredentials: {
+                    [OPENAI]: buildKeySubdocument('sk-gpt-1111', 'i1', OPENAI),
+                    [SANDBOX]: buildKeySubdocument('sbx-key-2222', 'i1', SANDBOX),
+                },
+            }],
+            documents: [{ documentId: 'd1', courseId: 'C1', content: 'text' }],
+        });
+        const profile = await providerKeys.embeddingProfileFor(db, SANDBOX);
+        const { job } = await migrations.createMigration(db, {
+            scope: COURSE_SCOPE, toProvider: SANDBOX, profile, courseIds: ['C1'],
+        });
+        await db.collection('courses').updateOne({ courseId: 'C1' }, { $set: { providerMigrationId: job.migrationId } });
+
+        const state = await providerKeys.surfaceKeyState(db, COURSE_SCOPE);
+
+        expect(state).toMatchObject({
+            llmProvider: OPENAI,
+            pendingLlmProvider: SANDBOX,
+            aiAvailable: true,
+        });
+        expect(state.llmKeysByProvider[SANDBOX].last4).toBe('2222');
+        expect(state.migration).toMatchObject({ toProvider: SANDBOX, total: 1 });
+        expect(JSON.stringify(state)).not.toContain('ciphertext');
+    });
+
+    test('a surface with no migration reports null', async () => {
+        const db = memoryDb({ courses: [{ courseId: 'C1' }] });
+        const state = await providerKeys.surfaceKeyState(db, COURSE_SCOPE);
+        expect(state.migration).toBeNull();
+        expect(state.aiAvailable).toBe(false);
+    });
+});

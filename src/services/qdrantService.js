@@ -137,12 +137,20 @@ class QdrantService {
                 const logger = new ConsoleLogger('biocbot-qdrant');
                 const profile = this.embeddingProfile;
 
+                // A profile's endpoint is authoritative. In particular, an
+                // OpenAI profile normally has no custom endpoint; retaining the
+                // server-wide Sandbox endpoint would send the instructor's
+                // OpenAI key to LiteLLM and make provider migrations fail with
+                // a misleading 401.
+                const profileBaseConfig = { ...llmConfig };
+                delete profileBaseConfig.endpoint;
+
                 // Add embedding-specific configuration
                 const embeddingConfig = {
                     providerType: 'ubc-genai-toolkit-llm',
                     logger: logger,
                     llmConfig: {
-                        ...llmConfig,
+                        ...profileBaseConfig,
                         provider: profile.provider,
                         ...(profile.endpoint ? { endpoint: profile.endpoint } : {}),
                         ...(profile.apiKey ? { apiKey: profile.apiKey } : {}),

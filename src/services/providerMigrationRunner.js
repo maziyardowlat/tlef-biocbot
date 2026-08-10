@@ -233,8 +233,21 @@ async function runMigration(db, migrationId, options = {}) {
             const mergedItems = (job.items || []).map((item) => {
                 const match = refreshed.find(r => r.itemType === item.itemType && r.itemId === item.itemId);
                 if (!match) return item;
-                // Content changed since the first pass: re-queue with the new hash.
-                return { ...item, contentHash: match.contentHash, status: ITEM_STATUSES.PENDING, error: null };
+                // Content changed since the first pass: re-queue with the new
+                // hash and a fresh attempt budget.
+                if (match.contentHash !== item.contentHash) {
+                    return {
+                        ...item,
+                        contentHash: match.contentHash,
+                        status: ITEM_STATUSES.PENDING,
+                        attempts: 0,
+                        error: null
+                    };
+                }
+                // Same content: the consistency pass exists to catch uploads and
+                // edits, not to hand an exhausted item extra attempts. Retrying
+                // a genuine failure is an explicit user action.
+                return item;
             }).concat(additions);
 
             await db.collection(migrations.MIGRATIONS_COLLECTION).updateOne(
@@ -298,12 +311,14 @@ async function runMigration(db, migrationId, options = {}) {
     const failed = (job.items || []).filter(item => item.status === ITEM_STATUSES.FAILED);
 
     if (failed.length > 0) {
-        await migrations.finishMigration(
-            db,
-            migrationId,
-            MIGRATION_STATUSES.FAILED,
-            new Error(`${failed.length} item(s) could not be indexed`)
-        );
+        // When every item failed the same way — a missing credential, an
+        // unreachable endpoint — report that cause rather than a bare count.
+        const distinctErrors = [...new Set(failed.map(item => item.error).filter(Boolean))];
+        const summary = distinctErrors.length === 1
+            ? distinctErrors[0]
+            : `${failed.length} item(s) could not be indexed`;
+
+        await migrations.finishMigration(db, migrationId, MIGRATION_STATUSES.FAILED, new Error(summary));
         // The previous provider stays active; its vectors and credential are
         // untouched, so the surface keeps working.
         await migrations.abandonPendingProvider(db, job.scope);

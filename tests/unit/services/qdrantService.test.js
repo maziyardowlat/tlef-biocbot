@@ -24,6 +24,7 @@ console.log = originalConsoleLog;
 const { QdrantClient } = require('@qdrant/js-client-rest');
 const { ChunkingModule } = require('ubc-genai-toolkit-chunking');
 const config = require('../../../src/services/config');
+const { buildEmbeddingProfile } = require('../../../src/services/embeddingConfig');
 
 const hit = (overrides = {}) => ({
     id: 'point-1',
@@ -141,6 +142,39 @@ describe('QdrantService', () => {
         const service = new QdrantService();
         await expect(service.initialize()).resolves.toBeUndefined();
         expect(mockCreateEmbeddings).toHaveBeenCalled();
+    });
+
+    test('an OpenAI embedding profile does not inherit the server-wide Sandbox endpoint', async () => {
+        config.getLLMConfig.mockReturnValue({
+            provider: 'ubc-llm-sandbox',
+            endpoint: 'https://sandbox.example/v1',
+            apiKey: 'sandbox-key',
+            defaultModel: 'qwen3.6-35b-a3b'
+        });
+        const client = {
+            getCollections: jest.fn(async () => ({ collections: [{ name: 'biocbot_documents' }] })),
+            getCollection: jest.fn(async () => ({ config: { params: { vectors: { size: 1536 } } } }))
+        };
+        QdrantClient.mockImplementation(() => client);
+        ChunkingModule.mockImplementation(() => ({ getDefaultStrategyName: () => 'recursiveCharacter' }));
+        mockCreateEmbeddings.mockResolvedValueOnce({ embed: jest.fn(async () => [Array(1536).fill(0)]) });
+
+        const embeddingProfile = buildEmbeddingProfile({
+            provider: 'openai',
+            embeddingModel: 'text-embedding-3-small',
+            endpoint: null,
+            apiKey: 'instructor-openai-key'
+        });
+        await new QdrantService({ embeddingProfile }).initialize();
+
+        expect(mockCreateEmbeddings).toHaveBeenCalledWith(expect.objectContaining({
+            llmConfig: expect.objectContaining({
+                provider: 'openai',
+                apiKey: 'instructor-openai-key',
+                embeddingModel: 'text-embedding-3-small'
+            })
+        }));
+        expect(mockCreateEmbeddings.mock.calls[0][0].llmConfig).not.toHaveProperty('endpoint');
     });
 
     test.each([
