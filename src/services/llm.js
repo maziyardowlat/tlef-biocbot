@@ -14,7 +14,33 @@ const {
     normalizeReasoningEffort,
     supportsReasoning
 } = require('./llmModels');
+const adminModelSettings = require('./adminModelSettings');
+const { isSelectableProvider } = require('./llmProviders');
 const MODEL_SETTINGS_TTL_MS = 30 * 1000; // Re-read at most every 30 seconds
+
+/**
+ * Normalize a provider's reply before anything downstream sees it.
+ *
+ * Qwen3 emits a `<think>…</think>` block whenever thinking is enabled (any
+ * reasoning effort other than `none`). The sandbox gateway strips the block but
+ * leaves the newlines that surrounded it, so the reply arrives starting with a
+ * blank line — which renders as empty space at the top of every chat bubble.
+ *
+ * Any leaked think block is also removed: if the gateway ever stops stripping
+ * it, a student would otherwise see the model's raw reasoning.
+ *
+ * @param {string} content
+ * @returns {string}
+ */
+function normalizeResponseContent(content) {
+    if (typeof content !== 'string') return content;
+    return content
+        // A complete leaked block.
+        .replace(/^\s*<think>[\s\S]*?<\/think>/i, '')
+        // An unbalanced closing tag left behind when the opening one was stripped.
+        .replace(/^\s*<\/think>/i, '')
+        .trim();
+}
 
 class LLMService {
     constructor(options = {}) {
@@ -63,14 +89,18 @@ class LLMService {
 
         try {
             const db = this._dbAccessor ? this._dbAccessor() : null;
-            if (db) {
-                const doc = await db.collection('settings').findOne({ _id: 'llm' });
-                if (doc) {
-                    if (catalog.allowedModels.includes(doc.model)) {
-                        model = doc.model;
-                    }
-                    reasoningEffort = normalizeReasoningEffort(provider, model, doc.reasoningEffort);
+            // Model settings are stored per platform. `ollama` is a local dev
+            // runtime with no admin-managed platform settings, so it keeps the
+            // env-derived defaults resolved above.
+            if (db && isSelectableProvider(provider)) {
+                // Force the read: this service already caches for
+                // MODEL_SETTINGS_TTL_MS, and a second cache underneath would
+                // make an admin's change take up to twice as long to apply.
+                const stored = await adminModelSettings.getProviderSettings(db, provider, { force: true });
+                if (catalog.allowedModels.includes(stored.chatModel)) {
+                    model = stored.chatModel;
                 }
+                reasoningEffort = normalizeReasoningEffort(provider, model, stored.reasoningEffort);
             }
         } catch (error) {
             console.warn('⚠️ Could not load LLM settings from DB, using defaults:', error.message);
@@ -223,6 +253,9 @@ class LLMService {
             console.log('🔍 [LLM_OPTIONS] Final options:', finalOptions);
 
             const response = await this.llm.sendMessage(message, finalOptions);
+            if (response && typeof response.content === 'string') {
+                response.content = normalizeResponseContent(response.content);
+            }
 
             console.log(`✅ LLM response received (${response.content.length} characters)`);
             return response;
@@ -473,6 +506,9 @@ class LLMService {
 
             // Send message and get response
             const response = await conversation.send(finalOptions);
+            if (response && typeof response.content === 'string') {
+                response.content = normalizeResponseContent(response.content);
+            }
 
             console.log(`💬 Conversation response received (${response.content.length} characters)`);
             return response;
@@ -1128,3 +1164,4 @@ Generate a completely new question that addresses the feedback, don't just modif
 
 // Export the class instead of an instance
 module.exports = LLMService;
+module.exports.normalizeResponseContent = normalizeResponseContent;

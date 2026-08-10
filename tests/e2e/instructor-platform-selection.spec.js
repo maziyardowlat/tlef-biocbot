@@ -77,8 +77,21 @@ async function setAcademicApiEnabled(enabled) {
 async function openOnboardingCourseSetup(page) {
     await setAcademicApiEnabled(true);
     await page.goto('/instructor/onboarding?addCourse=true');
-    await expect(page.locator('#step-1')).toBeVisible({ timeout: 15_000 });
-    await page.getByRole('button', { name: 'Get Started' }).click();
+    await expect(page.locator('#step-1.onboarding-step.active')).toBeVisible({ timeout: 15_000 });
+    // Wait for the async onboarding boot (auth/status check + course loading),
+    // not just for nextStep() to exist. The status check intentionally restores
+    // step 1 and can otherwise race a fast click back from step 2 to step 1.
+    await page.waitForFunction(() => typeof window.nextStep === 'function');
+    const courseSelect = page.locator('#course-select');
+    await expect(courseSelect.locator('option[value="custom"]')).toHaveCount(1);
+    await page.locator('#step-1 button.btn-primary', { hasText: 'Get Started' }).click();
+    await expect(page.locator('#step-2.onboarding-step.active')).toBeVisible({ timeout: 15_000 });
+
+    // The platform choice and key field belong to the "create a new course"
+    // branch; joining an existing course replaces them. Select the create
+    // option explicitly so this does not depend on how the course dropdown
+    // happens to be populated for this instructor.
+    await courseSelect.selectOption('custom');
     await expect(page.locator('#course-api-key-section')).toBeVisible({ timeout: 15_000 });
 }
 
@@ -345,7 +358,7 @@ test.describe('Instructor platform selection', () => {
     });
 
     test('a running migration shows persistent progress and a retry control on failure', async ({ page }) => {
-        await mockCourseKeyState(page, baseState({
+        const surface = await mockCourseKeyState(page, baseState({
             pendingLlmProvider: 'ubc-llm-sandbox',
             providerMigrationId: 'mig_e2e_1',
             migration: {
@@ -361,25 +374,32 @@ test.describe('Instructor platform selection', () => {
             },
         }));
 
+        const failedMigration = {
+            migrationId: 'mig_e2e_1',
+            status: 'failed',
+            toProvider: 'ubc-llm-sandbox',
+            total: 4,
+            completed: 3,
+            failed: 1,
+            currentItem: null,
+            failures: [{ itemType: 'document', itemId: 'd4', title: 'Lecture 4.pdf', error: 'provider rejected', attempts: 3 }],
+            targetProfile: { provider: 'ubc-llm-sandbox' },
+        };
+
         // The poller asks for the migration; report a failed item on the next tick.
+        const migrationPolls = [];
+        page.on('request', (request) => {
+            if (request.url().includes('/api/provider-migrations/')) migrationPolls.push(request.url());
+        });
         await page.route('**/api/provider-migrations/mig_e2e_1', async (route) => {
+            // Reaching a terminal state makes the page reload the whole surface,
+            // so the surface endpoint has to agree that the job finished —
+            // exactly as the real server would once the job is written.
+            surface.migration = failedMigration;
             await route.fulfill({
                 status: 200,
                 contentType: 'application/json',
-                body: JSON.stringify({
-                    success: true,
-                    migration: {
-                        migrationId: 'mig_e2e_1',
-                        status: 'failed',
-                        toProvider: 'ubc-llm-sandbox',
-                        total: 4,
-                        completed: 3,
-                        failed: 1,
-                        currentItem: null,
-                        failures: [{ itemType: 'document', itemId: 'd4', title: 'Lecture 4.pdf', error: 'provider rejected', attempts: 3 }],
-                        targetProfile: { provider: 'ubc-llm-sandbox' },
-                    },
-                }),
+                body: JSON.stringify({ success: true, migration: failedMigration }),
             });
         });
 
@@ -392,6 +412,9 @@ test.describe('Instructor platform selection', () => {
         await expect(page.locator('#course-llm-migration-status')).toContainText('Lecture 2.pdf');
         // While migrating, the selector shows the platform being migrated TO.
         await expect(page.locator('#course-llm-provider-ubc-llm-sandbox')).toBeChecked();
+
+        // Progress is polled, not pushed: the panel updates without a reload.
+        await expect.poll(() => migrationPolls.length, { timeout: 15_000 }).toBeGreaterThan(0);
 
         // After the poll, the failure and retry control appear.
         await expect(page.locator('#course-llm-migration-status'))

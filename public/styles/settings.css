@@ -442,7 +442,8 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 16px;
+    column-gap: 24px;
+    row-gap: 8px;
     margin: 0;
     padding: 8px 12px;
     border: 1px solid var(--border-color, #d7d7d7);
@@ -456,12 +457,27 @@
     color: var(--text-secondary);
 }
 
-.llm-platform-option {
+/* Scoped with the parent class so this outranks `.setting-item label`, which
+   would otherwise force the stacked block layout. */
+.llm-platform-choice .llm-platform-option {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
+    margin: 0;
+    /* Platform names are multi-word ("UBC On-Premise LLM"); keep each on one
+       line and let the row wrap rather than squeezing text into a column. */
+    flex: 0 0 auto;
+    white-space: nowrap;
     font-size: 14px;
+    font-weight: 500;
     cursor: pointer;
+}
+
+.llm-platform-choice .llm-platform-option input[type="radio"] {
+    flex: 0 0 auto;
+    width: auto;
+    margin: 0;
+    padding: 0;
 }
 
 .llm-platform-help,
