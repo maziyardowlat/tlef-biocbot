@@ -1,14 +1,21 @@
 const mockValidateApiKey = jest.fn();
+const mockValidateProviderKey = jest.fn();
 const mockBuildKeySubdocument = jest.fn();
 const mockDecryptApiKey = jest.fn();
-const mockPublicKeySummary = jest.fn();
 
-jest.mock('../../../src/services/llmKeyStore', () => ({
-    validateApiKey: mockValidateApiKey,
-    buildKeySubdocument: mockBuildKeySubdocument,
-    decryptApiKey: mockDecryptApiKey,
-    publicKeySummary: mockPublicKeySummary
-}));
+// Keep the real provider-state readers so the per-surface `llmCredentials`
+// storage, legacy `llmApiKey` compatibility, and provider selection are all
+// exercised for real. Only crypto and the network probe are stubbed.
+jest.mock('../../../src/services/llmKeyStore', () => {
+    const actual = jest.requireActual('../../../src/services/llmKeyStore');
+    return {
+        ...actual,
+        validateApiKey: mockValidateApiKey,
+        validateProviderKey: mockValidateProviderKey,
+        buildKeySubdocument: mockBuildKeySubdocument,
+        decryptApiKey: mockDecryptApiKey
+    };
+});
 
 const { memoryDb } = require('../helpers/memory-db');
 const { makeRouteApp, request } = require('../helpers/route-app');
@@ -28,17 +35,17 @@ function app({ db = memoryDb({ settings: [] }), user = admin, locals = {} } = {}
 
 beforeEach(() => {
     mockValidateApiKey.mockResolvedValue({ ok: true, status: 'valid' });
-    mockBuildKeySubdocument.mockImplementation((apiKey, userId) => ({
+    mockValidateProviderKey.mockResolvedValue({ ok: true, status: 'valid', provider: 'openai' });
+    mockBuildKeySubdocument.mockImplementation((apiKey, userId, provider) => ({
         ciphertext: `encrypted:${apiKey}`,
+        last4: String(apiKey).slice(-4),
         status: 'valid',
+        provider: provider || 'openai',
         updatedById: userId,
         validatedAt: new Date('2026-01-01T00:00:00Z'),
         updatedAt: new Date('2026-01-01T00:00:00Z')
     }));
     mockDecryptApiKey.mockReturnValue('decrypted-key');
-    mockPublicKeySummary.mockImplementation(key => key
-        ? { configured: true, status: key.status || 'unknown', validatedAt: key.validatedAt, updatedAt: key.updatedAt }
-        : { configured: false, status: 'missing' });
     jest.spyOn(console, 'error').mockImplementation(() => {});
 });
 
@@ -78,21 +85,46 @@ describe.each([
         expect((await request(app({ user: instructor })).get(base)).status).toBe(403);
     });
 
-    test('GET reports missing and valid saved keys', async () => {
+    test('GET reports missing and valid saved keys, plus the platform catalog', async () => {
         let res = await request(app()).get(base);
-        expect(res.body).toMatchObject({ success: true, aiAvailable: false });
+        expect(res.body).toMatchObject({ success: true, aiAvailable: false, llmProvider: 'openai' });
+        // Instructors/admins choose a platform label; no model names are exposed.
+        expect(res.body.providers.map(p => p.provider)).toEqual(['openai', 'ubc-llm-sandbox']);
+        expect(res.body.providers.map(p => p.label)).toEqual(['GPT', 'Sandbox']);
+        expect(JSON.stringify(res.body)).not.toMatch(/text-embedding|gpt-5|qwen3/);
 
-        const db = memoryDb({ settings: [{ _id: id, llmApiKey: { ciphertext: 'cipher', status: 'valid' } }] });
+        // A legacy llmApiKey with no provider metadata reads as an OpenAI key.
+        const db = memoryDb({ settings: [{ _id: id, llmApiKey: { ciphertext: 'cipher', status: 'valid', last4: '1234' } }] });
         res = await request(app({ db })).get(base);
         expect(res.body).toMatchObject({
             success: true,
-            llmKey: { configured: true, status: 'valid' },
+            llmProvider: 'openai',
+            llmKey: { status: 'valid', last4: '1234' },
             aiAvailable: true
         });
     });
 
+    test('GET exposes a Sandbox surface with both stored platform keys', async () => {
+        const db = memoryDb({ settings: [{
+            _id: id,
+            activeLlmProvider: 'ubc-llm-sandbox',
+            llmCredentials: {
+                openai: { ciphertext: 'c1', status: 'valid', last4: '1111' },
+                'ubc-llm-sandbox': { ciphertext: 'c2', status: 'valid', last4: '2222' }
+            }
+        }] });
+        const res = await request(app({ db })).get(base);
+        expect(res.body).toMatchObject({
+            llmProvider: 'ubc-llm-sandbox',
+            llmKey: { last4: '2222' },
+            llmKeysByProvider: { openai: { last4: '1111' }, 'ubc-llm-sandbox': { last4: '2222' } }
+        });
+        // Never leak ciphertext or decrypted keys.
+        expect(JSON.stringify(res.body)).not.toMatch(/ciphertext|c1|c2/);
+    });
+
     test('PUT maps invalid and quota validation failures', async () => {
-        mockValidateApiKey.mockResolvedValueOnce({
+        mockValidateProviderKey.mockResolvedValueOnce({
             ok: false,
             status: 'invalid',
             message: '',
@@ -102,13 +134,29 @@ describe.each([
         expect(res.status).toBe(400);
         expect(res.body).toMatchObject({ code: 'LLM_KEY_INVALID', message: 'API key validation failed' });
 
-        mockValidateApiKey.mockResolvedValueOnce({
+        mockValidateProviderKey.mockResolvedValueOnce({
             ok: false,
             status: 'quota_exhausted',
             message: 'Quota exhausted'
         });
         res = await request(app()).put(base).send({ apiKey: 'spent' });
         expect(res.body).toMatchObject({ code: 'LLM_KEY_QUOTA', message: 'Quota exhausted' });
+    });
+
+    test('PUT validates a Sandbox key against the Sandbox platform', async () => {
+        const db = memoryDb({ settings: [] });
+        const res = await request(app({ db })).put(base).send({ apiKey: 'sbx-key', llmProvider: 'ubc-llm-sandbox' });
+        expect(res.status).toBe(200);
+        expect(mockValidateProviderKey).toHaveBeenCalledWith(expect.objectContaining({
+            provider: 'ubc-llm-sandbox',
+            apiKey: 'sbx-key',
+            embeddingModel: 'qwen3-embedding-0.6b'
+        }));
+        const saved = await db.collection('settings').findOne({ _id: id });
+        expect(saved.activeLlmProvider).toBe('ubc-llm-sandbox');
+        expect(saved.llmCredentials['ubc-llm-sandbox']).toMatchObject({ provider: 'ubc-llm-sandbox' });
+        // A Sandbox key never populates the legacy OpenAI field.
+        expect(saved.llmApiKey).toBeUndefined();
     });
 
     test('PUT stores a validated key and evicts the corresponding runtime client', async () => {
@@ -119,9 +167,11 @@ describe.each([
 
         expect(res.status).toBe(200);
         expect(res.body).toMatchObject({ success: true, message: savedMessage, aiAvailable: true });
-        expect(mockBuildKeySubdocument).toHaveBeenCalledWith('secret', 'admin1');
+        expect(mockBuildKeySubdocument).toHaveBeenCalledWith('secret', 'admin1', 'openai');
         expect(registry[evict]).toHaveBeenCalledTimes(1);
         expect(await db.collection('settings').findOne({ _id: id })).toMatchObject({
+            activeLlmProvider: 'openai',
+            llmCredentials: { openai: { ciphertext: 'encrypted:secret', status: 'valid' } },
             llmApiKey: { ciphertext: 'encrypted:secret', status: 'valid' },
             updatedBy: 'admin@example.com'
         });
@@ -152,9 +202,12 @@ describe.each([
         expect(res.status).toBe(200);
         expect(res.body).toMatchObject({ success: true, message: validMessage, aiAvailable: true });
         expect(mockDecryptApiKey).toHaveBeenCalledWith('cipher');
-        expect(mockValidateApiKey).toHaveBeenCalledWith('decrypted-key');
+        expect(mockValidateProviderKey).toHaveBeenCalledWith(expect.objectContaining({
+            provider: 'openai', apiKey: 'decrypted-key'
+        }));
         expect(registry[evict]).toHaveBeenCalledTimes(1);
         expect(await db.collection('settings').findOne({ _id: id })).toMatchObject({
+            llmCredentials: { openai: { status: 'valid', validatedAt: expect.any(Date) } },
             llmApiKey: { status: 'valid', validatedAt: expect.any(Date), updatedAt: expect.any(Date) }
         });
     });
@@ -168,7 +221,7 @@ describe.each([
             _id: id,
             llmApiKey: { ciphertext: 'cipher', status: 'valid', validatedAt: oldValidatedAt }
         }] });
-        mockValidateApiKey.mockResolvedValue({ ok: false, status, message: 'Nope' });
+        mockValidateProviderKey.mockResolvedValue({ ok: false, status, message: 'Nope' });
 
         const res = await request(app({ db })).post(`${base}/test`);
 

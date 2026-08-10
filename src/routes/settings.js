@@ -968,11 +968,10 @@ router.get('/llm-tag', async (req, res) => {
         let reasoningEffort = normalizeReasoningEffort(provider, model);
 
         if (db) {
-            const settingsDoc = await db.collection('settings').findOne({ _id: 'llm' });
-            if (settingsDoc) {
-                if (catalog.allowedModels.includes(settingsDoc.model)) model = settingsDoc.model;
-                reasoningEffort = normalizeReasoningEffort(provider, model, settingsDoc.reasoningEffort);
-            }
+            // Per-platform settings; the tag reflects the env-configured platform.
+            const stored = await adminModelSettings.getProviderSettings(db, provider, { force: true, throwOnError: true });
+            if (catalog.allowedModels.includes(stored.chatModel)) model = stored.chatModel;
+            reasoningEffort = stored.reasoningEffort;
         }
         reasoningEffort = normalizeReasoningEffort(provider, model, reasoningEffort);
 
@@ -1019,7 +1018,10 @@ router.get('/llm', async (req, res) => {
             return;
         }
 
-        const { providers, pendingEmbedding } = await adminModelSettings.getAllProviderSettings(db, { force: true });
+        const { providers, pendingEmbedding } = await adminModelSettings.getAllProviderSettings(
+            db,
+            { force: true, throwOnError: true }
+        );
         const platforms = SELECTABLE_PROVIDERS.map((provider) => {
             const catalog = adminCatalogForProvider(provider);
             const current = providers[provider];
@@ -1870,6 +1872,7 @@ router.put('/notes-llm-key', async (req, res) => {
                 { _id: 'notesLlm' },
                 { $set: { updatedBy: normalizeEmail(req.user.email) } }
             );
+            if (result.httpStatus === 200) result.body.message = 'Notes API key saved';
         }
 
         res.status(result.httpStatus).json(result.body);
@@ -1982,6 +1985,9 @@ router.put('/instructor-superchat-llm-key', async (req, res) => {
                 { _id: SUPER_COURSE_SETTINGS_ID },
                 { $set: { updatedBy: normalizeEmail(req.user.email) } }
             );
+            if (result.httpStatus === 200) {
+                result.body.message = 'Instructor Super Course chat API key saved';
+            }
         }
 
         res.status(result.httpStatus).json(result.body);

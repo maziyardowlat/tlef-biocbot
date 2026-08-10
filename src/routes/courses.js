@@ -533,6 +533,10 @@ router.put('/:courseId/llm-key', async (req, res) => {
             registry: req.app.locals.llmRegistry
         });
 
+        if (result.ok && result.httpStatus === 200) {
+            result.body.message = 'Course API key saved';
+        }
+
         res.status(result.httpStatus).json(result.body);
     } catch (error) {
         console.error('Error saving course API key:', error);

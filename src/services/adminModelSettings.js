@@ -155,6 +155,9 @@ async function getAllProviderSettings(db, options = {}) {
         try {
             doc = await db.collection('settings').findOne({ _id: SETTINGS_ID });
         } catch (error) {
+            // Runtime callers keep serving on bootstrap defaults when Mongo
+            // hiccups; the admin screen asks to see the failure instead.
+            if (options.throwOnError) throw error;
             console.warn('⚠️ Could not load admin model settings, using bootstrap defaults:', error.message);
         }
     }
@@ -173,6 +176,7 @@ async function getProviderSettings(db, provider, options = {}) {
     const all = await getAllProviderSettings(db, options);
     return all.providers[normalizedProvider];
 }
+
 
 /**
  * Build the active embedding profile for a platform, optionally binding a
