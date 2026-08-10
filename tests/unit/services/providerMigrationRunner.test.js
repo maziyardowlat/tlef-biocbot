@@ -516,3 +516,69 @@ describe('restart resumability', () => {
         expect(qdrantInstances).toHaveLength(0);
     });
 });
+
+describe('explicit preparation and cancellation', () => {
+    test('prepare-only completes the target index without activating that provider', async () => {
+        const db = memoryDb({
+            courses: [dualKeyCourse('openai', { pendingLlmProvider: 'ubc-llm-sandbox' })],
+            documents: [{ documentId: 'A', courseId: 'C1', content: 'text' }],
+        });
+        const { job } = await migrations.createMigration(db, {
+            scope: COURSE_SCOPE,
+            kind: 'prepare',
+            fromProvider: 'openai',
+            toProvider: 'ubc-llm-sandbox',
+            profile: SANDBOX,
+            courseIds: ['C1'],
+        });
+        await db.collection('courses').updateOne(
+            { courseId: 'C1' },
+            { $set: { providerMigrationId: job.migrationId } }
+        );
+
+        const finished = await runner.runMigration(db, job.migrationId);
+        expect(finished.status).toBe('completed');
+        const course = await db.collection('courses').findOne({ courseId: 'C1' });
+        expect(course.activeLlmProvider).toBe('openai');
+        expect(course.pendingLlmProvider).toBeNull();
+        expect(course.providerMigrationId).toBeNull();
+    });
+
+    test('cancel deletes only the target profile data and clears the pending marker', async () => {
+        const db = memoryDb({
+            courses: [dualKeyCourse('openai', { pendingLlmProvider: 'ubc-llm-sandbox' })],
+            documents: [{
+                documentId: 'A', courseId: 'C1', content: 'text',
+                embeddingIndexes: {
+                    ...readyFor(GPT, 'text'),
+                    ...readyFor(SANDBOX, 'text'),
+                },
+            }],
+        });
+        const { job } = await migrations.createMigration(db, {
+            scope: COURSE_SCOPE,
+            kind: 'prepare',
+            toProvider: 'ubc-llm-sandbox',
+            profile: SANDBOX,
+            courseIds: ['C1'],
+        });
+        // calculateWork skips a ready item, but cleanup operates on job items;
+        // simulate the record written by a partially completed preparation.
+        await db.collection(migrations.MIGRATIONS_COLLECTION).updateOne(
+            { migrationId: job.migrationId },
+            { $set: { items: [{ itemType: 'document', itemId: 'A', courseId: 'C1' }] } }
+        );
+        await db.collection('courses').updateOne(
+            { courseId: 'C1' },
+            { $set: { providerMigrationId: job.migrationId } }
+        );
+
+        const result = await runner.cancelAndCleanup(db, job.migrationId, 'i1');
+        expect(result.job.status).toBe('cancelled');
+        expect(result.cleanup).toMatchObject({ documents: 1, deletedVectors: 1, clearedIndexRecords: 1 });
+        const document = await db.collection('documents').findOne({ documentId: 'A' });
+        expect(document.embeddingIndexes[GPT.storageKey].status).toBe('ready');
+        expect(document.embeddingIndexes[SANDBOX.storageKey]).toBeUndefined();
+        expect((await db.collection('courses').findOne({ courseId: 'C1' })).providerMigrationId).toBeNull();
+    });
+});

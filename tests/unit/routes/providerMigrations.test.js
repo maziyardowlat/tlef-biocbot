@@ -4,6 +4,12 @@
 const startedMigrations = [];
 jest.mock('../../../src/services/providerMigrationRunner', () => ({
     startMigration: jest.fn((db, migrationId) => { startedMigrations.push(migrationId); }),
+    cancelAndCleanup: jest.fn(async (db, migrationId, cancelledBy) => {
+        const migrations = jest.requireActual('../../../src/services/providerMigrationService');
+        const job = await migrations.cancelMigration(db, migrationId, cancelledBy);
+        await migrations.abandonPendingProvider(db, job.scope);
+        return { job, cleanup: { deletedVectors: 2, clearedIndexRecords: 2 } };
+    }),
 }));
 
 const { buildEmbeddingProfile } = require('../../../src/services/embeddingConfig');
@@ -156,6 +162,24 @@ describe('POST /:migrationId/retry', () => {
     test('retrying an unknown migration is a 404', async () => {
         const { db } = await seed();
         expect((await request(app({ db, user: admin })).post('/nope/retry')).status).toBe(404);
+    });
+});
+
+describe('POST /:migrationId/cancel', () => {
+    test('the course instructor can cancel and receives the cleanup result', async () => {
+        const { db, job } = await seed();
+        const res = await request(app({ db, user: instructor })).post(`/${job.migrationId}/cancel`);
+
+        expect(res.status).toBe(200);
+        expect(res.body.migration.status).toBe('cancelled');
+        expect(res.body.cleanup).toMatchObject({ deletedVectors: 2, clearedIndexRecords: 2 });
+        expect((await migrations.getMigration(db, job.migrationId)).cancelledBy).toBe('i1');
+    });
+
+    test('an unrelated instructor cannot cancel it', async () => {
+        const { db, job } = await seed();
+        expect((await request(app({ db, user: otherInstructor })).post(`/${job.migrationId}/cancel`)).status)
+            .toBe(403);
     });
 });
 

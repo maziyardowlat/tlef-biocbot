@@ -32,7 +32,6 @@ jest.mock('../../../src/services/llmKeyStore', () => {
 });
 
 const adminModelSettings = require('../../../src/services/adminModelSettings');
-const migrations = require('../../../src/services/providerMigrationService');
 const { buildKeySubdocument } = require('../../../src/services/llmKeyStore');
 const coursesRouter = require('../../../src/routes/courses');
 const onboardingRouter = require('../../../src/routes/onboarding');
@@ -184,7 +183,7 @@ describe('course key settings', () => {
         expect(serialised).not.toContain('qwen3-embedding');
     });
 
-    test('saving a key for a NEW platform stages it and returns 202 without blocking', async () => {
+    test('saving a key for another platform is separate from preparing and switching', async () => {
         mockValidateProviderKey.mockResolvedValue({ ok: true, status: 'valid', provider: SANDBOX });
         const db = memoryDb({
             courses: [keyedCourse(OPENAI)],
@@ -194,13 +193,20 @@ describe('course key settings', () => {
         const res = await request(courses({ db, user: instructor }))
             .put('/C1/llm-key').send({ apiKey: 'sbx-new-key', llmProvider: SANDBOX });
 
-        expect(res.status).toBe(202);
-        expect(res.body.message).toMatch(/keeps using GPT until preparation finishes/);
-        expect(startedMigrations).toHaveLength(1);
+        expect(res.status).toBe(200);
+        expect(res.body.message).toBe('Course API key saved');
+        expect(startedMigrations).toHaveLength(0);
 
         const course = await db.collection('courses').findOne({ courseId: 'C1' });
         expect(course.activeLlmProvider).toBe(OPENAI);
-        expect(course.pendingLlmProvider).toBe(SANDBOX);
+        expect(course.pendingLlmProvider).toBeUndefined();
+
+        const prepare = await request(courses({ db, user: instructor }))
+            .post('/C1/llm-provider/prepare').send({ llmProvider: SANDBOX });
+        expect(prepare.status).toBe(202);
+        expect(prepare.body.migration.kind).toBe('prepare');
+        expect(startedMigrations).toHaveLength(1);
+        expect((await db.collection('courses').findOne({ courseId: 'C1' })).activeLlmProvider).toBe(OPENAI);
     });
 
     test('replacing the key for the current platform is immediate', async () => {
@@ -214,7 +220,7 @@ describe('course key settings', () => {
         expect(startedMigrations).toEqual([]);
     });
 
-    test('switching back to a stored platform needs no key', async () => {
+    test('switching back needs no key but refuses until material is prepared', async () => {
         const db = memoryDb({
             courses: [keyedCourse(SANDBOX, { [OPENAI]: 'sk-gpt-1111', [SANDBOX]: 'sbx-key-2222' })],
             documents: [{ documentId: 'd1', courseId: 'C1', content: 'text' }],
@@ -223,12 +229,10 @@ describe('course key settings', () => {
         const res = await request(courses({ db, user: instructor }))
             .post('/C1/llm-provider').send({ llmProvider: OPENAI });
 
-        expect(res.status).toBe(202);
-        expect(startedMigrations).toHaveLength(1);
+        expect(res.status).toBe(409);
+        expect(res.body).toMatchObject({ code: 'LLM_PROVIDER_NOT_PREPARED', unpreparedCount: 1 });
+        expect(startedMigrations).toHaveLength(0);
         expect(mockValidateProviderKey).not.toHaveBeenCalled();
-
-        const job = await migrations.getMigration(db, startedMigrations[0]);
-        expect(job).toMatchObject({ fromProvider: SANDBOX, toProvider: OPENAI });
     });
 
     test('testing the saved key probes the active platform', async () => {

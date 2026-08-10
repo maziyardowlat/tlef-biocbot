@@ -27,11 +27,14 @@ const providerKeys = require('../../../src/services/providerKeyService');
 const migrations = require('../../../src/services/providerMigrationService');
 const adminModelSettings = require('../../../src/services/adminModelSettings');
 const { buildKeySubdocument } = require('../../../src/services/llmKeyStore');
+const { buildEmbeddingProfile } = require('../../../src/services/embeddingConfig');
+const { buildIndexRecord, contentHash, INDEX_STATUSES } = require('../../../src/services/embeddingIndexService');
 const { memoryDb } = require('../helpers/memory-db');
 
 const OPENAI = 'openai';
 const SANDBOX = 'ubc-llm-sandbox';
 const COURSE_SCOPE = { type: 'course', id: 'C1' };
+const GPT_PROFILE = buildEmbeddingProfile({ provider: OPENAI, embeddingModel: 'text-embedding-3-small' });
 
 beforeEach(() => {
     startedMigrations.length = 0;
@@ -140,7 +143,7 @@ describe('saving a key', () => {
         expect(course.llmCredentials).toBeUndefined();
     });
 
-    test('choosing a NEW platform stages the key and starts a migration without flipping over', async () => {
+    test('saving a key for another platform does not prepare or switch implicitly', async () => {
         const db = memoryDb({
             courses: [{
                 courseId: 'C1',
@@ -154,20 +157,15 @@ describe('saving a key', () => {
             scope: COURSE_SCOPE, provider: SANDBOX, apiKey: 'sbx-new-key', updatedBy: 'i1',
         });
 
-        // 202: the request returns immediately; re-indexing happens in the background.
-        expect(result.httpStatus).toBe(202);
-        expect(result.body.message).toMatch(/keeps using GPT until preparation finishes/);
-        expect(startedMigrations).toHaveLength(1);
+        expect(result.httpStatus).toBe(200);
+        expect(result.body.message).toMatch(/Sandbox API key saved/);
+        expect(startedMigrations).toHaveLength(0);
 
         const course = await db.collection('courses').findOne({ courseId: 'C1' });
         expect(course.activeLlmProvider).toBe(OPENAI);           // still serving on GPT
-        expect(course.pendingLlmProvider).toBe(SANDBOX);
-        expect(course.providerMigrationId).toBe(startedMigrations[0]);
-        expect(course.llmCredentials[SANDBOX].ciphertext).toBeTruthy();  // staged
-
-        const job = await migrations.getMigration(db, startedMigrations[0]);
-        expect(job).toMatchObject({ fromProvider: OPENAI, toProvider: SANDBOX, courseIds: ['C1'] });
-        expect(job.items.map(item => item.itemId)).toEqual(['d1']);
+        expect(course.pendingLlmProvider).toBeUndefined();
+        expect(course.providerMigrationId).toBeUndefined();
+        expect(course.llmCredentials[SANDBOX].ciphertext).toBeTruthy();
     });
 
     test('no key material appears in the response', async () => {
@@ -194,7 +192,7 @@ describe('switching back to a stored platform', () => {
         };
     }
 
-    test('switching back needs no key re-entry and still runs a migration', async () => {
+    test('an unprepared provider is refused with a clear next action', async () => {
         const db = memoryDb({
             courses: [dualKeyCourse()],
             documents: [{ documentId: 'd1', courseId: 'C1', content: 'text' }],
@@ -204,13 +202,60 @@ describe('switching back to a stored platform', () => {
             scope: COURSE_SCOPE, provider: OPENAI, requestedBy: 'i1', registry: registry(),
         });
 
-        expect(result.httpStatus).toBe(202);
-        expect(startedMigrations).toHaveLength(1);
+        expect(result.httpStatus).toBe(409);
+        expect(result.body).toMatchObject({ code: 'LLM_PROVIDER_NOT_PREPARED', unpreparedCount: 1 });
+        expect(startedMigrations).toHaveLength(0);
         expect(mockValidateProviderKey).not.toHaveBeenCalled();
 
         const course = await db.collection('courses').findOne({ courseId: 'C1' });
         expect(course.activeLlmProvider).toBe(SANDBOX);   // unchanged until migration completes
+        expect(course.pendingLlmProvider).toBeUndefined();
+    });
+
+    test('explicit preparation starts a background job without changing the active provider', async () => {
+        const db = memoryDb({
+            courses: [dualKeyCourse()],
+            documents: [{ documentId: 'd1', courseId: 'C1', content: 'text' }],
+        });
+
+        const result = await providerKeys.prepareStoredProvider(db, {
+            scope: COURSE_SCOPE, provider: OPENAI, requestedBy: 'i1',
+        });
+
+        expect(result.httpStatus).toBe(202);
+        expect(result.body.migration.kind).toBe('prepare');
+        expect(startedMigrations).toHaveLength(1);
+        const course = await db.collection('courses').findOne({ courseId: 'C1' });
+        expect(course.activeLlmProvider).toBe(SANDBOX);
         expect(course.pendingLlmProvider).toBe(OPENAI);
+    });
+
+    test('a prepared stored provider switches immediately without key re-entry', async () => {
+        const text = 'text';
+        const db = memoryDb({
+            courses: [dualKeyCourse()],
+            documents: [{
+                documentId: 'd1', courseId: 'C1', content: text,
+                embeddingIndexes: {
+                    [GPT_PROFILE.storageKey]: buildIndexRecord({
+                        profile: GPT_PROFILE,
+                        hash: contentHash(text),
+                        status: INDEX_STATUSES.READY,
+                        indexedAt: new Date(),
+                    }),
+                },
+            }],
+        });
+
+        const result = await providerKeys.switchToStoredProvider(db, {
+            scope: COURSE_SCOPE, provider: OPENAI, requestedBy: 'i1', registry: registry(),
+        });
+
+        expect(result.httpStatus).toBe(200);
+        expect(result.body.message).toMatch(/Now using GPT/);
+        expect((await db.collection('courses').findOne({ courseId: 'C1' })).activeLlmProvider).toBe(OPENAI);
+        expect(startedMigrations).toEqual([]);
+        expect(mockValidateProviderKey).not.toHaveBeenCalled();
     });
 
     test('switching to a platform with no stored key asks for one', async () => {

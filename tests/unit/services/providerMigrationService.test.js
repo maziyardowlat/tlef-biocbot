@@ -17,6 +17,7 @@ const {
     abandonPendingProvider,
     activateProvider,
     calculateWork,
+    cancelMigration,
     claimMigration,
     createMigration,
     findActiveMigration,
@@ -290,6 +291,24 @@ describe('progress and retry', () => {
     test('retrying a missing migration returns null', async () => {
         expect(await retryMigration(memoryDb({}), 'nope')).toBeNull();
         expect(await getMigration(memoryDb({}), null)).toBeNull();
+    });
+
+    test('cancelling freezes progress and clears the worker lease', async () => {
+        const db = memoryDb({ documents: [{ documentId: 'd1', courseId: 'C1', content: 'one' }] });
+        const job = await jobWithItems(db);
+        await claimMigration(db, job.migrationId, 'worker-1');
+
+        const cancelled = await cancelMigration(db, job.migrationId, 'i1');
+        expect(cancelled).toMatchObject({
+            status: MIGRATION_STATUSES.CANCELLED,
+            cancelledBy: 'i1',
+            leaseOwner: null,
+            currentItem: null,
+        });
+
+        await recordItemResult(db, job.migrationId, 'd1', 'document', { status: ITEM_STATUSES.DONE });
+        await finishMigration(db, job.migrationId, MIGRATION_STATUSES.COMPLETED);
+        expect((await getMigration(db, job.migrationId)).status).toBe(MIGRATION_STATUSES.CANCELLED);
     });
 
     test('publicMigrationView reports totals, failures and never key material', async () => {
