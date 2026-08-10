@@ -472,6 +472,14 @@
     color: var(--text-secondary);
 }
 
+.llm-platform-actions,
+.llm-migration-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 6px;
+}
+
 .llm-platform-change-note,
 .llm-embedding-pending {
     padding: 6px 10px;
@@ -538,10 +546,6 @@
 
 .llm-migration-failures:empty {
     display: none;
-}
-
-.llm-migration-retry {
-    margin-top: 8px;
 }
 
 .llm-migration[data-status="failed"] {

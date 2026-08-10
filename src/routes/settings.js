@@ -1907,6 +1907,23 @@ router.post('/notes-llm-key/provider', async (req, res) => {
     }
 });
 
+router.post('/notes-llm-key/provider/prepare', async (req, res) => {
+    try {
+        const db = req.app.locals.db;
+        if (!db) return res.status(503).json({ success: false, message: 'Database connection not available' });
+        if (!requireSystemAdmin(req, res)) return;
+        const result = await providerKeys.prepareStoredProvider(db, {
+            scope: NOTES_SCOPE,
+            provider: normalizeProvider(req.body && req.body.llmProvider),
+            requestedBy: req.user.userId
+        });
+        res.status(result.httpStatus).json(result.body);
+    } catch (error) {
+        console.error('Error preparing notes material:', error);
+        res.status(500).json({ success: false, message: 'Failed to prepare notes material' });
+    }
+});
+
 router.post('/notes-llm-key/test', async (req, res) => {
     try {
         const db = req.app.locals.db;
@@ -2019,6 +2036,23 @@ router.post('/instructor-superchat-llm-key/provider', async (req, res) => {
     } catch (error) {
         console.error('Error switching instructor Super Course chat platform:', error);
         res.status(500).json({ success: false, message: 'Failed to switch platform' });
+    }
+});
+
+router.post('/instructor-superchat-llm-key/provider/prepare', async (req, res) => {
+    try {
+        const db = req.app.locals.db;
+        if (!db) return res.status(503).json({ success: false, message: 'Database connection not available' });
+        if (!requireSystemAdmin(req, res)) return;
+        const result = await providerKeys.prepareStoredProvider(db, {
+            scope: SUPER_COURSE_CHAT_SCOPE,
+            provider: normalizeProvider(req.body && req.body.llmProvider),
+            requestedBy: req.user.userId
+        });
+        res.status(result.httpStatus).json(result.body);
+    } catch (error) {
+        console.error('Error preparing instructor Super Course chat material:', error);
+        res.status(500).json({ success: false, message: 'Failed to prepare instructor Super Course chat material' });
     }
 });
 

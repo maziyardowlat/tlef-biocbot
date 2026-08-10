@@ -294,16 +294,21 @@ async function claimMigration(db, migrationId, leaseOwner) {
     return result && (result.value || result);
 }
 
-async function heartbeat(db, migrationId, currentItem) {
+async function heartbeat(db, migrationId, currentItem, leaseOwner = null) {
+    const filter = { migrationId, status: { $in: ACTIVE_STATUSES } };
+    // Once another worker has reclaimed an expired lease, an old worker must
+    // not make the new lease look alive with a late heartbeat.
+    if (leaseOwner) filter.leaseOwner = leaseOwner;
+
     await db.collection(MIGRATIONS_COLLECTION).updateOne(
-        { migrationId },
+        filter,
         { $set: { heartbeatAt: new Date(), updatedAt: new Date(), currentItem: currentItem || null } }
     );
 }
 
 async function recordItemResult(db, migrationId, itemId, itemType, patch) {
     const job = await getMigration(db, migrationId);
-    if (!job) return null;
+    if (!job || !ACTIVE_STATUSES.includes(job.status)) return null;
 
     const items = (job.items || []).map(item => (
         item.itemId === itemId && item.itemType === itemType ? { ...item, ...patch } : item
@@ -312,7 +317,7 @@ async function recordItemResult(db, migrationId, itemId, itemType, patch) {
     const failed = items.filter(item => item.status === ITEM_STATUSES.FAILED).length;
 
     await db.collection(MIGRATIONS_COLLECTION).updateOne(
-        { migrationId },
+        { migrationId, status: { $in: ACTIVE_STATUSES } },
         {
             $set: {
                 items,
@@ -328,7 +333,7 @@ async function recordItemResult(db, migrationId, itemId, itemType, patch) {
 
 async function finishMigration(db, migrationId, status, error = null) {
     await db.collection(MIGRATIONS_COLLECTION).updateOne(
-        { migrationId },
+        { migrationId, status: { $ne: MIGRATION_STATUSES.CANCELLED } },
         {
             $set: {
                 status,
@@ -340,6 +345,31 @@ async function finishMigration(db, migrationId, status, error = null) {
             }
         }
     );
+}
+
+/**
+ * Cooperatively stop an unfinished migration. Vector cleanup is performed by
+ * the runner because it knows the target collections and item types.
+ */
+async function cancelMigration(db, migrationId, cancelledBy = null) {
+    const now = new Date();
+    await db.collection(MIGRATIONS_COLLECTION).updateOne(
+        { migrationId, status: { $in: ACTIVE_STATUSES } },
+        {
+            $set: {
+                status: MIGRATION_STATUSES.CANCELLED,
+                error: 'Cancelled by user',
+                cancelledBy,
+                cancelledAt: now,
+                finishedAt: now,
+                updatedAt: now,
+                currentItem: null,
+                heartbeatAt: null,
+                leaseOwner: null
+            }
+        }
+    );
+    return getMigration(db, migrationId);
 }
 
 /**
@@ -472,6 +502,7 @@ module.exports = {
     abandonPendingProvider,
     activateProvider,
     calculateWork,
+    cancelMigration,
     claimMigration,
     createMigration,
     ensureIndexes,

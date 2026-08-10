@@ -363,6 +363,26 @@ router.post('/:id/llm-provider', async (req, res) => {
     }
 });
 
+router.post('/:id/llm-provider/prepare', async (req, res) => {
+    try {
+        const db = req.app.locals.db;
+        if (!db) return res.status(503).json({ success: false, message: 'Database connection not available' });
+        if (!requireInstructorOrAdmin(req, res)) return;
+        const doc = await SuperchatModel.getSuperchatById(db, req.params.id);
+        if (!doc) return res.status(404).json({ success: false, message: 'Superchat not found' });
+
+        const result = await providerKeys.prepareStoredProvider(db, {
+            scope: { type: 'superchat', id: req.params.id },
+            provider: normalizeProvider(req.body && req.body.llmProvider),
+            requestedBy: req.user.userId
+        });
+        res.status(result.httpStatus).json(result.body);
+    } catch (error) {
+        console.error('Error preparing bucket material:', error);
+        res.status(500).json({ success: false, message: 'Failed to prepare bucket material' });
+    }
+});
+
 router.post('/:id/llm-key/test', async (req, res) => {
     try {
         const db = req.app.locals.db;

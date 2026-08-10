@@ -573,6 +573,26 @@ router.post('/:courseId/llm-provider', async (req, res) => {
     }
 });
 
+/** POST /api/courses/:courseId/llm-provider/prepare */
+router.post('/:courseId/llm-provider/prepare', async (req, res) => {
+    try {
+        const db = req.app.locals.db;
+        if (!db) return res.status(503).json({ success: false, message: 'Database connection not available' });
+        const course = await requireCourseKeyAccess(req, res, db, req.params.courseId);
+        if (!course) return;
+
+        const result = await providerKeys.prepareStoredProvider(db, {
+            scope: { type: 'course', id: course.courseId },
+            provider: normalizeProvider(req.body && req.body.llmProvider),
+            requestedBy: req.user.userId
+        });
+        res.status(result.httpStatus).json(result.body);
+    } catch (error) {
+        console.error('Error preparing course material:', error);
+        res.status(500).json({ success: false, message: 'Failed to prepare course material' });
+    }
+});
+
 router.post('/:courseId/llm-key/test', async (req, res) => {
     try {
         const db = req.app.locals.db;

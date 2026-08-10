@@ -194,6 +194,7 @@ class NotesQdrantService {
             });
         }
 
+        await this.base.assertNotCancelled();
         await this.client.upsert(this.collectionName, { points });
         return pointIds;
     }

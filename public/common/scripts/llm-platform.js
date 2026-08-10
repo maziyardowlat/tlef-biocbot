@@ -87,9 +87,17 @@
         changeNote.id = `${prefix}-llm-platform-change-note`;
         changeNote.hidden = true;
 
+        const actions = document.createElement('div');
+        actions.className = 'llm-platform-actions';
+        actions.innerHTML = [
+            `<button type="button" class="secondary-button" id="${prefix}-llm-prepare">Prepare material</button>`,
+            `<button type="button" class="primary-button" id="${prefix}-llm-switch" hidden>Switch platform</button>`
+        ].join('');
+
         wrapper.appendChild(fieldset);
         wrapper.appendChild(help);
         wrapper.appendChild(changeNote);
+        wrapper.appendChild(actions);
         container.insertBefore(wrapper, container.firstChild);
 
         return wrapper;
@@ -113,7 +121,10 @@
             `<p class="llm-migration-status" id="${prefix}-llm-migration-status"></p>`,
             `<progress class="llm-migration-progress" id="${prefix}-llm-migration-progress" max="100" value="0"></progress>`,
             `<ul class="llm-migration-failures" id="${prefix}-llm-migration-failures"></ul>`,
-            `<button type="button" class="secondary-button llm-migration-retry" id="${prefix}-llm-migration-retry" hidden>Retry failed items</button>`
+            `<div class="llm-migration-actions">`,
+            `<button type="button" class="secondary-button llm-migration-retry" id="${prefix}-llm-migration-retry" hidden>Retry failed items</button>`,
+            `<button type="button" class="danger-button llm-migration-cancel" id="${prefix}-llm-migration-cancel" hidden>Cancel preparation and delete partial data</button>`,
+            `</div>`
         ].join('');
 
         container.appendChild(panel);
@@ -155,21 +166,40 @@
         const activeProvider = state.llmProvider || 'openai';
         const storedKey = (state.llmKeysByProvider || {})[provider];
         const hasStoredKey = storedKey && storedKey.status && storedKey.status !== 'missing';
-        const isStoredKeySwitch = provider !== activeProvider && hasStoredKey;
+        const hasValidKey = !!(storedKey && storedKey.status === 'valid');
+        const migrationActive = !!(state.migration
+            && (state.migration.status === 'queued' || state.migration.status === 'running'));
 
         const input = document.getElementById(`${prefix}-llm-key-input`);
         const hasEnteredKey = !!(input && input.value && input.value.trim());
         if (input) {
-            input.placeholder = isStoredKeySwitch
+            input.placeholder = hasStoredKey
                 ? `Optional: enter a replacement ${meta.label} key`
                 : meta.keyPlaceholder;
         }
 
         const actionButton = document.getElementById(`save-${prefix}-llm-key`);
-        if (actionButton && !actionButton.disabled) {
-            actionButton.textContent = isStoredKeySwitch && !hasEnteredKey
-                ? `Switch to ${meta.label}`
-                : 'Save key';
+        if (actionButton) {
+            actionButton.textContent = hasStoredKey
+                ? `Replace ${meta.label} key`
+                : `Save ${meta.label} key`;
+            actionButton.disabled = hasStoredKey && !hasEnteredKey;
+        }
+
+        const prepareButton = document.getElementById(`${prefix}-llm-prepare`);
+        if (prepareButton) {
+            prepareButton.textContent = `Prepare material for ${meta.label}`;
+            prepareButton.disabled = !hasValidKey || migrationActive;
+            prepareButton.title = hasValidKey
+                ? `Create or update ${meta.label} embeddings without switching platforms`
+                : `Save and validate a ${meta.label} key first`;
+        }
+
+        const switchButton = document.getElementById(`${prefix}-llm-switch`);
+        if (switchButton) {
+            switchButton.hidden = provider === activeProvider;
+            switchButton.disabled = !hasValidKey || migrationActive;
+            switchButton.textContent = `Switch to ${meta.label}`;
         }
 
         const note = document.getElementById(`${prefix}-llm-platform-change-note`);
@@ -177,12 +207,10 @@
             if (provider !== activeProvider) {
                 note.hidden = false;
                 note.textContent = hasStoredKey
-                    ? `Switching to ${meta.label} keeps your saved ${meta.label} key. `
-                        + 'Course material must be prepared for the new platform before it becomes active — '
-                        + `${providerLabel(activeProvider)} keeps answering until then.`
-                    : `Switching to ${meta.label} needs a ${meta.label} key. `
-                        + 'Course material must then be prepared for the new platform before it becomes active — '
-                        + `${providerLabel(activeProvider)} keeps answering until then.`;
+                    ? `Your saved ${meta.label} key is kept separately. Prepare the material, then switch when it is ready. `
+                        + `${providerLabel(activeProvider)} keeps answering until you switch.`
+                    : `Save a ${meta.label} key, prepare the material, then switch. `
+                        + `${providerLabel(activeProvider)} keeps answering until you switch.`;
             } else {
                 note.hidden = true;
                 note.textContent = '';
@@ -288,6 +316,11 @@
             retry.hidden = !(migration.failures && migration.failures.length > 0);
         }
 
+        const cancel = document.getElementById(`${prefix}-llm-migration-cancel`);
+        if (cancel) {
+            cancel.hidden = !(migration.status === 'queued' || migration.status === 'running');
+        }
+
         return migration.status === 'queued' || migration.status === 'running';
     }
 
@@ -327,10 +360,24 @@
         return response.json();
     }
 
+    async function cancelMigration(migrationId) {
+        const response = await fetch(`/api/provider-migrations/${encodeURIComponent(migrationId)}/cancel`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include'
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+            throw new Error(result.message || 'Could not cancel preparation');
+        }
+        return result;
+    }
+
     global.LlmPlatform = {
         MIGRATION_POLL_MS,
         PROVIDERS,
         SUPPORT_EMAIL,
+        cancelMigration,
         describeMigration,
         providerLabel,
         providerMeta,

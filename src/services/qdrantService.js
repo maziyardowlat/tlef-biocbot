@@ -56,6 +56,9 @@ class QdrantService {
         this.chunker = null;
         this.llmConfigOverride = options.llmConfig || null;
         this.skipEmbeddings = options.skipEmbeddings === true;
+        this.shouldCancel = typeof options.shouldCancel === 'function'
+            ? options.shouldCancel
+            : null;
         this.onProviderKeyFailure = typeof options.onProviderKeyFailure === 'function'
             ? options.onProviderKeyFailure
             : null;
@@ -71,6 +74,15 @@ class QdrantService {
         this.embeddingModel = this.embeddingProfile.embeddingModel;
         this.collectionName = this.embeddingProfile.collection;
         this.vectorSize = this.embeddingProfile.vectorSize;
+    }
+
+    /** Stop a long embedding loop before it can write more migration data. */
+    async assertNotCancelled() {
+        if (this.shouldCancel && await this.shouldCancel()) {
+            const error = new Error('Migration cancelled');
+            error.code = 'MIGRATION_CANCELLED';
+            throw error;
+        }
     }
 
     /**
@@ -408,6 +420,7 @@ class QdrantService {
             }
 
             // Store chunks and embeddings in Qdrant
+            await this.assertNotCancelled();
             const storedChunks = await this.storeChunks(documentData, chunks, embeddings, strategyUsed);
             console.log(`Stored ${storedChunks.length} chunks in Qdrant`);
 
@@ -450,6 +463,7 @@ class QdrantService {
             const embeddings = [];
             
             for (let i = 0; i < chunks.length; i++) {
+                await this.assertNotCancelled();
                 const chunk = chunks[i];
                 console.log(`Processing chunk ${i + 1}/${chunks.length}: "${chunk.substring(0, 50)}..."`);
                 

@@ -322,6 +322,51 @@ document.addEventListener('DOMContentLoaded', async () => {
         return date.toLocaleString();
     }
 
+    async function llmProviderActionUrl(prefix, action) {
+        if (prefix === 'course') {
+            const courseId = await getCurrentCourseId();
+            if (!courseId) throw new Error('Select a course first');
+            const base = `/api/courses/${encodeURIComponent(courseId)}/llm-provider`;
+            return action === 'prepare' ? `${base}/prepare` : base;
+        }
+        if (prefix === 'superchat') {
+            if (!selectedSuperchatId) throw new Error('Select a bucket first');
+            const base = `/api/superchats/${encodeURIComponent(selectedSuperchatId)}/llm-provider`;
+            return action === 'prepare' ? `${base}/prepare` : base;
+        }
+        if (prefix === 'notes') {
+            const base = '/api/settings/notes-llm-key/provider';
+            return action === 'prepare' ? `${base}/prepare` : base;
+        }
+        const base = '/api/settings/instructor-superchat-llm-key/provider';
+        return action === 'prepare' ? `${base}/prepare` : base;
+    }
+
+    async function runLlmProviderAction(prefix, action) {
+        const provider = selectedLlmProvider(prefix);
+        const label = llmProviderLabel(provider);
+        const prompt = action === 'prepare'
+            ? `Prepare all current material for ${label}? This does not switch the active platform.`
+            : `Switch this AI surface to ${label}?`;
+        if (!confirm(prompt)) return;
+
+        const url = await llmProviderActionUrl(prefix, action);
+        const response = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ llmProvider: provider })
+        });
+        const result = await parseJsonResponse(response);
+        if (!response.ok || !result.success) {
+            throw new Error(result.message || `Could not ${action} ${label}`);
+        }
+
+        applyLlmSurfaceState(prefix, result, { resetSelection: false });
+        if (result.migration) watchLlmMigration(prefix, result.migration.migrationId);
+        showNotification(result.message, 'success');
+    }
+
     /**
      * Inject the shared GPT/Sandbox selector and migration panel into every
      * keyed surface, and keep help text + key status in sync with the choice.
@@ -373,6 +418,61 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }
                 });
             }
+
+            const prepare = document.getElementById(`${surface.prefix}-llm-prepare`);
+            if (prepare) {
+                prepare.addEventListener('click', async () => {
+                    prepare.disabled = true;
+                    try {
+                        await runLlmProviderAction(surface.prefix, 'prepare');
+                    } catch (error) {
+                        showNotification(error.message || 'Could not prepare material', 'error');
+                    } finally {
+                        window.LlmPlatform.refreshSelector(
+                            surface.prefix,
+                            llmSurfaceState[surface.prefix] || {}
+                        );
+                    }
+                });
+            }
+
+            const switchButton = document.getElementById(`${surface.prefix}-llm-switch`);
+            if (switchButton) {
+                switchButton.addEventListener('click', async () => {
+                    switchButton.disabled = true;
+                    try {
+                        await runLlmProviderAction(surface.prefix, 'switch');
+                    } catch (error) {
+                        showNotification(error.message || 'Could not switch platform', 'error');
+                    } finally {
+                        window.LlmPlatform.refreshSelector(
+                            surface.prefix,
+                            llmSurfaceState[surface.prefix] || {}
+                        );
+                    }
+                });
+            }
+
+            const cancel = document.getElementById(`${surface.prefix}-llm-migration-cancel`);
+            if (cancel) {
+                cancel.addEventListener('click', async () => {
+                    const panel = document.getElementById(`${surface.prefix}-llm-migration`);
+                    const migrationId = panel && panel.dataset.migrationId;
+                    if (!migrationId || !confirm(
+                        'Cancel this preparation and delete the partial vectors created for it?'
+                    )) return;
+                    cancel.disabled = true;
+                    try {
+                        const result = await window.LlmPlatform.cancelMigration(migrationId);
+                        window.LlmPlatform.renderMigration(surface.prefix, result.migration);
+                        await refreshLlmSurfaceState(surface.prefix);
+                        showNotification(result.message, 'success');
+                    } catch (error) {
+                        cancel.disabled = false;
+                        showNotification(error.message || 'Could not cancel preparation', 'error');
+                    }
+                });
+            }
         }
     }
 
@@ -384,8 +484,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             // MongoDB. Reload the whole surface state so the selector, saved-key
             // statuses and action label do not keep showing the pre-migration
             // provider until the instructor refreshes the page.
-            if (migration && migration.status === 'completed') {
-                refreshLlmSurfaceState(prefix).catch(error => {
+            if (migration && ['completed', 'failed', 'cancelled'].includes(migration.status)) {
+                const selected = selectedLlmProvider(prefix);
+                refreshLlmSurfaceState(prefix).then(() => {
+                    window.LlmPlatform.setProvider(prefix, selected);
+                    const state = llmSurfaceState[prefix] || {};
+                    window.LlmPlatform.refreshSelector(prefix, state);
+                    window.LlmPlatform.renderKeyStatus(prefix, state);
+                }).catch(error => {
                     console.error(`Error refreshing ${prefix} platform state:`, error);
                 });
             }
@@ -484,39 +590,10 @@ document.addEventListener('DOMContentLoaded', async () => {
      * the key and starts a migration (HTTP 202) instead of switching straight
      * away — course material has to be prepared for the new platform first.
      */
-    async function saveLlmKey({ inputId, statusPrefix, url, successMessage, switchUrl }) {
+    async function saveLlmKey({ inputId, statusPrefix, url, successMessage }) {
         const input = document.getElementById(inputId);
         const apiKey = input && input.value ? input.value.trim() : '';
         const llmProvider = selectedLlmProvider(statusPrefix);
-        const state = llmSurfaceState[statusPrefix] || {};
-        const storedKey = (state.llmKeysByProvider || {})[llmProvider];
-        const hasStoredKey = storedKey && storedKey.status && storedKey.status !== 'missing';
-
-        // Switching back to a platform whose key is already saved does not
-        // require re-entering it.
-        if (!apiKey && switchUrl && hasStoredKey && llmProvider !== state.llmProvider) {
-            const providerLabel = llmProviderLabel(llmProvider);
-            const confirmed = confirm(
-                `Switch to ${providerLabel} using the saved key? `
-                + 'Course material may need to be prepared before the switch becomes active.'
-            );
-            if (!confirmed) return null;
-
-            const switchResponse = await fetch(switchUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include',
-                body: JSON.stringify({ llmProvider })
-            });
-            const switchResult = await parseJsonResponse(switchResponse);
-            if (!switchResponse.ok || !switchResult.success) {
-                throw new Error(switchResult.message || 'Could not switch platform');
-            }
-            applyLlmSurfaceState(statusPrefix, switchResult, { resetSelection: false });
-            showNotification(switchResult.message || 'Switching platform', 'success');
-            return switchResult;
-        }
-
         if (!apiKey) {
             input?.focus();
             throw new Error(`Enter a ${llmProviderLabel(llmProvider)} API key first`);
@@ -530,6 +607,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
         const result = await parseJsonResponse(response);
         if (response.ok && result.success) {
+            input.value = '';
             applyLlmSurfaceState(statusPrefix, result, { resetSelection: false });
         } else if (result.llmKey) {
             renderLlmKeyStatus(statusPrefix, result.llmKey);
@@ -538,12 +616,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             throw new Error(result.message || 'API key validation failed');
         }
 
-        input.value = '';
-        // A staged switch returns 202 with its own explanatory message.
         showNotification(
-            response.status === 202
-                ? result.message
-                : (successMessage || result.message || 'API key saved'),
+            successMessage || result.message || 'API key saved',
             'success'
         );
         return result;
@@ -1710,7 +1784,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             inputId: 'course-llm-key-input',
             statusPrefix: 'course',
             url: `/api/courses/${encodeURIComponent(courseId)}/llm-key`,
-            switchUrl: `/api/courses/${encodeURIComponent(courseId)}/llm-provider`,
             successMessage: 'Course API key saved'
         });
     }, { busyLabel: 'Saving...' });
@@ -1731,7 +1804,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             inputId: 'superchat-llm-key-input',
             statusPrefix: 'superchat',
             url: `/api/superchats/${encodeURIComponent(selectedSuperchatId)}/llm-key`,
-            switchUrl: `/api/superchats/${encodeURIComponent(selectedSuperchatId)}/llm-provider`,
             successMessage: 'Bucket API key saved'
         });
         await loadSuperchatList(selectedSuperchatId);
@@ -1754,7 +1826,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             inputId: 'notes-llm-key-input',
             statusPrefix: 'notes',
             url: '/api/settings/notes-llm-key',
-            switchUrl: '/api/settings/notes-llm-key/provider',
             successMessage: 'Notes API key saved'
         });
     }, { busyLabel: 'Saving...' });
@@ -1772,7 +1843,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             inputId: 'instructor-superchat-llm-key-input',
             statusPrefix: 'instructor-superchat',
             url: '/api/settings/instructor-superchat-llm-key',
-            switchUrl: '/api/settings/instructor-superchat-llm-key/provider',
             successMessage: 'Instructor Super Course chat API key saved'
         });
     }, { busyLabel: 'Saving...' });

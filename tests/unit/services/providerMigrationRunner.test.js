@@ -469,6 +469,15 @@ describe('notes and mixed-provider surfaces', () => {
 });
 
 describe('restart resumability', () => {
+    test('lease retry waits until just after the previous heartbeat expires', () => {
+        const now = Date.now();
+        const heartbeatAt = new Date(now - 30_000);
+        expect(runner.leaseRetryDelay({ heartbeatAt }, now)).toBe(
+            migrations.LEASE_TIMEOUT_MS - 30_000 + 250
+        );
+        expect(runner.leaseRetryDelay({ heartbeatAt: null }, now)).toBe(250);
+    });
+
     test('resumePendingMigrations picks up queued and running jobs', async () => {
         const db = memoryDb({
             courses: [dualKeyCourse('openai')],

@@ -227,6 +227,18 @@ describe('leases and restart resumability', () => {
         const stored = await getMigration(db, job.migrationId);
         expect(stored.currentItem).toMatchObject({ itemId: 'd1', title: 'Lecture 1' });
     });
+
+    test('a late heartbeat cannot overwrite a lease owned by another worker', async () => {
+        const db = memoryDb({ documents: [{ documentId: 'd1', courseId: 'C1', content: 'text' }] });
+        const job = await queuedJob(db);
+        await claimMigration(db, job.migrationId, 'worker-1');
+
+        await heartbeat(db, job.migrationId, { itemId: 'wrong' }, 'worker-2');
+        expect((await getMigration(db, job.migrationId)).currentItem).toBeNull();
+
+        await heartbeat(db, job.migrationId, { itemId: 'right' }, 'worker-1');
+        expect((await getMigration(db, job.migrationId)).currentItem).toMatchObject({ itemId: 'right' });
+    });
 });
 
 describe('progress and retry', () => {

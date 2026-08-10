@@ -114,6 +114,47 @@ router.post('/:migrationId/retry', async (req, res) => {
 });
 
 /**
+ * POST /api/provider-migrations/:migrationId/cancel
+ * Stop the worker and delete only this job's partial target-profile data.
+ */
+router.post('/:migrationId/cancel', async (req, res) => {
+    try {
+        const db = requireDb(req, res);
+        if (!db) return;
+
+        const job = await migrations.getMigration(db, req.params.migrationId);
+        if (!job) {
+            return res.status(404).json({ success: false, message: 'Migration not found' });
+        }
+        if (!await canAccessMigration(db, req, job)) {
+            return res.status(403).json({ success: false, message: 'You do not have access to this migration' });
+        }
+        if (!migrations.ACTIVE_STATUSES.includes(job.status)) {
+            return res.status(409).json({
+                success: false,
+                message: `This migration is already ${job.status}`,
+                migration: migrations.publicMigrationView(job)
+            });
+        }
+
+        const result = await migrationRunner.cancelAndCleanup(
+            db,
+            req.params.migrationId,
+            req.user && req.user.userId
+        );
+        res.json({
+            success: true,
+            message: 'Preparation cancelled and its partial target data was deleted.',
+            migration: migrations.publicMigrationView(result.job),
+            cleanup: result.cleanup
+        });
+    } catch (error) {
+        console.error('Error cancelling migration:', error);
+        res.status(500).json({ success: false, message: 'Failed to cancel preparation' });
+    }
+});
+
+/**
  * GET /api/provider-migrations
  * All migrations (system admins) — used by the admin Platforms and Models
  * screen to show the impact of an embedding-model change.

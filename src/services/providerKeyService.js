@@ -142,10 +142,9 @@ async function loadSurface(db, scope) {
 /**
  * Save a key for a surface.
  *
- * Saving a key for the platform the surface already runs on activates it
- * immediately. Choosing a *different* platform stages the credential and starts
- * a migration — the surface keeps answering on its current platform until every
- * required index exists in the new platform's collection.
+ * Saving/replacing a key never implicitly starts a migration. The only special
+ * case is first-time setup: when the surface has no usable active credential,
+ * the first valid key becomes active immediately.
  *
  * @returns {Promise<Object>} Route-ready result (never contains key material)
  */
@@ -179,62 +178,102 @@ async function saveSurfaceKey(db, {
     }
 
     const credential = buildKeySubdocument(apiKey, updatedBy, requestedProvider);
-    const isSwitch = allowMigration
-        && hasExistingCredential
-        && requestedProvider !== currentProvider;
-
-    if (!isSwitch) {
-        await db.collection(target.collection).updateOne(
-            target.filter,
-            { $set: { ...credentialSetFields(requestedProvider, credential), updatedAt: new Date() } },
-            { upsert: target.collection === 'settings' }
-        );
-        evictScope(registry, scope);
-
-        const updated = await db.collection(target.collection).findOne(target.filter);
-        return {
-            ok: true,
-            httpStatus: 200,
-            body: {
-                success: true,
-                message: `${providerLabel(requestedProvider)} API key saved`,
-                ...publicProviderKeyState(updated),
-                migration: null
-            }
-        };
-    }
-
-    // --- Platform switch: stage, migrate, then activate ---------------------
+    const activate = !hasExistingCredential || requestedProvider === currentProvider;
     await db.collection(target.collection).updateOne(
         target.filter,
         {
             $set: {
-                ...credentialSetFields(requestedProvider, credential, { activate: false }),
-                pendingLlmProvider: requestedProvider,
+                ...credentialSetFields(requestedProvider, credential, { activate }),
                 updatedAt: new Date()
             }
-        }
+        },
+        { upsert: target.collection === 'settings' }
     );
+    evictScope(registry, scope);
+
+    const updated = await db.collection(target.collection).findOne(target.filter);
+    return {
+        ok: true,
+        httpStatus: 200,
+        body: {
+            success: true,
+            message: `${providerLabel(requestedProvider)} API key saved`,
+            ...publicProviderKeyState(updated),
+            migration: null
+        }
+    };
+}
+
+/**
+ * Prepare all content visible to a surface for a stored provider without
+ * changing which provider currently answers requests.
+ */
+async function prepareStoredProvider(db, { scope, provider, requestedBy = null }) {
+    const requestedProvider = normalizeProvider(provider);
+    const { target, doc } = await loadSurface(db, scope);
+    const state = readProviderState(doc);
+    const credential = state.credentials[requestedProvider];
+
+    if (!credential || !credential.ciphertext) {
+        return {
+            ok: false,
+            httpStatus: 400,
+            body: {
+                success: false,
+                code: 'LLM_KEY_MISSING',
+                message: `Save a ${providerLabel(requestedProvider)} API key before preparing material.`
+            }
+        };
+    }
+    if (credential.status !== KEY_STATUSES.VALID) {
+        return {
+            ok: false,
+            httpStatus: 400,
+            body: {
+                success: false,
+                code: errorCodeForStatus(credential.status),
+                message: `The saved ${providerLabel(requestedProvider)} key must be valid before preparing material.`
+            }
+        };
+    }
+
+    const active = await migrations.findActiveMigration(db, scope);
+    if (active) {
+        return {
+            ok: false,
+            httpStatus: 409,
+            body: {
+                success: false,
+                code: 'LLM_MIGRATION_ACTIVE',
+                message: 'Course material is already being prepared.',
+                migration: migrations.publicMigrationView(active)
+            }
+        };
+    }
 
     const profile = await embeddingProfileFor(db, requestedProvider);
     const { courseIds, includeNotes } = await migrationScopeContent(db, scope);
     const { job } = await migrations.createMigration(db, {
         scope,
-        kind: 'provider',
-        fromProvider: currentProvider,
+        kind: 'prepare',
+        fromProvider: state.activeProvider,
         toProvider: requestedProvider,
         profile,
         courseIds,
         includeNotes,
-        requestedBy: updatedBy
+        requestedBy
     });
 
     await db.collection(target.collection).updateOne(
         target.filter,
-        { $set: { providerMigrationId: job.migrationId, updatedAt: new Date() } }
+        {
+            $set: {
+                pendingLlmProvider: requestedProvider,
+                providerMigrationId: job.migrationId,
+                updatedAt: new Date()
+            }
+        }
     );
-
-    // Do NOT hold the request open while a whole course is re-indexed.
     migrationRunner.startMigration(db, job.migrationId);
 
     const updated = await db.collection(target.collection).findOne(target.filter);
@@ -243,8 +282,7 @@ async function saveSurfaceKey(db, {
         httpStatus: 202,
         body: {
             success: true,
-            message: `Preparing course material for ${providerLabel(requestedProvider)}. `
-                + `This surface keeps using ${providerLabel(currentProvider)} until preparation finishes.`,
+            message: `Preparing course material for ${providerLabel(requestedProvider)}.`,
             ...publicProviderKeyState(updated),
             migration: migrations.publicMigrationView(job)
         }
@@ -315,9 +353,8 @@ async function testSurfaceKey(db, { scope, provider = null, registry = null }) {
 }
 
 /**
- * Switch back to a platform whose credential is already stored, without asking
- * for the key again. Still runs a migration so any content added while the
- * other platform was active gets indexed for this one.
+ * Activate a stored provider only when all currently-visible content is already
+ * prepared for it. Preparation is an explicit action, separate from switching.
  */
 async function switchToStoredProvider(db, { scope, provider, requestedBy = null, registry = null }) {
     const requestedProvider = normalizeProvider(provider);
@@ -353,40 +390,36 @@ async function switchToStoredProvider(db, { scope, provider, requestedBy = null,
 
     const profile = await embeddingProfileFor(db, requestedProvider);
     const { courseIds, includeNotes } = await migrationScopeContent(db, scope);
-    const { job } = await migrations.createMigration(db, {
-        scope,
-        kind: 'provider',
-        fromProvider: state.activeProvider,
-        toProvider: requestedProvider,
-        profile,
-        courseIds,
-        includeNotes,
-        requestedBy
-    });
-
-    await db.collection(target.collection).updateOne(
-        target.filter,
-        {
-            $set: {
-                pendingLlmProvider: requestedProvider,
-                providerMigrationId: job.migrationId,
-                updatedAt: new Date()
+    const { items } = await migrations.calculateWork({ db, profile, courseIds, includeNotes });
+    if (items.length > 0) {
+        return {
+            ok: false,
+            httpStatus: 409,
+            body: {
+                success: false,
+                code: 'LLM_PROVIDER_NOT_PREPARED',
+                message: `${items.length} item(s) still need to be prepared for ${providerLabel(requestedProvider)}. `
+                    + `Choose “Prepare material for ${providerLabel(requestedProvider)}” first.`,
+                llmProvider: state.activeProvider,
+                needsPreparation: true,
+                unpreparedCount: items.length
             }
-        }
-    );
+        };
+    }
 
-    migrationRunner.startMigration(db, job.migrationId);
+    await migrations.activateProvider(db, scope, requestedProvider);
+    await migrations.abandonPendingProvider(db, scope);
     evictScope(registry, scope);
 
     const updated = await db.collection(target.collection).findOne(target.filter);
     return {
         ok: true,
-        httpStatus: 202,
+        httpStatus: 200,
         body: {
             success: true,
-            message: `Preparing course material for ${providerLabel(requestedProvider)}.`,
+            message: `Now using ${providerLabel(requestedProvider)}.`,
             ...publicProviderKeyState(updated),
-            migration: migrations.publicMigrationView(job)
+            migration: null
         }
     };
 }
@@ -412,6 +445,7 @@ module.exports = {
     errorCodeForStatus,
     evictScope,
     migrationScopeContent,
+    prepareStoredProvider,
     saveSurfaceKey,
     surfaceKeyState,
     switchToStoredProvider,

@@ -19,12 +19,38 @@ const NotesQdrantService = require('./notesQdrantService');
 const adminModelSettings = require('./adminModelSettings');
 const config = require('./config');
 const { buildEmbeddingProfile } = require('./embeddingConfig');
+const { clearIndexRecord } = require('./embeddingIndexService');
 const { credentialForProvider, decryptApiKey } = require('./llmKeyStore');
 const migrations = require('./providerMigrationService');
 
 const { ITEM_STATUSES, MIGRATION_STATUSES, MAX_ATTEMPTS } = migrations;
 
 const WORKER_ID = `worker_${randomUUID()}`;
+const ITEM_HEARTBEAT_MS = Math.max(1000, Math.floor(migrations.LEASE_TIMEOUT_MS / 3));
+const LEASE_RETRY_BUFFER_MS = 250;
+const migrationRetryTimers = new Map();
+
+function leaseRetryDelay(job, now = Date.now()) {
+    const heartbeatAt = job && job.heartbeatAt ? new Date(job.heartbeatAt).getTime() : 0;
+    if (!Number.isFinite(heartbeatAt) || heartbeatAt <= 0) return LEASE_RETRY_BUFFER_MS;
+    return Math.max(
+        LEASE_RETRY_BUFFER_MS,
+        heartbeatAt + migrations.LEASE_TIMEOUT_MS - now + LEASE_RETRY_BUFFER_MS
+    );
+}
+
+function scheduleLeaseRetry(db, migrationId, job, options = {}) {
+    if (migrationRetryTimers.has(migrationId)) return;
+    const delay = leaseRetryDelay(job);
+    console.log(`⏳ Migration ${migrationId} is leased by another worker; retrying in ${Math.ceil(delay / 1000)}s`);
+    const timer = setTimeout(() => {
+        migrationRetryTimers.delete(migrationId);
+        startMigration(db, migrationId, options);
+    }, delay);
+    // A lease retry should not keep a shutting-down Node process alive.
+    if (typeof timer.unref === 'function') timer.unref();
+    migrationRetryTimers.set(migrationId, timer);
+}
 
 /**
  * Which surface's encrypted credential pays for embedding a given item.
@@ -72,8 +98,8 @@ async function resolveTargetProfile(db, job, scope = job.scope) {
  * Vector services bound to one embedding profile. Documents and notes share the
  * base service so the embeddings client is created once per key.
  */
-async function createVectorServices(profile, { needNotes }) {
-    const qdrant = new QdrantService({ embeddingProfile: profile });
+async function createVectorServices(profile, { needNotes, shouldCancel = null }) {
+    const qdrant = new QdrantService({ embeddingProfile: profile, shouldCancel });
     await qdrant.initialize();
 
     let notesQdrant = null;
@@ -92,6 +118,10 @@ async function createVectorServices(profile, { needNotes }) {
  */
 function createServiceResolver(db, job) {
     const cache = new Map();
+    const shouldCancel = async () => {
+        const current = await migrations.getMigration(db, job.migrationId);
+        return !current || current.status === MIGRATION_STATUSES.CANCELLED;
+    };
 
     return async function servicesFor(item) {
         const scope = credentialScopeForItem(job, item);
@@ -105,7 +135,8 @@ function createServiceResolver(db, job) {
         try {
             const profile = await resolveTargetProfile(db, job, scope);
             const services = await createVectorServices(profile, {
-                needNotes: !!job.includeNotes || (item && item.itemType === 'note')
+                needNotes: !!job.includeNotes || (item && item.itemType === 'note'),
+                shouldCancel
             });
             const entry = { ...services, profile };
             cache.set(key, entry);
@@ -117,6 +148,85 @@ function createServiceResolver(db, job) {
             throw error;
         }
     };
+}
+
+/**
+ * Delete only the partial vectors and index records belonging to a cancelled
+ * job's target profile. Other providers' collections and encrypted keys are
+ * deliberately untouched. Safe to run repeatedly (the route and worker both
+ * call it to close races with an in-flight Qdrant write).
+ */
+async function cleanupMigrationTarget(db, migrationIdOrJob) {
+    const job = typeof migrationIdOrJob === 'string'
+        ? await migrations.getMigration(db, migrationIdOrJob)
+        : migrationIdOrJob;
+    if (!job || job.status !== MIGRATION_STATUSES.CANCELLED) return null;
+
+    const profile = buildEmbeddingProfile({
+        provider: job.targetProfile.provider,
+        embeddingModel: job.targetProfile.embeddingModel,
+        revision: job.targetProfile.revision
+    });
+    const qdrant = new QdrantService({
+        embeddingProfile: profile,
+        skipEmbeddings: true,
+        createCollectionIfMissing: false
+    });
+    await qdrant.initialize();
+
+    let deletedVectors = 0;
+    let clearedIndexRecords = 0;
+    let notesCollectionExists = null;
+    const uniqueItems = new Map((job.items || []).map(item => [`${item.itemType}:${item.itemId}`, item]));
+
+    for (const item of uniqueItems.values()) {
+        if (item.itemType === 'note') {
+            if (notesCollectionExists === null && qdrant.client) {
+                const collections = await qdrant.client.getCollections();
+                notesCollectionExists = (collections.collections || [])
+                    .some(collection => collection.name === profile.notesCollection);
+            }
+            if (notesCollectionExists) {
+                await qdrant.client.delete(profile.notesCollection, {
+                    filter: { must: [{ key: 'noteId', match: { value: item.itemId } }] }
+                });
+            }
+            await clearIndexRecord(db, {
+                collectionName: 'superchat_notes',
+                filter: { noteId: item.itemId },
+                profileKey: profile.storageKey
+            });
+            clearedIndexRecords += 1;
+            continue;
+        }
+
+        const result = await qdrant.deleteDocumentChunks(item.itemId, item.courseId || null);
+        if (result && result.success) deletedVectors += result.deletedCount || 0;
+        await clearIndexRecord(db, {
+            collectionName: 'documents',
+            filter: { documentId: item.itemId },
+            profileKey: profile.storageKey
+        });
+        clearedIndexRecords += 1;
+    }
+
+    await migrations.abandonPendingProvider(db, job.scope);
+    return {
+        migrationId: job.migrationId,
+        status: job.status,
+        targetCollection: profile.collection,
+        documents: [...uniqueItems.values()].filter(item => item.itemType === 'document').length,
+        notes: [...uniqueItems.values()].filter(item => item.itemType === 'note').length,
+        deletedVectors,
+        clearedIndexRecords
+    };
+}
+
+async function cancelAndCleanup(db, migrationId, cancelledBy = null) {
+    const job = await migrations.cancelMigration(db, migrationId, cancelledBy);
+    if (!job) return null;
+    const cleanup = await cleanupMigrationTarget(db, job);
+    return { job: await migrations.getMigration(db, migrationId), cleanup };
 }
 
 /**
@@ -265,11 +375,25 @@ async function runMigration(db, migrationId, options = {}) {
         }
 
         for (const item of queue) {
-            await migrations.heartbeat(db, migrationId, {
+            const beforeItem = await migrations.getMigration(db, migrationId);
+            if (!beforeItem || beforeItem.status === MIGRATION_STATUSES.CANCELLED) break;
+
+            const currentItem = {
                 itemType: item.itemType,
                 itemId: item.itemId,
                 title: item.title || null
-            });
+            };
+            await migrations.heartbeat(db, migrationId, currentItem, WORKER_ID);
+
+            let heartbeatInFlight = false;
+            const heartbeatTimer = setInterval(() => {
+                if (heartbeatInFlight) return;
+                heartbeatInFlight = true;
+                migrations.heartbeat(db, migrationId, currentItem, WORKER_ID)
+                    .catch(error => console.error(`⚠️ Migration ${migrationId} heartbeat failed:`, error.message))
+                    .finally(() => { heartbeatInFlight = false; });
+            }, ITEM_HEARTBEAT_MS);
+            if (typeof heartbeatTimer.unref === 'function') heartbeatTimer.unref();
 
             try {
                 const services = await servicesFor(item);
@@ -281,6 +405,11 @@ async function runMigration(db, migrationId, options = {}) {
                     skipReason: outcome.reason || null
                 });
             } catch (error) {
+                const currentJob = await migrations.getMigration(db, migrationId);
+                if (error.code === 'MIGRATION_CANCELLED'
+                    || (currentJob && currentJob.status === MIGRATION_STATUSES.CANCELLED)) {
+                    break;
+                }
                 const attempts = (item.attempts || 0) + 1;
                 await migrations.markItemFailed(db, item, profile, error);
                 await migrations.recordItemResult(db, migrationId, item.itemId, item.itemType, {
@@ -295,6 +424,8 @@ async function runMigration(db, migrationId, options = {}) {
                 if (attempts < MAX_ATTEMPTS) {
                     queue.push({ ...item, attempts });
                 }
+            } finally {
+                clearInterval(heartbeatTimer);
             }
 
             if (typeof options.onProgress === 'function') {
@@ -308,6 +439,10 @@ async function runMigration(db, migrationId, options = {}) {
     }
 
     job = await migrations.getMigration(db, migrationId);
+    if (!job || job.status === MIGRATION_STATUSES.CANCELLED) {
+        if (job) await cleanupMigrationTarget(db, job);
+        return migrations.getMigration(db, migrationId);
+    }
     const failed = (job.items || []).filter(item => item.status === ITEM_STATUSES.FAILED);
 
     if (failed.length > 0) {
@@ -339,6 +474,10 @@ async function runMigration(db, migrationId, options = {}) {
         await adminModelSettings.activatePendingEmbedding(db, job.targetProfile.provider);
     }
 
+    if (job.kind === 'prepare') {
+        await migrations.abandonPendingProvider(db, job.scope);
+    }
+
     await migrations.finishMigration(db, migrationId, MIGRATION_STATUSES.COMPLETED);
     return migrations.getMigration(db, migrationId);
 }
@@ -349,10 +488,19 @@ async function runMigration(db, migrationId, options = {}) {
  */
 function startMigration(db, migrationId, options = {}) {
     setImmediate(() => {
-        runMigration(db, migrationId, options).catch((error) => {
-            console.error(`❌ Migration ${migrationId} crashed:`, error.message);
-            migrations.finishMigration(db, migrationId, MIGRATION_STATUSES.FAILED, error).catch(() => {});
-        });
+        runMigration(db, migrationId, options)
+            .then((job) => {
+                // Startup can race the previous process's still-fresh lease.
+                // Retry when it expires instead of leaving a job permanently
+                // displayed as `running` with no worker behind it.
+                if (job && migrations.ACTIVE_STATUSES.includes(job.status) && job.leaseOwner !== WORKER_ID) {
+                    scheduleLeaseRetry(db, migrationId, job, options);
+                }
+            })
+            .catch((error) => {
+                console.error(`❌ Migration ${migrationId} crashed:`, error.message);
+                migrations.finishMigration(db, migrationId, MIGRATION_STATUSES.FAILED, error).catch(() => {});
+            });
     });
 }
 
@@ -375,7 +523,10 @@ async function resumePendingMigrations(db) {
 
 module.exports = {
     WORKER_ID,
+    cancelAndCleanup,
+    cleanupMigrationTarget,
     createVectorServices,
+    leaseRetryDelay,
     migrateDocument,
     migrateNote,
     resolveTargetProfile,
