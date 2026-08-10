@@ -910,14 +910,16 @@
                         <!-- Admin: platform & models -->
                         <div class="settings-panel" id="settings-panel-admin-platform" data-panel="admin-platform" hidden>
                             <h2 class="settings-panel-title" tabindex="-1">Platform &amp; models</h2>
-                            <section class="settings-section" id="llm-model-section" style="display: none;">
-                                <h3>LLM model</h3>
-                                <p class="section-description">Pick the model used for chat, question generation, and analysis across courses. The available models follow the configured LLM provider.</p>
+                            <!-- GPT platform. Instructors never see these controls; they
+                                 choose the platform label only. -->
+                            <section class="settings-section" id="llm-model-section" data-platform="openai" style="display: none;">
+                                <h3>GPT models</h3>
+                                <p class="section-description">Models used by every surface running on the GPT platform. Chat-model changes take effect immediately; an embedding-model change is staged and re-indexed before it becomes active.</p>
                                 <div class="settings-content">
                                     <div class="setting-item">
                                         <div class="setting-info">
-                                            <h4 id="llm-model-label">Model</h4>
-                                            <p id="llm-model-desc">Course-wide selection. Provider-specific reasoning controls appear when the selected model supports them.</p>
+                                            <h4 id="llm-model-label">Chat model</h4>
+                                            <p id="llm-model-desc">Applies to every GPT surface. Reasoning controls appear when the selected model supports them.</p>
                                         </div>
                                         <div class="setting-controls">
                                             <select id="llm-model-select" class="number-input" aria-labelledby="llm-model-label" aria-describedby="llm-model-desc">
@@ -942,10 +944,65 @@
                                             </select>
                                         </div>
                                     </div>
+                                    <div class="setting-item">
+                                        <div class="setting-info">
+                                            <h4 id="llm-embedding-label">Embedding model</h4>
+                                            <p id="llm-embedding-desc">Vectors live in a model-specific collection: <span id="llm-embedding-collection"></span>. Changing this stages a re-index; the current model stays active until it completes and no existing vectors are deleted.</p>
+                                            <p id="llm-embedding-pending" class="llm-embedding-pending" hidden></p>
+                                        </div>
+                                        <div class="setting-controls">
+                                            <select id="llm-embedding-select" class="number-input" aria-labelledby="llm-embedding-label" aria-describedby="llm-embedding-desc"></select>
+                                            <button id="apply-llm-embedding" class="secondary-button">Change embedding model</button>
+                                            <button id="rollback-llm-embedding" class="secondary-button" hidden>Cancel staged change</button>
+                                        </div>
+                                    </div>
                                 </div>
                                 <div class="settings-section-actions">
                                     <span class="settings-dirty-note" hidden>Unsaved changes</span>
                                     <button id="save-llm-settings" class="primary-button">Save model settings</button>
+                                </div>
+                            </section>
+
+                            <!-- Sandbox platform. All Sandbox processing stays on the UBC
+                                 Sandbox/B300; OpenAI is never used for a Sandbox surface. -->
+                            <section class="settings-section" id="sandbox-llm-model-section" data-platform="ubc-llm-sandbox" style="display: none;">
+                                <h3>Sandbox models</h3>
+                                <p class="section-description">Models used by every surface running on the UBC LLM Sandbox platform.</p>
+                                <div class="settings-content">
+                                    <div class="setting-item">
+                                        <div class="setting-info">
+                                            <h4 id="sandbox-llm-model-label">Chat model</h4>
+                                            <p id="sandbox-llm-model-desc">Applies to every Sandbox surface.</p>
+                                        </div>
+                                        <div class="setting-controls">
+                                            <select id="sandbox-llm-model-select" class="number-input" aria-labelledby="sandbox-llm-model-label" aria-describedby="sandbox-llm-model-desc"></select>
+                                        </div>
+                                    </div>
+                                    <div class="setting-item" id="sandbox-llm-reasoning-item" style="display: none;">
+                                        <div class="setting-info">
+                                            <h4 id="sandbox-llm-reasoning-label">Reasoning effort</h4>
+                                            <p id="sandbox-llm-reasoning-desc">For Qwen3, “none” disables thinking for short structured calls.</p>
+                                        </div>
+                                        <div class="setting-controls">
+                                            <select id="sandbox-llm-reasoning-select" class="number-input" aria-labelledby="sandbox-llm-reasoning-label" aria-describedby="sandbox-llm-reasoning-desc"></select>
+                                        </div>
+                                    </div>
+                                    <div class="setting-item">
+                                        <div class="setting-info">
+                                            <h4 id="sandbox-llm-embedding-label">Embedding model</h4>
+                                            <p id="sandbox-llm-embedding-desc">Vectors live in a model-specific collection: <span id="sandbox-llm-embedding-collection"></span>.</p>
+                                            <p id="sandbox-llm-embedding-pending" class="llm-embedding-pending" hidden></p>
+                                        </div>
+                                        <div class="setting-controls">
+                                            <select id="sandbox-llm-embedding-select" class="number-input" aria-labelledby="sandbox-llm-embedding-label" aria-describedby="sandbox-llm-embedding-desc"></select>
+                                            <button id="apply-sandbox-llm-embedding" class="secondary-button">Change embedding model</button>
+                                            <button id="rollback-sandbox-llm-embedding" class="secondary-button" hidden>Cancel staged change</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="settings-section-actions">
+                                    <span class="settings-dirty-note" hidden>Unsaved changes</span>
+                                    <button id="save-sandbox-llm-settings" class="primary-button">Save model settings</button>
                                 </div>
                             </section>
 

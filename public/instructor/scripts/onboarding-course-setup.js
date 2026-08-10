@@ -427,6 +427,68 @@ function isCreateModeSelection(value) {
     return value === '' || value === 'custom';
 }
 
+/**
+ * The AI platform the instructor picked in step 1 of onboarding.
+ * Instructors choose a platform label only — never a model.
+ */
+function selectedOnboardingProvider() {
+    if (window.LlmPlatform) return window.LlmPlatform.selectedProvider('onboarding');
+    const checked = document.querySelector('input[name="onboarding-llm-provider"]:checked');
+    return checked ? checked.value : 'openai';
+}
+
+function onboardingProviderLabel(provider) {
+    if (window.LlmPlatform) return window.LlmPlatform.providerLabel(provider);
+    return provider === 'ubc-llm-sandbox' ? 'Sandbox' : 'GPT';
+}
+
+/**
+ * Swap the key field's label, placeholder and help text to match the platform.
+ */
+function refreshOnboardingPlatformHelp() {
+    const provider = selectedOnboardingProvider();
+    const meta = window.LlmPlatform
+        ? window.LlmPlatform.providerMeta(provider)
+        : {
+            label: onboardingProviderLabel(provider),
+            helpText: provider === 'ubc-llm-sandbox'
+                ? 'Contact the LTIC team to request a UBC LLM Sandbox API key.'
+                : 'Feel free to use your own OpenAI API key, or contact the support team for assistance.',
+            keyPlaceholder: provider === 'ubc-llm-sandbox' ? 'UBC LLM Sandbox API key' : 'sk-...'
+        };
+
+    const label = document.getElementById('course-api-key-label');
+    if (label) label.textContent = `Course ${meta.label} API Key`;
+
+    const input = document.getElementById('course-api-key');
+    if (input) input.placeholder = meta.keyPlaceholder;
+
+    const help = document.getElementById('onboarding-llm-platform-help');
+    if (help) {
+        help.textContent = meta.helpText;
+        if (provider === 'openai') {
+            help.innerHTML = meta.helpText.replace(
+                'the support team',
+                '<a href="mailto:LT.hub@ubc.ca">the support team</a>'
+            );
+        }
+    }
+}
+
+function initOnboardingPlatformSelector() {
+    const radios = document.querySelectorAll('input[name="onboarding-llm-provider"]');
+    radios.forEach(radio => radio.addEventListener('change', refreshOnboardingPlatformHelp));
+    refreshOnboardingPlatformHelp();
+}
+
+if (typeof document !== 'undefined') {
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initOnboardingPlatformSelector);
+    } else {
+        initOnboardingPlatformSelector();
+    }
+}
+
 function handleCourseSelection(event) {
     const courseSelect = event.target;
     const customCourseSection = document.getElementById('custom-course-section');
@@ -651,6 +713,7 @@ async function handleCourseSetup(event) {
             document.getElementById('custom-course-name').value :
             formData.get('course'),
         apiKey: String(formData.get('apiKey') || '').trim(),
+        llmProvider: selectedOnboardingProvider(),
         weeks: weeks,
         lecturesPerWeek: lecturesPerWeek,
         totalUnits: weeks * lecturesPerWeek // Calculate total units
@@ -935,7 +998,8 @@ async function createCourse(courseData) {
                 lecturesPerWeek: courseData.lecturesPerWeek,
                 totalUnits: courseData.totalUnits
             },
-            apiKey: courseData.apiKey
+            apiKey: courseData.apiKey,
+            llmProvider: courseData.llmProvider || 'openai'
         };
         
         console.log('📋 [ONBOARDING] Prepared onboarding data:', onboardingData);
@@ -1028,7 +1092,8 @@ function validateCourseSetup() {
     // Only validate course structure fields if creating a new course
     if (createMode) {
         if (!apiKeyInput || !apiKeyInput.value.trim()) {
-            showFieldError(apiKeyInput, 'Enter the course OpenAI API key issued by the BiocBot team');
+            const platform = onboardingProviderLabel(selectedOnboardingProvider());
+            showFieldError(apiKeyInput, `Enter the ${platform} API key for this course`);
             isValid = false;
         }
 

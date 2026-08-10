@@ -426,6 +426,102 @@
     color: var(--danger-color);
 }
 
+/* ---------------------------------------------------------------------------
+   AI platform selector (GPT / Sandbox) + provider migration progress
+   Shared by the course, bucket, notes and instructor Super Course chat keys.
+   --------------------------------------------------------------------------- */
+.llm-platform-selector {
+    flex: 1 1 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+
+.llm-platform-choice {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 16px;
+    margin: 0;
+    padding: 8px 12px;
+    border: 1px solid var(--border-color, #d7d7d7);
+    border-radius: 6px;
+}
+
+.llm-platform-choice legend {
+    padding: 0 4px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.llm-platform-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.llm-platform-help,
+.llm-platform-change-note,
+.llm-embedding-pending {
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.llm-platform-change-note,
+.llm-embedding-pending {
+    padding: 6px 10px;
+    border-left: 3px solid var(--warning-color, #b7791f);
+    background: rgba(183, 121, 31, 0.08);
+    border-radius: 0 4px 4px 0;
+}
+
+.llm-migration {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color, #d7d7d7);
+    border-radius: 6px;
+    background: var(--surface-alt, #fafafa);
+}
+
+.llm-migration-status {
+    margin: 0 0 6px;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.llm-migration-progress {
+    width: 100%;
+    height: 8px;
+}
+
+.llm-migration-failures {
+    margin: 8px 0 0;
+    padding-left: 18px;
+    font-size: 13px;
+    color: var(--danger-color);
+}
+
+.llm-migration-failures:empty {
+    display: none;
+}
+
+.llm-migration-retry {
+    margin-top: 8px;
+}
+
+.llm-migration[data-status="failed"] {
+    border-color: var(--danger-color);
+}
+
+.llm-migration[data-status="completed"] .llm-migration-status {
+    color: #1f7a46;
+}
+
 /* Per-course Super Course bucket checklist */
 .superchat-checklist {
     display: flex;

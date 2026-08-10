@@ -51,6 +51,25 @@ document.addEventListener('DOMContentLoaded', async () => {
     let availableSuperchats = [];
     let llmReasoningEffortsByModel = {};
     let llmDefaultReasoningEffortByModel = {};
+    // Per-surface platform state (active platform, key status per platform, and
+    // any in-flight migration). Declared here because loadSettings() runs before
+    // the helper definitions further down would otherwise be evaluated.
+    const llmSurfaceState = {};
+    const llmMigrationWatchers = {};
+    const LLM_SURFACES = [
+        { prefix: 'course', statusId: 'course-llm-key-status' },
+        { prefix: 'superchat', statusId: 'superchat-llm-key-status' },
+        { prefix: 'notes', statusId: 'notes-llm-key-status' },
+        { prefix: 'instructor-superchat', statusId: 'instructor-superchat-llm-key-status' }
+    ];
+    // Element-id prefixes for each platform's admin model controls. GPT keeps
+    // the historical un-prefixed ids.
+    const LLM_PLATFORM_UI = {
+        openai: { idPrefix: 'llm', label: 'GPT' },
+        'ubc-llm-sandbox': { idPrefix: 'sandbox-llm', label: 'Sandbox' }
+    };
+    // Latest per-platform settings from /api/settings/llm, keyed by provider.
+    let llmPlatformSettings = {};
     // Buckets created in this session get a "New" badge until membership is saved.
     const newlyCreatedSuperchatIds = new Set();
 
@@ -230,6 +249,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             // Load course year level
             await loadCourseLevel();
+
+            // Inject the GPT/Sandbox selectors before any surface state loads
+            // so the first paint already reflects the chosen platform.
+            initLlmPlatformSelectors();
             await loadCourseLlmKey();
 
             // Load privacy settings (anonymize students)
@@ -299,6 +322,86 @@ document.addEventListener('DOMContentLoaded', async () => {
         return date.toLocaleString();
     }
 
+    /**
+     * Inject the shared GPT/Sandbox selector and migration panel into every
+     * keyed surface, and keep help text + key status in sync with the choice.
+     */
+    function initLlmPlatformSelectors() {
+        if (!window.LlmPlatform) return;
+
+        for (const surface of LLM_SURFACES) {
+            const statusElement = document.getElementById(surface.statusId);
+            if (!statusElement) continue;
+
+            const item = statusElement.closest('.setting-item') || statusElement.parentElement;
+            const controls = item ? item.querySelector('.llm-key-controls') : null;
+            if (!controls) continue;
+
+            window.LlmPlatform.renderSelector(surface.prefix, controls);
+            window.LlmPlatform.renderMigrationPanel(surface.prefix, item);
+
+            const radios = document.querySelectorAll(`input[name="${surface.prefix}-llm-provider"]`);
+            radios.forEach(radio => radio.addEventListener('change', () => {
+                const state = llmSurfaceState[surface.prefix] || {};
+                window.LlmPlatform.refreshSelector(surface.prefix, state);
+                window.LlmPlatform.renderKeyStatus(surface.prefix, state);
+            }));
+
+            const retry = document.getElementById(`${surface.prefix}-llm-migration-retry`);
+            if (retry) {
+                retry.addEventListener('click', async () => {
+                    const panel = document.getElementById(`${surface.prefix}-llm-migration`);
+                    const migrationId = panel && panel.dataset.migrationId;
+                    if (!migrationId) return;
+                    try {
+                        const result = await window.LlmPlatform.retryMigration(migrationId);
+                        if (result && result.migration) {
+                            window.LlmPlatform.renderMigration(surface.prefix, result.migration);
+                            watchLlmMigration(surface.prefix, migrationId);
+                        }
+                        showNotification('Retrying failed items', 'success');
+                    } catch (error) {
+                        showNotification('Could not retry the migration', 'error');
+                    }
+                });
+            }
+        }
+    }
+
+    function watchLlmMigration(prefix, migrationId) {
+        if (!window.LlmPlatform || !migrationId) return;
+        if (llmMigrationWatchers[prefix]) clearInterval(llmMigrationWatchers[prefix]);
+        llmMigrationWatchers[prefix] = window.LlmPlatform.watchMigration(prefix, migrationId);
+    }
+
+    /**
+     * Apply a surface's platform + key state to the UI.
+     * @param {string} prefix
+     * @param {Object} state - { llmProvider, llmKey, llmKeysByProvider, migration }
+     */
+    function applyLlmSurfaceState(prefix, state = {}, options = {}) {
+        llmSurfaceState[prefix] = state;
+        if (!window.LlmPlatform) {
+            renderLlmKeyStatus(prefix, state.llmKey);
+            return;
+        }
+
+        // While a migration runs, show the platform being migrated TO so the
+        // instructor sees what they asked for, not the still-active one.
+        if (options.resetSelection !== false) {
+            window.LlmPlatform.setProvider(prefix, state.pendingLlmProvider || state.llmProvider || 'openai');
+        }
+        window.LlmPlatform.refreshSelector(prefix, state);
+        window.LlmPlatform.renderKeyStatus(prefix, state);
+
+        if (state.migration) {
+            const running = window.LlmPlatform.renderMigration(prefix, state.migration);
+            if (running) watchLlmMigration(prefix, state.migration.migrationId);
+        } else {
+            window.LlmPlatform.renderMigration(prefix, null);
+        }
+    }
+
     function renderLlmKeyStatus(prefix, llmKey) {
         const statusElement = document.getElementById(`${prefix}-llm-key-status`);
         if (!statusElement) return;
@@ -336,22 +439,64 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    async function saveLlmKey({ inputId, statusPrefix, url, successMessage }) {
+    function selectedLlmProvider(statusPrefix) {
+        return window.LlmPlatform
+            ? window.LlmPlatform.selectedProvider(statusPrefix)
+            : 'openai';
+    }
+
+    function llmProviderLabel(provider) {
+        return window.LlmPlatform ? window.LlmPlatform.providerLabel(provider) : 'GPT';
+    }
+
+    /**
+     * Save a key for the platform selected on this surface.
+     *
+     * When the selected platform differs from the active one, the server stages
+     * the key and starts a migration (HTTP 202) instead of switching straight
+     * away — course material has to be prepared for the new platform first.
+     */
+    async function saveLlmKey({ inputId, statusPrefix, url, successMessage, switchUrl }) {
         const input = document.getElementById(inputId);
         const apiKey = input && input.value ? input.value.trim() : '';
+        const llmProvider = selectedLlmProvider(statusPrefix);
+        const state = llmSurfaceState[statusPrefix] || {};
+        const storedKey = (state.llmKeysByProvider || {})[llmProvider];
+        const hasStoredKey = storedKey && storedKey.status && storedKey.status !== 'missing';
+
+        // Switching back to a platform whose key is already saved does not
+        // require re-entering it.
+        if (!apiKey && switchUrl && hasStoredKey && llmProvider !== state.llmProvider) {
+            const switchResponse = await fetch(switchUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({ llmProvider })
+            });
+            const switchResult = await parseJsonResponse(switchResponse);
+            if (!switchResponse.ok || !switchResult.success) {
+                throw new Error(switchResult.message || 'Could not switch platform');
+            }
+            applyLlmSurfaceState(statusPrefix, switchResult, { resetSelection: false });
+            showNotification(switchResult.message || 'Switching platform', 'success');
+            return switchResult;
+        }
+
         if (!apiKey) {
             input?.focus();
-            throw new Error('Enter an OpenAI API key first');
+            throw new Error(`Enter a ${llmProviderLabel(llmProvider)} API key first`);
         }
 
         const response = await fetch(url, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
-            body: JSON.stringify({ apiKey })
+            body: JSON.stringify({ apiKey, llmProvider })
         });
         const result = await parseJsonResponse(response);
-        if (result.llmKey) {
+        if (response.ok && result.success) {
+            applyLlmSurfaceState(statusPrefix, result, { resetSelection: false });
+        } else if (result.llmKey) {
             renderLlmKeyStatus(statusPrefix, result.llmKey);
         }
         if (!response.ok || !result.success) {
@@ -359,19 +504,32 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         input.value = '';
-        showNotification(successMessage || result.message || 'API key saved', 'success');
+        // A staged switch returns 202 with its own explanatory message.
+        showNotification(
+            response.status === 202
+                ? result.message
+                : (successMessage || result.message || 'API key saved'),
+            'success'
+        );
         return result;
     }
 
     async function testSavedLlmKey({ statusPrefix, url, successMessage }) {
+        const llmProvider = selectedLlmProvider(statusPrefix);
         const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            credentials: 'include'
+            credentials: 'include',
+            body: JSON.stringify({ llmProvider })
         });
         const result = await parseJsonResponse(response);
         if (result.llmKey) {
-            renderLlmKeyStatus(statusPrefix, result.llmKey);
+            const state = llmSurfaceState[statusPrefix] || {};
+            const merged = {
+                ...state,
+                llmKeysByProvider: { ...(state.llmKeysByProvider || {}), [llmProvider]: result.llmKey }
+            };
+            applyLlmSurfaceState(statusPrefix, merged, { resetSelection: false });
         }
         if (!response.ok || !result.success) {
             throw new Error(result.message || 'Saved API key failed validation');
@@ -389,15 +547,29 @@ document.addEventListener('DOMContentLoaded', async () => {
                 return;
             }
 
-            const response = await fetch(`/api/courses/${encodeURIComponent(courseId)}`, {
+            const response = await fetch(`/api/courses/${encodeURIComponent(courseId)}/llm-key`, {
                 credentials: 'include'
             });
             const result = await parseJsonResponse(response);
-            if (response.ok && result.success && result.data) {
-                renderLlmKeyStatus('course', result.data.llmKey);
+            if (response.ok && result.success) {
+                applyLlmSurfaceState('course', result);
             }
         } catch (error) {
             console.error('Error loading course API key status:', error);
+        }
+    }
+
+    async function loadSuperchatLlmKeyState(superchatId) {
+        try {
+            const response = await fetch(`/api/superchats/${encodeURIComponent(superchatId)}/llm-key`, {
+                credentials: 'include'
+            });
+            const result = await parseJsonResponse(response);
+            if (response.ok && result.success) {
+                applyLlmSurfaceState('superchat', result);
+            }
+        } catch (error) {
+            console.error('Error loading bucket API key status:', error);
         }
     }
 
@@ -408,7 +580,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
             const result = await parseJsonResponse(response);
             if (response.ok && result.success) {
-                renderLlmKeyStatus('notes', result.llmKey);
+                applyLlmSurfaceState('notes', result);
             }
         } catch (error) {
             console.error('Error loading notes API key status:', error);
@@ -422,50 +594,206 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
             const result = await parseJsonResponse(response);
             if (response.ok && result.success) {
-                renderLlmKeyStatus('instructor-superchat', result.llmKey);
+                applyLlmSurfaceState('instructor-superchat', result);
             }
         } catch (error) {
             console.error('Error loading instructor Super Course chat API key status:', error);
         }
     }
 
-    async function loadLLMSettings() {
-        try {
-            const response = await fetch('/api/settings/llm', { credentials: 'include' });
-            const result = await response.json();
-            if (!result.success || !result.settings) return;
+    function fillSelect(select, values, selected) {
+        if (!select) return;
+        select.replaceChildren(...values.map(value => {
+            const option = document.createElement('option');
+            option.value = value;
+            option.textContent = value;
+            return option;
+        }));
+        if (selected && values.includes(selected)) select.value = selected;
+    }
 
-            const modelSelect = document.getElementById('llm-model-select');
-            const reasoningSelect = document.getElementById('llm-reasoning-select');
+    /**
+     * Render one platform's admin model controls: chat model, reasoning effort,
+     * embedding model, its Qdrant collection, and any staged embedding change.
+     */
+    function renderPlatformModelControls(platform) {
+        const ui = LLM_PLATFORM_UI[platform.provider];
+        if (!ui) return;
+        const { idPrefix } = ui;
+
+        const modelSelect = document.getElementById(`${idPrefix}-model-select`);
+        fillSelect(modelSelect, platform.allowedModels || [], platform.chatModel);
+
+        if (platform.provider === 'openai') {
+            // The shared reasoning helper is bound to the GPT controls.
+            llmReasoningEffortsByModel = platform.reasoningEffortsByModel || {};
+            llmDefaultReasoningEffortByModel = platform.defaultReasoningEffortByModel || {};
             if (modelSelect) {
-                const allowedModels = Array.isArray(result.settings.allowedModels)
-                    ? result.settings.allowedModels
-                    : [];
-                if (allowedModels.length > 0) {
-                    modelSelect.replaceChildren(...allowedModels.map(model => {
-                        const option = document.createElement('option');
-                        option.value = model;
-                        option.textContent = model;
-                        return option;
-                    }));
-                }
-                llmReasoningEffortsByModel = result.settings.reasoningEffortsByModel || {};
-                llmDefaultReasoningEffortByModel = result.settings.defaultReasoningEffortByModel || {};
-                modelSelect.value = result.settings.model;
                 modelSelect.removeEventListener('change', updateReasoningVisibility);
                 modelSelect.addEventListener('change', updateReasoningVisibility);
             }
             updateReasoningVisibility();
-            if (reasoningSelect) {
-                const available = llmReasoningEffortsByModel[result.settings.model] || [];
-                const modelDefault = llmDefaultReasoningEffortByModel[result.settings.model];
-                reasoningSelect.value = available.includes(result.settings.reasoningEffort)
-                    ? result.settings.reasoningEffort
-                    : (available.includes(modelDefault) ? modelDefault : (available[0] || 'minimal'));
+        }
+
+        const reasoningItem = document.getElementById(`${idPrefix}-reasoning-item`);
+        const reasoningSelect = document.getElementById(`${idPrefix}-reasoning-select`);
+        const efforts = (platform.reasoningEffortsByModel || {})[platform.chatModel] || [];
+        if (reasoningItem) reasoningItem.style.display = efforts.length > 0 ? '' : 'none';
+        if (reasoningSelect && platform.provider !== 'openai') {
+            fillSelect(reasoningSelect, efforts, platform.reasoningEffort);
+        } else if (reasoningSelect) {
+            const modelDefault = (platform.defaultReasoningEffortByModel || {})[platform.chatModel];
+            reasoningSelect.value = efforts.includes(platform.reasoningEffort)
+                ? platform.reasoningEffort
+                : (efforts.includes(modelDefault) ? modelDefault : (efforts[0] || 'minimal'));
+        }
+
+        fillSelect(
+            document.getElementById(`${idPrefix}-embedding-select`),
+            platform.allowedEmbeddingModels || [],
+            platform.embeddingModel
+        );
+
+        const collection = document.getElementById(`${idPrefix}-embedding-collection`);
+        if (collection) {
+            collection.textContent = `${platform.collection} (${platform.vectorSize} dimensions)`;
+        }
+
+        const pending = document.getElementById(`${idPrefix}-embedding-pending`);
+        const rollback = document.getElementById(`rollback-${idPrefix}-embedding`);
+        if (pending) {
+            if (platform.pendingEmbedding) {
+                pending.hidden = false;
+                pending.textContent = `Staged: ${platform.pendingEmbedding.embeddingModel}. `
+                    + `${platform.embeddingModel} stays active until re-indexing finishes.`;
+            } else {
+                pending.hidden = true;
+                pending.textContent = '';
+            }
+        }
+        if (rollback) rollback.hidden = !platform.pendingEmbedding;
+    }
+
+    async function loadLLMSettings() {
+        try {
+            const response = await fetch('/api/settings/llm', { credentials: 'include' });
+            const result = await response.json();
+            if (!result.success) return;
+
+            const platforms = Array.isArray(result.platforms) ? result.platforms : [];
+            llmPlatformSettings = {};
+            for (const platform of platforms) {
+                llmPlatformSettings[platform.provider] = platform;
+                renderPlatformModelControls(platform);
+            }
+
+            // Older server shape (single active platform) — keep the GPT group
+            // populated so the screen still works during a rolling deploy.
+            if (platforms.length === 0 && result.settings) {
+                renderPlatformModelControls({
+                    provider: 'openai',
+                    chatModel: result.settings.model,
+                    reasoningEffort: result.settings.reasoningEffort,
+                    allowedModels: result.settings.allowedModels || [],
+                    reasoningEffortsByModel: result.settings.reasoningEffortsByModel || {},
+                    defaultReasoningEffortByModel: result.settings.defaultReasoningEffortByModel || {},
+                    allowedEmbeddingModels: [],
+                    collection: '',
+                    vectorSize: ''
+                });
             }
         } catch (error) {
             console.error('Error loading LLM settings:', error);
         }
+    }
+
+    /**
+     * Save a platform's chat model + reasoning effort. Immediate — no vectors.
+     */
+    async function savePlatformChatModel(provider) {
+        const { idPrefix, label } = LLM_PLATFORM_UI[provider];
+        const chatModel = document.getElementById(`${idPrefix}-model-select`)?.value;
+        const reasoningEffort = document.getElementById(`${idPrefix}-reasoning-select`)?.value || 'minimal';
+        if (!chatModel) throw new Error('Select a model first');
+
+        const response = await fetch('/api/settings/llm', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ provider, chatModel, model: chatModel, reasoningEffort })
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+            throw new Error(result.error || 'Failed to save LLM settings');
+        }
+        showNotification(`${label} model settings saved`, 'success');
+    }
+
+    /**
+     * Stage an embedding-model change: show the admin the impact first, then
+     * create the migration. The previous model stays active throughout.
+     */
+    async function changePlatformEmbeddingModel(provider) {
+        const { idPrefix, label } = LLM_PLATFORM_UI[provider];
+        const embeddingModel = document.getElementById(`${idPrefix}-embedding-select`)?.value;
+        if (!embeddingModel) throw new Error('Select an embedding model first');
+
+        const current = llmPlatformSettings[provider];
+        if (current && current.embeddingModel === embeddingModel && !current.pendingEmbedding) {
+            showNotification(`${label} already uses this embedding model`, 'success');
+            return;
+        }
+
+        const impactResponse = await fetch('/api/settings/llm/embedding/impact', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ provider, embeddingModel })
+        });
+        const impact = await impactResponse.json();
+        if (!impactResponse.ok || !impact.success) {
+            throw new Error(impact.error || 'Could not calculate the impact of this change');
+        }
+
+        const confirmed = window.confirm(
+            `Change the ${label} embedding model to ${embeddingModel}?\n\n`
+            + `Surfaces affected: ${impact.impact.surfaces.length}\n`
+            + `Courses affected: ${impact.impact.courses}\n`
+            + `Items to re-index: ${impact.impact.itemsToReindex}\n`
+            + `Already current: ${impact.impact.itemsAlreadyCurrent}\n\n`
+            + `New collection: ${impact.profile.collection} (${impact.profile.vectorSize} dimensions).\n`
+            + 'The current embedding model stays active until re-indexing finishes. '
+            + 'No existing vectors or collections are deleted.'
+        );
+        if (!confirmed) return;
+
+        const response = await fetch('/api/settings/llm/embedding', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ provider, embeddingModel })
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+            throw new Error(result.error || 'Failed to stage the embedding model change');
+        }
+        showNotification(result.message || 'Re-indexing started', 'success');
+        await loadLLMSettings();
+    }
+
+    async function rollbackPlatformEmbeddingModel(provider) {
+        const response = await fetch('/api/settings/llm/embedding/rollback', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ provider })
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+            throw new Error(result.error || 'Failed to cancel the staged change');
+        }
+        showNotification(result.message || 'Staged change cancelled', 'success');
+        await loadLLMSettings();
     }
 
     async function loadAdminSettings() {
@@ -605,7 +933,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (nameInput) nameInput.value = (superchat && superchat.name) || '';
         if (yearSelect) yearSelect.value = (superchat && superchat.yearLevel) ? String(superchat.yearLevel) : '';
         if (showStudentToggle) showStudentToggle.checked = superchat && superchat.showToStudents === true;
-        renderLlmKeyStatus('superchat', superchat && superchat.llmKey);
+        applyLlmSurfaceState('superchat', superchat || {});
+        if (superchat && superchat.superchatId) loadSuperchatLlmKeyState(superchat.superchatId);
         fillSuperchatChatSettingsFields(s);
     }
 
@@ -1334,6 +1663,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             inputId: 'course-llm-key-input',
             statusPrefix: 'course',
             url: `/api/courses/${encodeURIComponent(courseId)}/llm-key`,
+            switchUrl: `/api/courses/${encodeURIComponent(courseId)}/llm-provider`,
             successMessage: 'Course API key saved'
         });
     }, { busyLabel: 'Saving...' });
@@ -1354,6 +1684,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             inputId: 'superchat-llm-key-input',
             statusPrefix: 'superchat',
             url: `/api/superchats/${encodeURIComponent(selectedSuperchatId)}/llm-key`,
+            switchUrl: `/api/superchats/${encodeURIComponent(selectedSuperchatId)}/llm-provider`,
             successMessage: 'Bucket API key saved'
         });
         await loadSuperchatList(selectedSuperchatId);
@@ -1376,6 +1707,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             inputId: 'notes-llm-key-input',
             statusPrefix: 'notes',
             url: '/api/settings/notes-llm-key',
+            switchUrl: '/api/settings/notes-llm-key/provider',
             successMessage: 'Notes API key saved'
         });
     }, { busyLabel: 'Saving...' });
@@ -1393,6 +1725,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             inputId: 'instructor-superchat-llm-key-input',
             statusPrefix: 'instructor-superchat',
             url: '/api/settings/instructor-superchat-llm-key',
+            switchUrl: '/api/settings/instructor-superchat-llm-key/provider',
             successMessage: 'Instructor Super Course chat API key saved'
         });
     }, { busyLabel: 'Saving...' });
@@ -1571,22 +1904,28 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Admin: platform & models
     wireSectionButton('save-llm-settings', async () => {
-        const model = document.getElementById('llm-model-select')?.value;
-        const reasoningEffort = document.getElementById('llm-reasoning-select')?.value || 'minimal';
-        if (!model) {
-            throw new Error('Select a model first');
-        }
-        const response = await fetch('/api/settings/llm', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ model, reasoningEffort })
-        });
-        const result = await response.json();
-        if (!response.ok || !result.success) {
-            throw new Error(result.error || 'Failed to save LLM settings');
-        }
-        showNotification('Model settings saved', 'success');
+        await savePlatformChatModel('openai');
     }, { busyLabel: 'Saving...' });
+
+    wireSectionButton('save-sandbox-llm-settings', async () => {
+        await savePlatformChatModel('ubc-llm-sandbox');
+    }, { busyLabel: 'Saving...' });
+
+    wireSectionButton('apply-llm-embedding', async () => {
+        await changePlatformEmbeddingModel('openai');
+    }, { busyLabel: 'Checking impact...' });
+
+    wireSectionButton('apply-sandbox-llm-embedding', async () => {
+        await changePlatformEmbeddingModel('ubc-llm-sandbox');
+    }, { busyLabel: 'Checking impact...' });
+
+    wireSectionButton('rollback-llm-embedding', async () => {
+        await rollbackPlatformEmbeddingModel('openai');
+    }, { busyLabel: 'Cancelling...' });
+
+    wireSectionButton('rollback-sandbox-llm-embedding', async () => {
+        await rollbackPlatformEmbeddingModel('ubc-llm-sandbox');
+    }, { busyLabel: 'Cancelling...' });
 
     // Admin: login restrictions
     wireSectionButton('save-access-settings', async () => {
@@ -2353,6 +2692,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             'mental-health-detection-section',
             'system-admin-section',
             'llm-model-section',
+            'sandbox-llm-model-section',
             'notes-llm-key-section',
             'instructor-superchat-llm-key-section'
         ];
