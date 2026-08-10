@@ -31,7 +31,7 @@ const providerKeys = require('../services/providerKeyService');
 const { normalizeProvider, providerCatalog } = require('../services/llmProviders');
 const {
     buildKeySubdocument,
-    credentialSetFields,
+    credentialDocumentFields,
     publicProviderKeyState,
     decryptApiKey,
     publicKeySummary,
@@ -241,9 +241,11 @@ router.post('/', async (req, res) => {
         }
 
         const llmApiKey = buildKeySubdocument(body.apiKey, req.user.userId, bucketProvider);
+        // createSuperchat inserts a document, so the credential must be nested
+        // rather than expressed as dotted $set paths.
         const doc = await SuperchatModel.createSuperchat(
             db,
-            { ...body, llmApiKey, ...credentialSetFields(bucketProvider, llmApiKey) },
+            { ...body, ...credentialDocumentFields(bucketProvider, llmApiKey) },
             req.user.userId
         );
         res.status(201).json({ success: true, superchat: summarize(doc, 0) });

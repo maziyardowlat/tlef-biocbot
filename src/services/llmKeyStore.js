@@ -321,6 +321,32 @@ function credentialSetFields(provider, credential, options = {}) {
 }
 
 /**
+ * Nested fields for a document being **inserted**, as opposed to updated.
+ *
+ * credentialSetFields() returns dotted `$set` paths, which MongoDB only
+ * interprets as paths inside an update operator. Spreading them into a document
+ * literal would create a field literally named `llmCredentials.openai`, so
+ * inserts must use this shape instead.
+ *
+ * @param {string} provider
+ * @param {Object} credential - Output of buildKeySubdocument()
+ * @returns {Object} Nested document fragment
+ */
+function credentialDocumentFields(provider, credential) {
+    const normalized = normalizeProvider(provider);
+    const fields = {
+        [ACTIVE_PROVIDER_FIELD]: normalized,
+        [CREDENTIALS_FIELD]: { [normalized]: credential }
+    };
+    // Keep the legacy field populated for OpenAI so any read path that has not
+    // been migrated yet still finds a working key.
+    if (normalized === PROVIDERS.OPENAI) {
+        fields.llmApiKey = credential;
+    }
+    return fields;
+}
+
+/**
  * Mongo `$set` fragment that activates an already-stored provider credential.
  */
 function activateProviderSetFields(provider, credential = null) {
@@ -647,6 +673,7 @@ module.exports = {
     activeCredential,
     activeProviderOf,
     buildKeySubdocument,
+    credentialDocumentFields,
     credentialForProvider,
     credentialSetFields,
     decryptActiveKey,

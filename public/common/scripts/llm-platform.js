@@ -152,15 +152,29 @@
             }
         }
 
-        const input = document.getElementById(`${prefix}-llm-key-input`);
-        if (input) input.placeholder = meta.keyPlaceholder;
-
         const activeProvider = state.llmProvider || 'openai';
+        const storedKey = (state.llmKeysByProvider || {})[provider];
+        const hasStoredKey = storedKey && storedKey.status && storedKey.status !== 'missing';
+        const isStoredKeySwitch = provider !== activeProvider && hasStoredKey;
+
+        const input = document.getElementById(`${prefix}-llm-key-input`);
+        const hasEnteredKey = !!(input && input.value && input.value.trim());
+        if (input) {
+            input.placeholder = isStoredKeySwitch
+                ? `Optional: enter a replacement ${meta.label} key`
+                : meta.keyPlaceholder;
+        }
+
+        const actionButton = document.getElementById(`save-${prefix}-llm-key`);
+        if (actionButton && !actionButton.disabled) {
+            actionButton.textContent = isStoredKeySwitch && !hasEnteredKey
+                ? `Switch to ${meta.label}`
+                : 'Save key';
+        }
+
         const note = document.getElementById(`${prefix}-llm-platform-change-note`);
         if (note) {
             if (provider !== activeProvider) {
-                const storedKey = (state.llmKeysByProvider || {})[provider];
-                const hasStoredKey = storedKey && storedKey.status && storedKey.status !== 'missing';
                 note.hidden = false;
                 note.textContent = hasStoredKey
                     ? `Switching to ${meta.label} keeps your saved ${meta.label} key. `

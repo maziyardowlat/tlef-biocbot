@@ -16,6 +16,7 @@ const { createId } = require('../services/id');
 const {
     activeProviderOf,
     buildKeySubdocument,
+    credentialDocumentFields,
     credentialSetFields,
     decryptApiKey,
     publicKeySummary,
@@ -2091,7 +2092,8 @@ router.post('/:courseId/transfer', async (req, res) => {
                 },
             isOnboardingComplete: true,
             status: 'active',
-            ...credentialSetFields(transferProvider, buildKeySubdocument(apiKey, user.userId, transferProvider)),
+            // Inserted document: nested fields, not dotted $set paths.
+            ...credentialDocumentFields(transferProvider, buildKeySubdocument(apiKey, user.userId, transferProvider)),
             lectures: targetLectures,
             createdAt: now,
             updatedAt: now,

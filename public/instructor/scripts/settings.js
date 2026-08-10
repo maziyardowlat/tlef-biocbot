@@ -347,6 +347,14 @@ document.addEventListener('DOMContentLoaded', async () => {
                 window.LlmPlatform.renderKeyStatus(surface.prefix, state);
             }));
 
+            const keyInput = document.getElementById(`${surface.prefix}-llm-key-input`);
+            if (keyInput) {
+                keyInput.addEventListener('input', () => {
+                    const state = llmSurfaceState[surface.prefix] || {};
+                    window.LlmPlatform.refreshSelector(surface.prefix, state);
+                });
+            }
+
             const retry = document.getElementById(`${surface.prefix}-llm-migration-retry`);
             if (retry) {
                 retry.addEventListener('click', async () => {
@@ -371,7 +379,27 @@ document.addEventListener('DOMContentLoaded', async () => {
     function watchLlmMigration(prefix, migrationId) {
         if (!window.LlmPlatform || !migrationId) return;
         if (llmMigrationWatchers[prefix]) clearInterval(llmMigrationWatchers[prefix]);
-        llmMigrationWatchers[prefix] = window.LlmPlatform.watchMigration(prefix, migrationId);
+        llmMigrationWatchers[prefix] = window.LlmPlatform.watchMigration(prefix, migrationId, (migration) => {
+            // A completed migration atomically changes the active provider in
+            // MongoDB. Reload the whole surface state so the selector, saved-key
+            // statuses and action label do not keep showing the pre-migration
+            // provider until the instructor refreshes the page.
+            if (migration && migration.status === 'completed') {
+                refreshLlmSurfaceState(prefix).catch(error => {
+                    console.error(`Error refreshing ${prefix} platform state:`, error);
+                });
+            }
+        });
+    }
+
+    async function refreshLlmSurfaceState(prefix) {
+        if (prefix === 'course') return loadCourseLlmKey();
+        if (prefix === 'superchat') {
+            return selectedSuperchatId ? loadSuperchatLlmKeyState(selectedSuperchatId) : undefined;
+        }
+        if (prefix === 'notes') return loadNotesLlmKey();
+        if (prefix === 'instructor-superchat') return loadInstructorSuperchatLlmKey();
+        return undefined;
     }
 
     /**
@@ -467,6 +495,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Switching back to a platform whose key is already saved does not
         // require re-entering it.
         if (!apiKey && switchUrl && hasStoredKey && llmProvider !== state.llmProvider) {
+            const providerLabel = llmProviderLabel(llmProvider);
+            const confirmed = confirm(
+                `Switch to ${providerLabel} using the saved key? `
+                + 'Course material may need to be prepared before the switch becomes active.'
+            );
+            if (!confirmed) return null;
+
             const switchResponse = await fetch(switchUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
