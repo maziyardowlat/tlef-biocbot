@@ -15,8 +15,14 @@
  *       status: 'ready' | 'pending' | 'failed' | 'missing',
  *       indexedAt, error
  *     },
- *     'ubc-llm-sandbox:qwen3-embedding-0.6b:v1': { ... }
+ *     'ubc-llm-sandbox:qwen3-embedding-0_6b:v1': { ... }
  *   }
+ *
+ * Note the map key uses the profile's `storageKey`, which is the profile key
+ * with dots replaced by underscores. MongoDB reads a dot in an update key as a
+ * path separator, and `qwen3-embedding-0.6b` contains one — the raw key would
+ * silently create a nested object instead of one map entry. Each record still
+ * carries provider/model/revision, so the exact model is never ambiguous.
  *
  * Indexes for different profiles are independent: switching a course to Sandbox
  * adds a Qwen index and leaves the OpenAI one intact, so switching back reuses
@@ -91,7 +97,9 @@ const LEGACY_PROFILE = Object.freeze({
     provider: 'openai',
     model: 'text-embedding-3-small',
     revision: 'v1',
-    key: 'openai:text-embedding-3-small:v1'
+    key: 'openai:text-embedding-3-small:v1',
+    // No dots in this key, so the storage form is identical.
+    storageKey: 'openai:text-embedding-3-small:v1'
 });
 
 function hasLegacyVectors(doc) {
@@ -132,7 +140,7 @@ function indexesOf(doc) {
         : {};
 
     if (Object.keys(stored).length > 0 || !hasLegacyVectors(doc)) return stored;
-    return { [LEGACY_PROFILE.key]: legacyIndexRecord(doc) };
+    return { [LEGACY_PROFILE.storageKey]: legacyIndexRecord(doc) };
 }
 
 /**
@@ -147,7 +155,7 @@ function indexesOf(doc) {
  * @returns {boolean}
  */
 function needsIndexing(doc, profile, expectedHash) {
-    const record = indexesOf(doc)[profile.key];
+    const record = indexesOf(doc)[profile.storageKey];
     if (!record) return true;
     if (record.status !== INDEX_STATUSES.READY) return true;
     if (!record.contentHash || record.contentHash !== expectedHash) return true;
@@ -161,7 +169,7 @@ function needsIndexing(doc, profile, expectedHash) {
  * progress so an instructor can see why an item is being re-embedded.
  */
 function indexingReason(doc, profile, expectedHash) {
-    const record = indexesOf(doc)[profile.key];
+    const record = indexesOf(doc)[profile.storageKey];
     if (!record) return 'missing';
     if (record.status !== INDEX_STATUSES.READY) return record.status === INDEX_STATUSES.FAILED ? 'failed' : 'not-ready';
     if (record.contentHash !== expectedHash) return 'content-changed';
@@ -208,7 +216,7 @@ function buildIndexRecord({ profile, hash, status, error = null, indexedAt = nul
 async function setIndexRecord(db, collectionName, filter, profile, record) {
     await db.collection(collectionName).updateOne(
         filter,
-        { $set: { [`embeddingIndexes.${profile.key}`]: record, updatedAt: new Date() } }
+        { $set: { [`embeddingIndexes.${profile.storageKey}`]: record, updatedAt: new Date() } }
     );
 }
 
@@ -343,7 +351,7 @@ async function deleteDocumentFromAllCollections(db, doc, serviceFactory) {
     if (targets.length === 0) {
         // Pre-tracking document: it can only be in the legacy collection.
         targets.push({
-            profileKey: 'openai:text-embedding-3-small:v1',
+            profileKey: LEGACY_PROFILE.storageKey,
             collection: documentsCollectionBase(),
             provider: 'openai',
             model: 'text-embedding-3-small'

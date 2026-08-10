@@ -914,7 +914,7 @@
                                  choose the platform label only. -->
                             <section class="settings-section" id="llm-model-section" data-platform="openai" style="display: none;">
                                 <h3>GPT models</h3>
-                                <p class="section-description">Models used by every surface running on the GPT platform. Chat-model changes take effect immediately; an embedding-model change is staged and re-indexed before it becomes active.</p>
+                                <p class="section-description">Models used by every surface running on the GPT platform. Saving applies chat-model changes immediately; an embedding-model change is staged and re-indexed before it becomes active.</p>
                                 <div class="settings-content">
                                     <div class="setting-item">
                                         <div class="setting-info">
@@ -947,12 +947,12 @@
                                     <div class="setting-item">
                                         <div class="setting-info">
                                             <h4 id="llm-embedding-label">Embedding model</h4>
-                                            <p id="llm-embedding-desc">Vectors live in a model-specific collection: <span id="llm-embedding-collection"></span>. Changing this stages a re-index; the current model stays active until it completes and no existing vectors are deleted.</p>
+                                            <p id="llm-embedding-desc">Saving a different embedding model shows you the re-indexing impact first, then stages it. The current model stays active until re-indexing finishes, and no existing vectors are deleted.</p>
+                                            <p class="llm-embedding-collection-note">Collection: <span id="llm-embedding-collection"></span></p>
                                             <p id="llm-embedding-pending" class="llm-embedding-pending" hidden></p>
                                         </div>
-                                        <div class="setting-controls">
+                                        <div class="setting-controls llm-embedding-controls">
                                             <select id="llm-embedding-select" class="number-input" aria-labelledby="llm-embedding-label" aria-describedby="llm-embedding-desc"></select>
-                                            <button id="apply-llm-embedding" class="secondary-button">Change embedding model</button>
                                             <button id="rollback-llm-embedding" class="secondary-button" hidden>Cancel staged change</button>
                                         </div>
                                     </div>
@@ -990,12 +990,12 @@
                                     <div class="setting-item">
                                         <div class="setting-info">
                                             <h4 id="sandbox-llm-embedding-label">Embedding model</h4>
-                                            <p id="sandbox-llm-embedding-desc">Vectors live in a model-specific collection: <span id="sandbox-llm-embedding-collection"></span>.</p>
+                                            <p id="sandbox-llm-embedding-desc">Saving a different embedding model shows you the re-indexing impact first, then stages it. The current model stays active until re-indexing finishes.</p>
+                                            <p class="llm-embedding-collection-note">Collection: <span id="sandbox-llm-embedding-collection"></span></p>
                                             <p id="sandbox-llm-embedding-pending" class="llm-embedding-pending" hidden></p>
                                         </div>
-                                        <div class="setting-controls">
+                                        <div class="setting-controls llm-embedding-controls">
                                             <select id="sandbox-llm-embedding-select" class="number-input" aria-labelledby="sandbox-llm-embedding-label" aria-describedby="sandbox-llm-embedding-desc"></select>
-                                            <button id="apply-sandbox-llm-embedding" class="secondary-button">Change embedding model</button>
                                             <button id="rollback-sandbox-llm-embedding" class="secondary-button" hidden>Cancel staged change</button>
                                         </div>
                                     </div>

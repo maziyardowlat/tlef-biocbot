@@ -480,6 +480,36 @@
     border-radius: 0 4px 4px 0;
 }
 
+/* Admin platform groups: keep the GPT and Sandbox rows visually aligned, and
+   stop the multi-word buttons from wrapping into narrow columns. */
+#llm-model-section .setting-controls > select,
+#sandbox-llm-model-section .setting-controls > select {
+    min-width: 220px;
+}
+
+.llm-embedding-controls {
+    flex-shrink: 1;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.llm-embedding-controls .secondary-button {
+    white-space: nowrap;
+}
+
+.llm-embedding-collection-note {
+    margin: 6px 0 0;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.llm-embedding-collection-note span {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    word-break: break-all;
+}
+
 .llm-migration {
     margin-top: 12px;
     padding: 10px 12px;

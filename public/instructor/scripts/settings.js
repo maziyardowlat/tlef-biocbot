@@ -708,9 +708,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     /**
-     * Save a platform's chat model + reasoning effort. Immediate — no vectors.
+     * Save everything in a platform's model section.
+     *
+     * The chat model and reasoning effort apply immediately. If the embedding
+     * model was also changed, the admin is shown the re-indexing impact and, on
+     * confirmation, the change is staged — one Save button, no second control
+     * that silently owns half the section.
      */
-    async function savePlatformChatModel(provider) {
+    async function savePlatformModelSettings(provider) {
         const { idPrefix, label } = LLM_PLATFORM_UI[provider];
         const chatModel = document.getElementById(`${idPrefix}-model-select`)?.value;
         const reasoningEffort = document.getElementById(`${idPrefix}-reasoning-select`)?.value || 'minimal';
@@ -726,22 +731,28 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!response.ok || !result.success) {
             throw new Error(result.error || 'Failed to save LLM settings');
         }
-        showNotification(`${label} model settings saved`, 'success');
+
+        const embeddingChanged = await changePlatformEmbeddingModel(provider);
+        if (!embeddingChanged) {
+            showNotification(`${label} model settings saved`, 'success');
+        }
     }
 
     /**
      * Stage an embedding-model change: show the admin the impact first, then
      * create the migration. The previous model stays active throughout.
+     *
+     * @returns {Promise<boolean>} true when a change was actually staged
      */
     async function changePlatformEmbeddingModel(provider) {
         const { idPrefix, label } = LLM_PLATFORM_UI[provider];
         const embeddingModel = document.getElementById(`${idPrefix}-embedding-select`)?.value;
-        if (!embeddingModel) throw new Error('Select an embedding model first');
+        if (!embeddingModel) return false;
 
+        // Unchanged embedding model: nothing to re-index.
         const current = llmPlatformSettings[provider];
         if (current && current.embeddingModel === embeddingModel && !current.pendingEmbedding) {
-            showNotification(`${label} already uses this embedding model`, 'success');
-            return;
+            return false;
         }
 
         const impactResponse = await fetch('/api/settings/llm/embedding/impact', {
@@ -765,7 +776,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             + 'The current embedding model stays active until re-indexing finishes. '
             + 'No existing vectors or collections are deleted.'
         );
-        if (!confirmed) return;
+        if (!confirmed) return false;
 
         const response = await fetch('/api/settings/llm/embedding', {
             method: 'POST',
@@ -779,6 +790,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         showNotification(result.message || 'Re-indexing started', 'success');
         await loadLLMSettings();
+        return true;
     }
 
     async function rollbackPlatformEmbeddingModel(provider) {
@@ -1904,20 +1916,12 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Admin: platform & models
     wireSectionButton('save-llm-settings', async () => {
-        await savePlatformChatModel('openai');
+        await savePlatformModelSettings('openai');
     }, { busyLabel: 'Saving...' });
 
     wireSectionButton('save-sandbox-llm-settings', async () => {
-        await savePlatformChatModel('ubc-llm-sandbox');
+        await savePlatformModelSettings('ubc-llm-sandbox');
     }, { busyLabel: 'Saving...' });
-
-    wireSectionButton('apply-llm-embedding', async () => {
-        await changePlatformEmbeddingModel('openai');
-    }, { busyLabel: 'Checking impact...' });
-
-    wireSectionButton('apply-sandbox-llm-embedding', async () => {
-        await changePlatformEmbeddingModel('ubc-llm-sandbox');
-    }, { busyLabel: 'Checking impact...' });
 
     wireSectionButton('rollback-llm-embedding', async () => {
         await rollbackPlatformEmbeddingModel('openai');

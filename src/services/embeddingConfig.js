@@ -97,6 +97,20 @@ function embeddingProfileKey({ provider, embeddingModel, model, revision } = {})
     return `${provider}:${usedModel}:${revision || DEFAULT_PROFILE_REVISION}`;
 }
 
+/**
+ * MongoDB treats a dot in an update key as a path separator, and embedding
+ * model ids contain dots (`qwen3-embedding-0.6b`). Using the raw profile key as
+ * an `embeddingIndexes` map key would therefore write a nested object instead
+ * of one entry, so the map is keyed by this dot-free form.
+ *
+ * The readable identity is preserved: each stored record still carries
+ * provider / model / revision, and `profile.key` keeps its dots for API
+ * responses and job fields (which are values, not field names).
+ */
+function profileStorageKey(key) {
+    return String(key || '').replace(/\./g, '_');
+}
+
 function parseEmbeddingProfileKey(key) {
     const parts = String(key || '').split(':');
     if (parts.length < 3) return null;
@@ -161,8 +175,12 @@ function buildEmbeddingProfile({
     const documentsBase = documentsCollectionBase();
     const notesBase = notesCollectionBase();
 
+    const key = embeddingProfileKey({ provider: normalizedProvider, embeddingModel, revision });
+
     return {
-        key: embeddingProfileKey({ provider: normalizedProvider, embeddingModel, revision }),
+        key,
+        // Mongo-safe map key for `embeddingIndexes` (see profileStorageKey).
+        storageKey: profileStorageKey(key),
         provider: normalizedProvider,
         embeddingModel,
         revision,
@@ -182,6 +200,7 @@ function publicProfileSummary(profile) {
     if (!profile) return null;
     return {
         key: profile.key,
+        storageKey: profile.storageKey,
         provider: profile.provider,
         embeddingModel: profile.embeddingModel,
         revision: profile.revision,
@@ -210,6 +229,7 @@ module.exports = {
     modelCollectionSuffix,
     parseEmbeddingProfileKey,
     positiveInteger,
+    profileStorageKey,
     publicProfileSummary,
     sameProfile,
     vectorSizeForEmbeddingModel
