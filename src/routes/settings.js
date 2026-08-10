@@ -12,6 +12,13 @@ const CourseModel = require('../models/Course');
 const SuperchatModel = require('../models/Superchat');
 const { hasSystemAdminAccess, normalizeEmail } = require('../services/authorization');
 const {
+    catalogForProvider,
+    configuredDefaultModel,
+    configuredProvider,
+    normalizeReasoningEffort,
+    supportsReasoning
+} = require('../services/llmModels');
+const {
     buildKeySubdocument,
     decryptApiKey,
     publicKeySummary,
@@ -907,22 +914,6 @@ router.post('/global', async (req, res) => {
     }
 });
 
-const ALLOWED_LLM_MODELS = ['gpt-4.1-mini', 'gpt-5-nano', 'gpt-5.4-nano', 'gpt-5.6-luna'];
-const ALLOWED_REASONING_EFFORTS = ['minimal', 'low', 'medium', 'high'];
-const MODELS_WITHOUT_MINIMAL_REASONING = new Set(['gpt-5.4-nano', 'gpt-5.6-luna']);
-
-function isGpt5Family(model) {
-    return typeof model === 'string' && model.startsWith('gpt-5');
-}
-
-function normalizeReasoningEffort(model, reasoningEffort) {
-    if (!isGpt5Family(model)) return 'minimal';
-    const fallback = MODELS_WITHOUT_MINIMAL_REASONING.has(model) ? 'low' : 'minimal';
-    if (!ALLOWED_REASONING_EFFORTS.includes(reasoningEffort)) return fallback;
-    if (reasoningEffort === 'minimal' && MODELS_WITHOUT_MINIMAL_REASONING.has(model)) return 'low';
-    return reasoningEffort;
-}
-
 // Obfuscated index maps for the body-class debug tag.
 // Numbers are intentionally meaningless to end users; only the dev team
 // knows that e.g. "llm-2 reasoning-1" = gpt-5-nano + minimal.
@@ -931,13 +922,18 @@ const LLM_TAG_INDEX = {
     'gpt-4.1-mini': 1,
     'gpt-5-nano': 2,
     'gpt-5.4-nano': 3,
-    'gpt-5.6-luna': 4
+    'gpt-5.6-luna': 4,
+    'qwen3.6-35b-a3b': 5,
+    'gpt-oss-120b': 6
 };
 const REASONING_TAG_INDEX = {
     minimal: 1,
     low: 2,
     medium: 3,
-    high: 4
+    high: 4,
+    none: 5,
+    xhigh: 6,
+    max: 7
 };
 
 /**
@@ -950,27 +946,25 @@ const REASONING_TAG_INDEX = {
 router.get('/llm-tag', async (req, res) => {
     try {
         const db = req.app.locals.db;
-        const envDefault = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
-        const fallbackModel = ALLOWED_LLM_MODELS.includes(envDefault) ? envDefault : 'gpt-4.1-mini';
+        const provider = configuredProvider();
+        const catalog = catalogForProvider(provider, configuredDefaultModel(provider));
 
-        let model = fallbackModel;
-        let reasoningEffort = normalizeReasoningEffort(model);
+        let model = catalog.defaultModel;
+        let reasoningEffort = normalizeReasoningEffort(provider, model);
 
         if (db) {
             const settingsDoc = await db.collection('settings').findOne({ _id: 'llm' });
             if (settingsDoc) {
-                if (ALLOWED_LLM_MODELS.includes(settingsDoc.model)) model = settingsDoc.model;
-                if (ALLOWED_REASONING_EFFORTS.includes(settingsDoc.reasoningEffort)) {
-                    reasoningEffort = settingsDoc.reasoningEffort;
-                }
+                if (catalog.allowedModels.includes(settingsDoc.model)) model = settingsDoc.model;
+                reasoningEffort = normalizeReasoningEffort(provider, model, settingsDoc.reasoningEffort);
             }
         }
-        reasoningEffort = normalizeReasoningEffort(model, reasoningEffort);
+        reasoningEffort = normalizeReasoningEffort(provider, model, reasoningEffort);
 
         res.json({
             success: true,
             llmIndex: LLM_TAG_INDEX[model] || 0,
-            reasoningIndex: isGpt5Family(model) ? (REASONING_TAG_INDEX[reasoningEffort] || 0) : 0
+            reasoningIndex: supportsReasoning(provider, model) ? (REASONING_TAG_INDEX[reasoningEffort] || 0) : 0
         });
     } catch (error) {
         console.error('Error fetching LLM tag:', error);
@@ -994,22 +988,24 @@ router.get('/llm', async (req, res) => {
         }
 
         const settingsDoc = await db.collection('settings').findOne({ _id: 'llm' });
-        const envDefault = process.env.OPENAI_MODEL || 'gpt-4.1-mini';
-        const fallbackModel = ALLOWED_LLM_MODELS.includes(envDefault) ? envDefault : 'gpt-4.1-mini';
+        const provider = configuredProvider();
+        const catalog = catalogForProvider(provider, configuredDefaultModel(provider));
 
-        const model = (settingsDoc && ALLOWED_LLM_MODELS.includes(settingsDoc.model))
+        const model = (settingsDoc && catalog.allowedModels.includes(settingsDoc.model))
             ? settingsDoc.model
-            : fallbackModel;
-        const reasoningEffort = normalizeReasoningEffort(model, settingsDoc && settingsDoc.reasoningEffort);
+            : catalog.defaultModel;
+        const reasoningEffort = normalizeReasoningEffort(provider, model, settingsDoc && settingsDoc.reasoningEffort);
 
         res.json({
             success: true,
             settings: {
                 model,
                 reasoningEffort,
-                supportsReasoning: isGpt5Family(model),
-                allowedModels: ALLOWED_LLM_MODELS,
-                allowedReasoningEfforts: ALLOWED_REASONING_EFFORTS
+                supportsReasoning: supportsReasoning(provider, model),
+                allowedModels: catalog.allowedModels,
+                allowedReasoningEfforts: catalog.reasoningEffortsByModel[model] || [],
+                reasoningEffortsByModel: catalog.reasoningEffortsByModel,
+                provider
             }
         });
     } catch (error) {
@@ -1034,11 +1030,13 @@ router.post('/llm', async (req, res) => {
         }
 
         const { model, reasoningEffort } = req.body || {};
+        const provider = configuredProvider();
+        const catalog = catalogForProvider(provider, configuredDefaultModel(provider));
 
-        if (!ALLOWED_LLM_MODELS.includes(model)) {
+        if (!catalog.allowedModels.includes(model)) {
             return res.status(400).json({
                 success: false,
-                error: `Invalid model. Allowed: ${ALLOWED_LLM_MODELS.join(', ')}`
+                error: `Invalid model for ${provider}. Allowed: ${catalog.allowedModels.join(', ')}`
             });
         }
 
@@ -1048,11 +1046,7 @@ router.post('/llm', async (req, res) => {
             updatedBy: normalizeEmail(req.user.email)
         };
 
-        if (isGpt5Family(model)) {
-            update.reasoningEffort = normalizeReasoningEffort(model, reasoningEffort);
-        } else {
-            update.reasoningEffort = 'minimal';
-        }
+        update.reasoningEffort = normalizeReasoningEffort(provider, model, reasoningEffort);
 
         await db.collection('settings').updateOne(
             { _id: 'llm' },
@@ -1075,7 +1069,7 @@ router.post('/llm', async (req, res) => {
             settings: {
                 model: update.model,
                 reasoningEffort: update.reasoningEffort,
-                supportsReasoning: isGpt5Family(update.model)
+                supportsReasoning: supportsReasoning(provider, update.model)
             }
         });
     } catch (error) {

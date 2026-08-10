@@ -13,6 +13,7 @@ function makeBase(overrides = {}) {
     return {
         client: {
             getCollections: jest.fn(async () => ({ collections: [{ name: 'superchat_notes' }] })),
+            getCollection: jest.fn(async () => ({ config: { params: { vectors: { size: 3 } } } })),
             createCollection: jest.fn(async () => {}),
             upsert: jest.fn(async () => {}),
             delete: jest.fn(async () => {}),

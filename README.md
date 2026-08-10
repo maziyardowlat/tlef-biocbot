@@ -86,6 +86,21 @@ MOODLE_DOMAIN=https://moodle.example.edu
 MOODLE_TOKEN_COLLECTION_NAME=lms_moodle_tokens
 ```
 
+To test the 2026 UBC LLM Sandbox deployment instead, use:
+
+```bash
+LLM_PROVIDER=ubc-llm-sandbox
+LLM_API_KEY=your-ubc-sandbox-api-key
+LLM_ENDPOINT=https://ai-stg.apps.ctlt.ubc.ca/v1
+LLM_DEFAULT_MODEL=qwen3.6-35b-a3b
+LLM_EMBEDDING_MODEL=qwen3-embedding-0.6b
+QDRANT_VECTOR_SIZE=1024
+```
+
+The Qwen embedding model uses a separate model-qualified Qdrant collection so
+existing vectors are preserved. Re-index course documents and Super Chat notes
+before evaluating retrieval quality with the new embedding model.
+
 The Canvas callback URI must exactly match the redirect URI registered on the Canvas Developer
 Key. The integration is disabled when no `CANVAS_*` application credentials are set and refuses
 to start partially configured. OAuth tokens are stored per authenticated BiocBot user in MongoDB;

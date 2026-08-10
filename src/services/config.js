@@ -136,6 +136,9 @@ class ConfigService {
             if (!process.env.LLM_ENDPOINT) {
                 throw new Error('LLM_ENDPOINT is required for UBC LLM Sandbox provider');
             }
+            if (!process.env.LLM_DEFAULT_MODEL) {
+                throw new Error('LLM_DEFAULT_MODEL is required for UBC LLM Sandbox provider');
+            }
             if (!process.env.LLM_EMBEDDING_MODEL) {
                 throw new Error('LLM_EMBEDDING_MODEL is required for UBC LLM Sandbox provider');
             }
@@ -143,7 +146,7 @@ class ConfigService {
         
         console.log(`✅ Configuration validated successfully`);
         console.log(`🤖 LLM Provider: ${provider}`);
-        console.log(`🔑 Model: ${process.env.OLLAMA_MODEL || process.env.OPENAI_MODEL || process.env.UBC_MODEL || 'Not specified'}`);
+        console.log(`🔑 Model: ${process.env.OLLAMA_MODEL || process.env.OPENAI_MODEL || process.env.LLM_DEFAULT_MODEL || 'Not specified'}`);
     }
     
     /**

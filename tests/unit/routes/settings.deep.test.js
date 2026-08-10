@@ -295,6 +295,39 @@ describe('global LLM model settings (configuration only)', () => {
         });
     });
 
+    test('UBC Sandbox exposes and persists the b3000 model catalog', async () => {
+        const previous = {
+            provider: process.env.LLM_PROVIDER,
+            model: process.env.LLM_DEFAULT_MODEL
+        };
+        process.env.LLM_PROVIDER = 'ubc-llm-sandbox';
+        process.env.LLM_DEFAULT_MODEL = 'qwen3.6-35b-a3b';
+        try {
+            const db = memoryDb({ settings: [] });
+            let res = await request(app({ db, user: admin })).get('/llm');
+            expect(res.status).toBe(200);
+            expect(res.body.settings).toMatchObject({
+                provider: 'ubc-llm-sandbox',
+                model: 'qwen3.6-35b-a3b',
+                reasoningEffort: 'none',
+                supportsReasoning: true
+            });
+            expect(res.body.settings.allowedModels).toEqual(expect.arrayContaining(['qwen3.6-35b-a3b', 'gpt-oss-120b']));
+
+            res = await request(app({ db, user: admin })).post('/llm').send({
+                model: 'gpt-oss-120b', reasoningEffort: 'minimal'
+            });
+            expect(res.body.settings).toEqual({
+                model: 'gpt-oss-120b', reasoningEffort: 'low', supportsReasoning: true
+            });
+        } finally {
+            if (previous.provider === undefined) delete process.env.LLM_PROVIDER;
+            else process.env.LLM_PROVIDER = previous.provider;
+            if (previous.model === undefined) delete process.env.LLM_DEFAULT_MODEL;
+            else process.env.LLM_DEFAULT_MODEL = previous.model;
+        }
+    });
+
     test('llm-tag exposes only numeric tags and works without a DB', async () => {
         const res = await request(app({ db: null })).get('/llm-tag');
         expect(res.status).toBe(200);

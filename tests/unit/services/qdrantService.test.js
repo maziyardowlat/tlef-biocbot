@@ -95,13 +95,15 @@ describe('QdrantService', () => {
         ['text-embedding-3-small', 1536],
         ['text-embedding-ada-002', 1536],
         ['nomic-embed-text', 768],
-        ['other-model', '42'],
+        ['qwen3-embedding-0.6b', 1024],
+        ['other-model', 42],
     ])('initialize configures clients, chunking, and vector size for %s', async (model, expectedSize) => {
         process.env.LLM_EMBEDDING_MODEL = model;
         process.env.QDRANT_VECTOR_SIZE = '42';
         const client = {
             getCollections: jest.fn(async () => ({ collections: [{ name: 'biocbot_documents' }] })),
             getCollection: jest.fn(async () => ({ config: { params: { vectors: { size: expectedSize } } } })),
+            createCollection: jest.fn(async () => {}),
         };
         QdrantClient.mockImplementation(() => client);
         ChunkingModule.mockImplementation(() => ({ getDefaultStrategyName: () => 'recursiveCharacter' }));
@@ -179,11 +181,11 @@ describe('QdrantService', () => {
         expect(service.client.createCollection).not.toHaveBeenCalled();
     });
 
-    test('ensureCollectionExists recreates an incompatible collection and propagates errors', async () => {
+    test('ensureCollectionExists preserves an incompatible collection and propagates errors', async () => {
         const service = makeService({ client: { getCollection: jest.fn(async () => ({ config: { params: { vectors: { size: 99 } } } })) } });
-        await service.ensureCollectionExists();
-        expect(service.client.deleteCollection).toHaveBeenCalledWith(service.collectionName);
-        expect(service.client.createCollection).toHaveBeenCalled();
+        await expect(service.ensureCollectionExists()).rejects.toThrow('will not delete existing vectors automatically');
+        expect(service.client.deleteCollection).not.toHaveBeenCalled();
+        expect(service.client.createCollection).not.toHaveBeenCalled();
         service.client.getCollections.mockRejectedValueOnce(new Error('offline'));
         await expect(service.ensureCollectionExists()).rejects.toThrow('offline');
     });
