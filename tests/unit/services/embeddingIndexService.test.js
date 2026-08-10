@@ -244,6 +244,21 @@ describe('persisting index state', () => {
         expect(stored.embeddingIndexes[GPT.storageKey]).toMatchObject({ status: 'failed', error: 'nope' });
     });
 
+    test("a note's record names the notes collection, not the documents one", async () => {
+        const db = memoryDb({ superchat_notes: [{ noteId: 'n1', content: 'note text' }] });
+        await markNoteIndexReady(db, 'n1', SANDBOX, contentHash('note text'));
+        await markNoteIndexFailed(db, 'n1', GPT, contentHash('note text'), new Error('nope'));
+
+        // The record is what deletion sweeps, so it has to point at the
+        // collection the note's vectors actually live in.
+        const stored = await db.collection('superchat_notes').findOne({ noteId: 'n1' });
+        expect(stored.embeddingIndexes[SANDBOX.storageKey].collection)
+            .toBe(SANDBOX.notesCollection);
+        expect(stored.embeddingIndexes[GPT.storageKey].collection).toBe(GPT.notesCollection);
+        expect(indexedCollections(stored).map(entry => entry.collection))
+            .toEqual([SANDBOX.notesCollection, GPT.notesCollection]);
+    });
+
     test('markIndexPending and clearIndexRecord round-trip', async () => {
         const db = memoryDb({ documents: [{ documentId: 'doc-1', content: 'text' }] });
         await markIndexPending(db, {

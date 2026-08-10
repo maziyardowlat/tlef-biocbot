@@ -21,6 +21,8 @@ jest.mock('../../../src/services/notesQdrantService', () => {
 });
 
 const { memoryDb } = require('../helpers/memory-db');
+const { buildEmbeddingProfile } = require('../../../src/services/embeddingConfig');
+const { contentHash, needsIndexing } = require('../../../src/services/embeddingIndexService');
 const service = require('../../../src/services/superChatNotesService');
 const SuperChatNote = require('../../../src/models/SuperChatNote');
 
@@ -90,6 +92,49 @@ describe('updateNote', () => {
         expect(result.ok).toBe(true);
         expect(mockQdrant.updateNote).toHaveBeenCalledWith('n1', 'brand new content', expect.any(Object));
         expect(result.note.qdrantPointIds).toEqual(['pt-2']);
+    });
+});
+
+describe('embedding index tracking', () => {
+    const SANDBOX = buildEmbeddingProfile({
+        provider: 'ubc-llm-sandbox', embeddingModel: 'qwen3-embedding-0.6b',
+    });
+
+    beforeEach(() => { mockQdrant.embeddingProfile = SANDBOX; });
+    afterEach(() => { delete mockQdrant.embeddingProfile; });
+
+    test('a new note records the profile it was embedded with', async () => {
+        const db = memoryDb({});
+        const note = await service.createNote(db, { authorId: 'i1', content: 'ATP' }, { url: 'x' });
+
+        // Without this record the note looks like pre-tracking (legacy OpenAI)
+        // content, and a migration to OpenAI would skip it as already indexed.
+        const saved = await db.collection(COLLECTION).findOne({ noteId: note.noteId });
+        expect(saved.embeddingIndexes[SANDBOX.storageKey]).toMatchObject({
+            provider: 'ubc-llm-sandbox',
+            collection: SANDBOX.notesCollection,
+            contentHash: contentHash('ATP'),
+            status: 'ready',
+        });
+        expect(needsIndexing(saved, SANDBOX, contentHash('ATP'))).toBe(false);
+    });
+
+    test('re-embedding an edited note updates the record to the new content', async () => {
+        const db = memoryDb({ [COLLECTION]: [{ noteId: 'n1', authorId: 'i1', content: 'old', isDeleted: false }] });
+        await service.updateNote(db, 'n1', 'i1', { content: 'brand new content' }, { url: 'x' });
+
+        const saved = await db.collection(COLLECTION).findOne({ noteId: 'n1' });
+        expect(saved.embeddingIndexes[SANDBOX.storageKey].contentHash)
+            .toBe(contentHash('brand new content'));
+        expect(needsIndexing(saved, SANDBOX, contentHash('brand new content'))).toBe(false);
+    });
+
+    test('an unchanged note is not re-recorded', async () => {
+        const db = memoryDb({ [COLLECTION]: [{ noteId: 'n1', authorId: 'i1', content: 'same', isDeleted: false }] });
+        await service.updateNote(db, 'n1', 'i1', { title: 'New title', content: 'same' });
+
+        const saved = await db.collection(COLLECTION).findOne({ noteId: 'n1' });
+        expect(saved.embeddingIndexes).toBeUndefined();
     });
 });
 
