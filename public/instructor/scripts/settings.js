@@ -50,6 +50,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // page refresh whenever buckets are created/renamed/deleted.
     let availableSuperchats = [];
     let llmReasoningEffortsByModel = {};
+    let llmDefaultReasoningEffortByModel = {};
     // Buckets created in this session get a "New" badge until membership is saved.
     const newlyCreatedSuperchatIds = new Set();
 
@@ -285,7 +286,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                 option.hidden = !supported;
                 option.disabled = !supported;
             }
-            reasoningSelect.value = efforts.includes(selected) ? selected : (efforts[0] || '');
+            const modelDefault = llmDefaultReasoningEffortByModel[modelSelect.value];
+            const fallback = efforts.includes(modelDefault) ? modelDefault : (efforts[0] || '');
+            reasoningSelect.value = efforts.includes(selected) ? selected : fallback;
         }
     }
 
@@ -447,6 +450,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     }));
                 }
                 llmReasoningEffortsByModel = result.settings.reasoningEffortsByModel || {};
+                llmDefaultReasoningEffortByModel = result.settings.defaultReasoningEffortByModel || {};
                 modelSelect.value = result.settings.model;
                 modelSelect.removeEventListener('change', updateReasoningVisibility);
                 modelSelect.addEventListener('change', updateReasoningVisibility);
@@ -454,9 +458,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             updateReasoningVisibility();
             if (reasoningSelect) {
                 const available = llmReasoningEffortsByModel[result.settings.model] || [];
+                const modelDefault = llmDefaultReasoningEffortByModel[result.settings.model];
                 reasoningSelect.value = available.includes(result.settings.reasoningEffort)
                     ? result.settings.reasoningEffort
-                    : (available[0] || 'minimal');
+                    : (available.includes(modelDefault) ? modelDefault : (available[0] || 'minimal'));
             }
         } catch (error) {
             console.error('Error loading LLM settings:', error);

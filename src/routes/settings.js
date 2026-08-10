@@ -1005,6 +1005,7 @@ router.get('/llm', async (req, res) => {
                 allowedModels: catalog.allowedModels,
                 allowedReasoningEfforts: catalog.reasoningEffortsByModel[model] || [],
                 reasoningEffortsByModel: catalog.reasoningEffortsByModel,
+                defaultReasoningEffortByModel: catalog.defaultReasoningEffortByModel,
                 provider
             }
         });

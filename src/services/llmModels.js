@@ -110,6 +110,9 @@ function catalogForProvider(provider = configuredProvider(), defaultModel = conf
         allowedModels,
         reasoningEffortsByModel: Object.fromEntries(
             allowedModels.map(model => [model, reasoningEffortsForModel(provider, model)])
+        ),
+        defaultReasoningEffortByModel: Object.fromEntries(
+            allowedModels.map(model => [model, modelProfile(provider, model).defaultReasoningEffort])
         )
     };
 }
