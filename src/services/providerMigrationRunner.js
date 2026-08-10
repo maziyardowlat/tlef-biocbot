@@ -20,7 +20,7 @@ const adminModelSettings = require('./adminModelSettings');
 const config = require('./config');
 const { buildEmbeddingProfile } = require('./embeddingConfig');
 const { clearIndexRecord } = require('./embeddingIndexService');
-const { credentialForProvider, decryptApiKey } = require('./llmKeyStore');
+const { activeProviderOf, credentialForProvider, decryptApiKey } = require('./llmKeyStore');
 const migrations = require('./providerMigrationService');
 
 const { ITEM_STATUSES, MIGRATION_STATUSES, MAX_ATTEMPTS } = migrations;
@@ -53,19 +53,78 @@ function scheduleLeaseRetry(db, migrationId, job, options = {}) {
 }
 
 /**
+ * Surfaces whose stored credential could pay for embedding one item, in
+ * preference order: the item's own owner first, then any surface that pulls the
+ * item into its own index.
+ *
+ * A Sandbox bucket indexes its member courses with the bucket's own key even
+ * when those courses run on GPT, so the bucket has to be a candidate for their
+ * documents — otherwise a GPT course that a Sandbox bucket includes has no
+ * Sandbox key of its own and its items can never be embedded.
+ */
+async function credentialCandidatesForItem(db, item) {
+    const isNote = !!(item && item.itemType === 'note');
+    const courseId = item && item.courseId;
+    const candidates = [];
+
+    if (isNote) {
+        candidates.push({ type: 'notes', id: 'notesLlm' });
+    } else if (courseId) {
+        candidates.push({ type: 'course', id: courseId });
+    }
+
+    const buckets = await db.collection('superchats')
+        .find({ isDeleted: { $ne: true } })
+        .toArray();
+    for (const bucket of buckets) {
+        const covers = isNote
+            ? bucket.includeNotes === true
+            : (Array.isArray(bucket.courseIds) && bucket.courseIds.includes(courseId));
+        if (covers) candidates.push({ type: 'superchat', id: bucket.superchatId });
+    }
+
+    // The instructor Super Course chat pools every course, and Notes unless it
+    // is configured to exclude them.
+    const superCourseChat = await db.collection('settings').findOne({ _id: 'superCourseChat' });
+    if (superCourseChat && (!isNote || superCourseChat.includeNotes !== false)) {
+        candidates.push({ type: 'superCourseChat', id: 'superCourseChat' });
+    }
+
+    return candidates;
+}
+
+/**
  * Which surface's encrypted credential pays for embedding a given item.
  *
  * - A provider switch embeds everything the switching surface can retrieve,
- *   using THAT surface's key (a Sandbox bucket indexes its member courses with
- *   the bucket's own Sandbox key, even when those courses run on GPT).
- * - An admin embedding-model change re-indexes content across many surfaces, so
- *   each item is embedded with its own owner's key.
+ *   using THAT surface's key.
+ * - An admin embedding-model change re-indexes content across many surfaces at
+ *   once, so each item is paid for by a surface that actually runs on the target
+ *   platform and covers that item — which is not always the item's own owner.
  */
-function credentialScopeForItem(job, item) {
+async function resolveCredentialScope(db, job, item) {
     if (job.kind !== 'embedding-model') return job.scope;
-    if (item && item.itemType === 'note') return { type: 'notes', id: 'notesLlm' };
-    if (item && item.courseId) return { type: 'course', id: item.courseId };
-    return job.scope;
+
+    const provider = job.targetProfile.provider || job.toProvider;
+    const candidates = await credentialCandidatesForItem(db, item);
+
+    let storedOnly = null;
+    for (const scope of candidates) {
+        const target = migrations.scopeTarget(scope);
+        if (!target) continue;
+        const doc = await db.collection(target.collection).findOne(target.filter);
+        const credential = credentialForProvider(doc, provider);
+        if (!credential || !credential.ciphertext) continue;
+        // A surface running on the target platform today is the one whose key
+        // pays for the content it retrieves.
+        if (activeProviderOf(doc) === provider) return scope;
+        // Otherwise remember it: a stored-but-inactive key still beats failing.
+        if (!storedOnly) storedOnly = scope;
+    }
+
+    // Nothing has a usable key: fall back to the item's own owner so the
+    // resulting error names the surface an admin needs to fix.
+    return storedOnly || candidates[0] || job.scope;
 }
 
 /**
@@ -118,13 +177,22 @@ async function createVectorServices(profile, { needNotes, shouldCancel = null })
  */
 function createServiceResolver(db, job) {
     const cache = new Map();
+    // Resolving a paying surface costs a few reads, so do it once per owner
+    // rather than once per item.
+    const scopeCache = new Map();
     const shouldCancel = async () => {
         const current = await migrations.getMigration(db, job.migrationId);
         return !current || current.status === MIGRATION_STATUSES.CANCELLED;
     };
 
     return async function servicesFor(item) {
-        const scope = credentialScopeForItem(job, item);
+        const ownerKey = item && item.itemType === 'note'
+            ? 'note'
+            : `course:${(item && item.courseId) || ''}`;
+        if (!scopeCache.has(ownerKey)) {
+            scopeCache.set(ownerKey, await resolveCredentialScope(db, job, item));
+        }
+        const scope = scopeCache.get(ownerKey);
         const key = migrations.scopeKey(scope);
         if (cache.has(key)) {
             const cached = cache.get(key);
@@ -455,8 +523,9 @@ async function runMigration(db, migrationId, options = {}) {
 
         await migrations.finishMigration(db, migrationId, MIGRATION_STATUSES.FAILED, new Error(summary));
         // The previous provider stays active; its vectors and credential are
-        // untouched, so the surface keeps working.
-        await migrations.abandonPendingProvider(db, job.scope);
+        // untouched, so the surface keeps working. The migration id stays on the
+        // surface so the failure and its retry control survive a page reload.
+        await migrations.abandonPendingProvider(db, job.scope, { keepMigrationId: true });
         return migrations.getMigration(db, migrationId);
     }
 
@@ -465,7 +534,7 @@ async function runMigration(db, migrationId, options = {}) {
             await migrations.activateProvider(db, job.scope, job.toProvider);
         } catch (error) {
             await migrations.finishMigration(db, migrationId, MIGRATION_STATUSES.FAILED, error);
-            await migrations.abandonPendingProvider(db, job.scope);
+            await migrations.abandonPendingProvider(db, job.scope, { keepMigrationId: true });
             return migrations.getMigration(db, migrationId);
         }
     }
@@ -522,9 +591,11 @@ module.exports = {
     cancelAndCleanup,
     cleanupMigrationTarget,
     createVectorServices,
+    credentialCandidatesForItem,
     leaseRetryDelay,
     migrateDocument,
     migrateNote,
+    resolveCredentialScope,
     resolveTargetProfile,
     resumePendingMigrations,
     runMigration,

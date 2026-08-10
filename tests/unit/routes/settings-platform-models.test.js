@@ -4,8 +4,15 @@
  * and rollback.
  */
 const startedMigrations = [];
+const cancelledMigrations = [];
 jest.mock('../../../src/services/providerMigrationRunner', () => ({
     startMigration: jest.fn((db, migrationId) => { startedMigrations.push(migrationId); }),
+    cancelAndCleanup: jest.fn(async (db, migrationId, cancelledBy) => {
+        cancelledMigrations.push(migrationId);
+        const actual = jest.requireActual('../../../src/services/providerMigrationService');
+        const job = await actual.cancelMigration(db, migrationId, cancelledBy);
+        return { job, cleanup: { migrationId, deletedVectors: 3, clearedIndexRecords: 3 } };
+    }),
 }));
 jest.mock('../../../src/services/config', () => ({
     getProviderInfra: jest.fn((provider) => ({
@@ -40,6 +47,7 @@ beforeEach(() => {
     delete process.env.LLM_PROVIDER;
     delete process.env.LLM_EMBEDDING_MODEL;
     startedMigrations.length = 0;
+    cancelledMigrations.length = 0;
     adminModelSettings.invalidateCache();
 });
 
@@ -253,10 +261,37 @@ describe('POST /llm/embedding — staged, never destructive', () => {
         const res = await request(app({ db })).post('/llm/embedding/rollback').send({ provider: OPENAI });
 
         expect(res.status).toBe(200);
-        expect(res.body.message).toMatch(/No vectors were deleted/);
+        expect(res.body.message).toMatch(/vectors were not touched/i);
         const { providers, pendingEmbedding } = await adminModelSettings.getAllProviderSettings(db, { force: true });
         expect(providers[OPENAI].embeddingModel).toBe('text-embedding-3-small');
         expect(pendingEmbedding[OPENAI]).toBeUndefined();
+    });
+
+    test('rollback also stops the re-indexing job it staged', async () => {
+        const db = memoryDb({
+            settings: [],
+            courses: [{ courseId: 'C1', activeLlmProvider: OPENAI, llmCredentials: { [OPENAI]: buildKeySubdocument('sk-a', 'a', OPENAI) } }],
+            documents: [{ documentId: 'd1', courseId: 'C1', content: 'text' }],
+        });
+        await request(app({ db })).post('/llm/embedding').send({ provider: OPENAI, embeddingModel: 'text-embedding-3-large' });
+        const migrationId = startedMigrations[0];
+
+        const res = await request(app({ db })).post('/llm/embedding/rollback').send({ provider: OPENAI });
+
+        // Cancelling the job stops it burning provider calls on a profile that
+        // is never going to be activated, and drops its partial vectors.
+        expect(cancelledMigrations).toEqual([migrationId]);
+        expect(res.body.cleanup).toMatchObject({ deletedVectors: 3 });
+        expect((await migrations.getMigration(db, migrationId)).status).toBe('cancelled');
+    });
+
+    test('rollback with nothing staged is a no-op', async () => {
+        const db = memoryDb({ settings: [] });
+        const res = await request(app({ db })).post('/llm/embedding/rollback').send({ provider: OPENAI });
+
+        expect(res.status).toBe(200);
+        expect(cancelledMigrations).toEqual([]);
+        expect(res.body.cleanup).toBeNull();
     });
 
     test('non-admins cannot stage or roll back an embedding change', async () => {

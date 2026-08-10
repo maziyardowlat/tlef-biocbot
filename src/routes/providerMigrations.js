@@ -26,19 +26,32 @@ function requireDb(req, res) {
 }
 
 /**
- * A user may see a migration when they are a system admin, or an instructor of
- * the course the migration belongs to.
+ * A user may see a migration when they can act on the surface it belongs to:
+ * system admins always, an instructor of the course for a course migration, and
+ * any instructor for a Super Course bucket — the same gate the bucket's own
+ * platform endpoints use, so whoever can start a bucket migration can also
+ * follow, retry and cancel it.
+ *
+ * Notes, the Super Course chat and admin embedding changes stay admin-only,
+ * matching their surfaces.
  */
 async function canAccessMigration(db, req, job) {
     if (!job) return false;
     if (hasSystemAdminAccess(req.user)) return true;
-    if (job.scope && job.scope.type === 'course') {
+    if (!job.scope) return false;
+
+    if (job.scope.type === 'course') {
         const course = await db.collection('courses').findOne({ courseId: job.scope.id });
         if (!course) return false;
         const userId = req.user && req.user.userId;
         return course.instructorId === userId
             || (Array.isArray(course.instructors) && course.instructors.includes(userId));
     }
+
+    if (job.scope.type === 'superchat') {
+        return !!req.user && req.user.role === 'instructor';
+    }
+
     return false;
 }
 

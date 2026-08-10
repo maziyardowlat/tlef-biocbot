@@ -1265,8 +1265,9 @@ router.post('/llm/embedding', async (req, res) => {
 
 /**
  * POST /api/settings/llm/embedding/rollback
- * Abandon a staged embedding-model change. The previous collection is intact,
- * so the platform simply keeps using it.
+ * Abandon a staged embedding-model change: stop the re-indexing job and drop
+ * the partial vectors it wrote for the new profile. The ACTIVE model's
+ * collection is never touched, so the platform simply keeps using it.
  */
 router.post('/llm/embedding/rollback', async (req, res) => {
     try {
@@ -1277,12 +1278,34 @@ router.post('/llm/embedding/rollback', async (req, res) => {
         if (!requireSystemAdmin(req, res)) return;
 
         const provider = normalizeProvider((req.body || {}).provider, configuredProvider());
+
+        // Read the staged change before clearing it — it holds the id of the
+        // background job that would otherwise keep re-embedding into a profile
+        // nobody is going to use.
+        const { pendingEmbedding } = await adminModelSettings.getAllProviderSettings(db, { force: true });
+        const pending = pendingEmbedding[provider];
+        let cleanup = null;
+
+        if (pending && pending.migrationId) {
+            const job = await migrations.getMigration(db, pending.migrationId);
+            if (job && migrations.ACTIVE_STATUSES.includes(job.status)) {
+                const result = await migrationRunner.cancelAndCleanup(
+                    db,
+                    pending.migrationId,
+                    normalizeEmail(req.user.email)
+                );
+                cleanup = result && result.cleanup;
+            }
+        }
+
         await adminModelSettings.clearPendingEmbedding(db, provider);
         invalidateModelCaches(req);
 
         res.json({
             success: true,
-            message: `Reverted to the active ${providerLabel(provider)} embedding model. No vectors were deleted.`
+            message: `Reverted to the active ${providerLabel(provider)} embedding model. `
+                + 'Its vectors were not touched.',
+            cleanup
         });
     } catch (error) {
         console.error('Error rolling back embedding model change:', error);

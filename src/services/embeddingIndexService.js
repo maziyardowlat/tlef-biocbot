@@ -199,12 +199,15 @@ function indexedCollections(doc) {
     return [...seen.values()];
 }
 
-function buildIndexRecord({ profile, hash, status, error = null, indexedAt = null }) {
+function buildIndexRecord({ profile, hash, status, error = null, indexedAt = null, collection = null }) {
     return {
         provider: profile.provider,
         model: profile.embeddingModel,
         revision: profile.revision,
-        collection: profile.collection,
+        // Notes live in the profile's notes collection, documents in its
+        // documents collection — the record must name the one actually holding
+        // the vectors, because deletion sweeps every recorded collection.
+        collection: collection || profile.collection,
         contentHash: hash,
         indexFingerprint: indexFingerprint({ contentHash: hash, profile }),
         status,
@@ -223,19 +226,20 @@ async function setIndexRecord(db, collectionName, filter, profile, record) {
 /**
  * Mark a document/note as successfully indexed for a profile.
  */
-async function markIndexReady(db, { collectionName, filter, profile, hash }) {
+async function markIndexReady(db, { collectionName, filter, profile, hash, collection = null }) {
     const record = buildIndexRecord({
         profile,
         hash,
         status: INDEX_STATUSES.READY,
-        indexedAt: new Date()
+        indexedAt: new Date(),
+        collection
     });
     await setIndexRecord(db, collectionName, filter, profile, record);
     return record;
 }
 
-async function markIndexPending(db, { collectionName, filter, profile, hash }) {
-    const record = buildIndexRecord({ profile, hash, status: INDEX_STATUSES.PENDING });
+async function markIndexPending(db, { collectionName, filter, profile, hash, collection = null }) {
+    const record = buildIndexRecord({ profile, hash, status: INDEX_STATUSES.PENDING, collection });
     await setIndexRecord(db, collectionName, filter, profile, record);
     return record;
 }
@@ -244,12 +248,13 @@ async function markIndexPending(db, { collectionName, filter, profile, hash }) {
  * Record a failure. The previous profile's index is untouched, so the surface
  * keeps serving from whatever it was already using.
  */
-async function markIndexFailed(db, { collectionName, filter, profile, hash, error }) {
+async function markIndexFailed(db, { collectionName, filter, profile, hash, error, collection = null }) {
     const record = buildIndexRecord({
         profile,
         hash,
         status: INDEX_STATUSES.FAILED,
-        error: error ? String(error.message || error).slice(0, 500) : 'Unknown error'
+        error: error ? String(error.message || error).slice(0, 500) : 'Unknown error',
+        collection
     });
     await setIndexRecord(db, collectionName, filter, profile, record);
     return record;
@@ -294,7 +299,8 @@ async function markNoteIndexReady(db, noteId, profile, hash) {
         collectionName: NOTES_COLLECTION,
         filter: noteFilter(noteId),
         profile,
-        hash
+        hash,
+        collection: profile.notesCollection
     });
 }
 
@@ -304,7 +310,8 @@ async function markNoteIndexFailed(db, noteId, profile, hash, error) {
         filter: noteFilter(noteId),
         profile,
         hash,
-        error
+        error,
+        collection: profile.notesCollection
     });
 }
 

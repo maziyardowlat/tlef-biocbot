@@ -7,8 +7,22 @@
 
 const SuperChatNote = require('../models/SuperChatNote');
 const NotesQdrantService = require('./notesQdrantService');
+const { contentHash, markNoteIndexReady } = require('./embeddingIndexService');
 
 const DUP_THRESHOLD = NotesQdrantService.DEFAULT_DUP_THRESHOLD;
+
+/**
+ * Record which embedding profile a note was just vectorised with.
+ *
+ * Without this a Sandbox-embedded note carries only `qdrantPointIds`, which the
+ * index tracker reads as pre-tracking (legacy OpenAI) vectors — so a later
+ * migration to OpenAI would consider the note already indexed and skip it,
+ * leaving it unsearchable on that platform.
+ */
+async function recordNoteIndex(db, note, qdrant) {
+    if (!qdrant || !qdrant.embeddingProfile) return;
+    await markNoteIndexReady(db, note.noteId, qdrant.embeddingProfile, contentHash(note.content));
+}
 
 function notePayloadMeta(note) {
     return {
@@ -37,6 +51,7 @@ async function createNote(db, data, qdrantBase = null) {
     if (pointIds.length) {
         await SuperChatNote.updateNote(db, note.noteId, { qdrantPointIds: pointIds });
         note.qdrantPointIds = pointIds;
+        await recordNoteIndex(db, note, qdrant);
     }
     return note;
 }
@@ -84,6 +99,7 @@ async function updateNote(db, noteId, requesterId, updates, qdrantBase = null) {
         if (qdrantBase) await qdrant.initialize(qdrantBase);
         const pointIds = await qdrant.updateNote(noteId, updated.content, notePayloadMeta(updated));
         const finalNote = await SuperChatNote.updateNote(db, noteId, { qdrantPointIds: pointIds });
+        await recordNoteIndex(db, finalNote, qdrant);
         return { ok: true, note: finalNote };
     }
 

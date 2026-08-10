@@ -358,6 +358,9 @@ describe('failure handling', () => {
         expect(course.activeLlmProvider).toBe('openai');
         expect(course.pendingLlmProvider).toBeNull();
         expect(course.llmCredentials['ubc-llm-sandbox'].ciphertext).toBeTruthy();
+        // The surface keeps pointing at the failed job, so a reload still finds
+        // the failure and its retry control.
+        expect(course.providerMigrationId).toBe(job.migrationId);
 
         // The failure is recorded against the document for that profile only.
         const badDoc = await db.collection('documents').findOne({ documentId: 'BAD' });
@@ -465,6 +468,113 @@ describe('notes and mixed-provider surfaces', () => {
         }
         // The member courses' own platform is untouched.
         expect((await db.collection('courses').findOne({ courseId: 'C1' })).activeLlmProvider).toBe('openai');
+    });
+});
+
+describe('admin embedding-model changes', () => {
+    const ADMIN_SCOPE = { type: 'adminEmbedding', id: 'ubc-llm-sandbox' };
+
+    /** A bucket on Sandbox whose member courses run on GPT. */
+    function sandboxBucketOverGptCourses(extra = {}) {
+        return {
+            superchats: [{
+                superchatId: 'S1',
+                courseIds: ['C1'],
+                activeLlmProvider: 'ubc-llm-sandbox',
+                llmCredentials: {
+                    'ubc-llm-sandbox': buildKeySubdocument('sbx-bucket', 'a', 'ubc-llm-sandbox'),
+                },
+                ...(extra.bucket || {}),
+            }],
+            courses: [{
+                courseId: 'C1',
+                activeLlmProvider: 'openai',
+                llmCredentials: { openai: buildKeySubdocument('sk-course', 'a', 'openai') },
+                ...(extra.course || {}),
+            }],
+            documents: [{ documentId: 'd1', courseId: 'C1', content: 'c1 text' }],
+        };
+    }
+
+    async function runAdminEmbeddingMigration(db, { courseIds = ['C1'], includeNotes = false } = {}) {
+        const { job } = await migrations.createMigration(db, {
+            scope: ADMIN_SCOPE,
+            kind: 'embedding-model',
+            fromProvider: 'ubc-llm-sandbox',
+            toProvider: 'ubc-llm-sandbox',
+            profile: SANDBOX,
+            courseIds,
+            includeNotes,
+        });
+        return runner.runMigration(db, job.migrationId);
+    }
+
+    test("a GPT course's documents are embedded with the Sandbox bucket that includes them", async () => {
+        const db = memoryDb(sandboxBucketOverGptCourses());
+
+        const finished = await runAdminEmbeddingMigration(db);
+
+        expect(finished.status).toBe('completed');
+        // The course has no Sandbox key of its own; the bucket that retrieves
+        // its material pays for the embeddings.
+        expect(qdrantInstances[0].profile.apiKey).toBe('sbx-bucket');
+        const doc = await db.collection('documents').findOne({ documentId: 'd1' });
+        expect(doc.embeddingIndexes[SANDBOX.storageKey].status).toBe('ready');
+    });
+
+    test("a course running on the target platform pays with its own key", async () => {
+        const db = memoryDb(sandboxBucketOverGptCourses({
+            course: {
+                activeLlmProvider: 'ubc-llm-sandbox',
+                llmCredentials: {
+                    openai: buildKeySubdocument('sk-course', 'a', 'openai'),
+                    'ubc-llm-sandbox': buildKeySubdocument('sbx-course', 'a', 'ubc-llm-sandbox'),
+                },
+            },
+        }));
+
+        const finished = await runAdminEmbeddingMigration(db);
+
+        expect(finished.status).toBe('completed');
+        expect(qdrantInstances[0].profile.apiKey).toBe('sbx-course');
+    });
+
+    test('notes are embedded with the Notes surface key', async () => {
+        const db = memoryDb({
+            ...sandboxBucketOverGptCourses(),
+            settings: [{
+                _id: 'notesLlm',
+                activeLlmProvider: 'ubc-llm-sandbox',
+                llmCredentials: {
+                    'ubc-llm-sandbox': buildKeySubdocument('sbx-notes', 'a', 'ubc-llm-sandbox'),
+                },
+            }],
+            superchat_notes: [{ noteId: 'n1', content: 'a shared note' }],
+        });
+
+        const finished = await runAdminEmbeddingMigration(db, { courseIds: [], includeNotes: true });
+
+        expect(finished.status).toBe('completed');
+        expect(qdrantInstances[0].profile.apiKey).toBe('sbx-notes');
+        expect(notesInstances[0].stored).toEqual([
+            { noteId: 'n1', content: 'a shared note', collection: 'superchat_notes_qwen3_embedding_0_6b' },
+        ]);
+    });
+
+    test('an item no surface can pay for fails naming its own owner', async () => {
+        const db = memoryDb({
+            courses: [{
+                courseId: 'C1',
+                activeLlmProvider: 'openai',
+                llmCredentials: { openai: buildKeySubdocument('sk-course', 'a', 'openai') },
+            }],
+            documents: [{ documentId: 'd1', courseId: 'C1', content: 'c1 text' }],
+        });
+
+        const finished = await runAdminEmbeddingMigration(db);
+
+        expect(finished.status).toBe('failed');
+        expect(finished.error).toMatch(/no stored ubc-llm-sandbox credential for course:C1/i);
     });
 });
 

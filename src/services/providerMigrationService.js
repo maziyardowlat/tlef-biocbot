@@ -464,14 +464,21 @@ async function activateProvider(db, scope, provider) {
 /**
  * Roll a scope back to its previous provider after a failed migration: clear
  * the pending marker and leave the active provider untouched.
+ *
+ * @param {Object} options
+ * @param {boolean} [options.keepMigrationId] - Keep the surface pointing at the
+ *   job. A failed migration must stay reachable: the surface's stored id is how
+ *   the UI finds the job again after a reload, and dropping it would hide both
+ *   the failure and its retry control.
  */
-async function abandonPendingProvider(db, scope) {
+async function abandonPendingProvider(db, scope, { keepMigrationId = false } = {}) {
     const target = scopeTarget(scope);
     if (!target) return;
-    await db.collection(target.collection).updateOne(
-        target.filter,
-        { $set: { pendingLlmProvider: null, providerMigrationId: null, updatedAt: new Date() } }
-    );
+
+    const set = { pendingLlmProvider: null, updatedAt: new Date() };
+    if (!keepMigrationId) set.providerMigrationId = null;
+
+    await db.collection(target.collection).updateOne(target.filter, { $set: set });
 }
 
 /**

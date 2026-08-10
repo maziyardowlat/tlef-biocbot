@@ -52,6 +52,24 @@ async function seed({ courseId = 'C1', instructorId = 'i1' } = {}) {
     return { db, job };
 }
 
+/** A Super Course bucket migration, started by an instructor rather than an admin. */
+async function seedBucket() {
+    const db = memoryDb({
+        superchats: [{ superchatId: 'S1', name: 'Bucket', courseIds: ['C1'] }],
+        courses: [{ courseId: 'C1', instructorId: 'i9', instructors: ['i9'] }],
+        documents: [{ documentId: 'd1', courseId: 'C1', content: 'one', filename: 'One.pdf' }],
+    });
+    const { job } = await migrations.createMigration(db, {
+        scope: { type: 'superchat', id: 'S1' },
+        kind: 'prepare',
+        fromProvider: 'openai',
+        toProvider: 'ubc-llm-sandbox',
+        profile: SANDBOX_PROFILE,
+        courseIds: ['C1'],
+    });
+    return { db, job };
+}
+
 describe('GET /:migrationId', () => {
     test('the course instructor sees persistent progress', async () => {
         const { db, job } = await seed();
@@ -109,7 +127,7 @@ describe('GET /:migrationId', () => {
         expect((await request(app({ db, user: student })).get(`/${job.migrationId}`)).status).toBe(403);
     });
 
-    test('a non-course scope is admin-only', async () => {
+    test('the Notes and Super Course chat surfaces are admin-only', async () => {
         const db = memoryDb({ superchat_notes: [{ noteId: 'n1', content: 'note' }] });
         const { job } = await migrations.createMigration(db, {
             scope: { type: 'notes', id: 'notesLlm' }, profile: SANDBOX_PROFILE, includeNotes: true,
@@ -117,6 +135,16 @@ describe('GET /:migrationId', () => {
 
         expect((await request(app({ db, user: instructor })).get(`/${job.migrationId}`)).status).toBe(403);
         expect((await request(app({ db, user: admin })).get(`/${job.migrationId}`)).status).toBe(200);
+    });
+
+    test('any instructor can follow a bucket migration, matching who can start one', async () => {
+        const { db, job } = await seedBucket();
+
+        // The bucket's own platform endpoints admit any instructor, so the
+        // instructor who started this job must be able to poll it too.
+        expect((await request(app({ db, user: instructor })).get(`/${job.migrationId}`)).status).toBe(200);
+        expect((await request(app({ db, user: otherInstructor })).get(`/${job.migrationId}`)).status).toBe(200);
+        expect((await request(app({ db, user: student })).get(`/${job.migrationId}`)).status).toBe(403);
     });
 
     test('an unknown migration is a 404, and a missing database is a 503', async () => {
@@ -180,6 +208,23 @@ describe('POST /:migrationId/cancel', () => {
         const { db, job } = await seed();
         expect((await request(app({ db, user: otherInstructor })).post(`/${job.migrationId}/cancel`)).status)
             .toBe(403);
+    });
+
+    test('an instructor can retry and cancel a bucket migration', async () => {
+        const { db, job } = await seedBucket();
+        await migrations.recordItemResult(db, job.migrationId, 'd1', 'document', {
+            status: 'failed', attempts: 3, error: 'boom',
+        });
+
+        const retry = await request(app({ db, user: instructor })).post(`/${job.migrationId}/retry`);
+        expect(retry.status).toBe(202);
+        expect(startedMigrations).toEqual([job.migrationId]);
+        const bucket = await db.collection('superchats').findOne({ superchatId: 'S1' });
+        expect(bucket.providerMigrationId).toBe(job.migrationId);
+
+        const cancel = await request(app({ db, user: instructor })).post(`/${job.migrationId}/cancel`);
+        expect(cancel.status).toBe(200);
+        expect(cancel.body.migration.status).toBe('cancelled');
     });
 });
 
