@@ -1,5 +1,6 @@
 const {
     createLmsImportDiagnostics,
+    publicErrorDiagnostic,
     safeUrlHost,
     sanitizeDiagnosticText,
     summarizeError
@@ -58,9 +59,11 @@ describe('LMS import diagnostics', () => {
             statusCode: 502,
             fileHost: 'https://files.example.edu',
             lmsHost: 'https://canvas.example.edu',
-            allowedDownloadHostSuffixes: ['files.example.edu'],
-            toolkitVersion: expect.any(String)
+            allowedDownloadHostSuffixes: ['files.example.edu']
         });
+        if (browserDiagnostic.toolkitVersion !== undefined) {
+            expect(browserDiagnostic.toolkitVersion).toEqual(expect.any(String));
+        }
         expect(browserDiagnostic).not.toHaveProperty('stack');
         expect(info).toHaveBeenCalledTimes(2);
         const logged = errorLog.mock.calls[0][0];
@@ -69,6 +72,20 @@ describe('LMS import diagnostics', () => {
         expect(logged).toContain('?[REDACTED]');
         expect(logged).not.toContain('do-not-log');
         expect(logged).not.toContain('token=secret');
+    });
+
+    test('copies an available toolkit version from the diagnostic context', () => {
+        const diagnostic = publicErrorDiagnostic(new Error('download failed'), {
+            reference: 'ref-1',
+            provider: 'canvas',
+            stage: 'download',
+            fileHost: null,
+            lmsHost: null,
+            toolkitVersion: '1.2.3-test',
+            allowedDownloadHostSuffixes: []
+        });
+
+        expect(diagnostic.toolkitVersion).toBe('1.2.3-test');
     });
 
     test('summarizes nested causes without copying arbitrary error properties', () => {

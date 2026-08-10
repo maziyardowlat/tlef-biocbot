@@ -71,13 +71,28 @@ describe('LLM model settings without provider traffic', () => {
     test('applies GPT-5 token and reasoning options', async () => {
         const service = readyService({ provider: 'openai', defaultModel: 'gpt-5.4-nano' });
         const result = await service._applyModelOptions({ temperature: 0.7, maxTokens: 20 });
-        expect(result).toEqual({ model: 'gpt-5.4-nano', max_completion_tokens: 2000, reasoning_effort: 'low' });
+        expect(result).toEqual({ model: 'gpt-5.4-nano', maxTokens: 2000, reasoningEffort: 'low' });
         const luna = readyService({ provider: 'openai', defaultModel: 'gpt-5.6-luna' });
         await expect(luna._applyModelOptions({ maxTokens: 256 })).resolves.toEqual({
-            model: 'gpt-5.6-luna', max_completion_tokens: 2000, reasoning_effort: 'low'
+            model: 'gpt-5.6-luna', maxTokens: 2000, reasoningEffort: 'low'
         });
         expect(service._coerceReasoningEffort('gpt-5-nano', 'xhigh')).toBe('high');
-        expect(service._coerceReasoningEffort('unknown', 'custom')).toBe('custom');
+        expect(service._coerceReasoningEffort('unknown', 'custom')).toBe('minimal');
+    });
+
+    test('applies b3000 sandbox model and reasoning conventions', async () => {
+        const qwen = readyService({ provider: 'ubc-llm-sandbox', defaultModel: 'qwen3.6-35b-a3b' });
+        await expect(qwen._applyModelOptions({ temperature: 0.1, max_tokens: 256 })).resolves.toEqual({
+            model: 'qwen3.6-35b-a3b', temperature: 0.1, maxTokens: 256, reasoningEffort: 'none'
+        });
+        await expect(qwen._applyModelOptions({ temperature: 0.5, maxTokens: 32768 })).resolves.toEqual({
+            model: 'qwen3.6-35b-a3b', temperature: 0.5, maxTokens: 4096, reasoningEffort: 'none'
+        });
+
+        const gptOss = readyService({ provider: 'ubc-llm-sandbox', defaultModel: 'gpt-oss-120b' });
+        await expect(gptOss._applyModelOptions({ temperature: 0.1, max_tokens: 256 })).resolves.toEqual({
+            model: 'gpt-oss-120b', temperature: 0.1, maxTokens: 2000, reasoningEffort: 'low'
+        });
     });
 
     test.each([
@@ -371,10 +386,10 @@ describe('model-settings edge branches', () => {
         expect(readyService()._coerceReasoningEffort('gpt-5-nano', 'none')).toBe('minimal');
     });
 
-    test('_applyModelOptions translates max_tokens to max_completion_tokens for gpt-5', async () => {
+    test('_applyModelOptions normalizes legacy token/reasoning keys for the toolkit', async () => {
         const service = readyService({ provider: 'openai', defaultModel: 'gpt-5-nano' });
         const result = await service._applyModelOptions({ temperature: 0.3, max_tokens: 5000 });
-        expect(result).toEqual({ model: 'gpt-5-nano', max_completion_tokens: 5000, reasoning_effort: 'minimal' });
+        expect(result).toEqual({ model: 'gpt-5-nano', maxTokens: 5000, reasoningEffort: 'minimal' });
         expect(result.temperature).toBeUndefined();
     });
 });

@@ -107,11 +107,13 @@ describe('config.validateConfig', () => {
         expect(() => config.validateConfig()).toThrow('LLM_EMBEDDING_MODEL is required for OpenAI provider');
     });
 
-    test('ubc-llm-sandbox requires LLM_ENDPOINT then LLM_EMBEDDING_MODEL', () => {
+    test('ubc-llm-sandbox requires endpoint, default model, then embedding model', () => {
         process.env.LLM_PROVIDER = 'ubc-llm-sandbox';
         process.env.LLM_API_KEY = 'k';
         expect(() => config.validateConfig()).toThrow('LLM_ENDPOINT is required for UBC LLM Sandbox provider');
         process.env.LLM_ENDPOINT = 'http://sandbox';
+        expect(() => config.validateConfig()).toThrow('LLM_DEFAULT_MODEL is required for UBC LLM Sandbox provider');
+        process.env.LLM_DEFAULT_MODEL = 'qwen3.6-35b-a3b';
         expect(() => config.validateConfig()).toThrow('LLM_EMBEDDING_MODEL is required for UBC LLM Sandbox provider');
     });
 });

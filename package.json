@@ -54,7 +54,7 @@
     "ubc-genai-toolkit-core": "^0.1.0",
     "ubc-genai-toolkit-document-parsing": "^0.3.1",
     "ubc-genai-toolkit-embeddings": "^0.1.1",
-    "ubc-genai-toolkit-llm": "^0.5.0"
+    "ubc-genai-toolkit-llm": "^0.6.0"
   },
   "optionalDependencies": {
     "@ubc/ubc-genai-toolkit-course-list-sync": "^0.1.3",

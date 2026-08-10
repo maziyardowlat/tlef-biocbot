@@ -49,6 +49,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Cached bucket summaries so the per-course checklist can re-render without a
     // page refresh whenever buckets are created/renamed/deleted.
     let availableSuperchats = [];
+    let llmReasoningEffortsByModel = {};
+    let llmDefaultReasoningEffortByModel = {};
     // Buckets created in this session get a "New" badge until membership is saved.
     const newlyCreatedSuperchatIds = new Set();
 
@@ -257,31 +259,36 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    function isGpt5Family(model) {
-        return typeof model === 'string' && model.startsWith('gpt-5');
-    }
-
     function updateReasoningVisibility() {
         const modelSelect = document.getElementById('llm-model-select');
         const reasoningItem = document.getElementById('llm-reasoning-item');
         const reasoningSelect = document.getElementById('llm-reasoning-select');
         if (!modelSelect || !reasoningItem) return;
 
-        reasoningItem.style.display = isGpt5Family(modelSelect.value) ? '' : 'none';
+        const efforts = llmReasoningEffortsByModel[modelSelect.value] || [];
+        reasoningItem.style.display = efforts.length > 0 ? '' : 'none';
 
-        // Newer GPT-5 models do not support "minimal"; hide it and bump to "low".
         if (reasoningSelect) {
-            const minimalOption = reasoningSelect.querySelector('option[value="minimal"]');
-            if (minimalOption) {
-                if (['gpt-5.4-nano', 'gpt-5.6-luna'].includes(modelSelect.value)) {
-                    minimalOption.hidden = true;
-                    minimalOption.disabled = true;
-                    if (reasoningSelect.value === 'minimal') reasoningSelect.value = 'low';
-                } else {
-                    minimalOption.hidden = false;
-                    minimalOption.disabled = false;
+            const selected = reasoningSelect.value;
+            const allEfforts = [...new Set([
+                ...Array.from(reasoningSelect.options, option => option.value),
+                ...Object.values(llmReasoningEffortsByModel).flat()
+            ])];
+            for (const effort of allEfforts) {
+                let option = reasoningSelect.querySelector(`option[value="${effort}"]`);
+                if (!option) {
+                    option = document.createElement('option');
+                    option.value = effort;
+                    option.textContent = effort;
+                    reasoningSelect.appendChild(option);
                 }
+                const supported = efforts.includes(effort);
+                option.hidden = !supported;
+                option.disabled = !supported;
             }
+            const modelDefault = llmDefaultReasoningEffortByModel[modelSelect.value];
+            const fallback = efforts.includes(modelDefault) ? modelDefault : (efforts[0] || '');
+            reasoningSelect.value = efforts.includes(selected) ? selected : fallback;
         }
     }
 
@@ -431,14 +438,31 @@ document.addEventListener('DOMContentLoaded', async () => {
             const modelSelect = document.getElementById('llm-model-select');
             const reasoningSelect = document.getElementById('llm-reasoning-select');
             if (modelSelect) {
+                const allowedModels = Array.isArray(result.settings.allowedModels)
+                    ? result.settings.allowedModels
+                    : [];
+                if (allowedModels.length > 0) {
+                    modelSelect.replaceChildren(...allowedModels.map(model => {
+                        const option = document.createElement('option');
+                        option.value = model;
+                        option.textContent = model;
+                        return option;
+                    }));
+                }
+                llmReasoningEffortsByModel = result.settings.reasoningEffortsByModel || {};
+                llmDefaultReasoningEffortByModel = result.settings.defaultReasoningEffortByModel || {};
                 modelSelect.value = result.settings.model;
                 modelSelect.removeEventListener('change', updateReasoningVisibility);
                 modelSelect.addEventListener('change', updateReasoningVisibility);
             }
-            if (reasoningSelect) {
-                reasoningSelect.value = result.settings.reasoningEffort || 'minimal';
-            }
             updateReasoningVisibility();
+            if (reasoningSelect) {
+                const available = llmReasoningEffortsByModel[result.settings.model] || [];
+                const modelDefault = llmDefaultReasoningEffortByModel[result.settings.model];
+                reasoningSelect.value = available.includes(result.settings.reasoningEffort)
+                    ? result.settings.reasoningEffort
+                    : (available.includes(modelDefault) ? modelDefault : (available[0] || 'minimal'));
+            }
         } catch (error) {
             console.error('Error loading LLM settings:', error);
         }

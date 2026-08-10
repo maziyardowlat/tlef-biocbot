@@ -912,12 +912,12 @@
                             <h2 class="settings-panel-title" tabindex="-1">Platform &amp; models</h2>
                             <section class="settings-section" id="llm-model-section" style="display: none;">
                                 <h3>LLM model</h3>
-                                <p class="section-description">Pick the OpenAI model used for all chat, question generation, and analysis across courses. Reasoning effort only applies to gpt-5 family models.</p>
+                                <p class="section-description">Pick the model used for chat, question generation, and analysis across courses. The available models follow the configured LLM provider.</p>
                                 <div class="settings-content">
                                     <div class="setting-item">
                                         <div class="setting-info">
                                             <h4 id="llm-model-label">Model</h4>
-                                            <p id="llm-model-desc">Course-wide selection. gpt-4.1-mini uses temperature; gpt-5 family models use reasoning instead.</p>
+                                            <p id="llm-model-desc">Course-wide selection. Provider-specific reasoning controls appear when the selected model supports them.</p>
                                         </div>
                                         <div class="setting-controls">
                                             <select id="llm-model-select" class="number-input" aria-labelledby="llm-model-label" aria-describedby="llm-model-desc">
@@ -931,7 +931,7 @@
                                     <div class="setting-item" id="llm-reasoning-item" style="display: none;">
                                         <div class="setting-info">
                                             <h4 id="llm-reasoning-label">Reasoning effort</h4>
-                                            <p id="llm-reasoning-desc">Only applies to gpt-5 family models. Defaults to minimal.</p>
+                                            <p id="llm-reasoning-desc">Available values depend on the selected model. For Qwen3, “none” disables thinking for short structured calls.</p>
                                         </div>
                                         <div class="setting-controls">
                                             <select id="llm-reasoning-select" class="number-input" aria-labelledby="llm-reasoning-label" aria-describedby="llm-reasoning-desc">

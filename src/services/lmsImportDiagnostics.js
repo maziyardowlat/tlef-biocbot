@@ -77,7 +77,7 @@ function publicErrorDiagnostic(error, context) {
         ...(context.allowedDownloadHostSuffixes.length
             ? { allowedDownloadHostSuffixes: context.allowedDownloadHostSuffixes }
             : {}),
-        ...(toolkitVersion ? { toolkitVersion } : {}),
+        ...(context.toolkitVersion ? { toolkitVersion: context.toolkitVersion } : {}),
         occurredAt: new Date().toISOString()
     };
 }

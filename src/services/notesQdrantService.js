@@ -14,8 +14,9 @@
 
 const { randomUUID } = require('crypto');
 const QdrantService = require('./qdrantService');
+const { collectionNameForEmbedding } = require('./embeddingConfig');
 
-const NOTES_COLLECTION = process.env.BIOCBOT_TEST_LLM_STUB === '1'
+const NOTES_COLLECTION_BASE = process.env.BIOCBOT_TEST_LLM_STUB === '1'
     ? 'superchat_notes_stub'
     : 'superchat_notes';
 
@@ -56,7 +57,11 @@ class NotesQdrantService {
         this.embeddings = null;
         this.chunker = null;
         this.vectorSize = null;
-        this.collectionName = NOTES_COLLECTION;
+        this.collectionName = collectionNameForEmbedding(
+            NOTES_COLLECTION_BASE,
+            process.env.LLM_EMBEDDING_MODEL,
+            process.env.QDRANT_NOTES_COLLECTION_NAME
+        );
         this.initialized = false;
     }
 
@@ -92,6 +97,17 @@ class NotesQdrantService {
                 vectors: { size: this.vectorSize, distance: 'Cosine' }
             });
             console.log(`✅ Created Qdrant collection: ${this.collectionName} (size=${this.vectorSize})`);
+            return;
+        }
+
+        const info = await this.client.getCollection(this.collectionName);
+        const existingVectorSize = info.config.params.vectors.size;
+        if (existingVectorSize !== this.vectorSize) {
+            throw new Error(
+                `Qdrant notes collection ${this.collectionName} has ${existingVectorSize}-dimension vectors, ` +
+                `but the configured embedding model returns ${this.vectorSize}. ` +
+                'Choose a new QDRANT_NOTES_COLLECTION_NAME and re-index; existing notes vectors were preserved.'
+            );
         }
     }
 
@@ -266,5 +282,5 @@ class NotesQdrantService {
 }
 
 module.exports = NotesQdrantService;
-module.exports.NOTES_COLLECTION = NOTES_COLLECTION;
+module.exports.NOTES_COLLECTION = NOTES_COLLECTION_BASE;
 module.exports.DEFAULT_DUP_THRESHOLD = DEFAULT_DUP_THRESHOLD;

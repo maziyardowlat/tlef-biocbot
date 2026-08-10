@@ -10,6 +10,10 @@ const { ConsoleLogger } = require('ubc-genai-toolkit-core');
 const { randomUUID } = require('crypto');
 const config = require('./config');
 const { LlmKeyError, mapOpenAIErrorToStatus } = require('./llmKeyStore');
+const {
+    collectionNameForEmbedding,
+    vectorSizeForEmbeddingModel
+} = require('./embeddingConfig');
 
 console.log('✅ Successfully imported embeddings library:', typeof EmbeddingsModule);
 
@@ -26,10 +30,16 @@ class QdrantService {
         // Use a separate collection when the embeddings stub is active so the
         // stub's bag-of-words vectors don't mix with real-LLM vectors stored
         // by a prior dev/prod run against the same Qdrant instance.
-        this.collectionName = process.env.BIOCBOT_TEST_LLM_STUB === '1'
+        this.embeddingModel = process.env.LLM_EMBEDDING_MODEL || null;
+        const baseCollectionName = process.env.BIOCBOT_TEST_LLM_STUB === '1'
             ? 'biocbot_documents_stub'
             : 'biocbot_documents';
-        this.vectorSize = process.env.QDRANT_VECTOR_SIZE || 768; // Will be determined dynamically from embeddings
+        this.collectionName = collectionNameForEmbedding(
+            baseCollectionName,
+            this.embeddingModel,
+            process.env.QDRANT_COLLECTION_NAME
+        );
+        this.vectorSize = vectorSizeForEmbeddingModel(this.embeddingModel);
     }
 
     /**
@@ -153,21 +163,9 @@ class QdrantService {
             // Set vector size based on the embedding model (more reliable than test embedding)
             console.log('Setting vector size based on embedding model...');
             const embeddingModel = process.env.LLM_EMBEDDING_MODEL;
-            
-            if (embeddingModel === 'text-embedding-3-small') {
-                this.vectorSize = 1536;
-                console.log(`🔍 Using text-embedding-3-small vector size: ${this.vectorSize}`);
-            } else if (embeddingModel === 'text-embedding-ada-002') {
-                this.vectorSize = 1536;
-                console.log(`🔍 Using text-embedding-ada-002 vector size: ${this.vectorSize}`);
-            } else if (embeddingModel === 'nomic-embed-text') {
-                this.vectorSize = 768;
-                console.log(`🔍 Using nomic-embed-text vector size: ${this.vectorSize}`);
-            } else {
-                // Fallback to environment variable or default
-                this.vectorSize = process.env.QDRANT_VECTOR_SIZE || 768;
-                console.log(`🔍 Using fallback vector size: ${this.vectorSize}`);
-            }
+            this.embeddingModel = embeddingModel || null;
+            this.vectorSize = vectorSizeForEmbeddingModel(embeddingModel);
+            console.log(`🔍 Using ${embeddingModel || 'default'} vector size: ${this.vectorSize}`);
             
             console.log(`✅ Successfully initialized embeddings service (vector size: ${this.vectorSize} dimensions)`);
             
@@ -197,7 +195,8 @@ class QdrantService {
                     } else if (actualEmbedding.length === this.vectorSize) {
                         console.log(`✅ Embeddings service test successful (${actualEmbedding.length} dimensions)`);
                     } else {
-                        console.warn(`⚠️ Embeddings service returned ${actualEmbedding.length} dimensions, expected ${this.vectorSize}`);
+                        console.warn(`⚠️ Embeddings service returned ${actualEmbedding.length} dimensions, expected ${this.vectorSize}; using the provider-reported size`);
+                        this.vectorSize = actualEmbedding.length;
                     }
                 } else {
                     console.warn(`⚠️ Embeddings service test returned unexpected result, but continuing with model-based vector size`);
@@ -252,24 +251,11 @@ class QdrantService {
                 console.log(`🔍 Collection validation: existing=${existingVectorSize}, required=${this.vectorSize}`);
                 
                 if (existingVectorSize !== this.vectorSize) {
-                    console.log(`⚠️ Vector dimension mismatch detected!`);
-                    console.log(`   Existing collection: ${existingVectorSize} dimensions`);
-                    console.log(`   Required: ${this.vectorSize} dimensions`);
-                    console.log(`   Recreating collection with correct dimensions...`);
-                    
-                    // Delete the existing collection
-                    await this.client.deleteCollection(this.collectionName);
-                    console.log(`🗑️ Deleted existing collection`);
-                    
-                    // Create new collection with correct dimensions
-                    await this.client.createCollection(this.collectionName, {
-                        vectors: {
-                            size: this.vectorSize,
-                            distance: 'Cosine'
-                        }
-                    });
-                    
-                    console.log(`✅ Collection ${this.collectionName} recreated with correct dimensions`);
+                    throw new Error(
+                        `Qdrant collection ${this.collectionName} has ${existingVectorSize}-dimension vectors, ` +
+                        `but ${this.embeddingModel || 'the configured embedding model'} returns ${this.vectorSize}. ` +
+                        'Choose a new QDRANT_COLLECTION_NAME and re-index; BioCBot will not delete existing vectors automatically.'
+                    );
                 } else {
                     console.log(`✅ Collection ${this.collectionName} already exists with correct dimensions`);
                 }

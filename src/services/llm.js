@@ -8,9 +8,12 @@ const { LLMModule } = require('ubc-genai-toolkit-llm');
 const config = require('./config');
 const prompts = require('./prompts');
 const { LlmKeyError, mapOpenAIErrorToStatus } = require('./llmKeyStore');
-
-const ALLOWED_LLM_MODELS = ['gpt-4.1-mini', 'gpt-5-nano', 'gpt-5.4-nano', 'gpt-5.6-luna'];
-const ALLOWED_REASONING_EFFORTS = ['minimal', 'low', 'medium', 'high'];
+const {
+    catalogForProvider,
+    maxOutputTokensForModel,
+    normalizeReasoningEffort,
+    supportsReasoning
+} = require('./llmModels');
 const MODEL_SETTINGS_TTL_MS = 30 * 1000; // Re-read at most every 30 seconds
 
 class LLMService {
@@ -53,21 +56,20 @@ class LLMService {
             return this._modelSettingsCache;
         }
 
-        const envDefault = (this.llmConfig && this.llmConfig.defaultModel) || process.env.OPENAI_MODEL || 'gpt-4.1-mini';
-        let model = ALLOWED_LLM_MODELS.includes(envDefault) ? envDefault : 'gpt-4.1-mini';
-        let reasoningEffort = 'minimal';
+        const provider = this.llmConfig?.provider || process.env.LLM_PROVIDER || 'openai';
+        const catalog = catalogForProvider(provider, this.llmConfig?.defaultModel);
+        let model = catalog.defaultModel;
+        let reasoningEffort = normalizeReasoningEffort(provider, model);
 
         try {
             const db = this._dbAccessor ? this._dbAccessor() : null;
             if (db) {
                 const doc = await db.collection('settings').findOne({ _id: 'llm' });
                 if (doc) {
-                    if (ALLOWED_LLM_MODELS.includes(doc.model)) {
+                    if (catalog.allowedModels.includes(doc.model)) {
                         model = doc.model;
                     }
-                    if (ALLOWED_REASONING_EFFORTS.includes(doc.reasoningEffort)) {
-                        reasoningEffort = doc.reasoningEffort;
-                    }
+                    reasoningEffort = normalizeReasoningEffort(provider, model, doc.reasoningEffort);
                 }
             }
         } catch (error) {
@@ -91,54 +93,56 @@ class LLMService {
      * gpt-5.6-luna:  none,    low, medium, high, xhigh   (no "minimal")
      */
     _coerceReasoningEffort(model, requested) {
-        const supportedByModel = {
-            'gpt-5-nano': ['minimal', 'low', 'medium', 'high'],
-            'gpt-5.4-nano': ['none', 'low', 'medium', 'high', 'xhigh'],
-            'gpt-5.6-luna': ['none', 'low', 'medium', 'high', 'xhigh']
-        };
-        const supported = supportedByModel[model];
-        if (!supported) return requested; // Unknown model — pass through
-        if (supported.includes(requested)) return requested;
-        // Map requested → closest supported value
-        if (requested === 'minimal' && supported.includes('low')) return 'low';
-        if (requested === 'xhigh' && supported.includes('high')) return 'high';
-        return supported[0]; // Fallback to first supported
+        const provider = this.llmConfig?.provider || process.env.LLM_PROVIDER || 'openai';
+        return normalizeReasoningEffort(provider, model, requested);
     }
 
     /**
      * Adjust an outgoing LLM options object based on the configured model.
      * - Forces the active model.
-     * - For gpt-5 family models, drops temperature (unsupported), translates
-     *   max_tokens to max_completion_tokens, and adds reasoning_effort.
+     * - Normalizes legacy token/reasoning keys into the toolkit's canonical keys.
+     * - Applies model-specific output limits so output plus prompt fits the
+     *   provider's total context window.
+     * - Drops temperature for gpt-5 family models that reject it.
      */
     async _applyModelOptions(options = {}) {
         const settings = await this._getModelSettings();
+        const provider = this.llmConfig?.provider || process.env.LLM_PROVIDER || 'openai';
         const result = { ...options, model: settings.model };
+        const maxTokens = result.maxTokens ?? result.max_completion_tokens ?? result.max_tokens;
+        delete result.max_completion_tokens;
+        delete result.max_tokens;
+        delete result.reasoning_effort;
+        if (maxTokens !== undefined) result.maxTokens = maxTokens;
 
         if (this._isGpt5Family(settings.model)) {
             delete result.temperature;
-            if (result.max_tokens !== undefined) {
-                result.max_completion_tokens = result.max_tokens;
-                delete result.max_tokens;
-            }
-            if (result.maxTokens !== undefined) {
-                // Toolkit-known key, also translate for safety
-                result.max_completion_tokens = result.max_completion_tokens || result.maxTokens;
-                delete result.maxTokens;
-            }
+        }
+
+        if (supportsReasoning(provider, settings.model)) {
+            const requestedEffort = settings.reasoningEffort;
+            const coercedEffort = normalizeReasoningEffort(provider, settings.model, requestedEffort);
             // Reasoning models consume tokens internally before producing output.
             // Enforce a floor so small caller-supplied budgets don't get fully eaten
-            // by reasoning, leaving an empty/truncated response.
+            // by reasoning. Qwen with effort=none has thinking disabled and does
+            // not need the larger budget.
             const REASONING_FLOOR = 2000;
-            if (!result.max_completion_tokens || result.max_completion_tokens < REASONING_FLOOR) {
-                result.max_completion_tokens = REASONING_FLOOR;
+            if (coercedEffort !== 'none' && result.maxTokens !== undefined && result.maxTokens < REASONING_FLOOR) {
+                result.maxTokens = REASONING_FLOOR;
             }
-            const requestedEffort = settings.reasoningEffort || 'minimal';
-            const coercedEffort = this._coerceReasoningEffort(settings.model, requestedEffort);
-            if (coercedEffort !== requestedEffort) {
+            if (requestedEffort && coercedEffort !== requestedEffort) {
                 console.warn(`⚠️ [LLM] reasoning_effort "${requestedEffort}" not supported by ${settings.model}; coerced to "${coercedEffort}"`);
             }
-            result.reasoning_effort = coercedEffort;
+            result.reasoningEffort = coercedEffort;
+        }
+
+        const outputCap = maxOutputTokensForModel(provider, settings.model);
+        if (outputCap && result.maxTokens !== undefined && result.maxTokens > outputCap) {
+            console.warn(
+                `⚠️ [LLM] maxTokens ${result.maxTokens} exceeds the safe output limit for ` +
+                `${settings.model}; capped at ${outputCap} to leave room for the prompt.`
+            );
+            result.maxTokens = outputCap;
         }
 
         return result;
