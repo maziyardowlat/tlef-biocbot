@@ -155,7 +155,10 @@ test.describe('Instructor platform selection', () => {
     });
 
     test('onboarding offers GPT and Sandbox with platform-specific help text', async ({ page }) => {
-        await page.goto('/instructor/onboarding');
+        // The seeded course has isOnboardingComplete, so a bare visit renders the
+        // "already complete" view. addCourse=true starts a fresh course setup,
+        // which is where the platform choice lives.
+        await page.goto('/instructor/onboarding?addCourse=true');
         await expect(page.locator('#onboarding-llm-platform')).toBeVisible({ timeout: 15_000 });
 
         // GPT is the default choice.
@@ -176,7 +179,7 @@ test.describe('Instructor platform selection', () => {
     });
 
     test('onboarding never exposes a chat or embedding model name', async ({ page }) => {
-        await page.goto('/instructor/onboarding');
+        await page.goto('/instructor/onboarding?addCourse=true');
         await expect(page.locator('#onboarding-llm-platform')).toBeVisible({ timeout: 15_000 });
 
         const visibleText = await page.locator('body').innerText();
@@ -197,7 +200,7 @@ test.describe('Instructor platform selection', () => {
         await expect(page.locator('#course-llm-platform-change-note')).toBeHidden();
     });
 
-    test('choosing a different platform warns that material must be prepared', async ({ page }) => {
+    test('choosing a platform with no key asks for one before material can be prepared', async ({ page }) => {
         await mockCourseKeyState(page, baseState());
         await openCourseKeySettings(page);
 
@@ -206,11 +209,41 @@ test.describe('Instructor platform selection', () => {
         await expect(page.locator('#course-llm-platform-help')).toHaveText(SANDBOX_HELP);
         await expect(page.locator('#course-llm-platform-change-note')).toBeVisible();
         await expect(page.locator('#course-llm-platform-change-note'))
-            .toContainText('Course material must be prepared for the new platform');
-        await expect(page.locator('#course-llm-platform-change-note')).toContainText('OpenAI Chat GPT keeps answering until then');
+            .toContainText('Save a UBC On-Premise LLM key, then prepare the material');
+        // The current platform keeps serving until preparation finishes.
+        await expect(page.locator('#course-llm-platform-change-note'))
+            .toContainText('OpenAI Chat GPT keeps answering until then');
         // The status line follows the selected platform, not the active one.
         await expect(page.locator('#course-llm-key-status')).toContainText('No UBC On-Premise LLM key saved');
         await expect(page.locator('#course-llm-key-input')).toHaveAttribute('placeholder', 'UBC LLM Sandbox API key');
+        // Without a valid key there is nothing to prepare.
+        await expect(page.locator('#course-llm-prepare')).toBeDisabled();
+    });
+
+    test('choosing a platform whose key is already saved offers to prepare and switch', async ({ page }) => {
+        await mockCourseKeyState(page, baseState({
+            llmKeysByProvider: {
+                openai: { status: 'valid', last4: '1111', validatedAt: null, updatedAt: null },
+                'ubc-llm-sandbox': { status: 'valid', last4: '2222', validatedAt: null, updatedAt: null },
+            },
+        }));
+        await openCourseKeySettings(page);
+
+        await page.locator('#course-llm-provider-ubc-llm-sandbox').check();
+
+        await expect(page.locator('#course-llm-platform-change-note'))
+            .toContainText('Your saved UBC On-Premise LLM key is kept separately');
+        await expect(page.locator('#course-llm-platform-change-note'))
+            .toContainText('switch to UBC On-Premise LLM automatically when it is ready');
+        // The key is already valid, so preparation can start straight away.
+        await expect(page.locator('#course-llm-prepare')).toBeEnabled();
+        await expect(page.locator('#course-llm-prepare'))
+            .toHaveText('Prepare material and switch to UBC On-Premise LLM');
+
+        // Back on the active platform the action becomes a refresh, not a switch.
+        await page.locator('#course-llm-provider-openai').check();
+        await expect(page.locator('#course-llm-platform-change-note')).toBeHidden();
+        await expect(page.locator('#course-llm-prepare')).toHaveText('Refresh OpenAI Chat GPT material');
     });
 
     test('a saved platform key gets an explicit confirmed switch action without key re-entry', async ({ page }) => {

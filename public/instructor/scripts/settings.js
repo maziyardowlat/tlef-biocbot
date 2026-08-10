@@ -701,13 +701,24 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function fillSelect(select, values, selected) {
         if (!select) return;
-        select.replaceChildren(...values.map(value => {
-            const option = document.createElement('option');
-            option.value = value;
-            option.textContent = value;
-            return option;
-        }));
-        if (selected && values.includes(selected)) select.value = selected;
+
+        // An empty list means the server told us nothing about this control —
+        // an older server shape, or a failed lookup. Keep whatever options the
+        // markup already ships rather than emptying the control entirely.
+        if (Array.isArray(values) && values.length > 0) {
+            select.replaceChildren(...values.map(value => {
+                const option = document.createElement('option');
+                option.value = value;
+                option.textContent = value;
+                return option;
+            }));
+        }
+
+        // Select against the options actually present, so the static fallback
+        // options still resolve when the server sent no list.
+        if (selected && Array.from(select.options).some(option => option.value === selected)) {
+            select.value = selected;
+        }
     }
 
     /**
