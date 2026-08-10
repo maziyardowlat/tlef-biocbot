@@ -11,6 +11,8 @@ const { ensureSuperchatsFromLegacy } = require('./models/Superchat');
 const { ensureIndexes: ensureMessageFeedbackIndexes } = require('./models/MessageFeedback');
 const { ensureIndexes: ensureChatSurveyResponseIndexes } = require('./models/ChatSurveyResponse');
 const { ensureIndexes: ensureFlashcardIndexes } = require('./models/FlashcardDeck');
+const { ensureIndexes: ensureProviderMigrationIndexes } = require('./services/providerMigrationService');
+const { resumePendingMigrations } = require('./services/providerMigrationRunner');
 const coursesRoutes = require('./routes/courses');
 const flagsRoutes = require('./routes/flags');
 const lecturesRoutes = require('./routes/lectures');
@@ -36,6 +38,7 @@ const struggleActivityRoutes = require('./routes/struggle-activity');
 const mentalHealthFlagsRoutes = require('./routes/mentalHealthFlags');
 const superChatNotesRoutes = require('./routes/superChatNotes');
 const superchatsRoutes = require('./routes/superchats');
+const providerMigrationsRoutes = require('./routes/providerMigrations');
 const academicSyncRoutes = require('./routes/academicSync');
 const previewRoutes = require('./routes/preview');
 const { createCanvasLmsRouter } = require('./routes/canvasLms');
@@ -661,6 +664,7 @@ function setupAPIRoutes() {
     app.use('/api/instructor/chat', authMiddleware.requireAuth, authMiddleware.populateUser, authMiddleware.requireInstructorOrTA, instructorChatRoutes);
     app.use('/api/superchat-notes', authMiddleware.requireAuth, authMiddleware.populateUser, authMiddleware.requireInstructorOrTA, superChatNotesRoutes);
     app.use('/api/superchats', authMiddleware.requireAuth, authMiddleware.populateUser, superchatsRoutes);
+    app.use('/api/provider-migrations', authMiddleware.requireAuth, authMiddleware.populateUser, providerMigrationsRoutes);
     app.use('/api/academic-sync', authMiddleware.requireAuth, authMiddleware.populateUser, authMiddleware.requireInstructor, academicSyncRoutes);
     app.get(
         '/api/lms/configuration',
@@ -771,6 +775,13 @@ async function startServer() {
         await ensureMessageFeedbackIndexes(db);
         await ensureChatSurveyResponseIndexes(db);
         await ensureFlashcardIndexes(db);
+        await ensureProviderMigrationIndexes(db);
+
+        // Persistent provider/embedding migrations survive restarts: resume any
+        // job that was still queued or running when the server stopped.
+        await resumePendingMigrations(db).catch((error) => {
+            console.error('⚠️ Failed to resume provider migrations:', error.message);
+        });
 
         // Set up routes after authentication is initialized
         setupProtectedRoutes();

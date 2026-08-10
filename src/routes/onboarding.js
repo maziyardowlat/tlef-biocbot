@@ -8,10 +8,13 @@ const router = express.Router();
 const CourseModel = require('../models/Course');
 const {
     buildKeySubdocument,
+    credentialSetFields,
     publicKeySummary,
     stripPrivateKeyFields,
     validateApiKey
 } = require('../services/llmKeyStore');
+const providerKeys = require('../services/providerKeyService');
+const { normalizeProvider, providerCatalog, providerLabel } = require('../services/llmProviders');
 
 const ONBOARDING_UPDATE_FIELDS = new Set([
     'courseName', 'courseDescription', 'learningOutcomes', 'assessmentCriteria',
@@ -64,6 +67,15 @@ function sortCoursesWithInactiveLast(courses = []) {
  * GET /api/onboarding/test
  * Test endpoint to verify onboarding routes are working
  */
+/**
+ * GET /api/onboarding/platforms
+ * The platforms an instructor can choose from, with the help text for each.
+ * Deliberately carries no model names — instructors never choose models.
+ */
+router.get('/platforms', (req, res) => {
+    res.json({ success: true, providers: providerCatalog() });
+});
+
 router.get('/test', (req, res) => {
     res.json({
         success: true,
@@ -135,13 +147,19 @@ router.post('/', async (req, res) => {
             });
         }
 
-        const validation = await validateApiKey(apiKey);
+        // Step 1 of onboarding: the instructor picks a platform (GPT or
+        // Sandbox); step 2 is that platform's key. Both are validated against
+        // the models the admin configured for that platform.
+        const selectedProvider = normalizeProvider(req.body.llmProvider);
+        const validation = await providerKeys.validateForProvider(db, selectedProvider, apiKey);
         if (!validation.ok) {
             return res.status(400).json({
                 success: false,
-                code: validation.status === 'quota_exhausted' ? 'LLM_KEY_QUOTA' : 'LLM_KEY_INVALID',
-                message: validation.message || 'A valid OpenAI API key is required to create a course.',
-                detail: validation.detail
+                code: providerKeys.errorCodeForStatus(validation.status),
+                message: validation.message
+                    || `A valid ${providerLabel(selectedProvider)} API key is required to create a course.`,
+                detail: validation.detail,
+                llmProvider: selectedProvider
             });
         }
         
@@ -194,10 +212,10 @@ router.post('/', async (req, res) => {
             }
         }
 
-        const llmApiKey = buildKeySubdocument(apiKey, user.userId);
+        const llmApiKey = buildKeySubdocument(apiKey, user.userId, selectedProvider);
         await db.collection('courses').updateOne(
             { courseId: result.courseId },
-            { $set: { llmApiKey, updatedAt: new Date() } }
+            { $set: { ...credentialSetFields(selectedProvider, llmApiKey), updatedAt: new Date() } }
         );
 
         if (req.app.locals.llmRegistry) {
@@ -215,6 +233,7 @@ router.post('/', async (req, res) => {
                 modifiedCount: onboardingModifiedCount,
                 totalUnits: result.totalUnits,
                 llmKey: publicKeySummary(llmApiKey),
+                llmProvider: selectedProvider,
                 timestamp: new Date().toISOString()
             }
         });

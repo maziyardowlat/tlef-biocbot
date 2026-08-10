@@ -12,18 +12,33 @@ const CourseModel = require('../models/Course');
 const SuperchatModel = require('../models/Superchat');
 const { hasSystemAdminAccess, normalizeEmail } = require('../services/authorization');
 const {
+    adminCatalogForProvider,
     catalogForProvider,
     configuredDefaultModel,
     configuredProvider,
+    isAllowedEmbeddingModel,
     normalizeReasoningEffort,
     supportsReasoning
 } = require('../services/llmModels');
 const {
+    activeProviderOf,
     buildKeySubdocument,
     decryptApiKey,
     publicKeySummary,
+    publicProviderKeyState,
     validateApiKey
 } = require('../services/llmKeyStore');
+const adminModelSettings = require('../services/adminModelSettings');
+const providerKeys = require('../services/providerKeyService');
+const migrations = require('../services/providerMigrationService');
+const migrationRunner = require('../services/providerMigrationRunner');
+const {
+    SELECTABLE_PROVIDERS,
+    normalizeProvider,
+    providerCatalog,
+    providerLabel
+} = require('../services/llmProviders');
+const { buildEmbeddingProfile } = require('../services/embeddingConfig');
 const {
     listSystemAdmins,
     grantSystemAdminByEmail,
@@ -973,8 +988,25 @@ router.get('/llm-tag', async (req, res) => {
 });
 
 /**
+ * Invalidate every cache that depends on the admin model settings.
+ */
+function invalidateModelCaches(req) {
+    adminModelSettings.invalidateCache();
+    const llmService = req.app.locals.llm;
+    if (llmService && typeof llmService.invalidateModelSettingsCache === 'function') {
+        llmService.invalidateModelSettingsCache();
+    }
+    if (req.app.locals.llmRegistry && typeof req.app.locals.llmRegistry.clear === 'function') {
+        req.app.locals.llmRegistry.clear();
+    }
+}
+
+/**
  * GET /api/settings/llm
- * Get the global LLM model settings (system admins only)
+ * Per-platform model settings (system admins only).
+ *
+ * Model controls are grouped by platform — GPT and Sandbox each have their own
+ * chat model, embedding model and reasoning effort. Instructors never see this.
  */
 router.get('/llm', async (req, res) => {
     try {
@@ -987,26 +1019,53 @@ router.get('/llm', async (req, res) => {
             return;
         }
 
-        const settingsDoc = await db.collection('settings').findOne({ _id: 'llm' });
-        const provider = configuredProvider();
-        const catalog = catalogForProvider(provider, configuredDefaultModel(provider));
+        const { providers, pendingEmbedding } = await adminModelSettings.getAllProviderSettings(db, { force: true });
+        const platforms = SELECTABLE_PROVIDERS.map((provider) => {
+            const catalog = adminCatalogForProvider(provider);
+            const current = providers[provider];
+            const profile = buildEmbeddingProfile({
+                provider,
+                embeddingModel: current.embeddingModel,
+                revision: current.embeddingRevision
+            });
 
-        const model = (settingsDoc && catalog.allowedModels.includes(settingsDoc.model))
-            ? settingsDoc.model
-            : catalog.defaultModel;
-        const reasoningEffort = normalizeReasoningEffort(provider, model, settingsDoc && settingsDoc.reasoningEffort);
+            return {
+                provider,
+                label: providerLabel(provider),
+                chatModel: current.chatModel,
+                embeddingModel: current.embeddingModel,
+                embeddingRevision: current.embeddingRevision,
+                reasoningEffort: current.reasoningEffort,
+                supportsReasoning: supportsReasoning(provider, current.chatModel),
+                allowedModels: catalog.allowedModels,
+                allowedEmbeddingModels: catalog.allowedEmbeddingModels,
+                allowedReasoningEfforts: catalog.reasoningEffortsByModel[current.chatModel] || [],
+                reasoningEffortsByModel: catalog.reasoningEffortsByModel,
+                defaultReasoningEffortByModel: catalog.defaultReasoningEffortByModel,
+                collection: profile.collection,
+                notesCollection: profile.notesCollection,
+                vectorSize: profile.vectorSize,
+                profileKey: profile.key,
+                pendingEmbedding: pendingEmbedding[provider] || null
+            };
+        });
+
+        const activeProvider = normalizeProvider(configuredProvider());
+        const active = platforms.find(platform => platform.provider === activeProvider) || platforms[0];
 
         res.json({
             success: true,
+            platforms,
+            // Legacy single-platform shape, kept so older clients keep working.
             settings: {
-                model,
-                reasoningEffort,
-                supportsReasoning: supportsReasoning(provider, model),
-                allowedModels: catalog.allowedModels,
-                allowedReasoningEfforts: catalog.reasoningEffortsByModel[model] || [],
-                reasoningEffortsByModel: catalog.reasoningEffortsByModel,
-                defaultReasoningEffortByModel: catalog.defaultReasoningEffortByModel,
-                provider
+                model: active.chatModel,
+                reasoningEffort: active.reasoningEffort,
+                supportsReasoning: active.supportsReasoning,
+                allowedModels: active.allowedModels,
+                allowedReasoningEfforts: active.allowedReasoningEfforts,
+                reasoningEffortsByModel: active.reasoningEffortsByModel,
+                defaultReasoningEffortByModel: active.defaultReasoningEffortByModel,
+                provider: active.provider
             }
         });
     } catch (error) {
@@ -1017,7 +1076,8 @@ router.get('/llm', async (req, res) => {
 
 /**
  * POST /api/settings/llm
- * Update the global LLM model settings (system admins only)
+ * Update a platform's chat model / reasoning effort. Chat changes are
+ * immediate — no vectors are involved.
  */
 router.post('/llm', async (req, res) => {
     try {
@@ -1030,47 +1090,36 @@ router.post('/llm', async (req, res) => {
             return;
         }
 
-        const { model, reasoningEffort } = req.body || {};
-        const provider = configuredProvider();
-        const catalog = catalogForProvider(provider, configuredDefaultModel(provider));
+        const body = req.body || {};
+        const provider = normalizeProvider(body.provider, configuredProvider());
+        const chatModel = body.chatModel || body.model;
 
-        if (!catalog.allowedModels.includes(model)) {
-            return res.status(400).json({
-                success: false,
-                error: `Invalid model for ${provider}. Allowed: ${catalog.allowedModels.join(', ')}`
-            });
+        let saved;
+        try {
+            saved = await adminModelSettings.saveChatSettings(
+                db,
+                provider,
+                { chatModel, reasoningEffort: body.reasoningEffort },
+                normalizeEmail(req.user.email)
+            );
+        } catch (error) {
+            if (error.code === 'INVALID_CHAT_MODEL') {
+                return res.status(400).json({ success: false, error: error.message });
+            }
+            throw error;
         }
 
-        const update = {
-            model,
-            updatedAt: new Date(),
-            updatedBy: normalizeEmail(req.user.email)
-        };
-
-        update.reasoningEffort = normalizeReasoningEffort(provider, model, reasoningEffort);
-
-        await db.collection('settings').updateOne(
-            { _id: 'llm' },
-            { $set: update },
-            { upsert: true }
-        );
-
-        // Invalidate the LLM service cache so the next call picks up the new settings
-        const llmService = req.app.locals.llm;
-        if (llmService && typeof llmService.invalidateModelSettingsCache === 'function') {
-            llmService.invalidateModelSettingsCache();
-        }
-        if (req.app.locals.llmRegistry && typeof req.app.locals.llmRegistry.clear === 'function') {
-            req.app.locals.llmRegistry.clear();
-        }
+        invalidateModelCaches(req);
 
         res.json({
             success: true,
-            message: 'LLM settings updated',
+            message: `${providerLabel(provider)} chat model updated`,
+            provider,
             settings: {
-                model: update.model,
-                reasoningEffort: update.reasoningEffort,
-                supportsReasoning: supportsReasoning(provider, update.model)
+                model: saved.chatModel,
+                chatModel: saved.chatModel,
+                reasoningEffort: saved.reasoningEffort,
+                supportsReasoning: saved.supportsReasoning
             }
         });
     } catch (error) {
@@ -1078,6 +1127,216 @@ router.post('/llm', async (req, res) => {
         res.status(500).json({ success: false, error: 'Failed to update LLM settings' });
     }
 });
+
+/**
+ * POST /api/settings/llm/embedding/impact
+ * Dry run for an embedding-model change: what would have to be re-indexed.
+ * The admin sees this before confirming; nothing is written.
+ */
+router.post('/llm/embedding/impact', async (req, res) => {
+    try {
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({ success: false, message: 'Database connection not available' });
+        }
+        if (!requireSystemAdmin(req, res)) return;
+
+        const body = req.body || {};
+        const provider = normalizeProvider(body.provider, configuredProvider());
+        const embeddingModel = body.embeddingModel;
+        if (!isAllowedEmbeddingModel(provider, embeddingModel)) {
+            return res.status(400).json({
+                success: false,
+                error: `Invalid embedding model for ${providerLabel(provider)}`
+            });
+        }
+
+        const profile = buildEmbeddingProfile({
+            provider,
+            embeddingModel,
+            revision: body.embeddingRevision || undefined
+        });
+        const surfaces = await affectedSurfacesForProvider(db, provider);
+        const work = await migrations.calculateWork({
+            db,
+            profile,
+            courseIds: surfaces.courseIds,
+            includeNotes: surfaces.includeNotes
+        });
+
+        res.json({
+            success: true,
+            provider,
+            profile: {
+                key: profile.key,
+                collection: profile.collection,
+                notesCollection: profile.notesCollection,
+                vectorSize: profile.vectorSize
+            },
+            impact: {
+                surfaces: surfaces.surfaces,
+                courses: surfaces.courseIds.length,
+                includeNotes: surfaces.includeNotes,
+                itemsToReindex: work.items.length,
+                itemsAlreadyCurrent: work.skipped
+            }
+        });
+    } catch (error) {
+        console.error('Error calculating embedding change impact:', error);
+        res.status(500).json({ success: false, error: 'Failed to calculate impact' });
+    }
+});
+
+/**
+ * POST /api/settings/llm/embedding
+ * Stage an embedding-model change. A new profile (and therefore a new
+ * collection) is created; the previous profile stays ACTIVE and its collection
+ * is never deleted, so a rollback is just re-selecting the old model.
+ */
+router.post('/llm/embedding', async (req, res) => {
+    try {
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({ success: false, message: 'Database connection not available' });
+        }
+        if (!requireSystemAdmin(req, res)) return;
+
+        const body = req.body || {};
+        const provider = normalizeProvider(body.provider, configuredProvider());
+        const embeddingModel = body.embeddingModel;
+        const embeddingRevision = body.embeddingRevision || undefined;
+
+        if (!isAllowedEmbeddingModel(provider, embeddingModel)) {
+            return res.status(400).json({
+                success: false,
+                error: `Invalid embedding model for ${providerLabel(provider)}`
+            });
+        }
+
+        const current = await adminModelSettings.getProviderSettings(db, provider, { force: true });
+        const profile = buildEmbeddingProfile({ provider, embeddingModel, revision: embeddingRevision });
+        if (current.embeddingModel === embeddingModel
+            && current.embeddingRevision === profile.revision) {
+            return res.json({
+                success: true,
+                message: `${providerLabel(provider)} already uses this embedding model`,
+                migration: null
+            });
+        }
+
+        const surfaces = await affectedSurfacesForProvider(db, provider);
+        const scope = { type: 'adminEmbedding', id: provider };
+        const { job } = await migrations.createMigration(db, {
+            scope,
+            kind: 'embedding-model',
+            fromProvider: provider,
+            toProvider: provider,
+            profile,
+            courseIds: surfaces.courseIds,
+            includeNotes: surfaces.includeNotes,
+            requestedBy: normalizeEmail(req.user.email)
+        });
+
+        await adminModelSettings.stagePendingEmbedding(db, provider, {
+            embeddingModel,
+            embeddingRevision: profile.revision,
+            migrationId: job.migrationId
+        });
+
+        migrationRunner.startMigration(db, job.migrationId);
+
+        res.status(202).json({
+            success: true,
+            message: `Re-indexing for the new ${providerLabel(provider)} embedding model. `
+                + 'The current embedding model stays active until it finishes.',
+            provider,
+            migration: migrations.publicMigrationView(job)
+        });
+    } catch (error) {
+        if (error.code === 'INVALID_EMBEDDING_MODEL') {
+            return res.status(400).json({ success: false, error: error.message });
+        }
+        console.error('Error staging embedding model change:', error);
+        res.status(500).json({ success: false, error: 'Failed to stage embedding model change' });
+    }
+});
+
+/**
+ * POST /api/settings/llm/embedding/rollback
+ * Abandon a staged embedding-model change. The previous collection is intact,
+ * so the platform simply keeps using it.
+ */
+router.post('/llm/embedding/rollback', async (req, res) => {
+    try {
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({ success: false, message: 'Database connection not available' });
+        }
+        if (!requireSystemAdmin(req, res)) return;
+
+        const provider = normalizeProvider((req.body || {}).provider, configuredProvider());
+        await adminModelSettings.clearPendingEmbedding(db, provider);
+        invalidateModelCaches(req);
+
+        res.json({
+            success: true,
+            message: `Reverted to the active ${providerLabel(provider)} embedding model. No vectors were deleted.`
+        });
+    } catch (error) {
+        console.error('Error rolling back embedding model change:', error);
+        res.status(500).json({ success: false, error: 'Failed to roll back embedding model change' });
+    }
+});
+
+/**
+ * Every surface running on a platform, and therefore every course whose
+ * content must be re-indexed when that platform's embedding model changes.
+ */
+async function affectedSurfacesForProvider(db, provider) {
+    const surfaces = [];
+    const courseIds = new Set();
+    let includeNotes = false;
+
+    const courses = await db.collection('courses')
+        .find({ isDeleted: { $ne: true } })
+        .project({ courseId: 1, courseName: 1, activeLlmProvider: 1, llmApiKey: 1, llmCredentials: 1 })
+        .toArray();
+
+    for (const course of courses) {
+        if (activeProviderOf(course) === provider) {
+            courseIds.add(course.courseId);
+            surfaces.push({ type: 'course', id: course.courseId, name: course.courseName || course.courseId });
+        }
+    }
+
+    const buckets = await db.collection('superchats')
+        .find({ isDeleted: { $ne: true } })
+        .toArray();
+    for (const bucket of buckets) {
+        if (activeProviderOf(bucket) !== provider) continue;
+        surfaces.push({ type: 'superchat', id: bucket.superchatId, name: bucket.name || bucket.superchatId });
+        const bucketCourses = Array.isArray(bucket.courseIds) ? bucket.courseIds : [];
+        for (const courseId of bucketCourses) courseIds.add(courseId);
+        if (bucket.includeNotes) includeNotes = true;
+    }
+
+    for (const settingsId of ['notesLlm', 'superCourseChat']) {
+        const doc = await db.collection('settings').findOne({ _id: settingsId });
+        if (!doc) continue;
+        if (activeProviderOf(doc) !== provider) continue;
+
+        if (settingsId === 'notesLlm') {
+            includeNotes = true;
+            surfaces.push({ type: 'notes', id: 'notesLlm', name: 'Instructor Notes' });
+        } else {
+            surfaces.push({ type: 'superCourseChat', id: 'superCourseChat', name: 'Instructor Super Course chat' });
+            for (const course of courses) courseIds.add(course.courseId);
+            if (doc.includeNotes !== false) includeNotes = true;
+        }
+    }
+
+    return { surfaces, courseIds: [...courseIds].filter(Boolean), includeNotes };
+}
 
 /**
  * GET /api/settings/question-prompts
@@ -1565,6 +1824,9 @@ router.post('/mental-health-prompt/reset', async (req, res) => {
     }
 });
 
+const NOTES_SCOPE = { type: 'notes', id: 'notesLlm' };
+const SUPER_COURSE_CHAT_SCOPE = { type: 'superCourseChat', id: 'superCourseChat' };
+
 router.get('/notes-llm-key', async (req, res) => {
     try {
         const db = req.app.locals.db;
@@ -1576,16 +1838,8 @@ router.get('/notes-llm-key', async (req, res) => {
             return;
         }
 
-        const doc = await db.collection('settings').findOne(
-            { _id: 'notesLlm' },
-            { projection: { llmApiKey: 1 } }
-        );
-
-        res.json({
-            success: true,
-            llmKey: publicKeySummary(doc && doc.llmApiKey),
-            aiAvailable: publicKeySummary(doc && doc.llmApiKey).status === 'valid'
-        });
+        const state = await providerKeys.surfaceKeyState(db, NOTES_SCOPE);
+        res.json({ success: true, providers: providerCatalog(), ...state });
     } catch (error) {
         console.error('Error fetching notes API key status:', error);
         res.status(500).json({ success: false, message: 'Failed to fetch notes API key status' });
@@ -1603,42 +1857,50 @@ router.put('/notes-llm-key', async (req, res) => {
             return;
         }
 
-        const validation = await validateApiKey(req.body && req.body.apiKey);
-        if (!validation.ok) {
-            return res.status(400).json({
-                success: false,
-                code: validation.status === 'quota_exhausted' ? 'LLM_KEY_QUOTA' : 'LLM_KEY_INVALID',
-                message: validation.message || 'API key validation failed',
-                detail: validation.detail
-            });
-        }
-
-        const llmApiKey = buildKeySubdocument(req.body.apiKey, req.user.userId);
-        await db.collection('settings').updateOne(
-            { _id: 'notesLlm' },
-            {
-                $set: {
-                    llmApiKey,
-                    updatedAt: new Date(),
-                    updatedBy: normalizeEmail(req.user.email)
-                }
-            },
-            { upsert: true }
-        );
-
-        if (req.app.locals.llmRegistry) {
-            req.app.locals.llmRegistry.evictNotes();
-        }
-
-        res.json({
-            success: true,
-            message: 'Notes API key saved',
-            llmKey: publicKeySummary(llmApiKey),
-            aiAvailable: true
+        const result = await providerKeys.saveSurfaceKey(db, {
+            scope: NOTES_SCOPE,
+            provider: normalizeProvider(req.body && req.body.llmProvider),
+            apiKey: req.body && req.body.apiKey,
+            updatedBy: req.user.userId,
+            registry: req.app.locals.llmRegistry
         });
+
+        if (result.ok) {
+            await db.collection('settings').updateOne(
+                { _id: 'notesLlm' },
+                { $set: { updatedBy: normalizeEmail(req.user.email) } }
+            );
+        }
+
+        res.status(result.httpStatus).json(result.body);
     } catch (error) {
         console.error('Error saving notes API key:', error);
         res.status(500).json({ success: false, message: 'Failed to save notes API key' });
+    }
+});
+
+/**
+ * POST /api/settings/notes-llm-key/provider
+ * Switch Instructor Notes back to a platform whose key is already stored.
+ */
+router.post('/notes-llm-key/provider', async (req, res) => {
+    try {
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({ success: false, message: 'Database connection not available' });
+        }
+        if (!requireSystemAdmin(req, res)) return;
+
+        const result = await providerKeys.switchToStoredProvider(db, {
+            scope: NOTES_SCOPE,
+            provider: normalizeProvider(req.body && req.body.llmProvider),
+            requestedBy: req.user.userId,
+            registry: req.app.locals.llmRegistry
+        });
+        res.status(result.httpStatus).json(result.body);
+    } catch (error) {
+        console.error('Error switching notes platform:', error);
+        res.status(500).json({ success: false, message: 'Failed to switch platform' });
     }
 });
 
@@ -1653,50 +1915,19 @@ router.post('/notes-llm-key/test', async (req, res) => {
             return;
         }
 
-        const doc = await db.collection('settings').findOne({ _id: 'notesLlm' });
-        if (!doc || !doc.llmApiKey || !doc.llmApiKey.ciphertext) {
-            return res.status(400).json({
-                success: false,
-                code: 'LLM_KEY_MISSING',
-                message: 'No API key is saved for instructor notes.'
-            });
-        }
-
-        const apiKey = decryptApiKey(doc.llmApiKey.ciphertext);
-        const validation = await validateApiKey(apiKey);
-        const now = new Date();
-        const status = validation.ok ? 'valid' : validation.status;
-        const set = {
-            'llmApiKey.status': status,
-            'llmApiKey.updatedAt': now,
-            updatedAt: now,
-            updatedBy: normalizeEmail(req.user.email)
-        };
-        if (validation.ok) {
-            set['llmApiKey.validatedAt'] = now;
-        }
-
-        await db.collection('settings').updateOne(
-            { _id: 'notesLlm' },
-            { $set: set }
-        );
-
-        if (req.app.locals.llmRegistry) {
-            req.app.locals.llmRegistry.evictNotes();
-        }
-
-        res.status(validation.ok ? 200 : 400).json({
-            success: validation.ok,
-            code: validation.ok ? undefined : (status === 'quota_exhausted' ? 'LLM_KEY_QUOTA' : 'LLM_KEY_INVALID'),
-            message: validation.ok ? 'Notes API key is valid' : validation.message,
-            llmKey: {
-                ...publicKeySummary(doc.llmApiKey),
-                status,
-                validatedAt: validation.ok ? now : doc.llmApiKey.validatedAt,
-                updatedAt: now
-            },
-            aiAvailable: validation.ok
+        const result = await providerKeys.testSurfaceKey(db, {
+            scope: NOTES_SCOPE,
+            provider: req.body && req.body.llmProvider,
+            registry: req.app.locals.llmRegistry
         });
+
+        if (result.body.code === 'LLM_KEY_MISSING') {
+            result.body.message = 'No API key is saved for instructor notes.';
+        } else if (result.ok) {
+            result.body.message = 'Notes API key is valid';
+        }
+
+        res.status(result.httpStatus).json(result.body);
     } catch (error) {
         console.error('Error testing notes API key:', error);
         res.status(500).json({ success: false, message: 'Failed to test notes API key' });
@@ -1719,16 +1950,8 @@ router.get('/instructor-superchat-llm-key', async (req, res) => {
             return;
         }
 
-        const doc = await db.collection('settings').findOne(
-            { _id: SUPER_COURSE_SETTINGS_ID },
-            { projection: { llmApiKey: 1 } }
-        );
-
-        res.json({
-            success: true,
-            llmKey: publicKeySummary(doc && doc.llmApiKey),
-            aiAvailable: publicKeySummary(doc && doc.llmApiKey).status === 'valid'
-        });
+        const state = await providerKeys.surfaceKeyState(db, SUPER_COURSE_CHAT_SCOPE);
+        res.json({ success: true, providers: providerCatalog(), ...state });
     } catch (error) {
         console.error('Error fetching instructor Super Course chat API key status:', error);
         res.status(500).json({ success: false, message: 'Failed to fetch instructor Super Course chat API key status' });
@@ -1746,42 +1969,50 @@ router.put('/instructor-superchat-llm-key', async (req, res) => {
             return;
         }
 
-        const validation = await validateApiKey(req.body && req.body.apiKey);
-        if (!validation.ok) {
-            return res.status(400).json({
-                success: false,
-                code: validation.status === 'quota_exhausted' ? 'LLM_KEY_QUOTA' : 'LLM_KEY_INVALID',
-                message: validation.message || 'API key validation failed',
-                detail: validation.detail
-            });
-        }
-
-        const llmApiKey = buildKeySubdocument(req.body.apiKey, req.user.userId);
-        await db.collection('settings').updateOne(
-            { _id: SUPER_COURSE_SETTINGS_ID },
-            {
-                $set: {
-                    llmApiKey,
-                    updatedAt: new Date(),
-                    updatedBy: normalizeEmail(req.user.email)
-                }
-            },
-            { upsert: true }
-        );
-
-        if (req.app.locals.llmRegistry) {
-            req.app.locals.llmRegistry.evictSuperCourseChat();
-        }
-
-        res.json({
-            success: true,
-            message: 'Instructor Super Course chat API key saved',
-            llmKey: publicKeySummary(llmApiKey),
-            aiAvailable: true
+        const result = await providerKeys.saveSurfaceKey(db, {
+            scope: SUPER_COURSE_CHAT_SCOPE,
+            provider: normalizeProvider(req.body && req.body.llmProvider),
+            apiKey: req.body && req.body.apiKey,
+            updatedBy: req.user.userId,
+            registry: req.app.locals.llmRegistry
         });
+
+        if (result.ok) {
+            await db.collection('settings').updateOne(
+                { _id: SUPER_COURSE_SETTINGS_ID },
+                { $set: { updatedBy: normalizeEmail(req.user.email) } }
+            );
+        }
+
+        res.status(result.httpStatus).json(result.body);
     } catch (error) {
         console.error('Error saving instructor Super Course chat API key:', error);
         res.status(500).json({ success: false, message: 'Failed to save instructor Super Course chat API key' });
+    }
+});
+
+/**
+ * POST /api/settings/instructor-superchat-llm-key/provider
+ * Switch the instructor Super Course chat back to a stored platform.
+ */
+router.post('/instructor-superchat-llm-key/provider', async (req, res) => {
+    try {
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({ success: false, message: 'Database connection not available' });
+        }
+        if (!requireSystemAdmin(req, res)) return;
+
+        const result = await providerKeys.switchToStoredProvider(db, {
+            scope: SUPER_COURSE_CHAT_SCOPE,
+            provider: normalizeProvider(req.body && req.body.llmProvider),
+            requestedBy: req.user.userId,
+            registry: req.app.locals.llmRegistry
+        });
+        res.status(result.httpStatus).json(result.body);
+    } catch (error) {
+        console.error('Error switching instructor Super Course chat platform:', error);
+        res.status(500).json({ success: false, message: 'Failed to switch platform' });
     }
 });
 
@@ -1796,50 +2027,19 @@ router.post('/instructor-superchat-llm-key/test', async (req, res) => {
             return;
         }
 
-        const doc = await db.collection('settings').findOne({ _id: SUPER_COURSE_SETTINGS_ID });
-        if (!doc || !doc.llmApiKey || !doc.llmApiKey.ciphertext) {
-            return res.status(400).json({
-                success: false,
-                code: 'LLM_KEY_MISSING',
-                message: 'No API key is saved for the instructor Super Course chat.'
-            });
-        }
-
-        const apiKey = decryptApiKey(doc.llmApiKey.ciphertext);
-        const validation = await validateApiKey(apiKey);
-        const now = new Date();
-        const status = validation.ok ? 'valid' : validation.status;
-        const set = {
-            'llmApiKey.status': status,
-            'llmApiKey.updatedAt': now,
-            updatedAt: now,
-            updatedBy: normalizeEmail(req.user.email)
-        };
-        if (validation.ok) {
-            set['llmApiKey.validatedAt'] = now;
-        }
-
-        await db.collection('settings').updateOne(
-            { _id: SUPER_COURSE_SETTINGS_ID },
-            { $set: set }
-        );
-
-        if (req.app.locals.llmRegistry) {
-            req.app.locals.llmRegistry.evictSuperCourseChat();
-        }
-
-        res.status(validation.ok ? 200 : 400).json({
-            success: validation.ok,
-            code: validation.ok ? undefined : (status === 'quota_exhausted' ? 'LLM_KEY_QUOTA' : 'LLM_KEY_INVALID'),
-            message: validation.ok ? 'Instructor Super Course chat API key is valid' : validation.message,
-            llmKey: {
-                ...publicKeySummary(doc.llmApiKey),
-                status,
-                validatedAt: validation.ok ? now : doc.llmApiKey.validatedAt,
-                updatedAt: now
-            },
-            aiAvailable: validation.ok
+        const result = await providerKeys.testSurfaceKey(db, {
+            scope: SUPER_COURSE_CHAT_SCOPE,
+            provider: req.body && req.body.llmProvider,
+            registry: req.app.locals.llmRegistry
         });
+
+        if (result.body.code === 'LLM_KEY_MISSING') {
+            result.body.message = 'No API key is saved for the instructor Super Course chat.';
+        } else if (result.ok) {
+            result.body.message = 'Instructor Super Course chat API key is valid';
+        }
+
+        res.status(result.httpStatus).json(result.body);
     } catch (error) {
         console.error('Error testing instructor Super Course chat API key:', error);
         res.status(500).json({ success: false, message: 'Failed to test instructor Super Course chat API key' });

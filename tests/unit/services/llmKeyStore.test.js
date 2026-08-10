@@ -442,7 +442,8 @@ describe('llmKeyStore.validateApiKey — OpenAI provider with a mocked fetch (no
         const result = await validateApiKey('sk-bad');
         expect(result.ok).toBe(false);
         expect(result.status).toBe(KEY_STATUSES.INVALID);
-        expect(result.message).toBe(messageForStatus(KEY_STATUSES.INVALID));
+        // Diagnostics name the platform the instructor picked, not the model.
+        expect(result.message).toBe(messageForStatus(KEY_STATUSES.INVALID, 'openai'));
         expect(result.detail).toBe('Incorrect API key provided');
     });
 
@@ -451,7 +452,7 @@ describe('llmKeyStore.validateApiKey — OpenAI provider with a mocked fetch (no
         const result = await validateApiKey('sk-broke');
         expect(result.ok).toBe(false);
         expect(result.status).toBe(KEY_STATUSES.QUOTA_EXHAUSTED);
-        expect(result.message).toBe(messageForStatus(KEY_STATUSES.QUOTA_EXHAUSTED));
+        expect(result.message).toBe(messageForStatus(KEY_STATUSES.QUOTA_EXHAUSTED, 'openai'));
     });
 
     test('an unparseable error body falls back to an HTTP-status message and invalid', async () => {

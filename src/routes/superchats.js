@@ -27,8 +27,12 @@ const router = express.Router();
 const SuperchatModel = require('../models/Superchat');
 const { resolveSuperCourseChatSettings } = require('../services/superCourseService');
 const { hasSystemAdminAccess } = require('../services/authorization');
+const providerKeys = require('../services/providerKeyService');
+const { normalizeProvider, providerCatalog } = require('../services/llmProviders');
 const {
     buildKeySubdocument,
+    credentialSetFields,
+    publicProviderKeyState,
     decryptApiKey,
     publicKeySummary,
     validateApiKey
@@ -144,8 +148,9 @@ function summarize(doc, courseCount = 0) {
         yearLevel: doc.yearLevel ?? null,
         showToStudents: doc.showToStudents === true,
         courseCount,
-        llmKey: publicKeySummary(doc.llmApiKey),
-        aiAvailable: publicKeySummary(doc.llmApiKey).status === 'valid'
+        llmKey: publicProviderKeyState(doc).llmKey,
+        llmProvider: publicProviderKeyState(doc).llmProvider,
+        aiAvailable: publicProviderKeyState(doc).aiAvailable
     };
 }
 
@@ -197,8 +202,11 @@ router.get('/:id', async (req, res) => {
                 description: doc.description || '',
                 yearLevel: doc.yearLevel ?? null,
                 showToStudents: doc.showToStudents === true,
-                llmKey: publicKeySummary(doc.llmApiKey),
-                aiAvailable: publicKeySummary(doc.llmApiKey).status === 'valid',
+                llmKey: publicProviderKeyState(doc).llmKey,
+                llmProvider: publicProviderKeyState(doc).llmProvider,
+                llmKeysByProvider: publicProviderKeyState(doc).llmKeysByProvider,
+                pendingLlmProvider: publicProviderKeyState(doc).pendingLlmProvider,
+                aiAvailable: publicProviderKeyState(doc).aiAvailable,
                 settings: resolveSuperCourseChatSettings(doc)
             }
         });
@@ -220,18 +228,24 @@ router.post('/', async (req, res) => {
             return res.status(400).json({ success: false, message: 'name is required' });
         }
 
-        const validation = await validateApiKey(body.apiKey);
+        const bucketProvider = normalizeProvider(body.llmProvider);
+        const validation = await providerKeys.validateForProvider(db, bucketProvider, body.apiKey);
         if (!validation.ok) {
             return res.status(400).json({
                 success: false,
-                code: validation.status === 'quota_exhausted' ? 'LLM_KEY_QUOTA' : 'LLM_KEY_INVALID',
-                message: validation.message || 'A valid OpenAI API key is required to create a bucket.',
-                detail: validation.detail
+                code: providerKeys.errorCodeForStatus(validation.status),
+                message: validation.message || 'A valid API key is required to create a bucket.',
+                detail: validation.detail,
+                llmProvider: bucketProvider
             });
         }
 
-        const llmApiKey = buildKeySubdocument(body.apiKey, req.user.userId);
-        const doc = await SuperchatModel.createSuperchat(db, { ...body, llmApiKey }, req.user.userId);
+        const llmApiKey = buildKeySubdocument(body.apiKey, req.user.userId, bucketProvider);
+        const doc = await SuperchatModel.createSuperchat(
+            db,
+            { ...body, llmApiKey, ...credentialSetFields(bucketProvider, llmApiKey) },
+            req.user.userId
+        );
         res.status(201).json({ success: true, superchat: summarize(doc, 0) });
     } catch (error) {
         console.error('Error creating superchat:', error);
@@ -257,8 +271,11 @@ router.put('/:id', async (req, res) => {
                 description: doc.description || '',
                 yearLevel: doc.yearLevel ?? null,
                 showToStudents: doc.showToStudents === true,
-                llmKey: publicKeySummary(doc.llmApiKey),
-                aiAvailable: publicKeySummary(doc.llmApiKey).status === 'valid',
+                llmKey: publicProviderKeyState(doc).llmKey,
+                llmProvider: publicProviderKeyState(doc).llmProvider,
+                llmKeysByProvider: publicProviderKeyState(doc).llmKeysByProvider,
+                pendingLlmProvider: publicProviderKeyState(doc).pendingLlmProvider,
+                aiAvailable: publicProviderKeyState(doc).aiAvailable,
                 settings: resolveSuperCourseChatSettings(doc)
             }
         });
@@ -277,35 +294,70 @@ router.put('/:id/llm-key', async (req, res) => {
         const doc = await SuperchatModel.getSuperchatById(db, req.params.id);
         if (!doc) return res.status(404).json({ success: false, message: 'Superchat not found' });
 
-        const validation = await validateApiKey(req.body && req.body.apiKey);
-        if (!validation.ok) {
-            return res.status(400).json({
-                success: false,
-                code: validation.status === 'quota_exhausted' ? 'LLM_KEY_QUOTA' : 'LLM_KEY_INVALID',
-                message: validation.message || 'API key validation failed',
-                detail: validation.detail
-            });
-        }
-
-        const llmApiKey = buildKeySubdocument(req.body.apiKey, req.user.userId);
-        await db.collection('superchats').updateOne(
-            { superchatId: req.params.id, isDeleted: { $ne: true } },
-            { $set: { llmApiKey, updatedAt: new Date() } }
-        );
-
-        if (req.app.locals.llmRegistry) {
-            req.app.locals.llmRegistry.evictSuperchat(req.params.id);
-        }
-
-        res.json({
-            success: true,
-            message: 'Bucket API key saved',
-            llmKey: publicKeySummary(llmApiKey),
-            aiAvailable: true
+        const result = await providerKeys.saveSurfaceKey(db, {
+            scope: { type: 'superchat', id: req.params.id },
+            provider: normalizeProvider(req.body && req.body.llmProvider),
+            apiKey: req.body && req.body.apiKey,
+            updatedBy: req.user.userId,
+            registry: req.app.locals.llmRegistry
         });
+
+        if (result.ok && result.httpStatus === 200) {
+            result.body.message = 'Bucket API key saved';
+        }
+
+        res.status(result.httpStatus).json(result.body);
     } catch (error) {
         console.error('Error saving superchat API key:', error);
         res.status(500).json({ success: false, message: 'Failed to save bucket API key' });
+    }
+});
+
+/**
+ * GET /api/superchats/:id/llm-key
+ * Platform + key status for a Super Course bucket, including any migration
+ * that is preparing member-course material for a new platform.
+ */
+router.get('/:id/llm-key', async (req, res) => {
+    try {
+        const db = req.app.locals.db;
+        if (!db) return res.status(503).json({ success: false, message: 'Database connection not available' });
+        if (!requireInstructorOrAdmin(req, res)) return;
+
+        const doc = await SuperchatModel.getSuperchatById(db, req.params.id);
+        if (!doc) return res.status(404).json({ success: false, message: 'Superchat not found' });
+
+        const state = await providerKeys.surfaceKeyState(db, { type: 'superchat', id: req.params.id });
+        res.json({ success: true, providers: providerCatalog(), ...state });
+    } catch (error) {
+        console.error('Error fetching superchat API key status:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch bucket API key status' });
+    }
+});
+
+/**
+ * POST /api/superchats/:id/llm-provider
+ * Switch a bucket back to a platform whose key is already stored.
+ */
+router.post('/:id/llm-provider', async (req, res) => {
+    try {
+        const db = req.app.locals.db;
+        if (!db) return res.status(503).json({ success: false, message: 'Database connection not available' });
+        if (!requireInstructorOrAdmin(req, res)) return;
+
+        const doc = await SuperchatModel.getSuperchatById(db, req.params.id);
+        if (!doc) return res.status(404).json({ success: false, message: 'Superchat not found' });
+
+        const result = await providerKeys.switchToStoredProvider(db, {
+            scope: { type: 'superchat', id: req.params.id },
+            provider: normalizeProvider(req.body && req.body.llmProvider),
+            requestedBy: req.user.userId,
+            registry: req.app.locals.llmRegistry
+        });
+        res.status(result.httpStatus).json(result.body);
+    } catch (error) {
+        console.error('Error switching bucket platform:', error);
+        res.status(500).json({ success: false, message: 'Failed to switch platform' });
     }
 });
 
@@ -317,47 +369,20 @@ router.post('/:id/llm-key/test', async (req, res) => {
 
         const doc = await SuperchatModel.getSuperchatById(db, req.params.id);
         if (!doc) return res.status(404).json({ success: false, message: 'Superchat not found' });
-        if (!doc.llmApiKey || !doc.llmApiKey.ciphertext) {
-            return res.status(400).json({
-                success: false,
-                code: 'LLM_KEY_MISSING',
-                message: 'No API key is saved for this bucket.'
-            });
-        }
 
-        const apiKey = decryptApiKey(doc.llmApiKey.ciphertext);
-        const validation = await validateApiKey(apiKey);
-        const now = new Date();
-        const status = validation.ok ? 'valid' : validation.status;
-        const set = {
-            'llmApiKey.status': status,
-            'llmApiKey.updatedAt': now
-        };
-        if (validation.ok) {
-            set['llmApiKey.validatedAt'] = now;
-        }
-
-        await db.collection('superchats').updateOne(
-            { superchatId: req.params.id, isDeleted: { $ne: true } },
-            { $set: set }
-        );
-
-        if (req.app.locals.llmRegistry) {
-            req.app.locals.llmRegistry.evictSuperchat(req.params.id);
-        }
-
-        res.status(validation.ok ? 200 : 400).json({
-            success: validation.ok,
-            code: validation.ok ? undefined : (status === 'quota_exhausted' ? 'LLM_KEY_QUOTA' : 'LLM_KEY_INVALID'),
-            message: validation.ok ? 'Bucket API key is valid' : validation.message,
-            llmKey: {
-                ...publicKeySummary(doc.llmApiKey),
-                status,
-                validatedAt: validation.ok ? now : doc.llmApiKey.validatedAt,
-                updatedAt: now
-            },
-            aiAvailable: validation.ok
+        const result = await providerKeys.testSurfaceKey(db, {
+            scope: { type: 'superchat', id: req.params.id },
+            provider: req.body && req.body.llmProvider,
+            registry: req.app.locals.llmRegistry
         });
+
+        if (result.body.code === 'LLM_KEY_MISSING') {
+            result.body.message = 'No API key is saved for this bucket.';
+        } else if (result.ok) {
+            result.body.message = 'Bucket API key is valid';
+        }
+
+        res.status(result.httpStatus).json(result.body);
     } catch (error) {
         console.error('Error testing superchat API key:', error);
         res.status(500).json({ success: false, message: 'Failed to test bucket API key' });

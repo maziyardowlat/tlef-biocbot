@@ -14,11 +14,24 @@ const { hasSystemAdminAccess } = require('../services/authorization');
 const previewSession = require('../services/previewSession');
 const { createId } = require('../services/id');
 const {
+    activeProviderOf,
     buildKeySubdocument,
+    credentialSetFields,
     decryptApiKey,
     publicKeySummary,
+    publicProviderKeyState,
     validateApiKey
 } = require('../services/llmKeyStore');
+const providerKeys = require('../services/providerKeyService');
+const { normalizeProvider, providerCatalog, providerLabel } = require('../services/llmProviders');
+const { buildEmbeddingProfile } = require('../services/embeddingConfig');
+const {
+    INDEX_STATUSES,
+    contentHash,
+    deleteDocumentFromAllCollections,
+    indexesOf
+} = require('../services/embeddingIndexService');
+const qdrantMaintenance = require('../services/qdrantMaintenance');
 const { resolveCourseAi } = require('./llmKeyMiddleware');
 const { getAcademicApiClient, isAcademicApiEnabled } = require('../services/academicApi');
 
@@ -479,6 +492,29 @@ function getStoredDocumentContent(sourceDocument, fileBuffer = null) {
     return typeof sourceDocument.content === 'string' ? sourceDocument.content : '';
 }
 
+/**
+ * GET /api/courses/:courseId/llm-key
+ * Platform selection, key status per platform, and any in-flight migration.
+ * Never returns key material.
+ */
+router.get('/:courseId/llm-key', async (req, res) => {
+    try {
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({ success: false, message: 'Database connection not available' });
+        }
+
+        const course = await requireCourseKeyAccess(req, res, db, req.params.courseId);
+        if (!course) return;
+
+        const state = await providerKeys.surfaceKeyState(db, { type: 'course', id: course.courseId });
+        res.json({ success: true, providers: providerCatalog(), ...state });
+    } catch (error) {
+        console.error('Error fetching course API key status:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch course API key status' });
+    }
+});
+
 router.put('/:courseId/llm-key', async (req, res) => {
     try {
         const db = req.app.locals.db;
@@ -489,36 +525,46 @@ router.put('/:courseId/llm-key', async (req, res) => {
         const course = await requireCourseKeyAccess(req, res, db, req.params.courseId);
         if (!course) return;
 
-        const apiKey = req.body && req.body.apiKey;
-        const validation = await validateApiKey(apiKey);
-        if (!validation.ok) {
-            return res.status(400).json({
-                success: false,
-                code: validation.status === 'quota_exhausted' ? 'LLM_KEY_QUOTA' : 'LLM_KEY_INVALID',
-                message: validation.message || 'API key validation failed',
-                detail: validation.detail
-            });
-        }
-
-        const llmApiKey = buildKeySubdocument(apiKey, req.user.userId);
-        await db.collection('courses').updateOne(
-            { courseId: course.courseId },
-            { $set: { llmApiKey, updatedAt: new Date() } }
-        );
-
-        if (req.app.locals.llmRegistry) {
-            req.app.locals.llmRegistry.evictCourse(course.courseId);
-        }
-
-        res.json({
-            success: true,
-            message: 'Course API key saved',
-            llmKey: publicKeySummary(llmApiKey),
-            aiAvailable: true
+        const result = await providerKeys.saveSurfaceKey(db, {
+            scope: { type: 'course', id: course.courseId },
+            provider: normalizeProvider(req.body && req.body.llmProvider),
+            apiKey: req.body && req.body.apiKey,
+            updatedBy: req.user.userId,
+            registry: req.app.locals.llmRegistry
         });
+
+        res.status(result.httpStatus).json(result.body);
     } catch (error) {
         console.error('Error saving course API key:', error);
         res.status(500).json({ success: false, message: 'Failed to save course API key' });
+    }
+});
+
+/**
+ * POST /api/courses/:courseId/llm-provider
+ * Switch back to a platform whose key is already stored, without re-entering it.
+ */
+router.post('/:courseId/llm-provider', async (req, res) => {
+    try {
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({ success: false, message: 'Database connection not available' });
+        }
+
+        const course = await requireCourseKeyAccess(req, res, db, req.params.courseId);
+        if (!course) return;
+
+        const result = await providerKeys.switchToStoredProvider(db, {
+            scope: { type: 'course', id: course.courseId },
+            provider: normalizeProvider(req.body && req.body.llmProvider),
+            requestedBy: req.user.userId,
+            registry: req.app.locals.llmRegistry
+        });
+
+        res.status(result.httpStatus).json(result.body);
+    } catch (error) {
+        console.error('Error switching course platform:', error);
+        res.status(500).json({ success: false, message: 'Failed to switch platform' });
     }
 });
 
@@ -532,54 +578,45 @@ router.post('/:courseId/llm-key/test', async (req, res) => {
         const course = await requireCourseKeyAccess(req, res, db, req.params.courseId);
         if (!course) return;
 
-        if (!course.llmApiKey || !course.llmApiKey.ciphertext) {
-            return res.status(400).json({
-                success: false,
-                code: 'LLM_KEY_MISSING',
-                message: 'No API key is saved for this course.'
-            });
-        }
-
-        const apiKey = decryptApiKey(course.llmApiKey.ciphertext);
-        const validation = await validateApiKey(apiKey);
-        const now = new Date();
-        const status = validation.ok ? 'valid' : validation.status;
-        const set = {
-            'llmApiKey.status': status,
-            'llmApiKey.updatedAt': now
-        };
-        if (validation.ok) {
-            set['llmApiKey.validatedAt'] = now;
-        }
-
-        await db.collection('courses').updateOne(
-            { courseId: course.courseId },
-            { $set: set }
-        );
-
-        if (req.app.locals.llmRegistry) {
-            req.app.locals.llmRegistry.evictCourse(course.courseId);
-        }
-
-        const llmKey = {
-            ...publicKeySummary(course.llmApiKey),
-            status,
-            validatedAt: validation.ok ? now : course.llmApiKey.validatedAt,
-            updatedAt: now
-        };
-
-        res.status(validation.ok ? 200 : 400).json({
-            success: validation.ok,
-            code: validation.ok ? undefined : (status === 'quota_exhausted' ? 'LLM_KEY_QUOTA' : 'LLM_KEY_INVALID'),
-            message: validation.ok ? 'Course API key is valid' : validation.message,
-            llmKey,
-            aiAvailable: validation.ok
+        const result = await providerKeys.testSurfaceKey(db, {
+            scope: { type: 'course', id: course.courseId },
+            provider: req.body && req.body.llmProvider,
+            registry: req.app.locals.llmRegistry
         });
+
+        if (result.body.code === 'LLM_KEY_MISSING') {
+            result.body.message = 'No API key is saved for this course.';
+        } else if (result.ok) {
+            result.body.message = 'Course API key is valid';
+        }
+
+        res.status(result.httpStatus).json(result.body);
     } catch (error) {
         console.error('Error testing course API key:', error);
         res.status(500).json({ success: false, message: 'Failed to test course API key' });
     }
 });
+
+/**
+ * A maintenance QdrantService (no embeddings needed — cloning copies existing
+ * vectors) bound to the collection an index record lives in. Cached per
+ * collection for the duration of a transfer.
+ */
+async function getTransferQdrantService(cache, record) {
+    if (!cache.byCollection) cache.byCollection = new Map();
+    const existing = cache.byCollection.get(record.collection);
+    if (existing) return existing;
+
+    const profile = buildEmbeddingProfile({
+        provider: record.provider,
+        embeddingModel: record.model,
+        revision: record.revision
+    });
+    const service = new QdrantService({ skipEmbeddings: true, embeddingProfile: profile });
+    await service.initialize();
+    cache.byCollection.set(record.collection, service);
+    return service;
+}
 
 async function cloneDocumentForTransfer({
     db,
@@ -629,29 +666,67 @@ async function cloneDocumentForTransfer({
     const sourceStatus = sourceDocument.status || 'uploaded';
     await DocumentModel.updateDocumentStatus(db, createdDocument.documentId, sourceStatus);
 
-    try {
-        if (!qdrantService.client) {
-            await qdrantService.initialize();
-        }
+    // A document can hold indexes in several embedding profiles (e.g. it was
+    // embedded with OpenAI, then again with Qwen for a Sandbox bucket). Clone
+    // each profile's vectors into that same profile's collection under the NEW
+    // document/course id — never across profiles. Anything that cannot be
+    // cloned is left out of embeddingIndexes so it is rebuilt on demand rather
+    // than being reused under the wrong profile.
+    const sourceIndexes = indexesOf(sourceDocument);
+    const profileKeys = Object.keys(sourceIndexes);
+    const targetHash = contentHash(documentData.content);
+    const clonedIndexes = {};
 
-        const cloneResult = await qdrantService.cloneDocumentChunks({
-            sourceDocumentId: sourceDocument.documentId,
-            targetDocumentId: createdDocument.documentId,
-            targetCourseId,
-            targetLectureName: lectureName,
-            targetFileName: documentData.filename,
-            targetMimeType: documentData.mimeType,
-            targetDocumentType: documentData.documentType,
-            targetType: createdDocument.type
-        });
+    for (const profileKey of profileKeys) {
+        const record = sourceIndexes[profileKey];
+        if (!record || record.status !== INDEX_STATUSES.READY || !record.collection) continue;
 
-        if (!cloneResult.success) {
-            warnings.push(`Chunk transfer failed for "${documentData.originalName}": ${cloneResult.error}`);
-        } else if (sourceStatus === 'parsed' && cloneResult.clonedCount === 0) {
-            warnings.push(`No stored chunks were found to transfer for "${documentData.originalName}".`);
+        try {
+            const profileService = await getTransferQdrantService(qdrantService, record);
+            const cloneResult = await profileService.cloneDocumentChunks({
+                sourceDocumentId: sourceDocument.documentId,
+                targetDocumentId: createdDocument.documentId,
+                targetCourseId,
+                targetLectureName: lectureName,
+                targetFileName: documentData.filename,
+                targetMimeType: documentData.mimeType,
+                targetDocumentType: documentData.documentType,
+                targetType: createdDocument.type
+            });
+
+            if (!cloneResult.success) {
+                warnings.push(`Chunk transfer failed for "${documentData.originalName}" (${profileKey}): ${cloneResult.error}`);
+                continue;
+            }
+            if (cloneResult.clonedCount === 0) {
+                if (sourceStatus === 'parsed') {
+                    warnings.push(`No stored chunks were found to transfer for "${documentData.originalName}" (${profileKey}).`);
+                }
+                continue;
+            }
+
+            // Only claim the clone is current when the content really matches
+            // what the source index was built from.
+            if (record.contentHash && record.contentHash !== targetHash) {
+                warnings.push(`"${documentData.originalName}" will be re-indexed for ${profileKey}: content differs from the source index.`);
+                continue;
+            }
+
+            clonedIndexes[profileKey] = {
+                ...record,
+                contentHash: targetHash,
+                indexedAt: new Date()
+            };
+        } catch (error) {
+            warnings.push(`Chunk transfer failed for "${documentData.originalName}" (${profileKey}): ${error.message}`);
         }
-    } catch (error) {
-        warnings.push(`Chunk transfer failed for "${documentData.originalName}": ${error.message}`);
+    }
+
+    if (Object.keys(clonedIndexes).length > 0) {
+        await db.collection('documents').updateOne(
+            { documentId: createdDocument.documentId },
+            { $set: { embeddingIndexes: clonedIndexes, updatedAt: new Date() } }
+        );
     }
 
     return {
@@ -739,13 +814,18 @@ router.post('/', async (req, res) => {
             });
         }
 
-        const validation = await validateApiKey(apiKey);
+        // The instructor picks a platform (GPT or Sandbox); the key is
+        // validated against that platform's configured models.
+        const selectedProvider = normalizeProvider(req.body.llmProvider);
+        const validation = await providerKeys.validateForProvider(db, selectedProvider, apiKey);
         if (!validation.ok) {
             return res.status(400).json({
                 success: false,
-                code: validation.status === 'quota_exhausted' ? 'LLM_KEY_QUOTA' : 'LLM_KEY_INVALID',
-                message: validation.message || 'A valid OpenAI API key is required to create a course.',
-                detail: validation.detail
+                code: providerKeys.errorCodeForStatus(validation.status),
+                message: validation.message
+                    || `A valid ${providerLabel(selectedProvider)} API key is required to create a course.`,
+                detail: validation.detail,
+                llmProvider: selectedProvider
             });
         }
         
@@ -782,10 +862,10 @@ router.post('/', async (req, res) => {
             });
         }
 
-        const llmApiKey = buildKeySubdocument(apiKey, user.userId);
+        const llmApiKey = buildKeySubdocument(apiKey, user.userId, selectedProvider);
         await db.collection('courses').updateOne(
             { courseId },
-            { $set: { llmApiKey, updatedAt: new Date() } }
+            { $set: { ...credentialSetFields(selectedProvider, llmApiKey), updatedAt: new Date() } }
         );
 
         if (req.app.locals.llmRegistry) {
@@ -950,8 +1030,9 @@ router.get('/', async (req, res) => {
         const transformedCourses = courses.map(course => ({
             id: course.courseId,
             name: course.courseName,
-            llmKey: publicKeySummary(course.llmApiKey),
-            aiAvailable: publicKeySummary(course.llmApiKey).status === 'valid',
+            llmKey: publicProviderKeyState(course).llmKey,
+            llmProvider: publicProviderKeyState(course).llmProvider,
+            aiAvailable: publicProviderKeyState(course).aiAvailable,
             weeks: course.courseStructure?.weeks || 0,
             lecturesPerWeek: course.courseStructure?.lecturesPerWeek || 0,
             instructorId: course.instructorId,
@@ -1224,8 +1305,9 @@ router.get('/:courseId', async (req, res) => {
             courseId: course.courseId,
             name: course.courseName,
             courseName: course.courseName,
-            llmKey: publicKeySummary(course.llmApiKey),
-            aiAvailable: publicKeySummary(course.llmApiKey).status === 'valid',
+            llmKey: publicProviderKeyState(course).llmKey,
+            llmProvider: publicProviderKeyState(course).llmProvider,
+            aiAvailable: publicProviderKeyState(course).aiAvailable,
             courseCode: course.courseCode, // Backward compatible student code field
             studentCourseCode: course.courseCode,
             instructorCourseCode: course.instructorCourseCode,
@@ -1661,8 +1743,9 @@ async function getCourseForStudent(req, res, courseId) {
         const transformedCourse = {
             id: course.courseId,
             name: course.courseName,
-            llmKey: publicKeySummary(course.llmApiKey),
-            aiAvailable: publicKeySummary(course.llmApiKey).status === 'valid',
+            llmKey: publicProviderKeyState(course).llmKey,
+            llmProvider: publicProviderKeyState(course).llmProvider,
+            aiAvailable: publicProviderKeyState(course).aiAvailable,
             approvedStruggleTopics: CourseModel.normalizeTopicList(course.approvedStruggleTopics || []),
             approvedStruggleTopicDetails: CourseModel.normalizeTopicObjectList(course.approvedStruggleTopics || []),
             weeks: course.courseStructure?.weeks || 0,
@@ -1921,13 +2004,18 @@ router.post('/:courseId/transfer', async (req, res) => {
             });
         }
 
-        const validation = await validateApiKey(apiKey);
+        const transferProvider = normalizeProvider(
+            req.body && req.body.llmProvider,
+            activeProviderOf(sourceCourse)
+        );
+        const validation = await providerKeys.validateForProvider(db, transferProvider, apiKey);
         if (!validation.ok) {
             return res.status(400).json({
                 success: false,
-                code: validation.status === 'quota_exhausted' ? 'LLM_KEY_QUOTA' : 'LLM_KEY_INVALID',
-                message: validation.message || 'A valid OpenAI API key is required for the new course.',
-                detail: validation.detail
+                code: providerKeys.errorCodeForStatus(validation.status),
+                message: validation.message || 'A valid API key is required for the new course.',
+                detail: validation.detail,
+                llmProvider: transferProvider
             });
         }
 
@@ -1999,7 +2087,7 @@ router.post('/:courseId/transfer', async (req, res) => {
                 },
             isOnboardingComplete: true,
             status: 'active',
-            llmApiKey: buildKeySubdocument(apiKey, user.userId),
+            ...credentialSetFields(transferProvider, buildKeySubdocument(apiKey, user.userId, transferProvider)),
             lectures: targetLectures,
             createdAt: now,
             updatedAt: now,
@@ -2036,7 +2124,9 @@ router.post('/:courseId/transfer', async (req, res) => {
 
         await db.collection('courses').insertOne(targetCourse);
 
-        const qdrantService = new QdrantService({ skipEmbeddings: true });
+        // Per-collection maintenance clients, created lazily for whichever
+        // embedding profiles the source documents were actually indexed in.
+        const qdrantService = { byCollection: new Map() };
         const transferWarnings = [];
         let documentsCopied = 0;
 
@@ -2492,8 +2582,9 @@ router.get('/available/all', async (req, res) => {
                 instructors: course.instructors || [course.instructorId],
                 tas: course.tas || [],
                 status: course.status || 'active',
-                aiAvailable: publicKeySummary(course.llmApiKey).status === 'valid',
-                llmKey: publicKeySummary(course.llmApiKey),
+                aiAvailable: publicProviderKeyState(course).aiAvailable,
+                llmKey: publicProviderKeyState(course).llmKey,
+                llmProvider: publicProviderKeyState(course).llmProvider,
                 createdAt: course.createdAt?.toISOString() || new Date().toISOString(),
                 isEnrolled: isEnrolled,
                 isTAAssigned,
@@ -2565,8 +2656,9 @@ router.get('/available/joinable', async (req, res) => {
             instructors: course.instructors || [course.instructorId],
             tas: course.tas || [],
             status: course.status || 'active',
-            aiAvailable: publicKeySummary(course.llmApiKey).status === 'valid',
-            llmKey: publicKeySummary(course.llmApiKey),
+            aiAvailable: publicProviderKeyState(course).aiAvailable,
+            llmKey: publicProviderKeyState(course).llmKey,
+            llmProvider: publicProviderKeyState(course).llmProvider,
             createdAt: course.createdAt?.toISOString() || new Date().toISOString()
         }));
 
@@ -3148,8 +3240,9 @@ router.get('/ta/:taId', async (req, res) => {
             instructors: course.instructors || [course.instructorId],
             tas: course.tas || [],
             status: course.status || 'active',
-            aiAvailable: publicKeySummary(course.llmApiKey).status === 'valid',
-            llmKey: publicKeySummary(course.llmApiKey),
+            aiAvailable: publicProviderKeyState(course).aiAvailable,
+            llmKey: publicProviderKeyState(course).llmKey,
+            llmProvider: publicProviderKeyState(course).llmProvider,
             createdAt: course.createdAt?.toISOString() || new Date().toISOString(),
             updatedAt: course.updatedAt?.toISOString() || new Date().toISOString(),
             totalUnits: course.courseStructure?.totalUnits || 0
@@ -3836,8 +3929,9 @@ router.delete('/:courseId/units/:unitName', async (req, res) => {
         }
         
         // 1. Delete all documents associated with this unit
-        // We reuse the QdrantService and DocumentModel logic here for safety
-        const qdrantService = new QdrantService({ skipEmbeddings: true });
+        // Vectors are removed from every embedding profile's collection the
+        // document was indexed into, sharing one set of maintenance clients.
+        const maintenanceFactory = qdrantMaintenance.createMaintenanceFactory();
         
         let deletedDocsCount = 0;
         if (unit.documents && unit.documents.length > 0) {
@@ -3846,13 +3940,21 @@ router.delete('/:courseId/units/:unitName', async (req, res) => {
             for (const docRef of unit.documents) {
                 if (docRef.documentId) {
                     try {
+                        const storedDocument = await db.collection('documents').findOne({ documentId: docRef.documentId });
+
                         // Delete from MongoDB Documents collection
                         await DocumentModel.deleteDocument(db, docRef.documentId);
                         
-                        // Delete from Qdrant
+                        // Delete from every Qdrant collection holding its vectors
                         try {
-                            if (!qdrantService.client) await qdrantService.initialize();
-                            await qdrantService.deleteDocumentChunks(docRef.documentId, courseId);
+                            const sweep = await deleteDocumentFromAllCollections(
+                                db,
+                                { ...(storedDocument || {}), documentId: docRef.documentId, courseId },
+                                maintenanceFactory
+                            );
+                            for (const failure of sweep.errors) {
+                                console.warn(`Failed to delete Qdrant chunks for ${docRef.documentId}:`, failure.error);
+                            }
                         } catch (qErr) {
                             console.warn(`Failed to delete Qdrant chunks for ${docRef.documentId}:`, qErr.message);
                         }

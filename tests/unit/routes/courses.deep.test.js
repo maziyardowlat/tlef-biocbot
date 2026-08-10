@@ -10,12 +10,22 @@ jest.mock('../../../src/services/qdrantService', () => jest.fn().mockImplementat
     deleteDocumentChunks: jest.fn().mockResolvedValue(undefined),
 })));
 jest.mock('../../../src/services/gridfs', () => ({}));
-jest.mock('../../../src/services/llmKeyStore', () => ({
-    publicKeySummary: jest.fn((key) => (key ? { status: 'valid' } : { status: 'none' })),
-    buildKeySubdocument: jest.fn(() => ({ enc: 'stub' })),
-    decryptApiKey: jest.fn(() => 'sk'),
-    validateApiKey: jest.fn(async () => ({ ok: true })),
-}));
+// Real provider-state readers (publicProviderKeyState / credentialSetFields /
+// readProviderState) so per-course provider resolution is exercised; only
+// crypto and the network probe are stubbed.
+jest.mock('../../../src/services/llmKeyStore', () => {
+    const actual = jest.requireActual('../../../src/services/llmKeyStore');
+    return {
+        ...actual,
+        buildKeySubdocument: jest.fn((apiKey, userId, provider) => ({
+            ciphertext: 'encrypted', last4: '1234', status: 'valid', provider: provider || 'openai',
+            validatedAt: new Date(), updatedAt: new Date(), updatedBy: userId || null,
+        })),
+        decryptApiKey: jest.fn(() => 'sk'),
+        validateApiKey: jest.fn(async () => ({ ok: true })),
+        validateProviderKey: jest.fn(async () => ({ ok: true, status: 'valid', provider: 'openai' })),
+    };
+});
 jest.mock('../../../src/routes/llmKeyMiddleware', () => ({ resolveCourseAi: jest.fn() }));
 
 const { memoryDb } = require('../helpers/memory-db');
@@ -35,7 +45,7 @@ beforeAll(() => {
     jest.spyOn(console, 'error').mockImplementation(() => {});
 });
 afterAll(() => jest.restoreAllMocks());
-beforeEach(() => llmKeyStore.validateApiKey.mockReset().mockResolvedValue({ ok: true }));
+beforeEach(() => llmKeyStore.validateProviderKey.mockReset().mockResolvedValue({ ok: true }));
 
 describe('course-scoped LLM keys', () => {
     const keyedCourse = { courseId: 'C1', instructorId: 'i1', llmApiKey: { ciphertext: 'encrypted', status: 'unknown' } };
@@ -48,10 +58,10 @@ describe('course-scoped LLM keys', () => {
     });
 
     test('PUT maps invalid and exhausted key validation results', async () => {
-        llmKeyStore.validateApiKey.mockResolvedValueOnce({ ok: false, status: 'invalid', message: 'bad key', detail: 'detail' });
+        llmKeyStore.validateProviderKey.mockResolvedValueOnce({ ok: false, status: 'invalid', message: 'bad key', detail: 'detail' });
         let res = await request(app({ db: memoryDb({ courses: [keyedCourse] }), user: instructor })).put('/C1/llm-key').send({ apiKey: 'bad' });
         expect(res.body).toMatchObject({ success: false, code: 'LLM_KEY_INVALID', message: 'bad key' });
-        llmKeyStore.validateApiKey.mockResolvedValueOnce({ ok: false, status: 'quota_exhausted', message: 'quota' });
+        llmKeyStore.validateProviderKey.mockResolvedValueOnce({ ok: false, status: 'quota_exhausted', message: 'quota' });
         res = await request(app({ db: memoryDb({ courses: [keyedCourse] }), user: instructor })).put('/C1/llm-key').send({ apiKey: 'spent' });
         expect(res.body.code).toBe('LLM_KEY_QUOTA');
     });
@@ -62,7 +72,11 @@ describe('course-scoped LLM keys', () => {
         const res = await request(app({ db, user: instructor, locals: { llmRegistry: registry } })).put('/C1/llm-key').send({ apiKey: 'sk-new' });
         expect(res.status).toBe(200);
         expect(res.body).toMatchObject({ success: true, aiAvailable: true });
-        expect((await db.collection('courses').findOne({ courseId: 'C1' })).llmApiKey).toEqual({ enc: 'stub' });
+        // Stored per-provider under llmCredentials, with the legacy field mirrored for OpenAI.
+        const saved = await db.collection('courses').findOne({ courseId: 'C1' });
+        expect(saved.activeLlmProvider).toBe('openai');
+        expect(saved.llmCredentials.openai).toMatchObject({ ciphertext: 'encrypted', provider: 'openai', status: 'valid' });
+        expect(saved.llmApiKey).toMatchObject({ ciphertext: 'encrypted' });
         expect(registry.evictCourse).toHaveBeenCalledWith('C1');
     });
 
@@ -83,10 +97,10 @@ describe('course-scoped LLM keys', () => {
     });
 
     test('POST test maps quota and invalid statuses', async () => {
-        llmKeyStore.validateApiKey.mockResolvedValueOnce({ ok: false, status: 'quota_exhausted', message: 'spent' });
+        llmKeyStore.validateProviderKey.mockResolvedValueOnce({ ok: false, status: 'quota_exhausted', message: 'spent' });
         let res = await request(app({ db: memoryDb({ courses: [keyedCourse] }), user: instructor })).post('/C1/llm-key/test');
         expect(res.body).toMatchObject({ success: false, code: 'LLM_KEY_QUOTA', aiAvailable: false });
-        llmKeyStore.validateApiKey.mockResolvedValueOnce({ ok: false, status: 'invalid', message: 'bad' });
+        llmKeyStore.validateProviderKey.mockResolvedValueOnce({ ok: false, status: 'invalid', message: 'bad' });
         res = await request(app({ db: memoryDb({ courses: [keyedCourse] }), user: instructor })).post('/C1/llm-key/test');
         expect(res.body.code).toBe('LLM_KEY_INVALID');
     });
@@ -321,7 +335,7 @@ describe('POST /:courseId/transfer', () => {
     });
 
     test('maps mocked API-key quota validation', async () => {
-        llmKeyStore.validateApiKey.mockResolvedValueOnce({ ok: false, status: 'quota_exhausted', message: 'spent' });
+        llmKeyStore.validateProviderKey.mockResolvedValueOnce({ ok: false, status: 'quota_exhausted', message: 'spent' });
         const res = await request(app({ db: memoryDb({ courses: [sourceCourse] }), user: instructor })).post('/C1/transfer').send({ newCourseName: 'New', apiKey: 'spent' });
         expect(res.status).toBe(400);
         expect(res.body.code).toBe('LLM_KEY_QUOTA');
@@ -393,7 +407,7 @@ describe('POST / — create course', () => {
     });
 
     test('400 when the API key fails validation', async () => {
-        llmKeyStore.validateApiKey.mockResolvedValueOnce({ ok: false, status: 'invalid' });
+        llmKeyStore.validateProviderKey.mockResolvedValueOnce({ ok: false, status: 'invalid' });
         const res = await request(app({ db: memoryDb({}), user: instructor })).post('/').send(body);
         expect(res.status).toBe(400);
         expect(res.body.code).toBe('LLM_KEY_INVALID');
@@ -405,7 +419,8 @@ describe('POST / — create course', () => {
         expect(res.status).toBe(201);
         expect(res.body.data).toMatchObject({ name: 'Biochem 200', totalUnits: 4, aiAvailable: true, llmKey: { status: 'valid' } });
         const saved = await db.collection('courses').findOne({ courseId: res.body.data.id });
-        expect(saved.llmApiKey).toEqual({ enc: 'stub' });
+        expect(saved.activeLlmProvider).toBe('openai');
+        expect(saved.llmCredentials.openai).toMatchObject({ ciphertext: 'encrypted', provider: 'openai' });
     });
 
     test('201 creates a course with no contentTypes and returns empty material folders', async () => {

@@ -129,9 +129,11 @@ describe('QdrantService', () => {
     });
 
     test('initialize creates embeddings when none are injected and tolerates a failed probe', async () => {
+        // No explicit profile -> the default OpenAI text-embedding-3-small
+        // profile (1536 dims) owns the legacy `biocbot_documents` collection.
         const client = {
             getCollections: jest.fn(async () => ({ collections: [{ name: 'biocbot_documents' }] })),
-            getCollection: jest.fn(async () => ({ config: { params: { vectors: { size: 768 } } } })),
+            getCollection: jest.fn(async () => ({ config: { params: { vectors: { size: 1536 } } } })),
         };
         QdrantClient.mockImplementation(() => client);
         ChunkingModule.mockImplementation(() => ({ getDefaultStrategyName: () => 'custom' }));
@@ -149,7 +151,7 @@ describe('QdrantService', () => {
     ])('initialize exposes %s failures with context', async (_name, arrange, message) => {
         const defaultClient = {
             getCollections: jest.fn(async () => ({ collections: [{ name: 'biocbot_documents' }] })),
-            getCollection: jest.fn(async () => ({ config: { params: { vectors: { size: 768 } } } })),
+            getCollection: jest.fn(async () => ({ config: { params: { vectors: { size: 1536 } } } })),
         };
         QdrantClient.mockImplementation(() => defaultClient);
         ChunkingModule.mockImplementation(() => ({ getDefaultStrategyName: () => 'recursiveCharacter' }));
@@ -183,7 +185,7 @@ describe('QdrantService', () => {
 
     test('ensureCollectionExists preserves an incompatible collection and propagates errors', async () => {
         const service = makeService({ client: { getCollection: jest.fn(async () => ({ config: { params: { vectors: { size: 99 } } } })) } });
-        await expect(service.ensureCollectionExists()).rejects.toThrow('will not delete existing vectors automatically');
+        await expect(service.ensureCollectionExists()).rejects.toThrow('never deletes existing vectors');
         expect(service.client.deleteCollection).not.toHaveBeenCalled();
         expect(service.client.createCollection).not.toHaveBeenCalled();
         service.client.getCollections.mockRejectedValueOnce(new Error('offline'));
@@ -413,7 +415,7 @@ describe('QdrantService coverage: stub embeddings, probe warnings, key failures,
     test('initialize warns on the [1] fallback probe and on an unexpected probe shape', async () => {
         const client = {
             getCollections: jest.fn(async () => ({ collections: [{ name: 'biocbot_documents' }] })),
-            getCollection: jest.fn(async () => ({ config: { params: { vectors: { size: 768 } } } })),
+            getCollection: jest.fn(async () => ({ config: { params: { vectors: { size: 1536 } } } })),
         };
         QdrantClient.mockImplementation(() => client);
         ChunkingModule.mockImplementation(() => ({ getDefaultStrategyName: () => 'recursiveCharacter' }));

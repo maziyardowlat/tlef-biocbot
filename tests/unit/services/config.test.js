@@ -14,6 +14,7 @@ const TOUCHED = [
     'LLM_PROVIDER', 'OPENAI_API_KEY', 'OPENAI_MODEL', 'LLM_EMBEDDING_MODEL',
     'OLLAMA_ENDPOINT', 'OLLAMA_MODEL', 'LLM_API_KEY', 'LLM_ENDPOINT', 'LLM_DEFAULT_MODEL',
     'TLEF_BIOCBOT_PORT', 'MONGODB_URI', 'QDRANT_URL', 'QDRANT_HOST', 'QDRANT_PORT', 'NODE_ENV',
+    'SANDBOX_LLM_ENDPOINT', 'SANDBOX_LLM_API_KEY', 'OPENAI_BASE_URL',
 ];
 
 beforeAll(() => {
@@ -74,9 +75,8 @@ describe('config.getLLMConfig', () => {
 });
 
 describe('config.validateConfig', () => {
-    test('openai requires OPENAI_MODEL and LLM_EMBEDDING_MODEL', () => {
+    test('openai requires OPENAI_MODEL', () => {
         process.env.LLM_PROVIDER = 'openai';
-        process.env.LLM_EMBEDDING_MODEL = 'emb';
         expect(() => config.validateConfig()).toThrow('OPENAI_MODEL is required for OpenAI provider');
     });
 
@@ -101,20 +101,56 @@ describe('config.validateConfig', () => {
         expect(() => config.validateConfig()).toThrow('OLLAMA_MODEL is required for Ollama provider');
     });
 
-    test('openai requires LLM_EMBEDDING_MODEL once the model is present', () => {
+    // Embedding models are per-platform admin settings in MongoDB, so env
+    // validation no longer requires LLM_EMBEDDING_MODEL for any provider.
+    test('openai passes validation without an embedding model in env', () => {
         process.env.LLM_PROVIDER = 'openai';
         process.env.OPENAI_MODEL = 'gpt-test';
-        expect(() => config.validateConfig()).toThrow('LLM_EMBEDDING_MODEL is required for OpenAI provider');
+        expect(() => config.validateConfig()).not.toThrow();
     });
 
-    test('ubc-llm-sandbox requires endpoint, default model, then embedding model', () => {
+    test('ubc-llm-sandbox requires endpoint then default model, but not an embedding model', () => {
         process.env.LLM_PROVIDER = 'ubc-llm-sandbox';
         process.env.LLM_API_KEY = 'k';
         expect(() => config.validateConfig()).toThrow('LLM_ENDPOINT is required for UBC LLM Sandbox provider');
         process.env.LLM_ENDPOINT = 'http://sandbox';
         expect(() => config.validateConfig()).toThrow('LLM_DEFAULT_MODEL is required for UBC LLM Sandbox provider');
         process.env.LLM_DEFAULT_MODEL = 'qwen3.6-35b-a3b';
-        expect(() => config.validateConfig()).toThrow('LLM_EMBEDDING_MODEL is required for UBC LLM Sandbox provider');
+        expect(() => config.validateConfig()).not.toThrow();
+    });
+});
+
+describe('config.getProviderInfra', () => {
+    test('resolves each provider independently of LLM_PROVIDER', () => {
+        process.env.LLM_PROVIDER = 'openai';
+        process.env.LLM_ENDPOINT = 'https://sandbox.example/v1';
+        process.env.LLM_API_KEY = 'sandbox-key';
+        process.env.OLLAMA_ENDPOINT = 'http://localhost:11434';
+
+        expect(config.getProviderInfra('ubc-llm-sandbox')).toEqual({
+            provider: 'ubc-llm-sandbox',
+            endpoint: 'https://sandbox.example/v1',
+            bootstrapApiKey: 'sandbox-key',
+        });
+        expect(config.getProviderInfra('openai')).toEqual({
+            provider: 'openai', endpoint: null, bootstrapApiKey: undefined,
+        });
+        expect(config.getProviderInfra('ollama')).toEqual({
+            provider: 'ollama', endpoint: 'http://localhost:11434', bootstrapApiKey: undefined,
+        });
+    });
+
+    test('prefers the dedicated SANDBOX_* variables when present', () => {
+        process.env.LLM_ENDPOINT = 'https://shared.example/v1';
+        process.env.SANDBOX_LLM_ENDPOINT = 'https://dedicated.example/v1';
+        process.env.SANDBOX_LLM_API_KEY = 'dedicated-key';
+        expect(config.getProviderInfra('ubc-llm-sandbox')).toMatchObject({
+            endpoint: 'https://dedicated.example/v1', bootstrapApiKey: 'dedicated-key',
+        });
+    });
+
+    test('rejects an unknown provider', () => {
+        expect(() => config.getProviderInfra('gemini')).toThrow('Unsupported LLM provider: gemini');
     });
 });
 

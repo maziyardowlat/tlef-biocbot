@@ -57,6 +57,43 @@ class ConfigService {
     }
     
     /**
+     * Infrastructure configuration for a specific provider, independent of the
+     * server-wide LLM_PROVIDER. Models are NOT included here — those come from
+     * the admin settings stored in MongoDB (see adminModelSettings.js).
+     *
+     * @param {string} provider - 'openai' | 'ubc-llm-sandbox' | 'ollama'
+     * @returns {{provider: string, endpoint: (string|null), bootstrapApiKey: (string|undefined)}}
+     */
+    getProviderInfra(provider) {
+        switch (provider) {
+            case 'ollama':
+                return {
+                    provider,
+                    endpoint: process.env.OLLAMA_ENDPOINT || null,
+                    bootstrapApiKey: undefined
+                };
+
+            case 'ubc-llm-sandbox':
+                return {
+                    provider,
+                    endpoint: process.env.SANDBOX_LLM_ENDPOINT || process.env.LLM_ENDPOINT || null,
+                    bootstrapApiKey: process.env.SANDBOX_LLM_API_KEY || process.env.LLM_API_KEY || undefined
+                };
+
+            case 'openai':
+                return {
+                    provider,
+                    // OpenAI needs no endpoint; an override exists only for proxies.
+                    endpoint: process.env.OPENAI_BASE_URL || null,
+                    bootstrapApiKey: process.env.OPENAI_API_KEY || undefined
+                };
+
+            default:
+                throw new Error(`Unsupported LLM provider: ${provider}`);
+        }
+    }
+
+    /**
      * Get server configuration
      * @returns {Object} Server configuration object
      */
@@ -126,9 +163,6 @@ class ConfigService {
             if (!process.env.OPENAI_MODEL) {
                 throw new Error('OPENAI_MODEL is required for OpenAI provider');
             }
-            if (!process.env.LLM_EMBEDDING_MODEL) {
-                throw new Error('LLM_EMBEDDING_MODEL is required for OpenAI provider');
-            }
         } else if (provider === 'ubc-llm-sandbox') {
             if (!process.env.LLM_API_KEY) {
                 throw new Error('LLM_API_KEY is required for UBC LLM Sandbox provider');
@@ -139,10 +173,10 @@ class ConfigService {
             if (!process.env.LLM_DEFAULT_MODEL) {
                 throw new Error('LLM_DEFAULT_MODEL is required for UBC LLM Sandbox provider');
             }
-            if (!process.env.LLM_EMBEDDING_MODEL) {
-                throw new Error('LLM_EMBEDDING_MODEL is required for UBC LLM Sandbox provider');
-            }
         }
+        // Embedding models are NOT validated here: they are per-platform admin
+        // settings stored in MongoDB. The env vars only supply bootstrap
+        // defaults until an admin saves settings.
         
         console.log(`✅ Configuration validated successfully`);
         console.log(`🤖 LLM Provider: ${provider}`);

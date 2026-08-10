@@ -3,13 +3,17 @@
  *
  * Real: the Course model over the in-memory Mongo double, and llmKeyStore's crypto
  * helpers (buildKeySubdocument / publicKeySummary / stripPrivateKeyFields all run
- * for real under NODE_ENV=test). Only the network call `validateApiKey` is stubbed.
+ * for real under NODE_ENV=test). Only the network call `validateProviderKey` is stubbed.
  * Covers the create gate + key validation, the access guards on read/update/delete,
  * the instructor course list ordering, completion, and the /stats route ordering.
  */
 jest.mock('../../../src/services/llmKeyStore', () => {
     const actual = jest.requireActual('../../../src/services/llmKeyStore');
-    return { ...actual, validateApiKey: jest.fn(async () => ({ ok: true })) };
+    return {
+        ...actual,
+        validateApiKey: jest.fn(async () => ({ ok: true })),
+        validateProviderKey: jest.fn(async () => ({ ok: true, status: 'valid', provider: 'openai' })),
+    };
 });
 
 const { memoryDb } = require('../helpers/memory-db');
@@ -40,7 +44,10 @@ beforeAll(() => {
     jest.spyOn(console, 'error').mockImplementation(() => {});
 });
 afterAll(() => jest.restoreAllMocks());
-beforeEach(() => llmKeyStore.validateApiKey.mockReset().mockResolvedValue({ ok: true }));
+beforeEach(() => {
+    llmKeyStore.validateApiKey.mockReset().mockResolvedValue({ ok: true });
+    llmKeyStore.validateProviderKey.mockReset().mockResolvedValue({ ok: true, status: 'valid', provider: 'openai' });
+});
 
 describe('POST / — create course from onboarding', () => {
     const body = { courseId: 'C1', courseName: 'BIOC 202', apiKey: 'sk-test', courseStructure: { weeks: 1, lecturesPerWeek: 1 } };
@@ -60,14 +67,14 @@ describe('POST / — create course from onboarding', () => {
     });
 
     test('400 LLM_KEY_INVALID when the key fails validation', async () => {
-        llmKeyStore.validateApiKey.mockResolvedValueOnce({ ok: false, status: 'invalid', message: 'bad key' });
+        llmKeyStore.validateProviderKey.mockResolvedValueOnce({ ok: false, status: 'invalid', message: 'bad key' });
         const res = await request(app({ db: memoryDb({}), user: instructor })).post('/').send(body);
         expect(res.status).toBe(400);
         expect(res.body).toMatchObject({ code: 'LLM_KEY_INVALID' });
     });
 
     test('400 LLM_KEY_QUOTA when the key is out of credits', async () => {
-        llmKeyStore.validateApiKey.mockResolvedValueOnce({ ok: false, status: 'quota_exhausted' });
+        llmKeyStore.validateProviderKey.mockResolvedValueOnce({ ok: false, status: 'quota_exhausted' });
         const res = await request(app({ db: memoryDb({}), user: instructor })).post('/').send(body);
         expect(res.body.code).toBe('LLM_KEY_QUOTA');
     });
@@ -115,7 +122,7 @@ describe('POST / — create course from onboarding', () => {
     });
 
     test('500 when validation or persistence throws', async () => {
-        llmKeyStore.validateApiKey.mockRejectedValueOnce(new Error('provider failed'));
+        llmKeyStore.validateProviderKey.mockRejectedValueOnce(new Error('provider failed'));
         const res = await request(app({ db: memoryDb({}), user: instructor })).post('/').send(body);
         expect(res.status).toBe(500);
         expect(res.body.message).toMatch(/saving onboarding data/);

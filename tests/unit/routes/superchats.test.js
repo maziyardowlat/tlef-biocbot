@@ -8,12 +8,22 @@
 jest.mock('../../../src/services/superCourseService', () => ({
     resolveSuperCourseChatSettings: jest.fn(() => ({ topK: 5 })),
 }));
-jest.mock('../../../src/services/llmKeyStore', () => ({
-    buildKeySubdocument: jest.fn(() => ({ enc: 'stub-key' })),
-    decryptApiKey: jest.fn(() => 'sk-decrypted'),
-    publicKeySummary: jest.fn((key) => (key ? { status: 'valid' } : { status: 'none' })),
-    validateApiKey: jest.fn(async () => ({ ok: true })),
-}));
+// Keep the real provider-state readers (publicProviderKeyState, credentialSetFields,
+// readProviderState) so per-surface provider resolution is exercised for real;
+// only crypto and the network probe are stubbed.
+jest.mock('../../../src/services/llmKeyStore', () => {
+    const actual = jest.requireActual('../../../src/services/llmKeyStore');
+    return {
+        ...actual,
+        buildKeySubdocument: jest.fn((apiKey, userId, provider) => ({
+            ciphertext: 'stub-key', last4: '1234', status: 'valid', provider: provider || 'openai',
+            validatedAt: new Date(), updatedAt: new Date(), updatedBy: userId || null,
+        })),
+        decryptApiKey: jest.fn(() => 'sk-decrypted'),
+        validateApiKey: jest.fn(async () => ({ ok: true })),
+        validateProviderKey: jest.fn(async () => ({ ok: true, status: 'valid', provider: 'openai' })),
+    };
+});
 
 const { memoryDb } = require('../helpers/memory-db');
 const { makeRouteApp, request } = require('../helpers/route-app');
@@ -27,7 +37,7 @@ const downloadAdmin = { userId: 'a2', role: 'instructor', permissions: { systemA
 
 beforeAll(() => { jest.spyOn(console, 'error').mockImplementation(() => {}); });
 afterAll(() => jest.restoreAllMocks());
-beforeEach(() => llmKeyStore.validateApiKey.mockReset().mockResolvedValue({ ok: true }));
+beforeEach(() => llmKeyStore.validateProviderKey.mockReset().mockResolvedValue({ ok: true }));
 
 describe('superchats — auth gate', () => {
     test('401 when unauthenticated', async () => {
@@ -56,7 +66,7 @@ describe('superchats — auth gate', () => {
 describe('GET /', () => {
     test('lists bucket summaries with a per-bucket course count', async () => {
         const db = memoryDb({
-            superchats: [{ superchatId: 'sc1', name: 'Bucket A', showToStudents: true, llmApiKey: { enc: 'k' } }],
+            superchats: [{ superchatId: 'sc1', name: 'Bucket A', showToStudents: true, llmApiKey: { ciphertext: 'k', status: 'valid', last4: '1234' } }],
             courses: [
                 { courseId: 'c1', superchatIds: ['sc1'], status: 'active' },
                 { courseId: 'c2', superchatIds: ['sc1'], status: 'active' },
@@ -103,7 +113,7 @@ describe('POST /', () => {
     });
 
     test('400 LLM_KEY_INVALID when the key fails validation', async () => {
-        llmKeyStore.validateApiKey.mockResolvedValueOnce({ ok: false, status: 'invalid', message: 'bad key' });
+        llmKeyStore.validateProviderKey.mockResolvedValueOnce({ ok: false, status: 'invalid', message: 'bad key' });
         const res = await request(makeRouteApp(superchatsRouter, { db: memoryDb({}), user: instructor }))
             .post('/').send({ name: 'New', apiKey: 'sk-bad' });
         expect(res.status).toBe(400);
@@ -111,7 +121,7 @@ describe('POST /', () => {
     });
 
     test('400 LLM_KEY_QUOTA when the key is quota-exhausted', async () => {
-        llmKeyStore.validateApiKey.mockResolvedValueOnce({ ok: false, status: 'quota_exhausted' });
+        llmKeyStore.validateProviderKey.mockResolvedValueOnce({ ok: false, status: 'quota_exhausted' });
         const res = await request(makeRouteApp(superchatsRouter, { db: memoryDb({}), user: instructor }))
             .post('/').send({ name: 'New', apiKey: 'sk' });
         expect(res.body.code).toBe('LLM_KEY_QUOTA');
@@ -162,7 +172,7 @@ describe('bucket LLM key management — mocked validation', () => {
 
     test('PUT validates bucket and API key', async () => {
         expect((await request(makeRouteApp(superchatsRouter, { db: memoryDb({ superchats: [] }), user: instructor })).put('/missing/llm-key').send({ apiKey: 'sk' })).status).toBe(404);
-        llmKeyStore.validateApiKey.mockResolvedValueOnce({ ok: false, status: 'quota_exhausted', message: 'spent' });
+        llmKeyStore.validateProviderKey.mockResolvedValueOnce({ ok: false, status: 'quota_exhausted', message: 'spent' });
         const res = await request(makeRouteApp(superchatsRouter, { db: memoryDb({ superchats: [keyed] }), user: instructor })).put('/sc1/llm-key').send({ apiKey: 'spent' });
         expect(res.status).toBe(400);
         expect(res.body.code).toBe('LLM_KEY_QUOTA');
@@ -173,7 +183,11 @@ describe('bucket LLM key management — mocked validation', () => {
         const registry = { evictSuperchat: jest.fn() };
         const res = await request(makeRouteApp(superchatsRouter, { db, user: instructor, locals: { llmRegistry: registry } })).put('/sc1/llm-key').send({ apiKey: 'sk-new' });
         expect(res.status).toBe(200);
-        expect((await db.collection('superchats').findOne({ superchatId: 'sc1' })).llmApiKey).toEqual({ enc: 'stub-key' });
+        // The key is stored per-provider; the legacy field mirrors OpenAI.
+        const saved = await db.collection('superchats').findOne({ superchatId: 'sc1' });
+        expect(saved.activeLlmProvider).toBe('openai');
+        expect(saved.llmCredentials.openai).toMatchObject({ ciphertext: 'stub-key', status: 'valid', provider: 'openai' });
+        expect(saved.llmApiKey).toMatchObject({ ciphertext: 'stub-key' });
         expect(registry.evictSuperchat).toHaveBeenCalledWith('sc1');
     });
 
@@ -182,7 +196,7 @@ describe('bucket LLM key management — mocked validation', () => {
         expect(res.body.code).toBe('LLM_KEY_MISSING');
         res = await request(makeRouteApp(superchatsRouter, { db: memoryDb({ superchats: [keyed] }), user: instructor })).post('/sc1/llm-key/test');
         expect(res).toMatchObject({ status: 200, body: expect.objectContaining({ success: true, aiAvailable: true }) });
-        llmKeyStore.validateApiKey.mockResolvedValueOnce({ ok: false, status: 'invalid', message: 'bad' });
+        llmKeyStore.validateProviderKey.mockResolvedValueOnce({ ok: false, status: 'invalid', message: 'bad' });
         res = await request(makeRouteApp(superchatsRouter, { db: memoryDb({ superchats: [keyed] }), user: instructor })).post('/sc1/llm-key/test');
         expect(res.body).toMatchObject({ success: false, code: 'LLM_KEY_INVALID', aiAvailable: false });
     });

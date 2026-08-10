@@ -9,15 +9,47 @@ const { ChunkingModule } = require('ubc-genai-toolkit-chunking');
 const { ConsoleLogger } = require('ubc-genai-toolkit-core');
 const { randomUUID } = require('crypto');
 const config = require('./config');
-const { LlmKeyError, mapOpenAIErrorToStatus } = require('./llmKeyStore');
+const { LlmKeyError, mapProviderErrorToStatus } = require('./llmKeyStore');
+const { buildEmbeddingProfile } = require('./embeddingConfig');
 const {
-    collectionNameForEmbedding,
-    vectorSizeForEmbeddingModel
-} = require('./embeddingConfig');
+    configuredProvider,
+    defaultEmbeddingModelForProvider
+} = require('./llmModels');
 
 console.log('✅ Successfully imported embeddings library:', typeof EmbeddingsModule);
 
+/**
+ * Last-resort embedding profile for callers that predate profile plumbing —
+ * Qdrant maintenance operations (skipEmbeddings) and local dev runtimes.
+ * Every request-serving path supplies an explicit profile instead.
+ */
+function envFallbackProfile() {
+    const provider = configuredProvider();
+    const embeddingModel = process.env.LLM_EMBEDDING_MODEL
+        || defaultEmbeddingModelForProvider(provider);
+
+    let endpoint = null;
+    let apiKey;
+    try {
+        const infra = config.getProviderInfra(provider);
+        endpoint = infra.endpoint;
+        apiKey = infra.bootstrapApiKey;
+    } catch (_) {
+        // Unknown provider: leave infrastructure unset; embeddings init will
+        // surface the real error if this profile is ever used for work.
+    }
+
+    return buildEmbeddingProfile({ provider, embeddingModel, endpoint, apiKey: apiKey || null });
+}
+
 class QdrantService {
+    /**
+     * @param {Object} options
+     * @param {Object} [options.embeddingProfile] - Explicit embedding profile
+     *   (provider, endpoint, embedding model, vector size, revision, collection,
+     *   scoped API key). Required for anything that reads or writes vectors on
+     *   behalf of a specific surface.
+     */
     constructor(options = {}) {
         this.client = null;
         this.embeddings = options.embeddings || null;
@@ -27,19 +59,18 @@ class QdrantService {
         this.onProviderKeyFailure = typeof options.onProviderKeyFailure === 'function'
             ? options.onProviderKeyFailure
             : null;
-        // Use a separate collection when the embeddings stub is active so the
-        // stub's bag-of-words vectors don't mix with real-LLM vectors stored
-        // by a prior dev/prod run against the same Qdrant instance.
-        this.embeddingModel = process.env.LLM_EMBEDDING_MODEL || null;
-        const baseCollectionName = process.env.BIOCBOT_TEST_LLM_STUB === '1'
-            ? 'biocbot_documents_stub'
-            : 'biocbot_documents';
-        this.collectionName = collectionNameForEmbedding(
-            baseCollectionName,
-            this.embeddingModel,
-            process.env.QDRANT_COLLECTION_NAME
-        );
-        this.vectorSize = vectorSizeForEmbeddingModel(this.embeddingModel);
+        // Maintenance clients (deletion sweeps across historical profiles) must
+        // not conjure empty collections for profiles that were never used.
+        this.createCollectionIfMissing = options.createCollectionIfMissing !== false;
+
+        // The profile decides the collection AND the dimensionality. Vectors
+        // from different embedding models never share a collection, even when
+        // their dimensionality happens to match.
+        this.embeddingProfile = options.embeddingProfile || envFallbackProfile();
+        this.provider = this.embeddingProfile.provider;
+        this.embeddingModel = this.embeddingProfile.embeddingModel;
+        this.collectionName = this.embeddingProfile.collection;
+        this.vectorSize = this.embeddingProfile.vectorSize;
     }
 
     /**
@@ -88,6 +119,10 @@ class QdrantService {
             let llmConfig;
             if (!this.skipEmbeddings) {
                 try {
+                    // The embedding profile is authoritative: it names the
+                    // provider, endpoint, model and scoped key to embed with.
+                    // getLLMConfig() is only consulted for legacy/dev callers
+                    // that supplied no profile-derived key.
                     llmConfig = this.llmConfigOverride || config.getLLMConfig();
                     console.log('LLM config retrieved:', {
                         provider: llmConfig.provider,
@@ -100,6 +135,7 @@ class QdrantService {
                 }
 
                 const logger = new ConsoleLogger('biocbot-qdrant');
+                const profile = this.embeddingProfile;
 
                 // Add embedding-specific configuration
                 const embeddingConfig = {
@@ -107,7 +143,10 @@ class QdrantService {
                     logger: logger,
                     llmConfig: {
                         ...llmConfig,
-                        embeddingModel: process.env.LLM_EMBEDDING_MODEL,
+                        provider: profile.provider,
+                        ...(profile.endpoint ? { endpoint: profile.endpoint } : {}),
+                        ...(profile.apiKey ? { apiKey: profile.apiKey } : {}),
+                        embeddingModel: profile.embeddingModel,
                         // // Drop unsupported parameters when talking to Ollama
                         litellm: {
                             drop_params: true
@@ -118,7 +157,9 @@ class QdrantService {
                 console.log('Embedding config:', {
                     providerType: embeddingConfig.providerType,
                     embeddingModel: embeddingConfig.llmConfig.embeddingModel,
-                    llmProvider: embeddingConfig.llmConfig.provider
+                    llmProvider: embeddingConfig.llmConfig.provider,
+                    profile: profile.key,
+                    collection: this.collectionName
                 });
 
                 try {
@@ -126,8 +167,8 @@ class QdrantService {
                         console.log('✅ Using provided embeddings service');
                     } else if (process.env.BIOCBOT_TEST_LLM_STUB === '1') {
                         const { EmbeddingsStub } = require('./embeddingsStub');
-                        this.embeddings = new EmbeddingsStub({ vectorSize: 1536 });
-                        console.log('🧪 Embeddings stub active (BIOCBOT_TEST_LLM_STUB=1) — no OpenAI traffic');
+                        this.embeddings = new EmbeddingsStub({ vectorSize: profile.vectorSize });
+                        console.log(`🧪 Embeddings stub active (BIOCBOT_TEST_LLM_STUB=1) — no provider traffic (${profile.vectorSize}d)`);
                     } else {
                         this.embeddings = await EmbeddingsModule.create(embeddingConfig);
                         console.log('✅ Successfully initialized embeddings service');
@@ -160,12 +201,12 @@ class QdrantService {
                 console.log(`✅ Successfully initialized chunking service (strategy=${this.chunker.getDefaultStrategyName()})`);
             }
 
-            // Set vector size based on the embedding model (more reliable than test embedding)
-            console.log('Setting vector size based on embedding model...');
-            const embeddingModel = process.env.LLM_EMBEDDING_MODEL;
-            this.embeddingModel = embeddingModel || null;
-            this.vectorSize = vectorSizeForEmbeddingModel(embeddingModel);
-            console.log(`🔍 Using ${embeddingModel || 'default'} vector size: ${this.vectorSize}`);
+            // Vector size comes from the embedding profile, which is also what
+            // named the collection — the two can never drift apart.
+            console.log(
+                `🔍 Embedding profile ${this.embeddingProfile.key} -> collection ${this.collectionName} `
+                + `(${this.vectorSize} dimensions)`
+            );
             
             console.log(`✅ Successfully initialized embeddings service (vector size: ${this.vectorSize} dimensions)`);
             
@@ -195,8 +236,14 @@ class QdrantService {
                     } else if (actualEmbedding.length === this.vectorSize) {
                         console.log(`✅ Embeddings service test successful (${actualEmbedding.length} dimensions)`);
                     } else {
-                        console.warn(`⚠️ Embeddings service returned ${actualEmbedding.length} dimensions, expected ${this.vectorSize}; using the provider-reported size`);
-                        this.vectorSize = actualEmbedding.length;
+                        // The profile named the collection AND its dimensionality.
+                        // Adopting the provider-reported size here would create a
+                        // mis-sized collection for this model, so keep the profile
+                        // authoritative and surface the mismatch instead.
+                        console.warn(
+                            `⚠️ Embeddings service returned ${actualEmbedding.length} dimensions but embedding profile `
+                            + `${this.embeddingProfile.key} expects ${this.vectorSize}; keeping the profile size`
+                        );
                     }
                 } else {
                     console.warn(`⚠️ Embeddings service test returned unexpected result, but continuing with model-based vector size`);
@@ -232,9 +279,15 @@ class QdrantService {
                 col => col.name === this.collectionName
             );
 
+            if (!collectionExists && !this.createCollectionIfMissing) {
+                console.log(`ℹ️ Collection ${this.collectionName} does not exist; skipping creation (maintenance mode)`);
+                this.collectionMissing = true;
+                return;
+            }
+
             if (!collectionExists) {
                 console.log(`Creating collection: ${this.collectionName}`);
-                
+
                 await this.client.createCollection(this.collectionName, {
                     vectors: {
                         size: this.vectorSize,
@@ -253,8 +306,8 @@ class QdrantService {
                 if (existingVectorSize !== this.vectorSize) {
                     throw new Error(
                         `Qdrant collection ${this.collectionName} has ${existingVectorSize}-dimension vectors, ` +
-                        `but ${this.embeddingModel || 'the configured embedding model'} returns ${this.vectorSize}. ` +
-                        'Choose a new QDRANT_COLLECTION_NAME and re-index; BioCBot will not delete existing vectors automatically.'
+                        `but embedding profile ${this.embeddingProfile.key} returns ${this.vectorSize}. ` +
+                        'Bump the profile revision so a new collection is created; BioCBot never deletes existing vectors.'
                     );
                 } else {
                     console.log(`✅ Collection ${this.collectionName} already exists with correct dimensions`);
@@ -537,14 +590,14 @@ class QdrantService {
         try {
             return await this.embeddings.embed(input);
         } catch (error) {
-            const status = mapOpenAIErrorToStatus(error);
+            const status = mapProviderErrorToStatus(error);
             if (status && this.onProviderKeyFailure) {
                 try {
                     await this.onProviderKeyFailure(status, error);
                 } catch (handlerError) {
                     console.error('❌ Error handling scoped embeddings key failure:', handlerError.message);
                 }
-                throw new LlmKeyError(status);
+                throw new LlmKeyError(status, {}, this.provider);
             }
             throw error;
         }
