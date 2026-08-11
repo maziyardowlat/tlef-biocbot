@@ -274,7 +274,12 @@ describe('POST / — chat (validation + key gate only)', () => {
         expect(prompt).toContain('Super Course context:\nretrieved context');
         expect(prompt).not.toContain('m0');
         expect(prompt).toContain('Instructor: m2');
-        expect(options).toEqual({ temperature: 0.4, maxTokens: 32768, systemPrompt: 'Base instructor prompt\n\nKeep it brief.' });
+        expect(options).toEqual({
+            lane: 'frontend',
+            temperature: 0.4,
+            maxTokens: 32768,
+            systemPrompt: 'Base instructor prompt\n\nKeep it brief.'
+        });
         expect(res.body).toMatchObject({
             success: true, message: 'ATP answer', model: 'mock-model', citations: [{ id: 'citation' }],
             retrieval: { resultCount: 1, poolCourseIds: ['C1', 'C2'], poolCourses: [{ courseId: 'C1' }] },

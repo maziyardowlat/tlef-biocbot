@@ -7,8 +7,8 @@
  *   {
  *     _id: 'llm',
  *     providers: {
- *       openai:            { chatModel, embeddingModel, embeddingRevision, reasoningEffort },
- *       'ubc-llm-sandbox': { chatModel, embeddingModel, embeddingRevision, reasoningEffort }
+ *       openai:            { chatModel, reasoningEffort, backend: { chatModel, reasoningEffort }, ... },
+ *       'ubc-llm-sandbox': { chatModel, reasoningEffort, backend: { chatModel, reasoningEffort }, ... }
  *     },
  *     pendingEmbedding: { <provider>: { embeddingModel, embeddingRevision, migrationId, startedAt } }
  *   }
@@ -40,6 +40,7 @@ const {
     normalizeReasoningEffort,
     supportsReasoning
 } = require('./llmModels');
+const { LANES, normalizeLane } = require('./llmLanes');
 
 const SETTINGS_ID = 'llm';
 const CACHE_TTL_MS = 30 * 1000;
@@ -66,6 +67,25 @@ function bootstrapDefaults(provider) {
 }
 
 /**
+ * Normalize one chat lane. A missing or no-longer-selectable back-end model
+ * inherits the effective front-end pair rather than falling back to an env
+ * default belonging to a different configuration.
+ */
+function normalizeLaneSettings(provider, stored, fallback) {
+    const source = stored && typeof stored === 'object' ? stored : {};
+    const allowed = allowedModelsForProvider(provider);
+    if (!allowed.includes(source.chatModel)) {
+        return { ...fallback };
+    }
+    const chatModel = source.chatModel;
+
+    return {
+        chatModel,
+        reasoningEffort: normalizeReasoningEffort(provider, chatModel, source.reasoningEffort)
+    };
+}
+
+/**
  * Coerce a stored (or requested) settings fragment into a valid, complete
  * per-provider settings object.
  */
@@ -85,11 +105,42 @@ function normalizeProviderSettings(provider, stored) {
         ? source.embeddingRevision.trim()
         : DEFAULT_PROFILE_REVISION;
 
-    return {
+    const frontend = {
         chatModel,
+        reasoningEffort: normalizeReasoningEffort(provider, chatModel, source.reasoningEffort)
+    };
+    const hasBackendOverride = !!(
+        source.backend
+        && typeof source.backend === 'object'
+        && allowedModelsForProvider(provider).includes(source.backend.chatModel)
+    );
+    const backend = normalizeLaneSettings(provider, source.backend, frontend);
+
+    return {
+        // Flat fields remain the front-end lane for existing readers.
+        ...frontend,
         embeddingModel,
         embeddingRevision,
-        reasoningEffort: normalizeReasoningEffort(provider, chatModel, source.reasoningEffort)
+        lanes: {
+            [LANES.FRONTEND]: frontend,
+            [LANES.BACKEND]: backend
+        },
+        backendInheritsFrontend: !hasBackendOverride
+    };
+}
+
+/**
+ * Read a lane from either a lane-aware normalized object or an older flat
+ * settings stub (notably the Ollama registry path).
+ */
+function chatSettingsForLane(settings, lane) {
+    const normalizedLane = normalizeLane(lane);
+    if (settings?.lanes?.[normalizedLane]) {
+        return settings.lanes[normalizedLane];
+    }
+    return {
+        chatModel: settings?.chatModel,
+        reasoningEffort: settings?.reasoningEffort
     };
 }
 
@@ -198,7 +249,13 @@ async function getEmbeddingProfile(db, provider, { apiKey = null, endpoint = nul
  * Persist chat-side settings for one platform. Chat model and reasoning effort
  * take effect immediately — no re-indexing is involved.
  */
-async function saveChatSettings(db, provider, { chatModel, reasoningEffort }, updatedBy = null) {
+async function saveChatSettings(db, provider, {
+    chatModel,
+    reasoningEffort,
+    backendChatModel,
+    backendReasoningEffort,
+    backendInheritsFrontend
+}, updatedBy = null) {
     const normalizedProvider = normalizeProvider(provider);
     if (!allowedModelsForProvider(normalizedProvider).includes(chatModel)) {
         const error = new Error(
@@ -209,21 +266,52 @@ async function saveChatSettings(db, provider, { chatModel, reasoningEffort }, up
     }
 
     const effort = normalizeReasoningEffort(normalizedProvider, chatModel, reasoningEffort);
+    const set = {
+        [`providers.${normalizedProvider}.chatModel`]: chatModel,
+        [`providers.${normalizedProvider}.reasoningEffort`]: effort,
+        updatedAt: new Date(),
+        updatedBy
+    };
+    const unset = {};
+
+    if (backendInheritsFrontend === true) {
+        unset[`providers.${normalizedProvider}.backend`] = '';
+    } else if (backendChatModel !== undefined || backendInheritsFrontend === false) {
+        if (!allowedModelsForProvider(normalizedProvider).includes(backendChatModel)) {
+            const error = new Error(
+                `Invalid back-end chat model for ${normalizedProvider}. Allowed: ${allowedModelsForProvider(normalizedProvider).join(', ')}`
+            );
+            error.code = 'INVALID_CHAT_MODEL';
+            throw error;
+        }
+        set[`providers.${normalizedProvider}.backend.chatModel`] = backendChatModel;
+        set[`providers.${normalizedProvider}.backend.reasoningEffort`] = normalizeReasoningEffort(
+            normalizedProvider,
+            backendChatModel,
+            backendReasoningEffort
+        );
+    }
+
+    const update = { $set: set };
+    if (Object.keys(unset).length > 0) update.$unset = unset;
     await db.collection('settings').updateOne(
         { _id: SETTINGS_ID },
-        {
-            $set: {
-                [`providers.${normalizedProvider}.chatModel`]: chatModel,
-                [`providers.${normalizedProvider}.reasoningEffort`]: effort,
-                updatedAt: new Date(),
-                updatedBy
-            }
-        },
+        update,
         { upsert: true }
     );
 
     invalidateCache();
-    return { chatModel, reasoningEffort: effort, supportsReasoning: supportsReasoning(normalizedProvider, chatModel) };
+    const saved = await getProviderSettings(db, normalizedProvider, { force: true });
+    const backend = chatSettingsForLane(saved, LANES.BACKEND);
+    return {
+        chatModel,
+        reasoningEffort: effort,
+        supportsReasoning: supportsReasoning(normalizedProvider, chatModel),
+        backendChatModel: backend.chatModel,
+        backendReasoningEffort: backend.reasoningEffort,
+        backendSupportsReasoning: supportsReasoning(normalizedProvider, backend.chatModel),
+        backendInheritsFrontend: saved.backendInheritsFrontend
+    };
 }
 
 /**
@@ -318,12 +406,14 @@ module.exports = {
     SETTINGS_ID,
     activatePendingEmbedding,
     bootstrapDefaults,
+    chatSettingsForLane,
     clearPendingEmbedding,
     getAllProviderSettings,
     getEmbeddingProfile,
     getProviderSettings,
     invalidateCache,
     normalizeProviderSettings,
+    normalizeLaneSettings,
     normalizeSettingsDocument,
     saveChatSettings,
     stagePendingEmbedding

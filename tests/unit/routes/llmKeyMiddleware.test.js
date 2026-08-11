@@ -14,7 +14,7 @@ const {
     resolveSuperchatAi,
     resolveSuperCourseChatAi,
 } = require('../../../src/routes/llmKeyMiddleware');
-const { LlmKeyError } = require('../../../src/services/llmKeyStore');
+const { LlmKeyError, LlmPreparationError } = require('../../../src/services/llmKeyStore');
 
 function fakeRes() {
     return {
@@ -48,6 +48,13 @@ describe('sendLlmKeyError', () => {
         const handled = sendLlmKeyError(res, { code: 'LLM_KEY_QUOTA', status: 'quota_exhausted' });
         expect(handled).toBe(true);
         expect(res.body.code).toBe('LLM_KEY_QUOTA');
+    });
+
+    test('returns a specific conflict while initial material is preparing', () => {
+        const res = fakeRes();
+        expect(sendLlmKeyError(res, new LlmPreparationError({ type: 'course', id: 'C1' }, 'openai'))).toBe(true);
+        expect(res.statusCode).toBe(409);
+        expect(res.body).toMatchObject({ success: false, code: 'LLM_PROVIDER_PREPARING' });
     });
 });
 

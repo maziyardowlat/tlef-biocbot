@@ -159,6 +159,27 @@ describe('POST /start', () => {
         expect(sandboxUser.studentOnboardingComplete).toBe(false);
     });
 
+    test('can skip the tutorial for the disposable preview student only', async () => {
+        const db = makeDb({
+            users: [{ userId: student.userId, role: 'student', studentOnboardingComplete: false }]
+        });
+
+        const res = await request(app({ db, user: instructor, session: makeSession() }))
+            .post('/start')
+            .send({ courseId: COURSE_ID, skipTutorial: true });
+
+        expect(res.status).toBe(200);
+        expect(res.body.firstRunCompleted).toBe(true);
+
+        const sandboxUser = await db.collection('users').findOne({ userId: PREVIEW_ID });
+        const previewState = await db.collection('previewStates').findOne({ previewUserId: PREVIEW_ID });
+        const realStudent = await db.collection('users').findOne({ userId: student.userId });
+
+        expect(sandboxUser.studentOnboardingComplete).toBe(true);
+        expect(previewState.firstRunCompleted).toBe(true);
+        expect(realStudent.studentOnboardingComplete).toBe(false);
+    });
+
     test('never inherits data from a previous visit, even if it was never exited', async () => {
         // Closing the tab skips /stop entirely, so opening a preview has to be
         // the second place the sandbox is guaranteed clean.

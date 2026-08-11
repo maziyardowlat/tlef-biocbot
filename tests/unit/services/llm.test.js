@@ -17,6 +17,7 @@ jest.mock('../../../src/services/config', () => ({
 const LLMService = require('../../../src/services/llm');
 const { LlmKeyError } = require('../../../src/services/llmKeyStore');
 const { memoryDb } = require('../helpers/memory-db');
+const { LANES } = require('../../../src/services/llmLanes');
 
 function readyService(config = { provider: 'openai', defaultModel: 'gpt-4.1-mini' }) {
     const service = new LLMService({ llmConfig: config });
@@ -60,6 +61,30 @@ describe('LLM model settings without provider traffic', () => {
         await expect(service._getModelSettings()).resolves.toEqual({ model: 'gpt-5.4-nano', reasoningEffort: 'high' });
         service.invalidateModelSettingsCache();
         await expect(service._getModelSettings()).resolves.toEqual({ model: 'gpt-5-nano', reasoningEffort: 'high' });
+    });
+
+    test('resolves and caches front-end and back-end settings independently', async () => {
+        const service = readyService();
+        const db = memoryDb({ settings: [{
+            _id: 'llm',
+            providers: {
+                openai: {
+                    chatModel: 'gpt-4.1-mini',
+                    backend: { chatModel: 'gpt-5.4-nano', reasoningEffort: 'high' },
+                },
+            },
+        }] });
+        service.setDbAccessor(() => db);
+
+        await expect(service._getModelSettings(LANES.FRONTEND)).resolves.toEqual({
+            model: 'gpt-4.1-mini', reasoningEffort: 'minimal',
+        });
+        await expect(service._getModelSettings(LANES.BACKEND)).resolves.toEqual({
+            model: 'gpt-5.4-nano', reasoningEffort: 'high',
+        });
+        await expect(service._applyModelOptions({ lane: LANES.BACKEND, maxTokens: 3000 })).resolves.toEqual({
+            model: 'gpt-5.4-nano', maxTokens: 3000, reasoningEffort: 'high',
+        });
     });
 
     test('rejects unsupported stored and environment model settings', async () => {

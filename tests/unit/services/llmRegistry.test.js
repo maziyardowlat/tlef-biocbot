@@ -130,6 +130,25 @@ describe('LlmRegistry with scoped keys enforced (openai)', () => {
         expect(LLMService.create.mock.calls[0][0].llmConfig.apiKey).toBe('sk-test-secret-key');
     });
 
+    test('initial preparation blocks AI even when the stored key is valid', async () => {
+        const reg = new LlmRegistry();
+        const llmApiKey = buildKeySubdocument('sk-test-secret-key', 'admin');
+        const db = memoryDb({ courses: [{
+            courseId: 'C1',
+            llmApiKey,
+            aiPreparationRequired: true,
+            pendingLlmProvider: 'openai',
+            providerMigrationId: 'mig_prepare',
+        }] });
+
+        await expect(reg.forCourse(db, 'C1')).rejects.toMatchObject({
+            name: 'LlmPreparationError',
+            code: 'LLM_PROVIDER_PREPARING',
+            httpStatus: 409,
+        });
+        expect(LLMService.create).not.toHaveBeenCalled();
+    });
+
     test('changing the stored key updatedAt busts the cache', async () => {
         const reg = new LlmRegistry();
         const llmApiKey = buildKeySubdocument('sk-test-secret-key', 'admin');

@@ -23,6 +23,7 @@ const gridfs = require('../services/gridfs');
 const { resolveCourseAi, sendLlmKeyError } = require('./llmKeyMiddleware');
 const { evaluateObjectiveAnswer } = require('../services/objectiveAnswer');
 const { createId } = require('../services/id');
+const { LANES } = require('../services/llmLanes');
 
 function generateChatMessageId() {
     return createId('msg');
@@ -552,6 +553,7 @@ router.post('/summary', async (req, res) => {
         });
 
         const response = await ai.llm.sendMessage(summaryPrompt, {
+            lane: LANES.FRONTEND,
             temperature: 0.2,
             maxTokens: 700,
             systemPrompt: 'You summarize tutoring conversations for continuity. Return only the student-voice summary.'
@@ -1455,6 +1457,7 @@ ${conversationHistory}`;
                 
                 // Use a separate, cheap LLM call (low temp, system prompt irrelevant but using base for safety)
                 const summaryCheckResponse = await llmService.sendMessage(summaryCheckPrompt, {
+                    lane: LANES.BACKEND,
                     temperature: 0.1,
                     maxTokens: 10,
                     systemPrompt: "You are a classifier. Respond only with YES or NO."
@@ -1481,6 +1484,7 @@ ${conversationHistory}`;
             messageToSend,
             {
             // Adjust response based on student mode
+            lane: LANES.FRONTEND,
             temperature: mode === 'protege' ? 0.5 : 0.5,
             maxTokens: mode === 'protege' ? 32768 : 32768,
             systemPrompt: basePrompt +
@@ -1516,6 +1520,7 @@ ${conversationHistory}`;
             const tailSnippet = fullContent.slice(-200);
             const contPrompt = `Continue the previous answer. Do not repeat earlier content. Pick up seamlessly from here: "${tailSnippet}"`;
             const contResp = await llmService.sendMessage(contPrompt, {
+                lane: LANES.FRONTEND,
                 temperature: mode === 'protege' ? 0.8 : 0.6,
                 maxTokens: mode === 'protege' ? 32768 : 32768,
                 systemPrompt: basePrompt +
@@ -1866,6 +1871,7 @@ router.post('/practice-question', async (req, res) => {
         const llmService = ai.llm;
 
         const llmResponse = await llmService.sendMessage(generationPrompt, {
+            lane: LANES.FRONTEND,
             temperature: 0.7,
             response_format: { type: "json_object" }
         });

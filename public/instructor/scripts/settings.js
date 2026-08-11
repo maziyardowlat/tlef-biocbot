@@ -49,8 +49,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Cached bucket summaries so the per-course checklist can re-render without a
     // page refresh whenever buckets are created/renamed/deleted.
     let availableSuperchats = [];
-    let llmReasoningEffortsByModel = {};
-    let llmDefaultReasoningEffortByModel = {};
     // Per-surface platform state (active platform, key status per platform, and
     // any in-flight migration). Declared here because loadSettings() runs before
     // the helper definitions further down would otherwise be evaluated.
@@ -282,20 +280,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    function updateReasoningVisibility() {
-        const modelSelect = document.getElementById('llm-model-select');
-        const reasoningItem = document.getElementById('llm-reasoning-item');
-        const reasoningSelect = document.getElementById('llm-reasoning-select');
+    function updateReasoningVisibility(idPrefix, lane, reasoningEffortsByModel, defaultReasoningEffortByModel) {
+        const lanePrefix = lane === 'backend' ? `${idPrefix}-backend` : idPrefix;
+        const modelSelect = document.getElementById(`${lanePrefix}-model-select`);
+        const reasoningItem = document.getElementById(`${lanePrefix}-reasoning-item`);
+        const reasoningSelect = document.getElementById(`${lanePrefix}-reasoning-select`);
         if (!modelSelect || !reasoningItem) return;
 
-        const efforts = llmReasoningEffortsByModel[modelSelect.value] || [];
+        const efforts = reasoningEffortsByModel[modelSelect.value] || [];
         reasoningItem.style.display = efforts.length > 0 ? '' : 'none';
 
         if (reasoningSelect) {
             const selected = reasoningSelect.value;
             const allEfforts = [...new Set([
                 ...Array.from(reasoningSelect.options, option => option.value),
-                ...Object.values(llmReasoningEffortsByModel).flat()
+                ...Object.values(reasoningEffortsByModel).flat()
             ])];
             for (const effort of allEfforts) {
                 let option = reasoningSelect.querySelector(`option[value="${effort}"]`);
@@ -309,7 +308,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 option.hidden = !supported;
                 option.disabled = !supported;
             }
-            const modelDefault = llmDefaultReasoningEffortByModel[modelSelect.value];
+            const modelDefault = defaultReasoningEffortByModel[modelSelect.value];
             const fallback = efforts.includes(modelDefault) ? modelDefault : (efforts[0] || '');
             reasoningSelect.value = efforts.includes(selected) ? selected : fallback;
         }
@@ -746,33 +745,57 @@ document.addEventListener('DOMContentLoaded', async () => {
         const ui = LLM_PLATFORM_UI[platform.provider];
         if (!ui) return;
         const { idPrefix } = ui;
+        const effortsByModel = platform.reasoningEffortsByModel || {};
+        const defaultsByModel = platform.defaultReasoningEffortByModel || {};
 
         const modelSelect = document.getElementById(`${idPrefix}-model-select`);
         fillSelect(modelSelect, platform.allowedModels || [], platform.chatModel);
-
-        if (platform.provider === 'openai') {
-            // The shared reasoning helper is bound to the GPT controls.
-            llmReasoningEffortsByModel = platform.reasoningEffortsByModel || {};
-            llmDefaultReasoningEffortByModel = platform.defaultReasoningEffortByModel || {};
-            if (modelSelect) {
-                modelSelect.removeEventListener('change', updateReasoningVisibility);
-                modelSelect.addEventListener('change', updateReasoningVisibility);
-            }
-            updateReasoningVisibility();
-        }
-
-        const reasoningItem = document.getElementById(`${idPrefix}-reasoning-item`);
         const reasoningSelect = document.getElementById(`${idPrefix}-reasoning-select`);
-        const efforts = (platform.reasoningEffortsByModel || {})[platform.chatModel] || [];
-        if (reasoningItem) reasoningItem.style.display = efforts.length > 0 ? '' : 'none';
-        if (reasoningSelect && platform.provider !== 'openai') {
-            fillSelect(reasoningSelect, efforts, platform.reasoningEffort);
-        } else if (reasoningSelect) {
-            const modelDefault = (platform.defaultReasoningEffortByModel || {})[platform.chatModel];
-            reasoningSelect.value = efforts.includes(platform.reasoningEffort)
-                ? platform.reasoningEffort
-                : (efforts.includes(modelDefault) ? modelDefault : (efforts[0] || 'minimal'));
+        updateReasoningVisibility(idPrefix, 'frontend', effortsByModel, defaultsByModel);
+        if (reasoningSelect && (effortsByModel[platform.chatModel] || []).includes(platform.reasoningEffort)) {
+            reasoningSelect.value = platform.reasoningEffort;
         }
+
+        const backendModelSelect = document.getElementById(`${idPrefix}-backend-model-select`);
+        const backendModelItem = document.getElementById(`${idPrefix}-backend-model-item`);
+        const backendReasoningSelect = document.getElementById(`${idPrefix}-backend-reasoning-select`);
+        const backendReasoningItem = document.getElementById(`${idPrefix}-backend-reasoning-item`);
+        const inheritToggle = document.getElementById(`${idPrefix}-backend-inherit`);
+        fillSelect(backendModelSelect, platform.allowedModels || [], platform.backendChatModel || platform.chatModel);
+        updateReasoningVisibility(idPrefix, 'backend', effortsByModel, defaultsByModel);
+        if (backendReasoningSelect
+            && (effortsByModel[backendModelSelect?.value] || []).includes(platform.backendReasoningEffort)) {
+            backendReasoningSelect.value = platform.backendReasoningEffort;
+        }
+        if (inheritToggle) inheritToggle.checked = platform.backendInheritsFrontend !== false;
+
+        const syncBackendInheritance = () => {
+            const inherits = inheritToggle?.checked !== false;
+            if (backendModelSelect) backendModelSelect.disabled = inherits;
+            if (backendReasoningSelect) backendReasoningSelect.disabled = inherits;
+            if (backendModelItem) backendModelItem.hidden = inherits;
+            if (backendReasoningItem) backendReasoningItem.hidden = inherits;
+            if (inherits && modelSelect && backendModelSelect) {
+                backendModelSelect.value = modelSelect.value;
+                updateReasoningVisibility(idPrefix, 'backend', effortsByModel, defaultsByModel);
+                if (reasoningSelect && backendReasoningSelect) {
+                    backendReasoningSelect.value = reasoningSelect.value;
+                }
+            } else {
+                updateReasoningVisibility(idPrefix, 'backend', effortsByModel, defaultsByModel);
+            }
+        };
+
+        if (modelSelect) modelSelect.onchange = () => {
+            updateReasoningVisibility(idPrefix, 'frontend', effortsByModel, defaultsByModel);
+            syncBackendInheritance();
+        };
+        if (reasoningSelect) reasoningSelect.onchange = syncBackendInheritance;
+        if (backendModelSelect) backendModelSelect.onchange = () => {
+            updateReasoningVisibility(idPrefix, 'backend', effortsByModel, defaultsByModel);
+        };
+        if (inheritToggle) inheritToggle.onchange = syncBackendInheritance;
+        syncBackendInheritance();
 
         fillSelect(
             document.getElementById(`${idPrefix}-embedding-select`),
@@ -845,13 +868,24 @@ document.addEventListener('DOMContentLoaded', async () => {
         const { idPrefix, label } = LLM_PLATFORM_UI[provider];
         const chatModel = document.getElementById(`${idPrefix}-model-select`)?.value;
         const reasoningEffort = document.getElementById(`${idPrefix}-reasoning-select`)?.value || 'minimal';
+        const backendInheritsFrontend = document.getElementById(`${idPrefix}-backend-inherit`)?.checked !== false;
+        const backendChatModel = document.getElementById(`${idPrefix}-backend-model-select`)?.value;
+        const backendReasoningEffort = document.getElementById(`${idPrefix}-backend-reasoning-select`)?.value || 'minimal';
         if (!chatModel) throw new Error('Select a model first');
+        if (!backendInheritsFrontend && !backendChatModel) throw new Error('Select a back-end model first');
 
         const response = await fetch('/api/settings/llm', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
-            body: JSON.stringify({ provider, chatModel, model: chatModel, reasoningEffort })
+            body: JSON.stringify({
+                provider,
+                chatModel,
+                model: chatModel,
+                reasoningEffort,
+                backendInheritsFrontend,
+                ...(backendInheritsFrontend ? {} : { backendChatModel, backendReasoningEffort })
+            })
         });
         const result = await response.json();
         if (!response.ok || !result.success) {
@@ -2252,6 +2286,44 @@ document.addEventListener('DOMContentLoaded', async () => {
         };
     }
 
+    function selectedTransferProvider() {
+        if (window.LlmPlatform) {
+            return window.LlmPlatform.selectedProvider('transfer');
+        }
+        const checked = document.querySelector('input[name="transfer-llm-provider"]:checked');
+        return checked ? checked.value : 'openai';
+    }
+
+    function refreshTransferProviderUi() {
+        const provider = selectedTransferProvider();
+        const meta = window.LlmPlatform
+            ? window.LlmPlatform.providerMeta(provider)
+            : {
+                label: provider === 'ubc-llm-sandbox' ? 'UBC On-Premise LLM' : 'OpenAI Chat GPT',
+                helpText: provider === 'ubc-llm-sandbox'
+                    ? 'Contact the LTIC team to request a UBC LLM Sandbox API key.'
+                    : 'Feel free to use your own OpenAI API key, or contact the support team for assistance.',
+                keyPlaceholder: provider === 'ubc-llm-sandbox' ? 'UBC LLM Sandbox API key' : 'sk-...'
+            };
+
+        const keyLabel = document.querySelector('label[for="transfer-course-api-key"]');
+        if (keyLabel) keyLabel.textContent = `${meta.label} API key for new course`;
+        if (transferCourseApiKeyInput) transferCourseApiKeyInput.placeholder = meta.keyPlaceholder;
+
+        const help = document.getElementById('transfer-llm-platform-help');
+        if (help) {
+            help.textContent = meta.helpText;
+            if (provider === 'openai') {
+                help.innerHTML = meta.helpText.replace(
+                    'the support team',
+                    `<a href="mailto:${LLM_KEY_CONTACT_EMAIL}">the support team</a>`
+                );
+            }
+        }
+
+        return { provider, label: meta.label };
+    }
+
     function openTransferModal(payload) {
         if (!transferCourseModal) return;
 
@@ -2261,7 +2333,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         const counts = getTransferSelectionCounts(payload.units || []);
         const summaryItems = [
             `New course name: ${payload.newCourseName}`,
-            'A new course API key will be validated before the copy is created.',
+            `AI platform: ${payload.llmProviderLabel}.`,
+            `A new API key for ${payload.llmProviderLabel} will be validated before the copy is created.`,
             `${counts.docsCount} of ${counts.totalUnits} unit${counts.totalUnits === 1 ? '' : 's'} will copy docs and existing chunks.`,
             `${counts.objectivesCount} of ${counts.totalUnits} unit${counts.totalUnits === 1 ? '' : 's'} will copy learning objectives.`,
             `${counts.questionsCount} of ${counts.totalUnits} unit${counts.totalUnits === 1 ? '' : 's'} will copy assessment questions.`,
@@ -2424,6 +2497,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             renderCourseStatus();
             renderTransferUnitGrid(lifecycleCourseData.lectures || []);
 
+            const transferProvider = lifecycleCourseData.llmProvider || 'openai';
+            if (window.LlmPlatform) {
+                window.LlmPlatform.setProvider('transfer', transferProvider);
+            } else {
+                const providerRadio = document.getElementById(`transfer-llm-provider-${transferProvider}`);
+                if (providerRadio) providerRadio.checked = true;
+            }
+            refreshTransferProviderUi();
+
             if (transferCourseNameInput && !transferCourseNameInput.value.trim()) {
                 transferCourseNameInput.value = `${lifecycleCourseData.name} Copy`;
             }
@@ -2474,6 +2556,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
+    document.querySelectorAll('input[name="transfer-llm-provider"]').forEach(radio => {
+        radio.addEventListener('change', refreshTransferProviderUi);
+    });
+    refreshTransferProviderUi();
+
     if (transferCourseModal) {
         transferCourseModal.addEventListener('click', (event) => {
             if (event.target === transferCourseModal) {
@@ -2506,6 +2593,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         newCourseName: pendingTransferPayload.newCourseName,
+                        llmProvider: pendingTransferPayload.llmProvider,
                         transferSettings: pendingTransferPayload.transferSettings,
                         transferTAs: pendingTransferPayload.transferTAs,
                         deactivateSourceCourse: pendingTransferPayload.deactivateSourceCourse,
@@ -2520,13 +2608,18 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
 
                 const warnings = Array.isArray(result.data?.warnings) ? result.data.warnings : [];
-                const summary = warnings.length > 0
+                const preparationStarted = result.data?.preparation?.started === true;
+                const providerLabel = result.data?.preparation?.providerLabel || 'AI';
+                const copySummary = warnings.length > 0
                     ? `Course copy created with ${warnings.length} warning${warnings.length === 1 ? '' : 's'}.`
                     : 'Course copy created successfully.';
+                const summary = preparationStarted
+                    ? `${copySummary} ${providerLabel} material is being prepared in the background.`
+                    : copySummary;
 
                 sessionStorage.setItem('settingsFlashMessage', JSON.stringify({
                     message: `${summary} Switched to ${result.data.courseName}.`,
-                    type: warnings.length > 0 ? 'info' : 'success'
+                    type: warnings.length > 0 || preparationStarted ? 'info' : 'success'
                 }));
 
                 localStorage.setItem('selectedCourseId', result.data.courseId);
@@ -2624,10 +2717,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             const apiKey = transferCourseApiKeyInput?.value?.trim() || '';
             if (!apiKey) {
-                showNotification('Please enter an OpenAI API key for the new course.', 'error');
+                const provider = refreshTransferProviderUi();
+                showNotification(`Please enter the ${provider.label} API key for the new course.`, 'error');
                 transferCourseApiKeyInput?.focus();
                 return;
             }
+
+            const transferProvider = refreshTransferProviderUi();
 
             const unitRows = Array.from(document.querySelectorAll('.transfer-unit-row'));
             const units = unitRows.map(row => {
@@ -2647,6 +2743,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 transferTAs: document.getElementById('transfer-tas-toggle')?.checked === true,
                 deactivateSourceCourse,
                 apiKey,
+                llmProvider: transferProvider.provider,
+                llmProviderLabel: transferProvider.label,
                 units
             });
         });

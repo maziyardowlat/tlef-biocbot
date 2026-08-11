@@ -5,9 +5,11 @@ const adminModelSettings = require('./adminModelSettings');
 const { DEFAULT_PROFILE_REVISION, buildEmbeddingProfile } = require('./embeddingConfig');
 const { normalizeProvider } = require('./llmProviders');
 const { configuredDefaultModel, defaultEmbeddingModelForProvider } = require('./llmModels');
+const { LANES } = require('./llmLanes');
 const {
     KEY_STATUSES,
     LlmKeyError,
+    LlmPreparationError,
     decryptApiKey,
     isOllamaProvider,
     publicKeySummary,
@@ -27,8 +29,26 @@ function cacheKey(scope) {
  * would produce different behaviour changes: the selected provider, the models
  * that provider is configured with, or the credential itself.
  */
-function resolutionSignature({ provider, chatModel, embeddingModel, embeddingRevision, keyUpdatedAt }) {
-    return [provider, chatModel, embeddingModel, embeddingRevision, keyUpdatedAt].join('|');
+function resolutionSignature({
+    provider,
+    chatModel,
+    reasoningEffort,
+    backendChatModel,
+    backendReasoningEffort,
+    embeddingModel,
+    embeddingRevision,
+    keyUpdatedAt
+}) {
+    return [
+        provider,
+        chatModel,
+        reasoningEffort,
+        backendChatModel,
+        backendReasoningEffort,
+        embeddingModel,
+        embeddingRevision,
+        keyUpdatedAt
+    ].join('|');
 }
 
 /**
@@ -76,7 +96,7 @@ class LlmRegistry {
         if (!courseId) throw new LlmKeyError(KEY_STATUSES.MISSING, { type: 'course', id: courseId });
         const course = await db.collection('courses').findOne(
             { courseId },
-            { projection: { llmApiKey: 1, llmCredentials: 1, activeLlmProvider: 1, pendingLlmProvider: 1 } }
+            { projection: { llmApiKey: 1, llmCredentials: 1, activeLlmProvider: 1, pendingLlmProvider: 1, providerMigrationId: 1, aiPreparationRequired: 1 } }
         );
         return this._resolve(db, { type: 'course', id: courseId }, course);
     }
@@ -85,7 +105,7 @@ class LlmRegistry {
         if (!superchatId) throw new LlmKeyError(KEY_STATUSES.MISSING, { type: 'superchat', id: superchatId });
         const superchat = await db.collection('superchats').findOne(
             { superchatId, isDeleted: { $ne: true } },
-            { projection: { llmApiKey: 1, llmCredentials: 1, activeLlmProvider: 1, pendingLlmProvider: 1 } }
+            { projection: { llmApiKey: 1, llmCredentials: 1, activeLlmProvider: 1, pendingLlmProvider: 1, providerMigrationId: 1, aiPreparationRequired: 1 } }
         );
         return this._resolve(db, { type: 'superchat', id: superchatId }, superchat);
     }
@@ -93,7 +113,7 @@ class LlmRegistry {
     async forNotes(db) {
         const settings = await db.collection('settings').findOne(
             { _id: 'notesLlm' },
-            { projection: { llmApiKey: 1, llmCredentials: 1, activeLlmProvider: 1, pendingLlmProvider: 1 } }
+            { projection: { llmApiKey: 1, llmCredentials: 1, activeLlmProvider: 1, pendingLlmProvider: 1, providerMigrationId: 1, aiPreparationRequired: 1 } }
         );
         return this._resolve(db, { type: 'notes', id: 'notesLlm' }, settings);
     }
@@ -107,7 +127,7 @@ class LlmRegistry {
     async forSuperCourseChat(db) {
         const settings = await db.collection('settings').findOne(
             { _id: 'superCourseChat' },
-            { projection: { llmApiKey: 1, llmCredentials: 1, activeLlmProvider: 1, pendingLlmProvider: 1 } }
+            { projection: { llmApiKey: 1, llmCredentials: 1, activeLlmProvider: 1, pendingLlmProvider: 1, providerMigrationId: 1, aiPreparationRequired: 1 } }
         );
         return this._resolve(db, { type: 'superCourseChat', id: 'superCourseChat' }, settings);
     }
@@ -153,6 +173,10 @@ class LlmRegistry {
         const credential = state.credentials[provider];
         const summary = publicKeySummary(credential);
 
+        if (state.preparationRequired) {
+            throw new LlmPreparationError({ ...scope, provider }, provider);
+        }
+
         if (summary.status !== KEY_STATUSES.VALID || !credential || !credential.ciphertext) {
             throw new LlmKeyError(summary.status || KEY_STATUSES.MISSING, { ...scope, provider }, provider);
         }
@@ -186,6 +210,9 @@ class LlmRegistry {
         const signature = resolutionSignature({
             provider: normalizedProvider,
             chatModel: modelSettings.chatModel,
+            reasoningEffort: modelSettings.reasoningEffort,
+            backendChatModel: modelSettings.lanes?.[LANES.BACKEND]?.chatModel || modelSettings.chatModel,
+            backendReasoningEffort: modelSettings.lanes?.[LANES.BACKEND]?.reasoningEffort || modelSettings.reasoningEffort,
             embeddingModel: modelSettings.embeddingModel,
             embeddingRevision: modelSettings.embeddingRevision,
             keyUpdatedAt

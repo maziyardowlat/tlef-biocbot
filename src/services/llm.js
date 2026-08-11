@@ -16,6 +16,7 @@ const {
 } = require('./llmModels');
 const adminModelSettings = require('./adminModelSettings');
 const { isSelectableProvider } = require('./llmProviders');
+const { DEFAULT_LANE, LANES, normalizeLane } = require('./llmLanes');
 const MODEL_SETTINGS_TTL_MS = 30 * 1000; // Re-read at most every 30 seconds
 
 /**
@@ -53,8 +54,7 @@ class LLMService {
             : null;
         this.scope = options.scope || null;
         this._dbAccessor = null;
-        this._modelSettingsCache = null;
-        this._modelSettingsCacheAt = 0;
+        this._modelSettingsCache = new Map();
 
         console.log(`🔧 Creating LLM service...`);
     }
@@ -68,18 +68,19 @@ class LLMService {
     }
 
     invalidateModelSettingsCache() {
-        this._modelSettingsCache = null;
-        this._modelSettingsCacheAt = 0;
+        this._modelSettingsCache.clear();
     }
 
     /**
      * Look up the configured model + reasoning effort from MongoDB.
      * Falls back to the env-configured default if no override is stored.
      */
-    async _getModelSettings() {
+    async _getModelSettings(lane = DEFAULT_LANE) {
+        const normalizedLane = normalizeLane(lane);
         const now = Date.now();
-        if (this._modelSettingsCache && (now - this._modelSettingsCacheAt) < MODEL_SETTINGS_TTL_MS) {
-            return this._modelSettingsCache;
+        const cached = this._modelSettingsCache.get(normalizedLane);
+        if (cached && (now - cached.cachedAt) < MODEL_SETTINGS_TTL_MS) {
+            return cached.settings;
         }
 
         const provider = this.llmConfig?.provider || process.env.LLM_PROVIDER || 'openai';
@@ -97,18 +98,19 @@ class LLMService {
                 // MODEL_SETTINGS_TTL_MS, and a second cache underneath would
                 // make an admin's change take up to twice as long to apply.
                 const stored = await adminModelSettings.getProviderSettings(db, provider, { force: true });
-                if (catalog.allowedModels.includes(stored.chatModel)) {
-                    model = stored.chatModel;
+                const laneSettings = adminModelSettings.chatSettingsForLane(stored, normalizedLane);
+                if (catalog.allowedModels.includes(laneSettings.chatModel)) {
+                    model = laneSettings.chatModel;
                 }
-                reasoningEffort = normalizeReasoningEffort(provider, model, stored.reasoningEffort);
+                reasoningEffort = normalizeReasoningEffort(provider, model, laneSettings.reasoningEffort);
             }
         } catch (error) {
             console.warn('⚠️ Could not load LLM settings from DB, using defaults:', error.message);
         }
 
-        this._modelSettingsCache = { model, reasoningEffort };
-        this._modelSettingsCacheAt = now;
-        return this._modelSettingsCache;
+        const settings = { model, reasoningEffort };
+        this._modelSettingsCache.set(normalizedLane, { settings, cachedAt: now });
+        return settings;
     }
 
     _isGpt5Family(model) {
@@ -136,9 +138,11 @@ class LLMService {
      * - Drops temperature for gpt-5 family models that reject it.
      */
     async _applyModelOptions(options = {}) {
-        const settings = await this._getModelSettings();
+        const lane = normalizeLane(options.lane);
+        const settings = await this._getModelSettings(lane);
         const provider = this.llmConfig?.provider || process.env.LLM_PROVIDER || 'openai';
         const result = { ...options, model: settings.model };
+        delete result.lane;
         const maxTokens = result.maxTokens ?? result.max_completion_tokens ?? result.max_tokens;
         delete result.max_completion_tokens;
         delete result.max_tokens;
@@ -174,6 +178,8 @@ class LLMService {
             );
             result.maxTokens = outputCap;
         }
+
+        console.log(`🔍 [LLM_OPTIONS] lane=${lane} model=${settings.model}`, result);
 
         return result;
     }
@@ -250,8 +256,6 @@ class LLMService {
                 ...options
             };
             const finalOptions = await this._applyModelOptions(defaultOptions);
-            console.log('🔍 [LLM_OPTIONS] Final options:', finalOptions);
-
             const response = await this.llm.sendMessage(message, finalOptions);
             if (response && typeof response.content === 'string') {
                 response.content = normalizeResponseContent(response.content);
@@ -352,6 +356,7 @@ class LLMService {
             ...this._getProviderSpecificOptions(),
             temperature: 0,
             max_tokens: 1000,
+            lane: LANES.BACKEND
         };
         const finalOptions = await this._applyModelOptions(baseOptions);
 
@@ -567,7 +572,9 @@ class LLMService {
         try {
             console.log('🔍 Testing LLM connection...');
 
-            const response = await this.sendMessage('Hello, this is a connection test.');
+            const response = await this.sendMessage('Hello, this is a connection test.', {
+                lane: LANES.FRONTEND
+            });
 
             if (response && response.content) {
                 console.log('✅ LLM connection test successful');
@@ -647,6 +654,7 @@ class LLMService {
             const generationOptions = await this._applyModelOptions({
                 temperature: 0.7,
                 systemPrompt: systemPrompt,
+                lane: LANES.BACKEND,
                 ...this._getProviderSpecificOptions()
             });
 
@@ -730,6 +738,7 @@ Return ONLY a JSON object with the following structure:
 
             const response = await this.sendMessage(prompt, {
                 temperature: 0.1,
+                lane: LANES.FRONTEND,
                 response_format: { type: "json_object" } // For providers that support it
             });
 
@@ -784,7 +793,8 @@ Return ONLY a JSON object with the following structure:
             const mhOptions = await this._applyModelOptions({
                 systemPrompt: detectionPrompt,
                 temperature: 0.1,
-                max_tokens: 256
+                max_tokens: 256,
+                lane: LANES.BACKEND
             });
             const response = await this._sendRawMessage(conversationText, mhOptions);
 
@@ -857,6 +867,7 @@ Return ONLY a JSON object with the following structure:
             const generationOptions = await this._applyModelOptions({
                 temperature: 0.5,  // Lower temperature for more focused regeneration
                 systemPrompt: systemPrompt,
+                lane: LANES.BACKEND,
                 ...this._getProviderSpecificOptions()
             });
 

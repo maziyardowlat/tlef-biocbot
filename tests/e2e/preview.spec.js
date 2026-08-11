@@ -848,9 +848,23 @@ test.describe('preview UI', () => {
         expect((await sandboxFootprint()).chats).toBe(0);
     });
 
-    test('the instructor sidebar offers "View as Student"', async ({ page }) => {
+    test('the instructor sidebar remembers whether to skip the preview tutorial', async ({ page }) => {
         await page.goto('/instructor/home');
         await expect(page.locator('#nav-student-preview')).toHaveText(/view as student/i);
+
+        const skipTutorial = page.locator('#nav-student-preview-skip');
+        await expect(skipTutorial).toBeHidden();
+        await page.locator('#nav-student-preview').click();
+        await expect(skipTutorial).toBeVisible();
+        await expect(page.locator('#nav-student-preview')).toHaveAttribute('aria-expanded', 'true');
+        await expect(page.locator('#nav-student-preview')).toHaveText(/open as student/i);
+        await expect(skipTutorial).not.toBeChecked();
+        await skipTutorial.check();
+
+        await page.reload();
+        await expect(page.locator('#nav-student-preview-skip')).toBeHidden();
+        await page.locator('#nav-student-preview').click();
+        await expect(page.locator('#nav-student-preview-skip')).toBeChecked();
     });
 
     test('a real student sees no preview banner', async ({ page, baseURL }) => {

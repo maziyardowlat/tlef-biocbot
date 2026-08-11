@@ -33,6 +33,7 @@ const {
     indexesOf
 } = require('../services/embeddingIndexService');
 const qdrantMaintenance = require('../services/qdrantMaintenance');
+const { LANES } = require('../services/llmLanes');
 const { resolveCourseAi } = require('./llmKeyMiddleware');
 const { getAcademicApiClient, isAcademicApiEnabled } = require('../services/academicApi');
 
@@ -1653,6 +1654,7 @@ router.post('/:courseId/extract-topics', async (req, res) => {
         if (llm && typeof llm.sendMessage === 'function') {
             const contentBatches = splitTopicExtractionBatches(sourceContent);
             const extractionOptions = {
+                lane: LANES.BACKEND,
                 temperature: 0.1,
                 maxTokens: 300,
                 systemPrompt: 'You extract concise chemistry and biochemistry topic labels only. If the content is not chemistry or biochemistry, return {"topics":[]}. Return strict JSON only.'
@@ -1682,6 +1684,7 @@ router.post('/:courseId/extract-topics', async (req, res) => {
                 if (filteredCandidates.length > 0) {
                     const consolidationPrompt = buildTopicConsolidationPrompt(filteredCandidates, topicLimit);
                     const consolidationResponse = await llm.sendMessage(consolidationPrompt, {
+                        lane: LANES.BACKEND,
                         temperature: 0.1,
                         maxTokens: 300,
                         systemPrompt: 'You consolidate and deduplicate chemistry and biochemistry topic labels. Return strict JSON only.'
@@ -2193,6 +2196,58 @@ router.post('/:courseId/transfer', async (req, res) => {
             }
         }
 
+        // Reuse any current vectors that were cloned for the selected profile,
+        // then asynchronously embed only copied material that is still missing
+        // or stale for that profile. A copied course must not expose AI until
+        // this first preparation pass is complete.
+        let preparation = {
+            started: false,
+            provider: transferProvider,
+            providerLabel: providerLabel(transferProvider),
+            migration: null
+        };
+        let preparationAiAvailable = true;
+        try {
+            const preparationResult = await providerKeys.prepareStoredProvider(db, {
+                scope: { type: 'course', id: targetCourseId },
+                provider: transferProvider,
+                requestedBy: user.userId,
+                disableUntilReady: true
+            });
+
+            if (preparationResult.ok) {
+                const migration = preparationResult.body.migration || null;
+                preparation = {
+                    ...preparation,
+                    started: preparationResult.httpStatus === 202,
+                    migration
+                };
+                preparationAiAvailable = preparationResult.body.aiAvailable === true;
+            } else {
+                preparationAiAvailable = false;
+                transferWarnings.push(
+                    `Automatic ${providerLabel(transferProvider)} material preparation could not start: `
+                    + `${preparationResult.body.message || 'unknown error'}`
+                );
+            }
+        } catch (error) {
+            preparationAiAvailable = false;
+            transferWarnings.push(
+                `Automatic ${providerLabel(transferProvider)} material preparation could not start: ${error.message}`
+            );
+        }
+
+        if (!preparationAiAvailable) {
+            try {
+                await db.collection('courses').updateOne(
+                    { courseId: targetCourseId },
+                    { $set: { aiPreparationRequired: true, updatedAt: new Date() } }
+                );
+            } catch (error) {
+                transferWarnings.push(`Failed to mark the copied course as awaiting AI preparation: ${error.message}`);
+            }
+        }
+
         if (deactivateSourceCourse) {
             await db.collection('courses').updateOne(
                 { courseId, $or: [{ instructorId: user.userId }, { instructors: user.userId }] },
@@ -2220,6 +2275,8 @@ router.post('/:courseId/transfer', async (req, res) => {
                 sourceCourseId: courseId,
                 sourceDeactivated: !!deactivateSourceCourse,
                 warnings: transferWarnings,
+                aiAvailable: preparationAiAvailable,
+                preparation,
                 summary: {
                     totalUnits: sourceLectures.length,
                     documentsCopied,

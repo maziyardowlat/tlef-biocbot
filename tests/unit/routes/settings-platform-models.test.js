@@ -62,6 +62,8 @@ describe('GET /llm — grouped by platform', () => {
         expect(gpt).toMatchObject({
             label: providerLabel(OPENAI),
             chatModel: 'gpt-4.1-mini',
+            backendChatModel: 'gpt-4.1-mini',
+            backendInheritsFrontend: true,
             embeddingModel: 'text-embedding-3-small',
             collection: 'biocbot_documents',
             vectorSize: 1536,
@@ -157,6 +159,41 @@ describe('POST /llm — chat model changes are immediate', () => {
         expect(res.status).toBe(200);
         const stored = await db.collection('settings').findOne({ _id: 'llm' });
         expect(stored.providers[SANDBOX].chatModel).toBe('gpt-oss-120b');
+    });
+
+    test('saves an independent back-end lane and can restore inheritance', async () => {
+        const db = memoryDb({ settings: [] });
+        let res = await request(app({ db })).post('/llm').send({
+            provider: OPENAI,
+            chatModel: 'gpt-4.1-mini',
+            backendChatModel: 'gpt-5.4-nano',
+            backendReasoningEffort: 'high',
+            backendInheritsFrontend: false,
+        });
+        expect(res.status).toBe(200);
+
+        res = await request(app({ db })).get('/llm');
+        let gpt = res.body.platforms.find(platform => platform.provider === OPENAI);
+        expect(gpt).toMatchObject({
+            backendChatModel: 'gpt-5.4-nano',
+            backendReasoningEffort: 'high',
+            backendInheritsFrontend: false,
+        });
+
+        res = await request(app({ db })).post('/llm').send({
+            provider: OPENAI,
+            chatModel: 'gpt-5-nano',
+            reasoningEffort: 'high',
+            backendInheritsFrontend: true,
+        });
+        expect(res.status).toBe(200);
+        res = await request(app({ db })).get('/llm');
+        gpt = res.body.platforms.find(platform => platform.provider === OPENAI);
+        expect(gpt).toMatchObject({
+            backendChatModel: 'gpt-5-nano',
+            backendReasoningEffort: 'high',
+            backendInheritsFrontend: true,
+        });
     });
 
     test('a model from the wrong platform is rejected', async () => {

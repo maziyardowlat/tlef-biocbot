@@ -3,7 +3,10 @@ const router = express.Router();
 
 // Import the Course model
 const CourseModel = require('../models/Course');
-const { isKeyValid, structuredKeyError } = require('../services/llmKeyStore');
+const {
+    publicProviderKeyState,
+    structuredKeyErrorForProvider
+} = require('../services/llmKeyStore');
 const { hasSystemAdminAccess } = require('../services/authorization');
 
 // Middleware for JSON parsing
@@ -83,10 +86,21 @@ router.post('/publish', async (req, res) => {
 
         if (isPublished) {
             const course = await CourseModel.getCourseById(db, courseId);
-            if (!isKeyValid(course && course.llmApiKey)) {
+            const providerState = publicProviderKeyState(course);
+            if (providerState.aiPreparationRequired) {
+                return res.status(409).json({
+                    success: false,
+                    code: 'LLM_PROVIDER_PREPARING',
+                    provider: providerState.llmProvider,
+                    message: `${providerState.llmProviderLabel} course material is still being prepared. `
+                        + 'Wait for preparation to finish before publishing content to students.'
+                });
+            }
+            if (!providerState.aiAvailable) {
+                const keyStatus = providerState.llmKey?.status || 'missing';
                 return res.status(400).json({
-                    ...structuredKeyError((course && course.llmApiKey && course.llmApiKey.status) || 'missing'),
-                    message: 'Add a valid course OpenAI API key before publishing content to students.'
+                    ...structuredKeyErrorForProvider(keyStatus, providerState.llmProvider),
+                    message: `Add a valid course ${providerState.llmProviderLabel} API key before publishing content to students.`
                 });
             }
         }

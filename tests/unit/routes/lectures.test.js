@@ -2,7 +2,7 @@
  * In-process route tests for src/routes/lectures.js (supertest).
  *
  * Real: the Course model over the in-memory Mongo double, and llmKeyStore's pure
- * key helpers (isKeyValid / structuredKeyError — no network at load). Covers the
+ * provider-state helpers (no network at load). Covers the
  * publish toggle + its API-key gate, publish-status / student-visible readers, the
  * pass-threshold validators, and published-with-questions filtering.
  *
@@ -67,7 +67,7 @@ describe('POST /publish', () => {
             .post('/publish').send({ lectureName: 'Unit 1', isPublished: true, courseId: 'C1' });
         expect(res.status).toBe(400);
         expect(res.body.code).toBe('LLM_KEY_MISSING');
-        expect(res.body.message).toMatch(/valid course OpenAI API key/i);
+        expect(res.body.message).toMatch(/valid course OpenAI Chat GPT API key/i);
     });
 
     test('publishes a lecture when the course key is valid', async () => {
@@ -76,6 +76,62 @@ describe('POST /publish', () => {
             .post('/publish').send({ lectureName: 'Unit 1', isPublished: true, courseId: 'C1' });
         expect(res.status).toBe(200);
         expect(res.body).toMatchObject({ success: true, data: { lectureName: 'Unit 1', isPublished: true, created: false } });
+    });
+
+    test('publishes with the active Sandbox credential instead of requiring the legacy OpenAI field', async () => {
+        const db = memoryDb({ courses: [course({
+            llmApiKey: undefined,
+            activeLlmProvider: 'ubc-llm-sandbox',
+            llmCredentials: {
+                'ubc-llm-sandbox': { status: 'valid', ciphertext: 'sandbox-cipher', last4: 'sbx1' },
+            },
+        })] });
+
+        const res = await request(app({ db, user: instructor }))
+            .post('/publish').send({ lectureName: 'Unit 1', isPublished: true, courseId: 'C1' });
+
+        expect(res.status).toBe(200);
+        expect(res.body).toMatchObject({ success: true, data: { lectureName: 'Unit 1', isPublished: true } });
+    });
+
+    test('a missing Sandbox key names the active platform even when a legacy OpenAI key exists', async () => {
+        const db = memoryDb({ courses: [course({
+            activeLlmProvider: 'ubc-llm-sandbox',
+            llmCredentials: {},
+        })] });
+
+        const res = await request(app({ db, user: instructor }))
+            .post('/publish').send({ lectureName: 'Unit 1', isPublished: true, courseId: 'C1' });
+
+        expect(res.status).toBe(400);
+        expect(res.body).toMatchObject({
+            code: 'LLM_KEY_MISSING',
+            provider: 'ubc-llm-sandbox',
+        });
+        expect(res.body.message).toMatch(/UBC On-Premise LLM/i);
+    });
+
+    test('publishing waits for the duplicated course\'s initial provider preparation', async () => {
+        const db = memoryDb({ courses: [course({
+            llmApiKey: undefined,
+            activeLlmProvider: 'ubc-llm-sandbox',
+            llmCredentials: {
+                'ubc-llm-sandbox': { status: 'valid', ciphertext: 'sandbox-cipher', last4: 'sbx1' },
+            },
+            pendingLlmProvider: 'ubc-llm-sandbox',
+            providerMigrationId: 'mig_copy',
+            aiPreparationRequired: true,
+        })] });
+
+        const res = await request(app({ db, user: instructor }))
+            .post('/publish').send({ lectureName: 'Unit 1', isPublished: true, courseId: 'C1' });
+
+        expect(res.status).toBe(409);
+        expect(res.body).toMatchObject({
+            code: 'LLM_PROVIDER_PREPARING',
+            provider: 'ubc-llm-sandbox',
+        });
+        expect(res.body.message).toMatch(/still being prepared/i);
     });
 
     test('unpublishing does not require a key check', async () => {

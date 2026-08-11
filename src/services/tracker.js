@@ -1,3 +1,5 @@
+const { LANES } = require('./llmLanes');
+
 /**
  * Tracker Service
  * Analyzes student messages to detect struggle and identify topics.
@@ -54,6 +56,7 @@ Rules:
             `;
 
             const response = await this.llmService.sendMessage(prompt, {
+                lane: LANES.BACKEND,
                 temperature: 0.1,
                 maxTokens: 220,
                 systemPrompt: "You are an empathetic analyst detecting student struggle. Output JSON only."
@@ -173,6 +176,7 @@ Rules:
 - Pick only ONE candidate — the closest match.`;
 
             const response = await this.llmService.sendMessage(prompt, {
+                lane: LANES.BACKEND,
                 temperature: 0.1,
                 maxTokens: 220,
                 systemPrompt: "You are an empathetic analyst detecting student struggle across courses. Output JSON only."

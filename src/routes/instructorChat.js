@@ -13,6 +13,7 @@ const {
 const prompts = require('../services/prompts');
 const { resolveSuperchatAi, resolveSuperCourseChatAi, sendLlmKeyError } = require('./llmKeyMiddleware');
 const { structuredKeyError } = require('../services/llmKeyStore');
+const { LANES } = require('../services/llmLanes');
 
 async function resolveInstructorSuperchat(db, requestedId = null) {
     if (requestedId) {
@@ -310,6 +311,7 @@ router.post('/', async (req, res) => {
         );
 
         const response = await llmService.sendMessage(prompt, {
+            lane: LANES.FRONTEND,
             temperature: 0.4,
             maxTokens: 32768,
             systemPrompt

@@ -1026,6 +1026,7 @@ router.get('/llm', async (req, res) => {
         const platforms = SELECTABLE_PROVIDERS.map((provider) => {
             const catalog = adminCatalogForProvider(provider);
             const current = providers[provider];
+            const backend = adminModelSettings.chatSettingsForLane(current, 'backend');
             const profile = buildEmbeddingProfile({
                 provider,
                 embeddingModel: current.embeddingModel,
@@ -1036,13 +1037,18 @@ router.get('/llm', async (req, res) => {
                 provider,
                 label: providerLabel(provider),
                 chatModel: current.chatModel,
+                backendChatModel: backend.chatModel,
                 embeddingModel: current.embeddingModel,
                 embeddingRevision: current.embeddingRevision,
                 reasoningEffort: current.reasoningEffort,
+                backendReasoningEffort: backend.reasoningEffort,
+                backendInheritsFrontend: current.backendInheritsFrontend,
                 supportsReasoning: supportsReasoning(provider, current.chatModel),
+                backendSupportsReasoning: supportsReasoning(provider, backend.chatModel),
                 allowedModels: catalog.allowedModels,
                 allowedEmbeddingModels: catalog.allowedEmbeddingModels,
                 allowedReasoningEfforts: catalog.reasoningEffortsByModel[current.chatModel] || [],
+                allowedBackendReasoningEfforts: catalog.reasoningEffortsByModel[backend.chatModel] || [],
                 reasoningEffortsByModel: catalog.reasoningEffortsByModel,
                 defaultReasoningEffortByModel: catalog.defaultReasoningEffortByModel,
                 collection: profile.collection,
@@ -1102,7 +1108,15 @@ router.post('/llm', async (req, res) => {
             saved = await adminModelSettings.saveChatSettings(
                 db,
                 provider,
-                { chatModel, reasoningEffort: body.reasoningEffort },
+                {
+                    chatModel,
+                    reasoningEffort: body.reasoningEffort,
+                    backendChatModel: body.backendChatModel,
+                    backendReasoningEffort: body.backendReasoningEffort,
+                    backendInheritsFrontend: typeof body.backendInheritsFrontend === 'boolean'
+                        ? body.backendInheritsFrontend
+                        : undefined
+                },
                 normalizeEmail(req.user.email)
             );
         } catch (error) {

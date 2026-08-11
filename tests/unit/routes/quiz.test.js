@@ -1,18 +1,15 @@
 /**
  * In-process route tests for src/routes/quiz.js (supertest).
- * Real: Course + QuizAttempt models over memory-db. Mocked: gridfs (download
- * only), llmKeyMiddleware (resolveCourseAi/sendLlmKeyError), llmKeyStore key
- * summary. Covers status, objective check-answer, attempt recording, and history.
+ * Real: Course + QuizAttempt models over memory-db and provider-aware key
+ * summaries. Mocked: gridfs (download only) and llmKeyMiddleware
+ * (resolveCourseAi/sendLlmKeyError). Covers status, objective check-answer,
+ * attempt recording, and history.
  */
 jest.mock('../../../src/services/gridfs', () => ({}));
 jest.mock('../../../src/routes/llmKeyMiddleware', () => ({
     resolveCourseAi: jest.fn(async () => ({ llm: {} })),
     sendLlmKeyError: jest.fn(() => false),
 }));
-jest.mock('../../../src/services/llmKeyStore', () => ({
-    publicKeySummary: jest.fn((key) => (key ? { status: 'valid' } : { status: 'none' })),
-}));
-
 const { memoryDb } = require('../helpers/memory-db');
 const { makeRouteApp, request } = require('../helpers/route-app');
 const quizRouter = require('../../../src/routes/quiz');
@@ -24,7 +21,7 @@ const app = (opts) => makeRouteApp(quizRouter, opts);
 function quizDb() {
     return memoryDb({ courses: [{
         courseId: 'C1',
-        llmApiKey: { enc: 'k' },
+        llmApiKey: { status: 'valid' },
         quizSettings: { enabled: true, testableUnits: 'all', allowLectureMaterialAccess: true },
         lectures: [{
             name: 'Unit 1', isPublished: true,
@@ -52,6 +49,45 @@ describe('GET /status', () => {
         const noKey = memoryDb({ courses: [{ courseId: 'C1', quizSettings: { enabled: true } }] });
         const off = await request(app({ db: noKey })).get('/status?courseId=C1');
         expect(off.body).toMatchObject({ enabled: false, aiAvailable: false });
+    });
+
+    test('uses the active Sandbox credential instead of the legacy OpenAI field', async () => {
+        const db = memoryDb({ courses: [{
+            courseId: 'C1',
+            activeLlmProvider: 'ubc-llm-sandbox',
+            llmCredentials: { 'ubc-llm-sandbox': { status: 'valid' } },
+            quizSettings: { enabled: true }
+        }] });
+
+        const res = await request(app({ db })).get('/status?courseId=C1');
+
+        expect(res.body).toMatchObject({
+            success: true,
+            enabled: true,
+            aiAvailable: true,
+            llmProvider: 'ubc-llm-sandbox',
+            llmKey: { status: 'valid' },
+            aiPreparationRequired: false
+        });
+    });
+
+    test('keeps Sandbox quiz AI disabled while copied materials are being prepared', async () => {
+        const db = memoryDb({ courses: [{
+            courseId: 'C1',
+            activeLlmProvider: 'ubc-llm-sandbox',
+            llmCredentials: { 'ubc-llm-sandbox': { status: 'valid' } },
+            aiPreparationRequired: true,
+            quizSettings: { enabled: true }
+        }] });
+
+        const res = await request(app({ db })).get('/status?courseId=C1');
+
+        expect(res.body).toMatchObject({
+            enabled: false,
+            aiAvailable: false,
+            llmProvider: 'ubc-llm-sandbox',
+            aiPreparationRequired: true
+        });
     });
 });
 

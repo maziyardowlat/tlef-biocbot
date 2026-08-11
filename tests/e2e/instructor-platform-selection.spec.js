@@ -502,7 +502,17 @@ test.describe('Admin platform and model settings', () => {
     });
 
     test('model controls are grouped by platform, each with its own collection', async ({ page }) => {
+        /** @type {Array<Record<string, any>>} */
+        const savedBodies = [];
         await page.route('**/api/settings/llm', async (route) => {
+            if (route.request().method() === 'POST') {
+                savedBodies.push(route.request().postDataJSON());
+                return route.fulfill({
+                    status: 200,
+                    contentType: 'application/json',
+                    body: JSON.stringify({ success: true, settings: {} }),
+                });
+            }
             if (route.request().method() !== 'GET') return route.continue();
             await route.fulfill({
                 status: 200,
@@ -514,6 +524,8 @@ test.describe('Admin platform and model settings', () => {
                             provider: 'openai', label: 'OpenAI Chat GPT',
                             chatModel: 'gpt-5-nano', embeddingModel: 'text-embedding-3-small',
                             reasoningEffort: 'minimal', supportsReasoning: true,
+                            backendChatModel: 'gpt-5-nano', backendReasoningEffort: 'minimal',
+                            backendSupportsReasoning: true, backendInheritsFrontend: true,
                             allowedModels: ['gpt-4.1-mini', 'gpt-5-nano'],
                             allowedEmbeddingModels: ['text-embedding-3-small', 'text-embedding-3-large'],
                             reasoningEffortsByModel: { 'gpt-5-nano': ['minimal', 'low'], 'gpt-4.1-mini': [] },
@@ -524,6 +536,8 @@ test.describe('Admin platform and model settings', () => {
                             provider: 'ubc-llm-sandbox', label: 'UBC On-Premise LLM',
                             chatModel: 'qwen3.6-35b-a3b', embeddingModel: 'qwen3-embedding-0.6b',
                             reasoningEffort: 'none', supportsReasoning: true,
+                            backendChatModel: 'gpt-oss-120b', backendReasoningEffort: 'low',
+                            backendSupportsReasoning: true, backendInheritsFrontend: false,
                             allowedModels: ['qwen3.6-35b-a3b', 'gpt-oss-120b'],
                             allowedEmbeddingModels: ['qwen3-embedding-0.6b'],
                             reasoningEffortsByModel: { 'qwen3.6-35b-a3b': ['none', 'low'] },
@@ -545,6 +559,9 @@ test.describe('Admin platform and model settings', () => {
         await expect(page.locator('#llm-model-section')).toBeVisible();
         await expect(page.locator('#llm-model-section h3')).toHaveText('OpenAI Chat GPT models');
         await expect(page.locator('#llm-model-select')).toHaveValue('gpt-5-nano');
+        await expect(page.locator('#llm-backend-inherit')).toBeChecked();
+        await expect(page.locator('#llm-backend-model-select')).toHaveValue('gpt-5-nano');
+        await expect(page.locator('#llm-backend-model-select')).toBeDisabled();
         await expect(page.locator('#llm-embedding-select')).toHaveValue('text-embedding-3-small');
         await expect(page.locator('#llm-embedding-collection')).toContainText('biocbot_documents (1536 dimensions)');
 
@@ -552,6 +569,9 @@ test.describe('Admin platform and model settings', () => {
         await expect(page.locator('#sandbox-llm-model-section')).toBeVisible();
         await expect(page.locator('#sandbox-llm-model-section h3')).toHaveText('UBC On-Premise LLM models');
         await expect(page.locator('#sandbox-llm-model-select')).toHaveValue('qwen3.6-35b-a3b');
+        await expect(page.locator('#sandbox-llm-backend-inherit')).not.toBeChecked();
+        await expect(page.locator('#sandbox-llm-backend-model-select')).toHaveValue('gpt-oss-120b');
+        await expect(page.locator('#sandbox-llm-backend-model-select')).toBeEnabled();
         await expect(page.locator('#sandbox-llm-embedding-select')).toHaveValue('qwen3-embedding-0.6b');
         await expect(page.locator('#sandbox-llm-embedding-collection'))
             .toContainText('biocbot_documents_qwen3_embedding_0_6b (1024 dimensions)');
@@ -560,6 +580,31 @@ test.describe('Admin platform and model settings', () => {
         await expect(page.locator('#llm-model-select option[value="qwen3.6-35b-a3b"]')).toHaveCount(0);
         await expect(page.locator('#sandbox-llm-model-select option[value="gpt-5-nano"]')).toHaveCount(0);
         await expect(page.locator('#llm-embedding-select option[value="qwen3-embedding-0.6b"]')).toHaveCount(0);
+
+        // Splitting a lane sends an explicit override; re-linking sends only
+        // the inheritance flag so the server can remove the stored override.
+        const inheritBackendSettings = page.locator('label[for="llm-backend-inherit"]');
+        await inheritBackendSettings.click();
+        await expect(page.locator('#llm-backend-inherit')).not.toBeChecked();
+        await page.locator('#llm-backend-model-select').selectOption('gpt-4.1-mini');
+        await page.locator('#save-llm-settings').click();
+        await expect.poll(() => savedBodies.length).toBe(1);
+        expect(savedBodies[0]).toMatchObject({
+            provider: 'openai',
+            chatModel: 'gpt-5-nano',
+            backendInheritsFrontend: false,
+            backendChatModel: 'gpt-4.1-mini',
+        });
+
+        await inheritBackendSettings.click();
+        await expect(page.locator('#llm-backend-inherit')).toBeChecked();
+        await page.locator('#save-llm-settings').click();
+        await expect.poll(() => savedBodies.length).toBe(2);
+        expect(savedBodies[1]).toMatchObject({
+            provider: 'openai',
+            backendInheritsFrontend: true,
+        });
+        expect(savedBodies[1]).not.toHaveProperty('backendChatModel');
     });
 
     test('a staged embedding change is shown with a cancel control', async ({ page }) => {

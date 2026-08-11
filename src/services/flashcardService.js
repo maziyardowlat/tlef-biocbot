@@ -2,6 +2,7 @@ const { encodingForModel } = require('js-tiktoken');
 const DocumentModel = require('../models/Document');
 const FlashcardDeck = require('../models/FlashcardDeck');
 const prompts = require('./prompts');
+const { LANES } = require('./llmLanes');
 
 const tokenEncoder = encodingForModel('gpt-4o');
 const DEFAULT_CARD_COUNT = 10;
@@ -298,6 +299,7 @@ async function generateDeck({
         promptTemplate
     });
     const response = await llmService.sendMessage(prompt, {
+        lane: LANES.BACKEND,
         temperature: 0.2,
         maxTokens: 4000,
         response_format: { type: 'json_object' }

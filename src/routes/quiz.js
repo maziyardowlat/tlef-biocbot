@@ -13,8 +13,9 @@ const gridfs = require('../services/gridfs');
 const prompts = require('../services/prompts');
 const BadWordsFilter = require('bad-words');
 const { resolveCourseAi, sendLlmKeyError } = require('./llmKeyMiddleware');
-const { publicKeySummary } = require('../services/llmKeyStore');
+const { publicProviderKeyState } = require('../services/llmKeyStore');
 const { evaluateObjectiveAnswer } = require('../services/objectiveAnswer');
+const { LANES } = require('../services/llmLanes');
 const profanityFilter = new BadWordsFilter();
 
 router.use(express.json());
@@ -158,12 +159,14 @@ router.get('/status', async (req, res) => {
 
         const settings = await CourseModel.getQuizSettings(db, courseId);
         const course = await CourseModel.getCourseById(db, courseId);
-        const aiAvailable = publicKeySummary(course && course.llmApiKey).status === 'valid';
+        const providerState = publicProviderKeyState(course);
         res.json({
             success: true,
-            enabled: settings.enabled && aiAvailable,
-            aiAvailable,
-            llmKey: publicKeySummary(course && course.llmApiKey)
+            enabled: settings.enabled && providerState.aiAvailable,
+            aiAvailable: providerState.aiAvailable,
+            llmProvider: providerState.llmProvider,
+            llmKey: providerState.llmKey,
+            aiPreparationRequired: providerState.aiPreparationRequired
         });
     } catch (error) {
         console.error('Error checking quiz status:', error);
@@ -670,6 +673,7 @@ Student's new message: ${message}`;
 
         // Call LLM
         const response = await llmService.sendMessage(messageToSend, {
+            lane: LANES.FRONTEND,
             temperature: 0.5,
             maxTokens: 1024,
             systemPrompt: basePrompt + '\n\n' + quizHelpPrompt
