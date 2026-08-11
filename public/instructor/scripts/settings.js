@@ -342,13 +342,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         return action === 'prepare' ? `${base}/prepare` : base;
     }
 
-    async function runLlmProviderAction(prefix, action) {
+    async function runLlmProviderAction(prefix, action, options = {}) {
         const provider = selectedLlmProvider(prefix);
         const label = llmProviderLabel(provider);
         const prompt = action === 'prepare'
-            ? `Prepare all current material for ${label}? The platform will switch automatically when it is ready.`
-            : `Switch this AI surface to ${label}?`;
-        if (!confirm(prompt)) return;
+            ? `Refresh current material for ${label}? Only missing or changed items will be embedded.`
+            : `Switch this AI surface to ${label}? Existing embeddings will be reused.`;
+        if (!options.confirmed && !confirm(prompt)) return;
 
         const url = await llmProviderActionUrl(prefix, action);
         const response = await fetch(url, {
@@ -358,6 +358,20 @@ document.addEventListener('DOMContentLoaded', async () => {
             body: JSON.stringify({ llmProvider: provider })
         });
         const result = await parseJsonResponse(response);
+
+        // Switching is intentionally attempted before preparation. When the
+        // target profile is already current (the common GPT -> Sandbox -> GPT
+        // case), the backend activates it immediately and no embedding prompt
+        // or migration is created. Only genuinely missing/changed items fall
+        // through to the explicit preparation action.
+        if (!response.ok && action === 'switch' && result.code === 'LLM_PROVIDER_NOT_PREPARED') {
+            const count = Number(result.unpreparedCount) || 0;
+            const itemLabel = count === 1 ? 'item needs' : 'items need';
+            if (!confirm(`${count} ${itemLabel} preparation for ${label}. Prepare ${count === 1 ? 'it' : 'them'} now?`)) {
+                return;
+            }
+            return runLlmProviderAction(prefix, 'prepare', { confirmed: true });
+        }
         if (!response.ok || !result.success) {
             throw new Error(result.message || `Could not ${action} ${label}`);
         }
@@ -424,7 +438,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                 prepare.addEventListener('click', async () => {
                     prepare.disabled = true;
                     try {
-                        await runLlmProviderAction(surface.prefix, 'prepare');
+                        await runLlmProviderAction(
+                            surface.prefix,
+                            prepare.dataset.action === 'switch' ? 'switch' : 'prepare'
+                        );
                     } catch (error) {
                         showNotification(error.message || 'Could not prepare material', 'error');
                     } finally {

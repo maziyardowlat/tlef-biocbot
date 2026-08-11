@@ -30,6 +30,7 @@ const { createId } = require('./id');
 const {
     INDEX_STATUSES,
     contentHash,
+    hasLegacyVectors,
     indexingReason,
     markDocumentIndexFailed,
     markDocumentIndexReady,
@@ -144,6 +145,42 @@ async function calculateWork({ db, profile, courseIds = [], includeNotes = false
     const items = [];
     let skipped = 0;
 
+    // Repair the one lossy transition from the first provider-aware release:
+    // legacy GPT indexes were implicit (`status: parsed` / note point ids), and
+    // an early GPT -> Sandbox migration could add only the Sandbox map entry.
+    // A completed migration item is durable proof that the item existed before
+    // that switch. Materialize its GPT record when the content is unchanged so
+    // installations that already hit the bug can switch back without paying
+    // for the same OpenAI embeddings again.
+    let legacyEvidence = null;
+    if (profile.key === 'openai:text-embedding-3-small:v1') {
+        legacyEvidence = new Map();
+        const evidenceQuery = {
+            status: MIGRATION_STATUSES.COMPLETED,
+            fromProvider: 'openai',
+            'targetProfile.provider': 'ubc-llm-sandbox'
+        };
+        if (courseIds.length > 0 && includeNotes) {
+            evidenceQuery.$or = [
+                { courseIds: { $in: courseIds } },
+                { includeNotes: true }
+            ];
+        } else if (courseIds.length > 0) {
+            evidenceQuery.courseIds = { $in: courseIds };
+        } else if (includeNotes) {
+            evidenceQuery.includeNotes = true;
+        }
+        const completed = await db.collection(MIGRATIONS_COLLECTION)
+            .find(evidenceQuery)
+            .toArray();
+        for (const migration of completed) {
+            for (const item of migration.items || []) {
+                if (item.status !== ITEM_STATUSES.DONE || !item.contentHash) continue;
+                legacyEvidence.set(`${item.itemType}:${item.itemId}`, item.contentHash);
+            }
+        }
+    }
+
     if (courseIds.length > 0) {
         const documents = await db.collection('documents')
             .find({ courseId: { $in: courseIds }, isDeleted: { $ne: true } })
@@ -153,6 +190,12 @@ async function calculateWork({ db, profile, courseIds = [], includeNotes = false
             // Only content with extracted text can be embedded at all.
             if (!doc.content || !String(doc.content).trim()) continue;
             const hash = contentHash(doc.content);
+            const legacyHash = legacyEvidence && legacyEvidence.get(`document:${doc.documentId}`);
+            if (legacyHash === hash && hasLegacyVectors(doc)
+                && needsIndexing(doc, profile, hash)) {
+                const record = await markDocumentIndexReady(db, doc.documentId, profile, hash);
+                doc.embeddingIndexes = { ...(doc.embeddingIndexes || {}), [profile.storageKey]: record };
+            }
             if (!needsIndexing(doc, profile, hash)) {
                 skipped += 1;
                 continue;
@@ -180,6 +223,12 @@ async function calculateWork({ db, profile, courseIds = [], includeNotes = false
         for (const note of notes) {
             if (!note.content || !String(note.content).trim()) continue;
             const hash = contentHash(note.content);
+            const legacyHash = legacyEvidence && legacyEvidence.get(`note:${note.noteId}`);
+            if (legacyHash === hash && hasLegacyVectors(note)
+                && needsIndexing(note, profile, hash)) {
+                const record = await markNoteIndexReady(db, note.noteId, profile, hash);
+                note.embeddingIndexes = { ...(note.embeddingIndexes || {}), [profile.storageKey]: record };
+            }
             if (!needsIndexing(note, profile, hash)) {
                 skipped += 1;
                 continue;

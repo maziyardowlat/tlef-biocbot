@@ -218,6 +218,26 @@ describe('persisting index state', () => {
         expect(stored.embeddingIndexes[SANDBOX.storageKey].indexedAt).toBeInstanceOf(Date);
     });
 
+    test('adding Sandbox tracking materializes an implicit legacy GPT index', async () => {
+        const db = memoryDb({
+            documents: [{
+                documentId: 'legacy-doc', courseId: 'C1', content: 'legacy text', status: 'parsed',
+            }],
+        });
+
+        await markDocumentIndexReady(db, 'legacy-doc', SANDBOX, contentHash('legacy text'));
+
+        const stored = await db.collection('documents').findOne({ documentId: 'legacy-doc' });
+        expect(stored.embeddingIndexes[GPT.storageKey]).toMatchObject({
+            provider: 'openai',
+            model: 'text-embedding-3-small',
+            status: 'ready',
+            legacy: true,
+        });
+        expect(stored.embeddingIndexes[SANDBOX.storageKey]).toMatchObject({ status: 'ready' });
+        expect(needsIndexing(stored, GPT, contentHash(stored.content))).toBe(false);
+    });
+
     test('markDocumentIndexFailed records a truncated error and leaves other profiles alone', async () => {
         const db = memoryDb({ documents: [indexedDoc(GPT, 'text')] });
         await markDocumentIndexFailed(db, 'doc-1', SANDBOX, contentHash('text'), new Error('x'.repeat(900)));

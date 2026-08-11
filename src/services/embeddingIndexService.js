@@ -217,9 +217,26 @@ function buildIndexRecord({ profile, hash, status, error = null, indexedAt = nul
 }
 
 async function setIndexRecord(db, collectionName, filter, profile, record) {
+    const set = { [`embeddingIndexes.${profile.storageKey}`]: record, updatedAt: new Date() };
+
+    // A pre-profile-tracking item can have real GPT vectors represented only by
+    // its legacy status/point ids. Materialize that implicit GPT record before
+    // adding the first non-GPT profile. Otherwise the new Sandbox entry makes
+    // `embeddingIndexes` non-empty and the old GPT vectors become invisible to
+    // later readiness checks, causing an unnecessary re-embed when switching
+    // back to GPT.
+    if (profile.storageKey !== LEGACY_PROFILE.storageKey) {
+        const existing = await db.collection(collectionName).findOne(filter);
+        const stored = existing && existing.embeddingIndexes;
+        const hasStoredIndexes = stored && typeof stored === 'object' && Object.keys(stored).length > 0;
+        if (!hasStoredIndexes && hasLegacyVectors(existing)) {
+            set[`embeddingIndexes.${LEGACY_PROFILE.storageKey}`] = legacyIndexRecord(existing);
+        }
+    }
+
     await db.collection(collectionName).updateOne(
         filter,
-        { $set: { [`embeddingIndexes.${profile.storageKey}`]: record, updatedAt: new Date() } }
+        { $set: set }
     );
 }
 
@@ -456,6 +473,7 @@ module.exports = {
     indexedCollections,
     indexesOf,
     indexingReason,
+    hasLegacyVectors,
     markDocumentIndexFailed,
     markDocumentIndexReady,
     markIndexFailed,

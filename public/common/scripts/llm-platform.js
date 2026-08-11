@@ -187,13 +187,17 @@
 
         const prepareButton = document.getElementById(`${prefix}-llm-prepare`);
         if (prepareButton) {
-            prepareButton.textContent = provider === activeProvider
+            const action = provider === activeProvider ? 'prepare' : 'switch';
+            prepareButton.dataset.action = action;
+            prepareButton.textContent = action === 'prepare'
                 ? `Refresh ${meta.label} material`
-                : `Prepare material and switch to ${meta.label}`;
+                : `Switch to ${meta.label}`;
             prepareButton.disabled = !hasValidKey || migrationActive;
-            prepareButton.title = hasValidKey
-                ? `Create or update ${meta.label} embeddings and activate ${meta.label} when ready`
-                : `Save and validate a ${meta.label} key first`;
+            prepareButton.title = !hasValidKey
+                ? `Save and validate a ${meta.label} key first`
+                : action === 'switch'
+                    ? `Reuse existing ${meta.label} material if it is current; prepare only missing or changed items`
+                    : `Create or update ${meta.label} embeddings`;
         }
 
         const note = document.getElementById(`${prefix}-llm-platform-change-note`);
@@ -201,9 +205,9 @@
             if (provider !== activeProvider) {
                 note.hidden = false;
                 note.textContent = hasStoredKey
-                    ? `Your saved ${meta.label} key is kept separately. Preparing the material will switch to ${meta.label} `
-                        + `automatically when it is ready; ${providerLabel(activeProvider)} keeps answering until then.`
-                    : `Save a ${meta.label} key, then prepare the material. It will switch automatically when ready; `
+                    ? `Your saved ${meta.label} key and embeddings are kept separately. Switching reuses current material; `
+                        + `only missing or changed items need preparation. ${providerLabel(activeProvider)} keeps answering until then.`
+                    : `Save a ${meta.label} key, then switch platforms. Only missing or changed material will be prepared; `
                         + `${providerLabel(activeProvider)} keeps answering until then.`;
             } else {
                 note.hidden = true;

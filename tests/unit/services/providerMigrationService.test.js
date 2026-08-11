@@ -75,6 +75,37 @@ describe('calculateWork', () => {
         expect(items[0].contentHash).toBe(contentHash('edited text'));
     });
 
+    test('repairs GPT tracking lost by an earlier legacy-to-Sandbox migration', async () => {
+        const text = 'legacy course text';
+        const db = memoryDb({
+            documents: [{
+                documentId: 'legacy-d1', courseId: 'C1', content: text, status: 'parsed',
+                embeddingIndexes: readyFor(SANDBOX, text),
+            }],
+            providerMigrations: [{
+                migrationId: 'old-sandbox-migration',
+                status: MIGRATION_STATUSES.COMPLETED,
+                fromProvider: 'openai',
+                targetProfile: { provider: 'ubc-llm-sandbox' },
+                courseIds: ['C1'],
+                items: [{
+                    itemType: 'document', itemId: 'legacy-d1', contentHash: contentHash(text),
+                    status: ITEM_STATUSES.DONE,
+                }],
+            }],
+        });
+
+        const { items, skipped } = await calculateWork({ db, profile: GPT, courseIds: ['C1'] });
+
+        expect(items).toEqual([]);
+        expect(skipped).toBe(1);
+        const repaired = await db.collection('documents').findOne({ documentId: 'legacy-d1' });
+        expect(repaired.embeddingIndexes[GPT.storageKey]).toMatchObject({
+            provider: 'openai', status: 'ready',
+        });
+        expect(repaired.embeddingIndexes[SANDBOX.storageKey]).toMatchObject({ status: 'ready' });
+    });
+
     test('documents with no extractable text are never queued', async () => {
         const db = memoryDb({
             documents: [
