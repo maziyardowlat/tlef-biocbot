@@ -487,6 +487,7 @@ async function setupMockedSettingsRoutes(page, options = {}) {
         },
         courseGetStatus: 200,
         courseGetResult: null,
+        courseProvider: 'openai',
         lifecycleStatus: 200,
         lifecycleResult: { success: true },
         abortPaths: new Set(),
@@ -653,6 +654,7 @@ async function setupMockedSettingsRoutes(page, options = {}) {
                     name: courseId === 'MOCK-SETTINGS-COPY' ? 'Mock Settings Copy' : state.courseName,
                     courseName: courseId === 'MOCK-SETTINGS-COPY' ? 'Mock Settings Copy' : state.courseName,
                     status: state.courseStatus,
+                    llmProvider: state.courseProvider,
                     lectures: state.lectures,
                 },
             }));
@@ -1208,7 +1210,8 @@ test.describe('Instructor settings UI', () => {
         const modal = page.locator('#transfer-course-modal');
         await expect(modal).toHaveClass(/show/);
         await expect(page.locator('#transfer-modal-summary')).toContainText(`New course name: ${copyName}`);
-        await expect(page.locator('#transfer-modal-summary')).toContainText('A new course API key will be validated before the copy is created.');
+        await expect(page.locator('#transfer-modal-summary')).toContainText('AI platform: OpenAI Chat GPT.');
+        await expect(page.locator('#transfer-modal-summary')).toContainText('A new API key for OpenAI Chat GPT will be validated before the copy is created.');
         await expect(page.locator('#transfer-modal-summary')).toContainText('2 of 2 units will copy docs and existing chunks.');
         await expect(page.locator('#transfer-modal-summary')).toContainText('1 of 2 units will copy learning objectives.');
         await expect(page.locator('#transfer-modal-summary')).toContainText('1 of 2 units will copy assessment questions.');
@@ -1240,6 +1243,39 @@ test.describe('Instructor settings UI', () => {
         expect(unit1.assessmentQuestions).toEqual([]);
         expect(unit2.learningObjectives).toEqual([]);
         expect(unit2.assessmentQuestions).toHaveLength(1);
+    });
+
+    test('sends the selected UBC Sandbox platform when copying an OpenAI course', async ({ page }) => {
+        const state = await openMockedSettings(page, { canDeleteAll: false, courseProvider: 'openai' });
+        await openSettingsPanel(page, 'lifecycle');
+
+        await expect(page.locator('#transfer-llm-provider-openai')).toBeChecked();
+        await setInputChecked(page, '#transfer-llm-provider-ubc-llm-sandbox', true);
+        await expect(page.locator('label[for="transfer-course-api-key"]')).toHaveText('UBC On-Premise LLM API key for new course');
+        await expect(page.locator('#transfer-course-api-key')).toHaveAttribute('placeholder', 'UBC LLM Sandbox API key');
+        await expect(page.locator('#transfer-llm-platform-help')).toContainText('Contact the LTIC team');
+
+        await page.locator('#transfer-course-name').fill('Sandbox Course Copy');
+        await page.locator('#transfer-course-api-key').fill('sbx-test-course-copy');
+        await page.locator('#transfer-course-btn').click();
+
+        await expect(page.locator('#transfer-modal-summary')).toContainText('AI platform: UBC On-Premise LLM.');
+        await expect(page.locator('#transfer-modal-summary')).toContainText('A new API key for UBC On-Premise LLM will be validated before the copy is created.');
+
+        state.transferStatus = 400;
+        state.transferResult = {
+            success: false,
+            data: { courseId: '', courseName: '', warnings: [] },
+        };
+        await page.locator('#transfer-modal-confirm').click();
+
+        await expect.poll(() => state.transferRequests.length).toBe(1);
+        const capturedRequest = /** @type {any} */ (state.transferRequests[0]);
+        expect(capturedRequest).toMatchObject({
+            newCourseName: 'Sandbox Course Copy',
+            apiKey: 'sbx-test-course-copy',
+            llmProvider: 'ubc-llm-sandbox',
+        });
     });
 
     test('resets section defaults after confirmation', async ({ page }) => {
@@ -1395,7 +1431,7 @@ test.describe('Instructor settings UI', () => {
 
         await page.locator('#transfer-course-name').fill('Mock Copy One');
         await page.locator('#transfer-course-btn').click();
-        await expect(page.locator('.notification.error', { hasText: 'Please enter an OpenAI API key for the new course.' })).toBeVisible();
+        await expect(page.locator('.notification.error', { hasText: 'Please enter the OpenAI Chat GPT API key for the new course.' })).toBeVisible();
         await expect(page.locator('#transfer-course-api-key')).toBeFocused();
         await page.locator('#transfer-course-api-key').fill(VALID_API_KEY);
 
@@ -1431,6 +1467,7 @@ test.describe('Instructor settings UI', () => {
         await expect(page.locator('.notification.error', { hasText: 'Transfer rejected' })).toBeVisible();
         await expect(page.locator('#transfer-course-btn')).toHaveText('Create Course Copy');
         expect(state.transferRequests[0]?.apiKey).toBe(VALID_API_KEY);
+        expect(state.transferRequests[0]?.llmProvider).toBe('openai');
 
         state.transferStatus = 200;
         state.transferResult = {

@@ -845,6 +845,19 @@
                                                     >
                                                 </div>
                                                 <div class="transfer-field-group">
+                                                    <fieldset class="llm-platform-choice" id="transfer-llm-platform">
+                                                        <legend>AI platform for new course</legend>
+                                                        <label class="llm-platform-option">
+                                                            <input type="radio" name="transfer-llm-provider" id="transfer-llm-provider-openai" value="openai" checked>
+                                                            <span>OpenAI Chat GPT</span>
+                                                        </label>
+                                                        <label class="llm-platform-option">
+                                                            <input type="radio" name="transfer-llm-provider" id="transfer-llm-provider-ubc-llm-sandbox" value="ubc-llm-sandbox">
+                                                            <span>UBC On-Premise LLM</span>
+                                                        </label>
+                                                    </fieldset>
+                                                </div>
+                                                <div class="transfer-field-group">
                                                     <label for="transfer-course-api-key">New course API key</label>
                                                     <input
                                                         type="password"
@@ -852,7 +865,9 @@
                                                         class="number-input transfer-course-name-input"
                                                         placeholder="sk-..."
                                                         autocomplete="off"
+                                                        aria-describedby="transfer-llm-platform-help"
                                                     >
+                                                    <small id="transfer-llm-platform-help" class="llm-platform-help">Feel free to use your own OpenAI API key, or contact the support team for assistance.</small>
                                                 </div>
 
                                                 <div class="transfer-global-options">

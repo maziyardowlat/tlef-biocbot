@@ -2286,6 +2286,44 @@ document.addEventListener('DOMContentLoaded', async () => {
         };
     }
 
+    function selectedTransferProvider() {
+        if (window.LlmPlatform) {
+            return window.LlmPlatform.selectedProvider('transfer');
+        }
+        const checked = document.querySelector('input[name="transfer-llm-provider"]:checked');
+        return checked ? checked.value : 'openai';
+    }
+
+    function refreshTransferProviderUi() {
+        const provider = selectedTransferProvider();
+        const meta = window.LlmPlatform
+            ? window.LlmPlatform.providerMeta(provider)
+            : {
+                label: provider === 'ubc-llm-sandbox' ? 'UBC On-Premise LLM' : 'OpenAI Chat GPT',
+                helpText: provider === 'ubc-llm-sandbox'
+                    ? 'Contact the LTIC team to request a UBC LLM Sandbox API key.'
+                    : 'Feel free to use your own OpenAI API key, or contact the support team for assistance.',
+                keyPlaceholder: provider === 'ubc-llm-sandbox' ? 'UBC LLM Sandbox API key' : 'sk-...'
+            };
+
+        const keyLabel = document.querySelector('label[for="transfer-course-api-key"]');
+        if (keyLabel) keyLabel.textContent = `${meta.label} API key for new course`;
+        if (transferCourseApiKeyInput) transferCourseApiKeyInput.placeholder = meta.keyPlaceholder;
+
+        const help = document.getElementById('transfer-llm-platform-help');
+        if (help) {
+            help.textContent = meta.helpText;
+            if (provider === 'openai') {
+                help.innerHTML = meta.helpText.replace(
+                    'the support team',
+                    `<a href="mailto:${LLM_KEY_CONTACT_EMAIL}">the support team</a>`
+                );
+            }
+        }
+
+        return { provider, label: meta.label };
+    }
+
     function openTransferModal(payload) {
         if (!transferCourseModal) return;
 
@@ -2295,7 +2333,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         const counts = getTransferSelectionCounts(payload.units || []);
         const summaryItems = [
             `New course name: ${payload.newCourseName}`,
-            'A new course API key will be validated before the copy is created.',
+            `AI platform: ${payload.llmProviderLabel}.`,
+            `A new API key for ${payload.llmProviderLabel} will be validated before the copy is created.`,
             `${counts.docsCount} of ${counts.totalUnits} unit${counts.totalUnits === 1 ? '' : 's'} will copy docs and existing chunks.`,
             `${counts.objectivesCount} of ${counts.totalUnits} unit${counts.totalUnits === 1 ? '' : 's'} will copy learning objectives.`,
             `${counts.questionsCount} of ${counts.totalUnits} unit${counts.totalUnits === 1 ? '' : 's'} will copy assessment questions.`,
@@ -2458,6 +2497,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             renderCourseStatus();
             renderTransferUnitGrid(lifecycleCourseData.lectures || []);
 
+            const transferProvider = lifecycleCourseData.llmProvider || 'openai';
+            if (window.LlmPlatform) {
+                window.LlmPlatform.setProvider('transfer', transferProvider);
+            } else {
+                const providerRadio = document.getElementById(`transfer-llm-provider-${transferProvider}`);
+                if (providerRadio) providerRadio.checked = true;
+            }
+            refreshTransferProviderUi();
+
             if (transferCourseNameInput && !transferCourseNameInput.value.trim()) {
                 transferCourseNameInput.value = `${lifecycleCourseData.name} Copy`;
             }
@@ -2508,6 +2556,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
+    document.querySelectorAll('input[name="transfer-llm-provider"]').forEach(radio => {
+        radio.addEventListener('change', refreshTransferProviderUi);
+    });
+    refreshTransferProviderUi();
+
     if (transferCourseModal) {
         transferCourseModal.addEventListener('click', (event) => {
             if (event.target === transferCourseModal) {
@@ -2540,6 +2593,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         newCourseName: pendingTransferPayload.newCourseName,
+                        llmProvider: pendingTransferPayload.llmProvider,
                         transferSettings: pendingTransferPayload.transferSettings,
                         transferTAs: pendingTransferPayload.transferTAs,
                         deactivateSourceCourse: pendingTransferPayload.deactivateSourceCourse,
@@ -2658,10 +2712,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             const apiKey = transferCourseApiKeyInput?.value?.trim() || '';
             if (!apiKey) {
-                showNotification('Please enter an OpenAI API key for the new course.', 'error');
+                const provider = refreshTransferProviderUi();
+                showNotification(`Please enter the ${provider.label} API key for the new course.`, 'error');
                 transferCourseApiKeyInput?.focus();
                 return;
             }
+
+            const transferProvider = refreshTransferProviderUi();
 
             const unitRows = Array.from(document.querySelectorAll('.transfer-unit-row'));
             const units = unitRows.map(row => {
@@ -2681,6 +2738,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                 transferTAs: document.getElementById('transfer-tas-toggle')?.checked === true,
                 deactivateSourceCourse,
                 apiKey,
+                llmProvider: transferProvider.provider,
+                llmProviderLabel: transferProvider.label,
                 units
             });
         });
