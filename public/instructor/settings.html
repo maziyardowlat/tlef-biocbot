@@ -944,23 +944,28 @@
                                             </select>
                                         </div>
                                     </div>
-                                    <div class="setting-item">
+                                    <div class="setting-item llm-inherit-setting">
                                         <div class="setting-info">
-                                            <h4 id="llm-backend-inherit-label">Back-end model</h4>
+                                            <h4 id="llm-backend-inherit-label">Back-end processing</h4>
                                             <p id="llm-backend-inherit-desc">Used for authoring, ingestion, classification, and other processing. Keep it linked to the front-end model or configure it independently.</p>
                                         </div>
                                         <div class="setting-controls">
-                                            <label class="toggle-switch">
-                                                <input type="checkbox" id="llm-backend-inherit" checked aria-labelledby="llm-backend-inherit-label" aria-describedby="llm-backend-inherit-desc">
-                                                <span class="toggle-slider"></span>
+                                            <label class="llm-inherit-control" for="llm-backend-inherit">
+                                                <span class="llm-inherit-control-copy">
+                                                    <strong>Use front-end settings</strong>
+                                                    <small>Model and reasoning effort</small>
+                                                </span>
+                                                <span class="toggle-switch">
+                                                    <input type="checkbox" id="llm-backend-inherit" checked aria-describedby="llm-backend-inherit-desc">
+                                                    <span class="toggle-slider"></span>
+                                                </span>
                                             </label>
-                                            <span>Same as front-end</span>
                                         </div>
                                     </div>
-                                    <div class="setting-item">
+                                    <div class="setting-item" id="llm-backend-model-item">
                                         <div class="setting-info">
                                             <h4 id="llm-backend-model-label">Back-end model override</h4>
-                                            <p id="llm-backend-model-desc">Takes effect when “Same as front-end” is off.</p>
+                                            <p id="llm-backend-model-desc">Shown when front-end settings are not being reused.</p>
                                         </div>
                                         <div class="setting-controls">
                                             <select id="llm-backend-model-select" class="number-input" aria-labelledby="llm-backend-model-label" aria-describedby="llm-backend-model-desc"></select>
@@ -1018,23 +1023,28 @@
                                             <select id="sandbox-llm-reasoning-select" class="number-input" aria-labelledby="sandbox-llm-reasoning-label" aria-describedby="sandbox-llm-reasoning-desc"></select>
                                         </div>
                                     </div>
-                                    <div class="setting-item">
+                                    <div class="setting-item llm-inherit-setting">
                                         <div class="setting-info">
-                                            <h4 id="sandbox-llm-backend-inherit-label">Back-end model</h4>
+                                            <h4 id="sandbox-llm-backend-inherit-label">Back-end processing</h4>
                                             <p id="sandbox-llm-backend-inherit-desc">Used for authoring, ingestion, classification, and other processing. Keep it linked to the front-end model or configure it independently.</p>
                                         </div>
                                         <div class="setting-controls">
-                                            <label class="toggle-switch">
-                                                <input type="checkbox" id="sandbox-llm-backend-inherit" checked aria-labelledby="sandbox-llm-backend-inherit-label" aria-describedby="sandbox-llm-backend-inherit-desc">
-                                                <span class="toggle-slider"></span>
+                                            <label class="llm-inherit-control" for="sandbox-llm-backend-inherit">
+                                                <span class="llm-inherit-control-copy">
+                                                    <strong>Use front-end settings</strong>
+                                                    <small>Model and reasoning effort</small>
+                                                </span>
+                                                <span class="toggle-switch">
+                                                    <input type="checkbox" id="sandbox-llm-backend-inherit" checked aria-describedby="sandbox-llm-backend-inherit-desc">
+                                                    <span class="toggle-slider"></span>
+                                                </span>
                                             </label>
-                                            <span>Same as front-end</span>
                                         </div>
                                     </div>
-                                    <div class="setting-item">
+                                    <div class="setting-item" id="sandbox-llm-backend-model-item">
                                         <div class="setting-info">
                                             <h4 id="sandbox-llm-backend-model-label">Back-end model override</h4>
-                                            <p id="sandbox-llm-backend-model-desc">Takes effect when “Same as front-end” is off.</p>
+                                            <p id="sandbox-llm-backend-model-desc">Shown when front-end settings are not being reused.</p>
                                         </div>
                                         <div class="setting-controls">
                                             <select id="sandbox-llm-backend-model-select" class="number-input" aria-labelledby="sandbox-llm-backend-model-label" aria-describedby="sandbox-llm-backend-model-desc"></select>

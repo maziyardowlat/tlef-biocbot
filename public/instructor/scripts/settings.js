@@ -757,7 +757,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         const backendModelSelect = document.getElementById(`${idPrefix}-backend-model-select`);
+        const backendModelItem = document.getElementById(`${idPrefix}-backend-model-item`);
         const backendReasoningSelect = document.getElementById(`${idPrefix}-backend-reasoning-select`);
+        const backendReasoningItem = document.getElementById(`${idPrefix}-backend-reasoning-item`);
         const inheritToggle = document.getElementById(`${idPrefix}-backend-inherit`);
         fillSelect(backendModelSelect, platform.allowedModels || [], platform.backendChatModel || platform.chatModel);
         updateReasoningVisibility(idPrefix, 'backend', effortsByModel, defaultsByModel);
@@ -771,12 +773,16 @@ document.addEventListener('DOMContentLoaded', async () => {
             const inherits = inheritToggle?.checked !== false;
             if (backendModelSelect) backendModelSelect.disabled = inherits;
             if (backendReasoningSelect) backendReasoningSelect.disabled = inherits;
+            if (backendModelItem) backendModelItem.hidden = inherits;
+            if (backendReasoningItem) backendReasoningItem.hidden = inherits;
             if (inherits && modelSelect && backendModelSelect) {
                 backendModelSelect.value = modelSelect.value;
                 updateReasoningVisibility(idPrefix, 'backend', effortsByModel, defaultsByModel);
                 if (reasoningSelect && backendReasoningSelect) {
                     backendReasoningSelect.value = reasoningSelect.value;
                 }
+            } else {
+                updateReasoningVisibility(idPrefix, 'backend', effortsByModel, defaultsByModel);
             }
         };
 

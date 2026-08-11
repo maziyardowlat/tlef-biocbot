@@ -511,6 +511,45 @@
     min-width: 220px;
 }
 
+/* Compact lane-inheritance control. Keep the copy and switch together instead
+   of letting the generic settings row jam an unlabelled toggle against text. */
+.setting-item label.llm-inherit-control {
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 18px;
+    min-width: 280px;
+    margin: 0;
+    padding: 10px 12px 10px 14px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: #fff;
+    cursor: pointer;
+}
+
+.llm-inherit-control-copy {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    line-height: 1.2;
+}
+
+.llm-inherit-control-copy strong {
+    color: var(--text-primary);
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.llm-inherit-control-copy small {
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 400;
+}
+
+.llm-inherit-control .toggle-switch {
+    flex: 0 0 50px;
+}
+
 .llm-embedding-controls {
     flex-shrink: 1;
     flex-wrap: wrap;
@@ -1275,6 +1314,21 @@ input.is-invalid {
 
     .settings-section-actions button {
         width: 100%;
+    }
+
+    .llm-inherit-setting {
+        flex-direction: column;
+        gap: 14px;
+    }
+
+    .llm-inherit-setting .setting-info {
+        margin-right: 0;
+    }
+
+    .llm-inherit-setting .setting-controls,
+    .setting-item label.llm-inherit-control {
+        width: 100%;
+        min-width: 0;
     }
 
     .system-admin-row {
