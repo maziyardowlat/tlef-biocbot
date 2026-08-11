@@ -160,45 +160,33 @@ textarea {
     background-color: var(--sidebar-active);
 }
 
+/* The skip-tutorial checkbox sits on its own row under the link rather than
+   beside it: the 250px sidebar cannot fit both without shrinking the checkbox
+   below the 24px WCAG 2.5.8 target size and crowding it against the link. */
 .main-nav .student-preview-control {
     display: flex;
-    align-items: center;
-    border-radius: 4px;
-    transition: background-color 0.3s ease;
-}
-
-.main-nav .student-preview-control:hover {
-    background-color: rgba(255, 255, 255, 0.1);
-}
-
-.main-nav .student-preview-control > a {
-    flex: 1 1 auto;
-    min-width: 0;
-    padding-right: 4px;
-    white-space: nowrap;
-}
-
-.main-nav .student-preview-control > a:hover {
-    background-color: transparent;
+    flex-direction: column;
+    align-items: stretch;
 }
 
 .main-nav .student-preview-option {
     display: flex;
-    flex: 0 0 auto;
     align-items: center;
-    gap: 5px;
-    padding: 10px 8px 10px 2px;
+    gap: 8px;
+    padding: 0 10px 4px;
     color: rgba(255, 255, 255, 0.78);
-    font-size: 10px;
+    font-size: 12px;
     line-height: 1.35;
-    white-space: nowrap;
     cursor: pointer;
     user-select: none;
 }
 
 .main-nav .student-preview-option input {
-    width: 14px;
-    height: 14px;
+    /* 24px keeps the checkbox itself a conforming touch target, which is what
+       axe measures — a padded label around a smaller box would not count. */
+    width: 24px;
+    height: 24px;
+    flex: 0 0 auto;
     margin: 0;
     accent-color: var(--secondary-color);
     cursor: pointer;
