@@ -18,6 +18,7 @@ const adminModelSettings = require('./adminModelSettings');
 const config = require('./config');
 const migrations = require('./providerMigrationService');
 const migrationRunner = require('./providerMigrationRunner');
+const superCourse = require('./superCourseService');
 const { buildEmbeddingProfile } = require('./embeddingConfig');
 const { normalizeProvider, providerLabel } = require('./llmProviders');
 const {
@@ -108,25 +109,20 @@ async function migrationScopeContent(db, scope) {
     if (scope.type === 'superchat') {
         // A bucket searches its member courses' content with ITS OWN profile,
         // so every member course needs an index in that profile — even courses
-        // that themselves run on a different platform.
+        // that themselves run on a different platform. Membership is course-side
+        // (`course.superchatIds`), so it comes from the retrieval pool.
         const bucket = await db.collection('superchats').findOne({ superchatId: scope.id });
-        const courseIds = Array.isArray(bucket && bucket.courseIds)
-            ? bucket.courseIds
-            : (Array.isArray(bucket && bucket.courses) ? bucket.courses.map(c => c.courseId || c) : []);
-        return { courseIds: courseIds.filter(Boolean), includeNotes: !!(bucket && bucket.includeNotes) };
+        return superCourse.superCourseContentScope(db, {
+            superchatId: scope.id,
+            settingsDoc: bucket
+        });
     }
 
     if (scope.type === 'superCourseChat') {
-        // The instructor Super Course chat pools every course, plus Notes when
-        // the chat is configured to include them.
-        const courses = await db.collection('courses')
-            .find({ isDeleted: { $ne: true } }, { projection: { courseId: 1 } })
-            .toArray();
+        // The instructor Super Course chat pools every bucketed course, plus
+        // Notes when the chat is configured to include them.
         const settings = await db.collection('settings').findOne({ _id: 'superCourseChat' });
-        return {
-            courseIds: courses.map(course => course.courseId).filter(Boolean),
-            includeNotes: settings ? settings.includeNotes !== false : true
-        };
+        return superCourse.superCourseContentScope(db, { settingsDoc: settings });
     }
 
     return { courseIds: [], includeNotes: false };

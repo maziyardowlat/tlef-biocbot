@@ -7,6 +7,7 @@
 
 const SuperChatNote = require('../models/SuperChatNote');
 const NotesQdrantService = require('./notesQdrantService');
+const qdrantMaintenance = require('./qdrantMaintenance');
 const { contentHash, markNoteIndexReady } = require('./embeddingIndexService');
 
 const DUP_THRESHOLD = NotesQdrantService.DEFAULT_DUP_THRESHOLD;
@@ -123,8 +124,13 @@ async function deleteNote(db, noteId, requesterId) {
     await SuperChatNote.softDeleteNote(db, noteId);
 
     try {
-        const qdrant = new NotesQdrantService();
-        await qdrant.deleteNote(noteId);
+        // Sweep every profile the note was indexed under, not just the one the
+        // Notes surface uses today — otherwise a deleted note comes back the
+        // moment the surface switches platforms.
+        const { errors } = await qdrantMaintenance.deleteNoteEverywhere(db, existing);
+        for (const failure of errors) {
+            console.error(`Failed to remove note vectors from ${failure.collection}:`, failure.error);
+        }
     } catch (error) {
         console.error('Failed to remove note vectors from Qdrant:', error.message);
         // Mongo soft-delete already succeeded; surface success but log the drift.

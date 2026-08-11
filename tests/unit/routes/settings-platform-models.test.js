@@ -240,6 +240,26 @@ describe('POST /llm/embedding — staged, never destructive', () => {
         expect(job.targetProfile.collection).toBe('biocbot_documents_text_embedding_3_large');
     });
 
+    test('a second embedding change is refused while the first is still re-indexing', async () => {
+        const db = memoryDb({
+            settings: [],
+            courses: [{ courseId: 'C1', activeLlmProvider: OPENAI, llmCredentials: { [OPENAI]: buildKeySubdocument('sk-a', 'a', OPENAI) } }],
+            documents: [{ documentId: 'd1', courseId: 'C1', content: 'text' }],
+        });
+        await request(app({ db })).post('/llm/embedding').send({ provider: OPENAI, embeddingModel: 'text-embedding-3-large' });
+
+        const res = await request(app({ db }))
+            .post('/llm/embedding').send({ provider: OPENAI, embeddingModel: 'text-embedding-ada-002' });
+
+        // Two jobs would fight over the single staged setting, and whichever
+        // finished first would activate the other's not-yet-indexed model.
+        expect(res.status).toBe(409);
+        expect(res.body.code).toBe('EMBEDDING_MIGRATION_ACTIVE');
+        expect(startedMigrations).toHaveLength(1);
+        const { pendingEmbedding } = await adminModelSettings.getAllProviderSettings(db, { force: true });
+        expect(pendingEmbedding[OPENAI].embeddingModel).toBe('text-embedding-3-large');
+    });
+
     test('selecting the model already in use is a no-op', async () => {
         const db = memoryDb({ settings: [] });
         const res = await request(app({ db }))

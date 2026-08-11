@@ -261,13 +261,32 @@ async function stagePendingEmbedding(db, provider, { embeddingModel, embeddingRe
  * Promote a staged embedding model to active. Called only once every required
  * index for the new profile is current. Old collections are never deleted, so
  * rollback is a matter of re-activating the previous model.
+ *
+ * @param {Object} [expected] - The profile the finished migration actually
+ *   prepared, as `{ embeddingModel, embeddingRevision }`. A job must never
+ *   activate a model it did not index: if an admin stages model B while model
+ *   A is still running, A completing would otherwise promote B before B has any
+ *   vectors. When the staged model no longer matches, the staged change is left
+ *   alone for its own migration to finish.
  */
-async function activatePendingEmbedding(db, provider) {
+async function activatePendingEmbedding(db, provider, expected = null) {
     const normalizedProvider = normalizeProvider(provider);
     const doc = await db.collection('settings').findOne({ _id: SETTINGS_ID });
     const { pendingEmbedding } = normalizeSettingsDocument(doc);
     const pending = pendingEmbedding[normalizedProvider];
     if (!pending) return null;
+
+    if (expected) {
+        const revision = expected.embeddingRevision || DEFAULT_PROFILE_REVISION;
+        if (pending.embeddingModel !== expected.embeddingModel
+            || pending.embeddingRevision !== revision) {
+            console.warn(
+                `⚠️ Not activating ${normalizedProvider} embedding model ${expected.embeddingModel}: `
+                + `${pending.embeddingModel} is staged instead`
+            );
+            return null;
+        }
+    }
 
     await db.collection('settings').updateOne(
         { _id: SETTINGS_ID },

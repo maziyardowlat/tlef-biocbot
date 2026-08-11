@@ -32,6 +32,7 @@ const adminModelSettings = require('../services/adminModelSettings');
 const providerKeys = require('../services/providerKeyService');
 const migrations = require('../services/providerMigrationService');
 const migrationRunner = require('../services/providerMigrationRunner');
+const superCourse = require('../services/superCourseService');
 const {
     SELECTABLE_PROVIDERS,
     normalizeProvider,
@@ -1226,8 +1227,23 @@ router.post('/llm/embedding', async (req, res) => {
             });
         }
 
-        const surfaces = await affectedSurfacesForProvider(db, provider);
         const scope = { type: 'adminEmbedding', id: provider };
+
+        // One embedding change at a time per platform. Two overlapping jobs
+        // would fight over the single staged setting, and the first to finish
+        // would activate a model the other is still indexing.
+        const active = await migrations.findActiveMigration(db, scope);
+        if (active) {
+            return res.status(409).json({
+                success: false,
+                code: 'EMBEDDING_MIGRATION_ACTIVE',
+                error: `A ${providerLabel(provider)} embedding change is already re-indexing. `
+                    + 'Cancel it before staging another model.',
+                migration: migrations.publicMigrationView(active)
+            });
+        }
+
+        const surfaces = await affectedSurfacesForProvider(db, provider);
         const { job } = await migrations.createMigration(db, {
             scope,
             kind: 'embedding-model',
@@ -1340,9 +1356,14 @@ async function affectedSurfacesForProvider(db, provider) {
     for (const bucket of buckets) {
         if (activeProviderOf(bucket) !== provider) continue;
         surfaces.push({ type: 'superchat', id: bucket.superchatId, name: bucket.name || bucket.superchatId });
-        const bucketCourses = Array.isArray(bucket.courseIds) ? bucket.courseIds : [];
-        for (const courseId of bucketCourses) courseIds.add(courseId);
-        if (bucket.includeNotes) includeNotes = true;
+        // Membership is course-side, so ask for the bucket's retrieval pool
+        // rather than reading a course list off the bucket document.
+        const scope = await superCourse.superCourseContentScope(db, {
+            superchatId: bucket.superchatId,
+            settingsDoc: bucket
+        });
+        for (const courseId of scope.courseIds) courseIds.add(courseId);
+        if (scope.includeNotes) includeNotes = true;
     }
 
     for (const settingsId of ['notesLlm', 'superCourseChat']) {
@@ -1355,8 +1376,9 @@ async function affectedSurfacesForProvider(db, provider) {
             surfaces.push({ type: 'notes', id: 'notesLlm', name: 'Instructor Notes' });
         } else {
             surfaces.push({ type: 'superCourseChat', id: 'superCourseChat', name: 'Instructor Super Course chat' });
-            for (const course of courses) courseIds.add(course.courseId);
-            if (doc.includeNotes !== false) includeNotes = true;
+            const scope = await superCourse.superCourseContentScope(db, { settingsDoc: doc });
+            for (const courseId of scope.courseIds) courseIds.add(courseId);
+            if (scope.includeNotes) includeNotes = true;
         }
     }
 

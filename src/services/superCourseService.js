@@ -228,6 +228,38 @@ async function getSuperCourseRetrievalPool(db, options = {}) {
 }
 
 /**
+ * Exactly the content a Super Course surface can retrieve, expressed the way a
+ * migration needs it.
+ *
+ * Preparation has to cover the same pool the surface actually searches, so both
+ * come from `getSuperCourseRetrievalPool` and the resolved chat settings rather
+ * than from hand-read fields. Membership lives course-side in
+ * `course.superchatIds` — a bucket document has no course list of its own — and
+ * the notes flag is `includeNotesInRetrieval`; reading either from the bucket
+ * document directly yields an empty migration that reports success.
+ *
+ * @param {Object} db
+ * @param {Object} [options]
+ * @param {string|null} [options.superchatId] - A bucket, or null for the
+ *   instructor Super Course chat, which spans every bucketed course.
+ * @param {Object|null} [options.settingsDoc] - The bucket document, or the
+ *   `superCourseChat` settings document.
+ * @returns {Promise<{courseIds: string[], includeNotes: boolean}>}
+ */
+async function superCourseContentScope(db, { superchatId = null, settingsDoc = null } = {}) {
+    const settings = resolveSuperCourseChatSettings(settingsDoc || {});
+    const courses = await getSuperCourseRetrievalPool(db, {
+        superchatId,
+        includeInactiveCourses: settings.includeInactiveCourses
+    });
+
+    return {
+        courseIds: courses.map(course => course.courseId).filter(Boolean),
+        includeNotes: settings.includeNotesInRetrieval
+    };
+}
+
+/**
  * Gather each Super Course pool course's approved struggle topics, tagged with
  * the owning course. Feeds the cross-course struggle tracker so a struggle in
  * the Super Chat can be mapped to a topic and attributed back to its course.
@@ -515,6 +547,7 @@ function buildSuperCourseSourceAttribution(searchResults = [], pool = []) {
 
 module.exports = {
     SUPER_COURSE_SETTINGS_ID,
+    superCourseContentScope,
     resolveSuperCourseChatSettings,
     getSuperCourseChatSettings,
     getSuperchat,

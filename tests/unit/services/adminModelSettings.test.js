@@ -220,6 +220,36 @@ describe('staging an embedding-model change', () => {
         expect(await adminModelSettings.activatePendingEmbedding(db, OPENAI)).toBeNull();
     });
 
+    test('a finished migration never activates a model it did not index', async () => {
+        const db = memoryDb({ settings: [] });
+        // Model A was staged, then replaced by model B while A was still running.
+        await adminModelSettings.stagePendingEmbedding(db, OPENAI, { embeddingModel: 'text-embedding-ada-002' });
+
+        const activated = await adminModelSettings.activatePendingEmbedding(db, OPENAI, {
+            embeddingModel: 'text-embedding-3-large',
+            embeddingRevision: 'v1',
+        });
+
+        // A finishing must not promote B — B has no vectors yet.
+        expect(activated).toBeNull();
+        const { providers, pendingEmbedding } = await adminModelSettings.getAllProviderSettings(db, { force: true });
+        expect(providers[OPENAI].embeddingModel).toBe('text-embedding-3-small');
+        expect(pendingEmbedding[OPENAI].embeddingModel).toBe('text-embedding-ada-002');
+    });
+
+    test('a matching migration activates as usual', async () => {
+        const db = memoryDb({ settings: [] });
+        await adminModelSettings.stagePendingEmbedding(db, OPENAI, { embeddingModel: 'text-embedding-3-large' });
+
+        const activated = await adminModelSettings.activatePendingEmbedding(db, OPENAI, {
+            embeddingModel: 'text-embedding-3-large',
+        });
+
+        expect(activated.embeddingModel).toBe('text-embedding-3-large');
+        const { providers } = await adminModelSettings.getAllProviderSettings(db, { force: true });
+        expect(providers[OPENAI].embeddingModel).toBe('text-embedding-3-large');
+    });
+
     test('an embedding model from the other platform is rejected', async () => {
         const db = memoryDb({ settings: [] });
         await expect(adminModelSettings.stagePendingEmbedding(db, OPENAI, { embeddingModel: 'qwen3-embedding-0.6b' }))

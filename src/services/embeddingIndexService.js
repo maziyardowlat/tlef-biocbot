@@ -394,10 +394,60 @@ async function deleteDocumentFromAllCollections(db, doc, serviceFactory) {
     return { deleted, errors };
 }
 
+/**
+ * Delete a note's vectors from EVERY notes collection it was ever indexed into.
+ *
+ * Notes have the same problem documents do: deleting only from the collection
+ * the Notes surface happens to use today leaves the other platform's vectors in
+ * place, and a deleted note would reappear the moment the surface switched
+ * back.
+ *
+ * @param {Object} db
+ * @param {Object} note - Note document (needs noteId and embeddingIndexes)
+ * @param {Function} deleter - async (collectionName, noteId) => boolean deleted
+ * @returns {Promise<{deleted: Array<Object>, errors: Array<Object>}>}
+ */
+async function deleteNoteFromAllCollections(db, note, deleter) {
+    const { notesCollectionBase } = require('./embeddingConfig');
+
+    const targets = indexedCollections(note);
+    if (targets.length === 0) {
+        // Pre-tracking note: it can only be in the legacy notes collection.
+        targets.push({
+            profileKey: LEGACY_PROFILE.storageKey,
+            collection: notesCollectionBase(),
+            provider: 'openai',
+            model: 'text-embedding-3-small'
+        });
+    }
+
+    const deleted = [];
+    const errors = [];
+
+    for (const target of targets) {
+        try {
+            const removed = await deleter(target.collection, note.noteId);
+            if (removed !== false) deleted.push({ collection: target.collection, profileKey: target.profileKey });
+        } catch (error) {
+            errors.push({ collection: target.collection, profileKey: target.profileKey, error: error.message });
+        }
+    }
+
+    if (db && note.noteId) {
+        await db.collection(NOTES_COLLECTION).updateOne(
+            { noteId: note.noteId },
+            { $set: { embeddingIndexes: {}, updatedAt: new Date() } }
+        ).catch(() => {});
+    }
+
+    return { deleted, errors };
+}
+
 module.exports = {
     DOCUMENTS_COLLECTION,
     INDEX_STATUSES,
     deleteDocumentFromAllCollections,
+    deleteNoteFromAllCollections,
     NOTES_COLLECTION,
     buildIndexRecord,
     clearIndexRecord,

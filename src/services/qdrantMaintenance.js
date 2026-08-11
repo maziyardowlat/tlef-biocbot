@@ -10,6 +10,7 @@ const QdrantService = require('./qdrantService');
 const { buildEmbeddingProfile, documentsCollectionBase } = require('./embeddingConfig');
 const {
     deleteDocumentFromAllCollections,
+    deleteNoteFromAllCollections,
     indexedCollections
 } = require('./embeddingIndexService');
 const { SELECTABLE_PROVIDERS } = require('./llmProviders');
@@ -59,6 +60,36 @@ async function deleteDocumentsEverywhere(db, docs) {
 }
 
 /**
+ * Remove one note's vectors from every notes collection recorded in its
+ * `embeddingIndexes` (plus the legacy notes collection for pre-tracking notes).
+ *
+ * Notes collections are addressed by name rather than through a per-profile
+ * service: one maintenance client can delete from all of them, and it must
+ * never create a collection that does not exist.
+ */
+async function deleteNoteEverywhere(db, note) {
+    const service = new QdrantService({
+        skipEmbeddings: true,
+        createCollectionIfMissing: false
+    });
+    await service.initialize();
+
+    let existing = null;
+    return deleteNoteFromAllCollections(db, note, async (collectionName, noteId) => {
+        if (existing === null) {
+            const collections = await service.client.getCollections();
+            existing = new Set((collections.collections || []).map(entry => entry.name));
+        }
+        if (!existing.has(collectionName)) return false;
+
+        await service.client.delete(collectionName, {
+            filter: { must: [{ key: 'noteId', match: { value: noteId } }] }
+        });
+        return true;
+    });
+}
+
+/**
  * Every collection this deployment could hold vectors in, across all platforms
  * and their allowed embedding models. Used by diagnostics so an admin can see
  * per-profile collection health rather than a single global collection.
@@ -92,6 +123,7 @@ module.exports = {
     createMaintenanceFactory,
     deleteDocumentEverywhere,
     deleteDocumentsEverywhere,
+    deleteNoteEverywhere,
     indexedCollections,
     knownDocumentCollections
 };

@@ -20,6 +20,13 @@ jest.mock('../../../src/services/notesQdrantService', () => {
     return Mock;
 });
 
+// Deletion sweeps every collection the note was indexed into; the sweep itself
+// is covered against a real index map in embeddingIndexService.test.js.
+const mockDeleteNoteEverywhere = jest.fn();
+jest.mock('../../../src/services/qdrantMaintenance', () => ({
+    deleteNoteEverywhere: (...args) => mockDeleteNoteEverywhere(...args),
+}));
+
 const { memoryDb } = require('../helpers/memory-db');
 const { buildEmbeddingProfile } = require('../../../src/services/embeddingConfig');
 const { contentHash, needsIndexing } = require('../../../src/services/embeddingIndexService');
@@ -39,6 +46,8 @@ beforeEach(() => {
     mockQdrant.updateNote.mockResolvedValue(['pt-2']);
     mockQdrant.deleteNote.mockResolvedValue(undefined);
     mockQdrant.findSimilarTo.mockResolvedValue({ noteId: 'dup', score: 0.95 });
+    mockDeleteNoteEverywhere.mockReset();
+    mockDeleteNoteEverywhere.mockResolvedValue({ deleted: [], errors: [] });
 });
 
 describe('DUP_THRESHOLD', () => {
@@ -145,19 +154,41 @@ describe('deleteNote', () => {
         expect(await service.deleteNote(db, 'n1', 'i1')).toMatchObject({ ok: false, status: 403 });
     });
 
-    test('soft-deletes the note and removes its vectors', async () => {
-        const db = memoryDb({ [COLLECTION]: [{ noteId: 'n1', authorId: 'i1', isDeleted: false }] });
+    test('soft-deletes the note and sweeps every profile it was indexed under', async () => {
+        const note = {
+            noteId: 'n1',
+            authorId: 'i1',
+            isDeleted: false,
+            embeddingIndexes: { 'ubc-llm-sandbox:qwen3-embedding-0_6b:v1': { collection: 'superchat_notes_qwen3_embedding_0_6b' } },
+        };
+        const db = memoryDb({ [COLLECTION]: [note] });
+
         const result = await service.deleteNote(db, 'n1', 'i1');
+
         expect(result).toEqual({ ok: true });
-        expect(mockQdrant.deleteNote).toHaveBeenCalledWith('n1');
+        // The sweep gets the stored note, so it can read its index records —
+        // deleting only from today's collection would leave the other
+        // platform's vectors to reappear on a switch.
+        expect(mockDeleteNoteEverywhere).toHaveBeenCalledWith(db, expect.objectContaining({ noteId: 'n1' }));
         expect((await db.collection(COLLECTION).findOne({ noteId: 'n1' })).isDeleted).toBe(true);
     });
 
     test('still reports success when the Qdrant delete fails (Mongo is the source of truth)', async () => {
-        mockQdrant.deleteNote.mockRejectedValueOnce(new Error('qdrant down'));
+        mockDeleteNoteEverywhere.mockRejectedValueOnce(new Error('qdrant down'));
         const db = memoryDb({ [COLLECTION]: [{ noteId: 'n1', authorId: 'i1', isDeleted: false }] });
         const result = await service.deleteNote(db, 'n1', 'i1');
         expect(result).toEqual({ ok: true });
+        expect((await db.collection(COLLECTION).findOne({ noteId: 'n1' })).isDeleted).toBe(true);
+    });
+
+    test('a per-collection failure is logged without failing the delete', async () => {
+        mockDeleteNoteEverywhere.mockResolvedValueOnce({
+            deleted: [{ collection: 'superchat_notes' }],
+            errors: [{ collection: 'superchat_notes_qwen3_embedding_0_6b', error: 'unreachable' }],
+        });
+        const db = memoryDb({ [COLLECTION]: [{ noteId: 'n1', authorId: 'i1', isDeleted: false }] });
+
+        expect(await service.deleteNote(db, 'n1', 'i1')).toEqual({ ok: true });
         expect((await db.collection(COLLECTION).findOne({ noteId: 'n1' })).isDeleted).toBe(true);
     });
 });

@@ -479,7 +479,6 @@ describe('admin embedding-model changes', () => {
         return {
             superchats: [{
                 superchatId: 'S1',
-                courseIds: ['C1'],
                 activeLlmProvider: 'ubc-llm-sandbox',
                 llmCredentials: {
                     'ubc-llm-sandbox': buildKeySubdocument('sbx-bucket', 'a', 'ubc-llm-sandbox'),
@@ -488,6 +487,8 @@ describe('admin embedding-model changes', () => {
             }],
             courses: [{
                 courseId: 'C1',
+                // Membership lives on the course, not on the bucket.
+                superchatIds: ['S1'],
                 activeLlmProvider: 'openai',
                 llmCredentials: { openai: buildKeySubdocument('sk-course', 'a', 'openai') },
                 ...(extra.course || {}),

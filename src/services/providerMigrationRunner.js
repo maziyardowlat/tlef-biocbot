@@ -21,6 +21,8 @@ const config = require('./config');
 const { buildEmbeddingProfile } = require('./embeddingConfig');
 const { clearIndexRecord } = require('./embeddingIndexService');
 const { activeProviderOf, credentialForProvider, decryptApiKey } = require('./llmKeyStore');
+const { getCourseSuperchatIds } = require('../models/Course');
+const { resolveSuperCourseChatSettings } = require('./superCourseService');
 const migrations = require('./providerMigrationService');
 
 const { ITEM_STATUSES, MIGRATION_STATUSES, MAX_ATTEMPTS } = migrations;
@@ -73,20 +75,29 @@ async function credentialCandidatesForItem(db, item) {
         candidates.push({ type: 'course', id: courseId });
     }
 
-    const buckets = await db.collection('superchats')
-        .find({ isDeleted: { $ne: true } })
-        .toArray();
-    for (const bucket of buckets) {
-        const covers = isNote
-            ? bucket.includeNotes === true
-            : (Array.isArray(bucket.courseIds) && bucket.courseIds.includes(courseId));
-        if (covers) candidates.push({ type: 'superchat', id: bucket.superchatId });
+    if (isNote) {
+        // Any bucket whose chat pulls Notes into retrieval can pay for a note.
+        const buckets = await db.collection('superchats')
+            .find({ isDeleted: { $ne: true } })
+            .toArray();
+        for (const bucket of buckets) {
+            if (resolveSuperCourseChatSettings(bucket).includeNotesInRetrieval) {
+                candidates.push({ type: 'superchat', id: bucket.superchatId });
+            }
+        }
+    } else if (courseId) {
+        // Bucket membership lives on the course, not on the bucket.
+        const course = await db.collection('courses').findOne({ courseId });
+        for (const superchatId of getCourseSuperchatIds(course || {})) {
+            candidates.push({ type: 'superchat', id: superchatId });
+        }
     }
 
-    // The instructor Super Course chat pools every course, and Notes unless it
-    // is configured to exclude them.
+    // The instructor Super Course chat pools every bucketed course, and Notes
+    // unless it is configured to exclude them.
     const superCourseChat = await db.collection('settings').findOne({ _id: 'superCourseChat' });
-    if (superCourseChat && (!isNote || superCourseChat.includeNotes !== false)) {
+    if (superCourseChat
+        && (!isNote || resolveSuperCourseChatSettings(superCourseChat).includeNotesInRetrieval)) {
         candidates.push({ type: 'superCourseChat', id: 'superCourseChat' });
     }
 
@@ -540,7 +551,12 @@ async function runMigration(db, migrationId, options = {}) {
     }
 
     if (job.kind === 'embedding-model') {
-        await adminModelSettings.activatePendingEmbedding(db, job.targetProfile.provider);
+        // Only promote the model THIS job indexed — a newer staged change has
+        // its own migration and its own vectors to wait for.
+        await adminModelSettings.activatePendingEmbedding(db, job.targetProfile.provider, {
+            embeddingModel: job.targetProfile.embeddingModel,
+            embeddingRevision: job.targetProfile.revision
+        });
     }
 
     await migrations.finishMigration(db, migrationId, MIGRATION_STATUSES.COMPLETED);

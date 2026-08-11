@@ -364,17 +364,41 @@ describe('what a surface migration has to cover', () => {
     });
 
     test('a bucket covers every member course, whatever platform those courses use', async () => {
+        // Membership is course-side (`course.superchatIds`) — a bucket document
+        // has no course list of its own.
         const db = memoryDb({
-            superchats: [{ superchatId: 'S1', courseIds: ['C1', 'C2'], includeNotes: true }],
+            superchats: [{ superchatId: 'S1' }],
+            courses: [
+                { courseId: 'C1', superchatIds: ['S1'] },
+                { courseId: 'C2', superchatIds: ['S1', 'S2'] },
+                { courseId: 'C3', superchatIds: ['S2'] },
+                { courseId: 'C4' },
+            ],
         });
 
         expect(await providerKeys.migrationScopeContent(db, { type: 'superchat', id: 'S1' }))
             .toEqual({ courseIds: ['C1', 'C2'], includeNotes: true });
     });
 
-    test('the instructor Super Course chat pools every course, plus Notes by default', async () => {
+    test('a bucket that excludes Notes from retrieval does not prepare them', async () => {
         const db = memoryDb({
-            courses: [{ courseId: 'C1' }, { courseId: 'C2' }, { courseId: 'C3', isDeleted: true }],
+            superchats: [{ superchatId: 'S1', includeNotesInRetrieval: false }],
+            courses: [{ courseId: 'C1', superchatIds: ['S1'] }],
+        });
+
+        expect(await providerKeys.migrationScopeContent(db, { type: 'superchat', id: 'S1' }))
+            .toEqual({ courseIds: ['C1'], includeNotes: false });
+    });
+
+    test('the instructor Super Course chat pools every bucketed course, plus Notes by default', async () => {
+        const db = memoryDb({
+            courses: [
+                { courseId: 'C1', superchatIds: ['S1'] },
+                { courseId: 'C2', superchatIds: ['S2'] },
+                // Not in any bucket, so the Super Course chat cannot retrieve it.
+                { courseId: 'C3' },
+                { courseId: 'C4', superchatIds: ['S1'], status: 'deleted' },
+            ],
             settings: [{ _id: 'superCourseChat' }],
         });
 
@@ -384,8 +408,8 @@ describe('what a surface migration has to cover', () => {
 
     test('the instructor Super Course chat can exclude Notes', async () => {
         const db = memoryDb({
-            courses: [{ courseId: 'C1' }],
-            settings: [{ _id: 'superCourseChat', includeNotes: false }],
+            courses: [{ courseId: 'C1', superchatIds: ['S1'] }],
+            settings: [{ _id: 'superCourseChat', includeNotesInRetrieval: false }],
         });
 
         expect(await providerKeys.migrationScopeContent(db, { type: 'superCourseChat', id: 'superCourseChat' }))

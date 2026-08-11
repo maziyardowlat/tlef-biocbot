@@ -9,6 +9,7 @@ const {
     clearIndexRecord,
     contentHash,
     deleteDocumentFromAllCollections,
+    deleteNoteFromAllCollections,
     indexFingerprint,
     indexedCollections,
     indexesOf,
@@ -342,6 +343,68 @@ describe('deleting from every indexed collection', () => {
         const doc = { documentId: 'doc-1', courseId: 'C1', content: 'x' };
         const db = memoryDb({ documents: [doc] });
         const result = await deleteDocumentFromAllCollections(db, doc, async () => null);
+        expect(result.deleted).toEqual([]);
+        expect(result.errors).toEqual([]);
+    });
+});
+
+describe('deleting a note from every indexed collection', () => {
+    function noteIndexedIn(...profiles) {
+        const hash = contentHash('note text');
+        const embeddingIndexes = {};
+        for (const profile of profiles) {
+            embeddingIndexes[profile.storageKey] = buildIndexRecord({
+                profile, hash, status: INDEX_STATUSES.READY, collection: profile.notesCollection,
+            });
+        }
+        return { noteId: 'n1', content: 'note text', embeddingIndexes };
+    }
+
+    test('a deleted note is removed from both platforms, not just the active one', async () => {
+        const note = noteIndexedIn(GPT, SANDBOX);
+        const db = memoryDb({ superchat_notes: [note] });
+        const calls = [];
+
+        const result = await deleteNoteFromAllCollections(db, note, async (collection, noteId) => {
+            calls.push({ collection, noteId });
+            return true;
+        });
+
+        expect(calls.map(call => call.collection).sort())
+            .toEqual(['superchat_notes', 'superchat_notes_qwen3_embedding_0_6b']);
+        expect(result.errors).toEqual([]);
+        expect((await db.collection('superchat_notes').findOne({ noteId: 'n1' })).embeddingIndexes)
+            .toEqual({});
+    });
+
+    test('a note with no tracking still sweeps the legacy notes collection', async () => {
+        const note = { noteId: 'n-old', content: 'legacy', qdrantPointIds: ['p1'] };
+        const db = memoryDb({ superchat_notes: [note] });
+        const calls = [];
+
+        await deleteNoteFromAllCollections(db, note, async (collection) => { calls.push(collection); return true; });
+        expect(calls).toEqual(['superchat_notes']);
+    });
+
+    test('one unreachable collection does not stop the others', async () => {
+        const note = noteIndexedIn(GPT, SANDBOX);
+        const db = memoryDb({ superchat_notes: [note] });
+
+        const result = await deleteNoteFromAllCollections(db, note, async (collection) => {
+            if (collection === 'superchat_notes') throw new Error('unreachable');
+            return true;
+        });
+
+        expect(result.deleted).toEqual([
+            { collection: 'superchat_notes_qwen3_embedding_0_6b', profileKey: SANDBOX.storageKey },
+        ]);
+        expect(result.errors).toMatchObject([{ collection: 'superchat_notes', error: 'unreachable' }]);
+    });
+
+    test('a collection that does not exist is skipped quietly', async () => {
+        const note = noteIndexedIn(SANDBOX);
+        const db = memoryDb({ superchat_notes: [note] });
+        const result = await deleteNoteFromAllCollections(db, note, async () => false);
         expect(result.deleted).toEqual([]);
         expect(result.errors).toEqual([]);
     });
