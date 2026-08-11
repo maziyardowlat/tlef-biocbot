@@ -21,6 +21,8 @@ jest.mock('../../../src/routes/llmKeyMiddleware', () => ({
 const { memoryDb } = require('../helpers/memory-db');
 const { makeRouteApp, request } = require('../helpers/route-app');
 const Course = require('../../../src/models/Course');
+const { buildEmbeddingProfile } = require('../../../src/services/embeddingConfig');
+const { contentHash } = require('../../../src/services/embeddingIndexService');
 const { resolveCourseAi, sendLlmKeyError } = require('../../../src/routes/llmKeyMiddleware');
 const router = require('../../../src/routes/qdrant');
 
@@ -115,6 +117,35 @@ describe('document processing and search with mocked AI/vector service', () => {
         expect(res.status).toBe(200);
         expect(res.body.data).toMatchObject({ chunksStored: 2, documentId: 'd1' });
         expect(qdrant.processAndStoreDocument).toHaveBeenCalledWith(expect.objectContaining({ ...payload, mimeType: 'text/plain' }));
+    });
+
+    test('process-document records the embedding profile after storing vectors', async () => {
+        const profile = buildEmbeddingProfile({
+            provider: 'openai', embeddingModel: 'text-embedding-3-small',
+        });
+        const qdrant = {
+            embeddingProfile: profile,
+            processAndStoreDocument: jest.fn(async () => ({
+                success: true, message: 'stored', chunksProcessed: 1, chunksStored: 1,
+            })),
+        };
+        resolveCourseAi.mockResolvedValueOnce({ qdrant });
+        const content = 'ATP content';
+        const db = memoryDb({
+            documents: [{ documentId: 'd1', courseId: 'C1', content, status: 'uploaded' }],
+        });
+
+        const res = await request(app({ db, user: instructor })).post('/process-document').send({
+            courseId: 'C1', lectureName: 'Unit 1', documentId: 'd1', content, fileName: 'notes.txt',
+        });
+
+        expect(res.status).toBe(200);
+        const stored = await db.collection('documents').findOne({ documentId: 'd1' });
+        expect(stored.status).toBe('uploaded');
+        expect(stored.embeddingIndexes[profile.storageKey]).toMatchObject({
+            provider: 'openai', model: 'text-embedding-3-small',
+            contentHash: contentHash(content), status: 'ready',
+        });
     });
 
     test('process-document maps a vector processing failure', async () => {

@@ -87,12 +87,11 @@ function indexFingerprint({ contentHash: hash, profile }) {
 }
 
 // Content indexed before per-profile tracking existed carries no
-// `embeddingIndexes`, but its vectors are really there — documents that reached
-// `status: 'parsed'`, and notes that recorded Qdrant point ids. Those vectors
-// were produced by the OpenAI small model in the legacy collection, so they are
-// surfaced as that profile. Without this, an upgrade would look like "nothing
-// is indexed" and would re-embed (or, on transfer, silently drop) every
-// existing document.
+// `embeddingIndexes`. Notes retain authoritative Qdrant point ids, so those can
+// still prove a legacy OpenAI index. Document lifecycle status cannot: this app
+// uses `uploaded` as its terminal state and the old `parsed` branch is not part
+// of ingestion. Legacy document records are therefore recovered from completed
+// provider-migration evidence instead of guessing from `status`.
 const LEGACY_PROFILE = Object.freeze({
     provider: 'openai',
     model: 'text-embedding-3-small',
@@ -104,7 +103,6 @@ const LEGACY_PROFILE = Object.freeze({
 
 function hasLegacyVectors(doc) {
     if (!doc || typeof doc !== 'object') return false;
-    if (doc.documentId) return doc.status === 'parsed';
     if (doc.noteId) return Array.isArray(doc.qdrantPointIds) && doc.qdrantPointIds.length > 0;
     return false;
 }
@@ -217,9 +215,24 @@ function buildIndexRecord({ profile, hash, status, error = null, indexedAt = nul
 }
 
 async function setIndexRecord(db, collectionName, filter, profile, record) {
+    const set = { [`embeddingIndexes.${profile.storageKey}`]: record, updatedAt: new Date() };
+
+    // A pre-profile-tracking note can have real GPT vectors represented only by
+    // its stored point ids. Materialize that implicit GPT record before adding
+    // the first non-GPT profile. Documents are deliberately excluded because
+    // their lifecycle status is not evidence that vector storage succeeded.
+    if (profile.storageKey !== LEGACY_PROFILE.storageKey) {
+        const existing = await db.collection(collectionName).findOne(filter);
+        const stored = existing && existing.embeddingIndexes;
+        const hasStoredIndexes = stored && typeof stored === 'object' && Object.keys(stored).length > 0;
+        if (!hasStoredIndexes && hasLegacyVectors(existing)) {
+            set[`embeddingIndexes.${LEGACY_PROFILE.storageKey}`] = legacyIndexRecord(existing);
+        }
+    }
+
     await db.collection(collectionName).updateOne(
         filter,
-        { $set: { [`embeddingIndexes.${profile.storageKey}`]: record, updatedAt: new Date() } }
+        { $set: set }
     );
 }
 
@@ -355,11 +368,15 @@ async function deleteDocumentFromAllCollections(db, doc, serviceFactory) {
     const { buildEmbeddingProfile, documentsCollectionBase } = require('./embeddingConfig');
 
     const targets = indexedCollections(doc);
-    if (targets.length === 0) {
-        // Pre-tracking document: it can only be in the legacy collection.
+    const legacyCollection = documentsCollectionBase();
+    if (!targets.some(target => target.collection === legacyCollection)) {
+        // Always sweep the legacy collection. A pre-tracking GPT document may
+        // now have an explicit Sandbox record but no explicit OpenAI record;
+        // limiting the fallback to an empty map would leave its GPT chunks
+        // behind and resurrect the deleted document after a switch back.
         targets.push({
             profileKey: LEGACY_PROFILE.storageKey,
-            collection: documentsCollectionBase(),
+            collection: legacyCollection,
             provider: 'openai',
             model: 'text-embedding-3-small'
         });
@@ -411,11 +428,13 @@ async function deleteNoteFromAllCollections(db, note, deleter) {
     const { notesCollectionBase } = require('./embeddingConfig');
 
     const targets = indexedCollections(note);
-    if (targets.length === 0) {
-        // Pre-tracking note: it can only be in the legacy notes collection.
+    const legacyCollection = notesCollectionBase();
+    if (!targets.some(target => target.collection === legacyCollection)) {
+        // As with documents, an explicit Sandbox record must not hide an older
+        // untracked GPT vector during deletion.
         targets.push({
             profileKey: LEGACY_PROFILE.storageKey,
-            collection: notesCollectionBase(),
+            collection: legacyCollection,
             provider: 'openai',
             model: 'text-embedding-3-small'
         });

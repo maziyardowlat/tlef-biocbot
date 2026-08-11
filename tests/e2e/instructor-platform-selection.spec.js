@@ -243,7 +243,7 @@ test.describe('Instructor platform selection', () => {
         await expect(page.locator('#course-llm-platform-change-note')).toBeHidden();
     });
 
-    test('choosing a platform with no key asks for one before material can be prepared', async ({ page }) => {
+    test('choosing a platform with no key asks for one before switching', async ({ page }) => {
         await mockCourseKeyState(page, baseState());
         await openCourseKeySettings(page);
 
@@ -252,18 +252,18 @@ test.describe('Instructor platform selection', () => {
         await expect(page.locator('#course-llm-platform-help')).toHaveText(SANDBOX_HELP);
         await expect(page.locator('#course-llm-platform-change-note')).toBeVisible();
         await expect(page.locator('#course-llm-platform-change-note'))
-            .toContainText('Save a UBC On-Premise LLM key, then prepare the material');
+            .toContainText('Save a UBC On-Premise LLM key, then switch platforms');
         // The current platform keeps serving until preparation finishes.
         await expect(page.locator('#course-llm-platform-change-note'))
             .toContainText('OpenAI Chat GPT keeps answering until then');
         // The status line follows the selected platform, not the active one.
         await expect(page.locator('#course-llm-key-status')).toContainText('No UBC On-Premise LLM key saved');
         await expect(page.locator('#course-llm-key-input')).toHaveAttribute('placeholder', 'UBC LLM Sandbox API key');
-        // Without a valid key there is nothing to prepare.
+        // Without a valid key there is nothing to switch to.
         await expect(page.locator('#course-llm-prepare')).toBeDisabled();
     });
 
-    test('choosing a platform whose key is already saved offers to prepare and switch', async ({ page }) => {
+    test('choosing a platform whose key is already saved offers to switch and reuse material', async ({ page }) => {
         await mockCourseKeyState(page, baseState({
             llmKeysByProvider: {
                 openai: { status: 'valid', last4: '1111', validatedAt: null, updatedAt: null },
@@ -275,13 +275,13 @@ test.describe('Instructor platform selection', () => {
         await page.locator('#course-llm-provider-ubc-llm-sandbox').check();
 
         await expect(page.locator('#course-llm-platform-change-note'))
-            .toContainText('Your saved UBC On-Premise LLM key is kept separately');
+            .toContainText('Your saved UBC On-Premise LLM key and embeddings are kept separately');
         await expect(page.locator('#course-llm-platform-change-note'))
-            .toContainText('switch to UBC On-Premise LLM automatically when it is ready');
-        // The key is already valid, so preparation can start straight away.
+            .toContainText('only missing or changed items need preparation');
+        // The key is already valid, so a direct switch can be attempted.
         await expect(page.locator('#course-llm-prepare')).toBeEnabled();
         await expect(page.locator('#course-llm-prepare'))
-            .toHaveText('Prepare material and switch to UBC On-Premise LLM');
+            .toHaveText('Switch to UBC On-Premise LLM');
 
         // Back on the active platform the action becomes a refresh, not a switch.
         await page.locator('#course-llm-provider-openai').check();
@@ -289,7 +289,8 @@ test.describe('Instructor platform selection', () => {
         await expect(page.locator('#course-llm-prepare')).toHaveText('Refresh OpenAI Chat GPT material');
     });
 
-    test('preparing a stored platform starts a migration without re-entering the key', async ({ page }) => {
+    test('switching prepares missing material without re-entering the key', async ({ page }) => {
+        let switchRequest = null;
         let prepareRequest = null;
         await mockCourseKeyState(page, baseState({
             llmKeysByProvider: {
@@ -297,6 +298,20 @@ test.describe('Instructor platform selection', () => {
                 'ubc-llm-sandbox': { status: 'valid', last4: '2222', validatedAt: null, updatedAt: null },
             },
         }));
+        await page.route('**/api/courses/*/llm-provider', async (route) => {
+            switchRequest = JSON.parse(route.request().postData() || '{}');
+            await route.fulfill({
+                status: 409,
+                contentType: 'application/json',
+                body: JSON.stringify({
+                    success: false,
+                    code: 'LLM_PROVIDER_NOT_PREPARED',
+                    message: '2 items still need preparation.',
+                    unpreparedCount: 2,
+                    needsPreparation: true,
+                }),
+            });
+        });
         await page.route('**/api/courses/*/llm-provider/prepare', async (route) => {
             prepareRequest = JSON.parse(route.request().postData() || '{}');
             await route.fulfill({
@@ -328,16 +343,23 @@ test.describe('Instructor platform selection', () => {
 
         // The key is already stored, so saving is only ever a replacement...
         await expect(page.locator('#save-course-llm-key')).toHaveText('Replace UBC On-Premise LLM key');
-        // ...and the switch happens through the explicit prepare action.
+        // ...and the switch is attempted before any preparation job.
         await expect(page.locator('#course-llm-prepare')).toBeEnabled();
+        await expect(page.locator('#course-llm-prepare')).toHaveText('Switch to UBC On-Premise LLM');
 
-        page.once('dialog', async (dialog) => {
-            expect(dialog.message()).toContain('Prepare all current material for UBC On-Premise LLM?');
+        const dialogs = [];
+        page.on('dialog', async (dialog) => {
+            dialogs.push(dialog.message());
             await dialog.accept();
         });
         await page.locator('#course-llm-prepare').click();
 
+        await expect.poll(() => switchRequest).toEqual({ llmProvider: 'ubc-llm-sandbox' });
         await expect.poll(() => prepareRequest).toEqual({ llmProvider: 'ubc-llm-sandbox' });
+        expect(dialogs).toEqual([
+            'Switch this AI surface to UBC On-Premise LLM? Existing embeddings will be reused.',
+            '2 items need preparation for UBC On-Premise LLM. Prepare them now?',
+        ]);
         // Progress replaces the button state; no key was ever re-entered.
         await expect(page.locator('#course-llm-migration')).toBeVisible();
         await expect(page.locator('#course-llm-key-input')).toHaveValue('');

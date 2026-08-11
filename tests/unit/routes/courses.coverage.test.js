@@ -29,6 +29,26 @@ const { makeRouteApp, request } = require('../helpers/route-app');
 const CourseModel = require('../../../src/models/Course');
 const DocumentModel = require('../../../src/models/Document');
 const coursesRouter = require('../../../src/routes/courses');
+const { buildEmbeddingProfile } = require('../../../src/services/embeddingConfig');
+const {
+    INDEX_STATUSES, buildIndexRecord, contentHash,
+} = require('../../../src/services/embeddingIndexService');
+
+const GPT_PROFILE = buildEmbeddingProfile({
+    provider: 'openai', embeddingModel: 'text-embedding-3-small',
+});
+
+function withGptIndex(document) {
+    const hash = contentHash(document.content || '');
+    return {
+        ...document,
+        embeddingIndexes: {
+            [GPT_PROFILE.storageKey]: buildIndexRecord({
+                profile: GPT_PROFILE, hash, status: INDEX_STATUSES.READY, indexedAt: new Date(),
+            }),
+        },
+    };
+}
 
 const instructor = { userId: 'i1', role: 'instructor' };
 const ta = { userId: 't1', role: 'ta' };
@@ -108,8 +128,8 @@ describe('stub content upload and richer transfer behavior', () => {
             }],
         };
         const db = memoryDb({ courses: [source], documents: [
-            { documentId: 'd1', courseId: 'C1', lectureName: 'Unit 1', contentType: 'text', content: 'ATP text', filename: 'a.txt', status: 'parsed', metadata: { x: 1 } },
-            { documentId: 'd2', courseId: 'C1', lectureName: 'Unit 1', contentType: 'file', fileId: 'old-file', filename: 'b.pdf', mimeType: 'application/pdf', size: 12, status: 'parsed', content: 'PDF text' },
+            withGptIndex({ documentId: 'd1', courseId: 'C1', lectureName: 'Unit 1', contentType: 'text', content: 'ATP text', filename: 'a.txt', status: 'uploaded', metadata: { x: 1 } }),
+            withGptIndex({ documentId: 'd2', courseId: 'C1', lectureName: 'Unit 1', contentType: 'file', fileId: 'old-file', filename: 'b.pdf', mimeType: 'application/pdf', size: 12, status: 'uploaded', content: 'PDF text' }),
         ] });
         const res = await request(app({ db, user: instructor })).post('/C1/transfer').send({ newCourseName: 'Clone', apiKey: 'sk' });
         expect(res.status).toBe(200);
@@ -123,7 +143,7 @@ describe('stub content upload and richer transfer behavior', () => {
         mockQdrant.cloneDocumentChunks.mockResolvedValueOnce({ success: true, clonedCount: 0 });
         const db = memoryDb({
             courses: [{ courseId: 'C1', courseName: 'Source', instructorId: 'i1', lectures: [{ name: 'Unit 1', documents: [{ documentId: 'd1' }] }] }],
-            documents: [{ documentId: 'd1', courseId: 'C1', lectureName: 'Unit 1', contentType: 'file', fileData: Buffer.from('markdown').toString('base64'), mimeType: 'text/markdown', status: 'parsed' }],
+            documents: [withGptIndex({ documentId: 'd1', courseId: 'C1', lectureName: 'Unit 1', contentType: 'file', fileData: Buffer.from('markdown').toString('base64'), mimeType: 'text/markdown', status: 'uploaded' })],
         });
         const res = await request(app({ db, user: instructor })).post('/C1/transfer').send({ newCourseName: 'Clone', apiKey: 'sk' });
         expect(res.status).toBe(200);
@@ -410,9 +430,9 @@ describe('last-mile edge and exception coverage', () => {
             anonymizeStudents: { i1: { enabled: true } },
         };
         const db = memoryDb({ courses: [source], documents: [
-            { documentId: 'buf', courseId: 'C1', lectureName: 'Unit 1', contentType: 'file', fileData: Buffer.from('one'), filename: 'one.txt', mimeType: 'text/plain', status: 'parsed' },
-            { documentId: 'obj', courseId: 'C1', lectureName: 'Unit 1', contentType: 'file', fileData: { buffer: [116, 119, 111] }, filename: 'two.txt', mimeType: 'text/plain', status: 'parsed' },
-            { documentId: 'bad', courseId: 'C1', lectureName: 'Unit 1', contentType: 'file', fileData: { nope: true }, filename: 'bad.bin', mimeType: 'application/octet-stream', status: 'parsed' },
+            withGptIndex({ documentId: 'buf', courseId: 'C1', lectureName: 'Unit 1', contentType: 'file', fileData: Buffer.from('one'), filename: 'one.txt', mimeType: 'text/plain', status: 'uploaded' }),
+            withGptIndex({ documentId: 'obj', courseId: 'C1', lectureName: 'Unit 1', contentType: 'file', fileData: { buffer: [116, 119, 111] }, filename: 'two.txt', mimeType: 'text/plain', status: 'uploaded' }),
+            withGptIndex({ documentId: 'bad', courseId: 'C1', lectureName: 'Unit 1', contentType: 'file', fileData: { nope: true }, filename: 'bad.bin', mimeType: 'application/octet-stream', status: 'uploaded' }),
         ] });
         mockQdrant.cloneDocumentChunks
             .mockResolvedValueOnce({ success: false, error: 'missing vectors' })
