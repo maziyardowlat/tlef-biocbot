@@ -160,6 +160,54 @@ textarea {
     background-color: var(--sidebar-active);
 }
 
+.main-nav .student-preview-control {
+    display: flex;
+    align-items: center;
+    border-radius: 4px;
+    transition: background-color 0.3s ease;
+}
+
+.main-nav .student-preview-control:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.main-nav .student-preview-control > a {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding-right: 4px;
+    white-space: nowrap;
+}
+
+.main-nav .student-preview-control > a:hover {
+    background-color: transparent;
+}
+
+.main-nav .student-preview-option {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 5px;
+    padding: 10px 8px 10px 2px;
+    color: rgba(255, 255, 255, 0.78);
+    font-size: 10px;
+    line-height: 1.35;
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+}
+
+.main-nav .student-preview-option input {
+    width: 14px;
+    height: 14px;
+    margin: 0;
+    accent-color: var(--secondary-color);
+    cursor: pointer;
+}
+
+.main-nav .student-preview-option:hover {
+    color: var(--light-text);
+}
+
 .main-nav .icon {
     margin-right: 10px;
 }

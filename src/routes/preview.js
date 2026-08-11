@@ -68,12 +68,14 @@ async function canPreviewCourse(db, user, courseId) {
 /**
  * POST /api/preview/start
  * Issue a preview grant for a course and return the entry URL.
+ * Body: { courseId: string, skipTutorial?: boolean }
  */
 router.post('/start', async (req, res) => {
     try {
         const db = req.app.locals.db;
         const user = getRealUser(req);
         const { courseId } = req.body || {};
+        const skipTutorial = req.body && req.body.skipTutorial === true;
 
         if (!user) {
             return res.status(401).json({ success: false, message: 'Not authenticated' });
@@ -99,6 +101,18 @@ router.post('/start', async (req, res) => {
 
         await PreviewState.ensurePreviewUser(db, user, grant);
         const state = await PreviewState.ensureState(db, grant);
+
+        // This only mutates the disposable preview student created above. The
+        // instructor's preference must never advance onboarding for a real
+        // student account.
+        if (skipTutorial) {
+            await PreviewState.setFirstRunCompleted(db, grant.previewUserId, true);
+            await db.collection('users').updateOne(
+                { userId: grant.previewUserId, isPreview: true },
+                { $set: { studentOnboardingComplete: true, updatedAt: new Date() } }
+            );
+            state.firstRunCompleted = true;
+        }
 
         req.session.preview = grant;
 

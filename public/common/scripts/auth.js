@@ -6,6 +6,8 @@
 let currentUser = null;
 let currentLLMTagClasses = [];
 
+const PREVIEW_SKIP_TUTORIAL_KEY = 'biocbot_preview_skip_tutorial';
+
 const LLM_TAG_CLASS_PATTERN = /^(llm|reasoning)-\d+$/;
 const LLM_TAG_TARGET_SELECTOR = 'body, .chat-container, #chat-messages, .quiz-chat-container, #quiz-chat-messages';
 const LLM_TAG_COMMENT_PREFIX = 'LLM tag map:';
@@ -190,14 +192,39 @@ function addStudentPreviewNavItem() {
 
     const item = document.createElement('li');
     item.id = 'nav-student-preview-li';
-    item.innerHTML = '<a href="#" id="nav-student-preview">View as Student</a>';
+    item.innerHTML = `
+        <div class="student-preview-control">
+            <a href="#" id="nav-student-preview">View as Student</a>
+            <label class="student-preview-option" for="nav-student-preview-skip">
+                <input type="checkbox" id="nav-student-preview-skip">
+                <span>Skip tutorial</span>
+            </label>
+        </div>
+    `;
 
     // Sits last in the nav list, directly above the Settings/Logout block.
     navList.appendChild(item);
 
-    item.querySelector('#nav-student-preview').addEventListener('click', async event => {
+    const previewLink = item.querySelector('#nav-student-preview');
+    const skipTutorialToggle = item.querySelector('#nav-student-preview-skip');
+
+    try {
+        skipTutorialToggle.checked = localStorage.getItem(PREVIEW_SKIP_TUTORIAL_KEY) === '1';
+    } catch (error) {
+        console.warn('Could not restore the preview tutorial preference:', error);
+    }
+
+    skipTutorialToggle.addEventListener('change', () => {
+        try {
+            localStorage.setItem(PREVIEW_SKIP_TUTORIAL_KEY, skipTutorialToggle.checked ? '1' : '0');
+        } catch (error) {
+            console.warn('Could not save the preview tutorial preference:', error);
+        }
+    });
+
+    previewLink.addEventListener('click', async event => {
         event.preventDefault();
-        await startStudentPreview(event.currentTarget);
+        await startStudentPreview(event.currentTarget, skipTutorialToggle.checked);
     });
 }
 
@@ -216,11 +243,19 @@ function addStudentPreviewNavItem() {
  * @param {boolean} firstRunCompleted - Whether the walkthrough already ran
  */
 function seedPreviewWalkthrough(previewUserId, firstRunCompleted) {
-    if (!previewUserId || firstRunCompleted) {
+    if (!previewUserId) {
         return;
     }
 
     try {
+        // A tab closed during an earlier first-run preview can leave this
+        // shared marker behind. Skipping must explicitly clear it or the new
+        // tab would still behave like the walkthrough is pending.
+        if (firstRunCompleted) {
+            localStorage.removeItem('biocbot_preview_first_run_pending');
+            return;
+        }
+
         // Stash the course before the preview tab clears the shared key, so
         // instructor pages can put it back rather than falling through to a
         // stale one and having their requests refused.
@@ -244,9 +279,10 @@ function seedPreviewWalkthrough(previewUserId, firstRunCompleted) {
  * sessions alive at once.
  *
  * @param {HTMLElement} trigger - The clicked nav link, disabled while starting
+ * @param {boolean} [skipTutorial=false] - Open with preview onboarding complete
  * @returns {Promise<void>}
  */
-async function startStudentPreview(trigger) {
+async function startStudentPreview(trigger, skipTutorial = false) {
     // Instructor pages do not all resolve course context the same way: the
     // shared auth helper is synchronous, while Course Upload, Flagged Content,
     // and Download Chats provide asynchronous resolvers. Awaiting works for
@@ -267,7 +303,7 @@ async function startStudentPreview(trigger) {
             method: 'POST',
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ courseId })
+            body: JSON.stringify({ courseId, skipTutorial })
         });
 
         const result = await response.json();
