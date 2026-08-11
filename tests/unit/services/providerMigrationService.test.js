@@ -79,7 +79,9 @@ describe('calculateWork', () => {
         const text = 'legacy course text';
         const db = memoryDb({
             documents: [{
-                documentId: 'legacy-d1', courseId: 'C1', content: text, status: 'parsed',
+                // `uploaded` is the real terminal document state; embedding
+                // readiness comes from per-profile records and migration proof.
+                documentId: 'legacy-d1', courseId: 'C1', content: text, status: 'uploaded',
                 embeddingIndexes: readyFor(SANDBOX, text),
             }],
             providerMigrations: [{

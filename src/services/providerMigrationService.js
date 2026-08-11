@@ -30,7 +30,6 @@ const { createId } = require('./id');
 const {
     INDEX_STATUSES,
     contentHash,
-    hasLegacyVectors,
     indexingReason,
     markDocumentIndexFailed,
     markDocumentIndexReady,
@@ -146,10 +145,11 @@ async function calculateWork({ db, profile, courseIds = [], includeNotes = false
     let skipped = 0;
 
     // Repair the one lossy transition from the first provider-aware release:
-    // legacy GPT indexes were implicit (`status: parsed` / note point ids), and
+    // legacy GPT indexes had no per-profile record, and
     // an early GPT -> Sandbox migration could add only the Sandbox map entry.
-    // A completed migration item is durable proof that the item existed before
-    // that switch. Materialize its GPT record when the content is unchanged so
+    // A completed OpenAI -> Sandbox migration item is durable evidence that
+    // the item belonged to the OpenAI-backed surface before that switch.
+    // Materialize its GPT record when the content is unchanged so
     // installations that already hit the bug can switch back without paying
     // for the same OpenAI embeddings again.
     let legacyEvidence = null;
@@ -191,8 +191,7 @@ async function calculateWork({ db, profile, courseIds = [], includeNotes = false
             if (!doc.content || !String(doc.content).trim()) continue;
             const hash = contentHash(doc.content);
             const legacyHash = legacyEvidence && legacyEvidence.get(`document:${doc.documentId}`);
-            if (legacyHash === hash && hasLegacyVectors(doc)
-                && needsIndexing(doc, profile, hash)) {
+            if (legacyHash === hash && needsIndexing(doc, profile, hash)) {
                 const record = await markDocumentIndexReady(db, doc.documentId, profile, hash);
                 doc.embeddingIndexes = { ...(doc.embeddingIndexes || {}), [profile.storageKey]: record };
             }
@@ -224,8 +223,7 @@ async function calculateWork({ db, profile, courseIds = [], includeNotes = false
             if (!note.content || !String(note.content).trim()) continue;
             const hash = contentHash(note.content);
             const legacyHash = legacyEvidence && legacyEvidence.get(`note:${note.noteId}`);
-            if (legacyHash === hash && hasLegacyVectors(note)
-                && needsIndexing(note, profile, hash)) {
+            if (legacyHash === hash && needsIndexing(note, profile, hash)) {
                 const record = await markNoteIndexReady(db, note.noteId, profile, hash);
                 note.embeddingIndexes = { ...(note.embeddingIndexes || {}), [profile.storageKey]: record };
             }

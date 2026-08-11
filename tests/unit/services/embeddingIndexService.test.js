@@ -144,24 +144,10 @@ describe('needsIndexing', () => {
 });
 
 describe('legacy content with no embeddingIndexes', () => {
-    test('a parsed document reads as an existing OpenAI index, so it is reused', () => {
-        const legacy = { documentId: 'old-1', courseId: 'C1', content: 'legacy text', status: 'parsed' };
-        const records = indexesOf(legacy);
-
-        expect(Object.keys(records)).toEqual(['openai:text-embedding-3-small:v1']);
-        expect(records['openai:text-embedding-3-small:v1']).toMatchObject({
-            provider: 'openai', model: 'text-embedding-3-small', collection: 'biocbot_documents', legacy: true,
-        });
-        // Existing OpenAI behaviour keeps working: no re-embedding is scheduled.
-        expect(needsIndexing(legacy, GPT, contentHash(legacy.content))).toBe(false);
-        // But it still needs a Qwen index before a Sandbox surface can use it.
-        expect(needsIndexing(legacy, SANDBOX, contentHash(legacy.content))).toBe(true);
-    });
-
-    test('an unparsed document claims no index at all', () => {
-        const pending = { documentId: 'old-2', courseId: 'C1', content: 'text', status: 'uploaded' };
-        expect(indexesOf(pending)).toEqual({});
-        expect(needsIndexing(pending, GPT, contentHash(pending.content))).toBe(true);
+    test.each(['uploaded', 'parsed'])('document status %s never claims an embedding index', (status) => {
+        const doc = { documentId: 'old-1', courseId: 'C1', content: 'legacy text', status };
+        expect(indexesOf(doc)).toEqual({});
+        expect(needsIndexing(doc, GPT, contentHash(doc.content))).toBe(true);
     });
 
     test('a legacy note with stored point ids reads as an OpenAI notes index', () => {
@@ -176,8 +162,17 @@ describe('legacy content with no embeddingIndexes', () => {
     });
 
     test('stored records always win over the legacy synthesis', () => {
-        const doc = indexedDoc(SANDBOX, 'text', { status: 'parsed' });
-        expect(Object.keys(indexesOf(doc))).toEqual([SANDBOX.storageKey]);
+        const hash = contentHash('note text');
+        const note = {
+            noteId: 'note-3', content: 'note text', qdrantPointIds: ['legacy-point'],
+            embeddingIndexes: {
+                [SANDBOX.storageKey]: buildIndexRecord({
+                    profile: SANDBOX, hash, status: INDEX_STATUSES.READY,
+                    collection: SANDBOX.notesCollection,
+                }),
+            },
+        };
+        expect(Object.keys(indexesOf(note))).toEqual([SANDBOX.storageKey]);
     });
 });
 
@@ -218,24 +213,19 @@ describe('persisting index state', () => {
         expect(stored.embeddingIndexes[SANDBOX.storageKey].indexedAt).toBeInstanceOf(Date);
     });
 
-    test('adding Sandbox tracking materializes an implicit legacy GPT index', async () => {
+    test('adding Sandbox tracking does not invent a GPT index from document status', async () => {
         const db = memoryDb({
             documents: [{
-                documentId: 'legacy-doc', courseId: 'C1', content: 'legacy text', status: 'parsed',
+                documentId: 'legacy-doc', courseId: 'C1', content: 'legacy text', status: 'uploaded',
             }],
         });
 
         await markDocumentIndexReady(db, 'legacy-doc', SANDBOX, contentHash('legacy text'));
 
         const stored = await db.collection('documents').findOne({ documentId: 'legacy-doc' });
-        expect(stored.embeddingIndexes[GPT.storageKey]).toMatchObject({
-            provider: 'openai',
-            model: 'text-embedding-3-small',
-            status: 'ready',
-            legacy: true,
-        });
+        expect(stored.embeddingIndexes[GPT.storageKey]).toBeUndefined();
         expect(stored.embeddingIndexes[SANDBOX.storageKey]).toMatchObject({ status: 'ready' });
-        expect(needsIndexing(stored, GPT, contentHash(stored.content))).toBe(false);
+        expect(needsIndexing(stored, GPT, contentHash(stored.content))).toBe(true);
     });
 
     test('markDocumentIndexFailed records a truncated error and leaves other profiles alone', async () => {
@@ -336,6 +326,19 @@ describe('deleting from every indexed collection', () => {
 
         await deleteDocumentFromAllCollections(db, doc, serviceFactory(calls));
         expect(calls.map(call => call.collection)).toEqual(['biocbot_documents']);
+    });
+
+    test('a Sandbox-only record still sweeps the untracked legacy GPT collection', async () => {
+        const doc = indexedDoc(SANDBOX, 'legacy then sandbox', {
+            documentId: 'doc-old', courseId: 'C1', status: 'uploaded',
+        });
+        const db = memoryDb({ documents: [doc] });
+        const calls = [];
+
+        await deleteDocumentFromAllCollections(db, doc, serviceFactory(calls));
+
+        expect(calls.map(call => call.collection).sort())
+            .toEqual(['biocbot_documents', 'biocbot_documents_qwen3_embedding_0_6b']);
     });
 
     test('one unreachable collection does not stop the others', async () => {

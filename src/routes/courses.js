@@ -724,9 +724,11 @@ async function cloneDocumentForTransfer({
                 continue;
             }
             if (cloneResult.clonedCount === 0) {
-                if (sourceStatus === 'parsed') {
-                    warnings.push(`No stored chunks were found to transfer for "${documentData.originalName}" (${profileKey}).`);
-                }
+                // Reaching this branch already means the explicit profile
+                // record claimed ready vectors. Document lifecycle status is
+                // unrelated (`uploaded` is terminal), so a zero-vector clone
+                // is always worth reporting.
+                warnings.push(`No stored chunks were found to transfer for "${documentData.originalName}" (${profileKey}).`);
                 continue;
             }
 
