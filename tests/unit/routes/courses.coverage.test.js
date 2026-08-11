@@ -6,12 +6,22 @@ const mockQdrant = {
 };
 jest.mock('../../../src/services/qdrantService', () => jest.fn().mockImplementation(() => mockQdrant));
 jest.mock('../../../src/services/gridfs', () => ({ copyFile: jest.fn(async () => 'copied-file') }));
-jest.mock('../../../src/services/llmKeyStore', () => ({
-    publicKeySummary: jest.fn((key) => key ? { status: key.status || 'valid' } : { status: 'none' }),
-    buildKeySubdocument: jest.fn(() => ({ ciphertext: 'encrypted', status: 'valid' })),
-    decryptApiKey: jest.fn(() => 'sk'),
-    validateApiKey: jest.fn(async () => ({ ok: true })),
-}));
+// Real provider-state readers (publicProviderKeyState / credentialSetFields /
+// readProviderState) so per-course provider resolution is exercised; only
+// crypto and the network probe are stubbed.
+jest.mock('../../../src/services/llmKeyStore', () => {
+    const actual = jest.requireActual('../../../src/services/llmKeyStore');
+    return {
+        ...actual,
+        buildKeySubdocument: jest.fn((apiKey, userId, provider) => ({
+            ciphertext: 'encrypted', last4: '1234', status: 'valid', provider: provider || 'openai',
+            validatedAt: new Date(), updatedAt: new Date(), updatedBy: userId || null,
+        })),
+        decryptApiKey: jest.fn(() => 'sk'),
+        validateApiKey: jest.fn(async () => ({ ok: true })),
+        validateProviderKey: jest.fn(async () => ({ ok: true, status: 'valid', provider: 'openai' })),
+    };
+});
 jest.mock('../../../src/routes/llmKeyMiddleware', () => ({ resolveCourseAi: jest.fn() }));
 
 const { memoryDb } = require('../helpers/memory-db');
@@ -99,7 +109,7 @@ describe('stub content upload and richer transfer behavior', () => {
         };
         const db = memoryDb({ courses: [source], documents: [
             { documentId: 'd1', courseId: 'C1', lectureName: 'Unit 1', contentType: 'text', content: 'ATP text', filename: 'a.txt', status: 'parsed', metadata: { x: 1 } },
-            { documentId: 'd2', courseId: 'C1', lectureName: 'Unit 1', contentType: 'file', fileId: 'old-file', filename: 'b.pdf', mimeType: 'application/pdf', size: 12 },
+            { documentId: 'd2', courseId: 'C1', lectureName: 'Unit 1', contentType: 'file', fileId: 'old-file', filename: 'b.pdf', mimeType: 'application/pdf', size: 12, status: 'parsed', content: 'PDF text' },
         ] });
         const res = await request(app({ db, user: instructor })).post('/C1/transfer').send({ newCourseName: 'Clone', apiKey: 'sk' });
         expect(res.status).toBe(200);
@@ -338,7 +348,7 @@ describe('last-mile edge and exception coverage', () => {
 
     test('course-key routes preserve service and database failure contracts', async () => {
         const keys = require('../../../src/services/llmKeyStore');
-        keys.validateApiKey.mockRejectedValueOnce(new Error('provider down'));
+        keys.validateProviderKey.mockRejectedValueOnce(new Error('provider down'));
         let res = await request(app({ db: memoryDb({ courses: [course] }), user: instructor }))
             .put('/C1/llm-key').send({ apiKey: 'sk' });
         expect(res.status).toBe(500);
@@ -400,9 +410,9 @@ describe('last-mile edge and exception coverage', () => {
             anonymizeStudents: { i1: { enabled: true } },
         };
         const db = memoryDb({ courses: [source], documents: [
-            { documentId: 'buf', courseId: 'C1', lectureName: 'Unit 1', contentType: 'file', fileData: Buffer.from('one'), filename: 'one.txt', mimeType: 'text/plain' },
-            { documentId: 'obj', courseId: 'C1', lectureName: 'Unit 1', contentType: 'file', fileData: { buffer: [116, 119, 111] }, filename: 'two.txt', mimeType: 'text/plain' },
-            { documentId: 'bad', courseId: 'C1', lectureName: 'Unit 1', contentType: 'file', fileData: { nope: true }, filename: 'bad.bin', mimeType: 'application/octet-stream' },
+            { documentId: 'buf', courseId: 'C1', lectureName: 'Unit 1', contentType: 'file', fileData: Buffer.from('one'), filename: 'one.txt', mimeType: 'text/plain', status: 'parsed' },
+            { documentId: 'obj', courseId: 'C1', lectureName: 'Unit 1', contentType: 'file', fileData: { buffer: [116, 119, 111] }, filename: 'two.txt', mimeType: 'text/plain', status: 'parsed' },
+            { documentId: 'bad', courseId: 'C1', lectureName: 'Unit 1', contentType: 'file', fileData: { nope: true }, filename: 'bad.bin', mimeType: 'application/octet-stream', status: 'parsed' },
         ] });
         mockQdrant.cloneDocumentChunks
             .mockResolvedValueOnce({ success: false, error: 'missing vectors' })

@@ -166,10 +166,26 @@
                         </div>
 
                         <div id="course-api-key-section" class="form-section">
+                            <!-- Step 1: choose the AI platform. Instructors pick a
+                                 platform label only; models are admin settings. -->
                             <div class="form-group">
-                                <label for="course-api-key">Course OpenAI API Key</label>
-                                <input type="password" id="course-api-key" name="apiKey" placeholder="sk-..." autocomplete="off">
-                                <small>Keys are issued by the BiocBot team. Contact LT.hub@ubc.ca for a new or replacement key.</small>
+                                <fieldset class="llm-platform-choice" id="onboarding-llm-platform">
+                                    <legend>AI Platform</legend>
+                                    <label class="llm-platform-option">
+                                        <input type="radio" name="onboarding-llm-provider" id="onboarding-llm-provider-openai" value="openai" checked>
+                                        <span>OpenAI Chat GPT</span>
+                                    </label>
+                                    <label class="llm-platform-option">
+                                        <input type="radio" name="onboarding-llm-provider" id="onboarding-llm-provider-ubc-llm-sandbox" value="ubc-llm-sandbox">
+                                        <span>UBC On-Premise LLM</span>
+                                    </label>
+                                </fieldset>
+                            </div>
+                            <!-- Step 2: enter that platform's key. -->
+                            <div class="form-group">
+                                <label for="course-api-key" id="course-api-key-label">Course API Key</label>
+                                <input type="password" id="course-api-key" name="apiKey" placeholder="sk-..." autocomplete="off" aria-describedby="onboarding-llm-platform-help">
+                                <small id="onboarding-llm-platform-help">Feel free to use your own OpenAI API key, or contact the support team for assistance.</small>
                             </div>
                         </div>
 
@@ -669,6 +685,7 @@
     <script src="./scripts/course-join.js"></script>
     <!-- Onboarding modules: state must load first, boot (onboarding.js) last -->
     <script src="./scripts/onboarding-state.js"></script>
+    <script src="../common/scripts/llm-platform.js"></script>
     <script src="./scripts/onboarding-course-setup.js"></script>
     <script src="./scripts/onboarding-flow.js"></script>
     <script src="./scripts/onboarding-objectives-questions.js"></script>

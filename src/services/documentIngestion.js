@@ -6,6 +6,11 @@ const DocumentModel = require('../models/Document');
 const CourseModel = require('../models/Course');
 const FlashcardDeck = require('../models/FlashcardDeck');
 const gridfs = require('./gridfs');
+const {
+    contentHash,
+    markDocumentIndexFailed,
+    markDocumentIndexReady
+} = require('./embeddingIndexService');
 const { DocumentParsingModule } = require('ubc-genai-toolkit-document-parsing');
 const { ConsoleLogger } = require('ubc-genai-toolkit-core');
 
@@ -154,12 +159,24 @@ async function ingestDocument({
     let qdrantResult = null;
     if (documentData.content) {
         emit('indexing');
+        const profile = qdrantService && qdrantService.embeddingProfile;
+        const hash = contentHash(documentData.content);
         try {
             const payload = { ...qdrantData, documentId: result.documentId, type: result.type };
             qdrantResult = indexDocument
                 ? await indexDocument(payload)
                 : await qdrantService.processAndStoreDocument(payload);
+
+            // Record which embedding profile now has current vectors for this
+            // document. Other profiles stay untouched, so a later switch only
+            // re-embeds what is genuinely missing.
+            if (profile && qdrantResult && qdrantResult.success !== false) {
+                await markDocumentIndexReady(db, result.documentId, profile, hash);
+            }
         } catch (error) {
+            if (profile) {
+                await markDocumentIndexFailed(db, result.documentId, profile, hash, error).catch(() => {});
+            }
             if (error?.name === 'LlmKeyError') throw error;
             console.warn('Warning: Document uploaded but Qdrant processing failed:', error.message);
         }

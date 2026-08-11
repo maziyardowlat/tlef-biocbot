@@ -28,8 +28,76 @@ const PROVIDER_MODELS = Object.freeze({
     'ubc-llm-sandbox': ['qwen3.6-35b-a3b', 'gpt-oss-120b']
 });
 
+// --- Embedding models -------------------------------------------------------
+// Sandbox surfaces must embed on the UBC Sandbox/B300 — never with OpenAI —
+// so the allowed embedding models are strictly partitioned by provider.
+const OPENAI_DEFAULT_EMBEDDING_MODEL = 'text-embedding-3-small';
+const SANDBOX_DEFAULT_EMBEDDING_MODEL = 'qwen3-embedding-0.6b';
+
+const PROVIDER_EMBEDDING_MODELS = Object.freeze({
+    openai: ['text-embedding-3-small', 'text-embedding-3-large', 'text-embedding-ada-002'],
+    'ubc-llm-sandbox': ['qwen3-embedding-0.6b']
+});
+
 function configuredProvider() {
     return process.env.LLM_PROVIDER || 'openai';
+}
+
+function allowedEmbeddingModelsForProvider(provider) {
+    if (provider === 'ollama') {
+        return process.env.LLM_EMBEDDING_MODEL ? [process.env.LLM_EMBEDDING_MODEL] : ['nomic-embed-text'];
+    }
+    const models = [...(PROVIDER_EMBEDDING_MODELS[provider] || PROVIDER_EMBEDDING_MODELS.openai)];
+    // Mirror the chat-model policy: keep an explicitly configured sandbox model
+    // selectable even if the gateway adds it before this app is updated.
+    const configured = envEmbeddingModelForProvider(provider);
+    if (provider === 'ubc-llm-sandbox' && configured && !models.includes(configured)) {
+        models.push(configured);
+    }
+    return models;
+}
+
+/**
+ * Read a provider-scoped embedding model from the environment.
+ *
+ * `LLM_EMBEDDING_MODEL` is the historical single-provider variable, so it is
+ * only honoured when its value actually belongs to the provider being asked
+ * about. Otherwise a deployment configured for the sandbox would silently hand
+ * `qwen3-embedding-0.6b` to OpenAI surfaces.
+ */
+function envEmbeddingModelForProvider(provider) {
+    const explicit = provider === 'ubc-llm-sandbox'
+        ? process.env.SANDBOX_EMBEDDING_MODEL
+        : process.env.OPENAI_EMBEDDING_MODEL;
+    if (explicit) return explicit;
+
+    const shared = process.env.LLM_EMBEDDING_MODEL;
+    if (!shared) return null;
+    const known = PROVIDER_EMBEDDING_MODELS[provider] || [];
+    if (known.includes(shared)) return shared;
+    // A sandbox deployment may point at a self-hosted embedding model that is
+    // not in the table yet; trust it only when the env provider matches.
+    if (provider === 'ubc-llm-sandbox' && configuredProvider() === 'ubc-llm-sandbox') return shared;
+    if (provider === 'ollama') return shared;
+    return null;
+}
+
+/**
+ * Bootstrap default embedding model for a provider — used only until an admin
+ * stores model settings in MongoDB.
+ */
+function defaultEmbeddingModelForProvider(provider) {
+    if (provider === 'ollama') {
+        return process.env.LLM_EMBEDDING_MODEL || 'nomic-embed-text';
+    }
+    return envEmbeddingModelForProvider(provider)
+        || (provider === 'ubc-llm-sandbox'
+            ? SANDBOX_DEFAULT_EMBEDDING_MODEL
+            : OPENAI_DEFAULT_EMBEDDING_MODEL);
+}
+
+function isAllowedEmbeddingModel(provider, model) {
+    return allowedEmbeddingModelsForProvider(provider).includes(model);
 }
 
 function configuredDefaultModel(provider = configuredProvider()) {
@@ -117,14 +185,35 @@ function catalogForProvider(provider = configuredProvider(), defaultModel = conf
     };
 }
 
+/**
+ * Full admin-facing catalog for a platform: chat models, embedding models and
+ * reasoning efforts. Consumed by the Platforms and Models settings screen.
+ */
+function adminCatalogForProvider(provider) {
+    const chat = catalogForProvider(provider, configuredDefaultModel(provider));
+    return {
+        ...chat,
+        allowedEmbeddingModels: allowedEmbeddingModelsForProvider(provider),
+        defaultEmbeddingModel: defaultEmbeddingModelForProvider(provider)
+    };
+}
+
 module.exports = {
+    OPENAI_DEFAULT_EMBEDDING_MODEL,
     OPENAI_DEFAULT_MODEL,
+    PROVIDER_EMBEDDING_MODELS,
+    SANDBOX_DEFAULT_EMBEDDING_MODEL,
     SANDBOX_DEFAULT_MODEL,
+    adminCatalogForProvider,
+    allowedEmbeddingModelsForProvider,
     allowedModelsForProvider,
     catalogForProvider,
     configuredDefaultModel,
     configuredProvider,
+    defaultEmbeddingModelForProvider,
+    envEmbeddingModelForProvider,
     fallbackModelForProvider,
+    isAllowedEmbeddingModel,
     maxOutputTokensForModel,
     normalizeReasoningEffort,
     reasoningEffortsForModel,

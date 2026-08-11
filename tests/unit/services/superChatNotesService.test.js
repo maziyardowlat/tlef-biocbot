@@ -20,7 +20,16 @@ jest.mock('../../../src/services/notesQdrantService', () => {
     return Mock;
 });
 
+// Deletion sweeps every collection the note was indexed into; the sweep itself
+// is covered against a real index map in embeddingIndexService.test.js.
+const mockDeleteNoteEverywhere = jest.fn();
+jest.mock('../../../src/services/qdrantMaintenance', () => ({
+    deleteNoteEverywhere: (...args) => mockDeleteNoteEverywhere(...args),
+}));
+
 const { memoryDb } = require('../helpers/memory-db');
+const { buildEmbeddingProfile } = require('../../../src/services/embeddingConfig');
+const { contentHash, needsIndexing } = require('../../../src/services/embeddingIndexService');
 const service = require('../../../src/services/superChatNotesService');
 const SuperChatNote = require('../../../src/models/SuperChatNote');
 
@@ -37,6 +46,8 @@ beforeEach(() => {
     mockQdrant.updateNote.mockResolvedValue(['pt-2']);
     mockQdrant.deleteNote.mockResolvedValue(undefined);
     mockQdrant.findSimilarTo.mockResolvedValue({ noteId: 'dup', score: 0.95 });
+    mockDeleteNoteEverywhere.mockReset();
+    mockDeleteNoteEverywhere.mockResolvedValue({ deleted: [], errors: [] });
 });
 
 describe('DUP_THRESHOLD', () => {
@@ -93,6 +104,49 @@ describe('updateNote', () => {
     });
 });
 
+describe('embedding index tracking', () => {
+    const SANDBOX = buildEmbeddingProfile({
+        provider: 'ubc-llm-sandbox', embeddingModel: 'qwen3-embedding-0.6b',
+    });
+
+    beforeEach(() => { mockQdrant.embeddingProfile = SANDBOX; });
+    afterEach(() => { delete mockQdrant.embeddingProfile; });
+
+    test('a new note records the profile it was embedded with', async () => {
+        const db = memoryDb({});
+        const note = await service.createNote(db, { authorId: 'i1', content: 'ATP' }, { url: 'x' });
+
+        // Without this record the note looks like pre-tracking (legacy OpenAI)
+        // content, and a migration to OpenAI would skip it as already indexed.
+        const saved = await db.collection(COLLECTION).findOne({ noteId: note.noteId });
+        expect(saved.embeddingIndexes[SANDBOX.storageKey]).toMatchObject({
+            provider: 'ubc-llm-sandbox',
+            collection: SANDBOX.notesCollection,
+            contentHash: contentHash('ATP'),
+            status: 'ready',
+        });
+        expect(needsIndexing(saved, SANDBOX, contentHash('ATP'))).toBe(false);
+    });
+
+    test('re-embedding an edited note updates the record to the new content', async () => {
+        const db = memoryDb({ [COLLECTION]: [{ noteId: 'n1', authorId: 'i1', content: 'old', isDeleted: false }] });
+        await service.updateNote(db, 'n1', 'i1', { content: 'brand new content' }, { url: 'x' });
+
+        const saved = await db.collection(COLLECTION).findOne({ noteId: 'n1' });
+        expect(saved.embeddingIndexes[SANDBOX.storageKey].contentHash)
+            .toBe(contentHash('brand new content'));
+        expect(needsIndexing(saved, SANDBOX, contentHash('brand new content'))).toBe(false);
+    });
+
+    test('an unchanged note is not re-recorded', async () => {
+        const db = memoryDb({ [COLLECTION]: [{ noteId: 'n1', authorId: 'i1', content: 'same', isDeleted: false }] });
+        await service.updateNote(db, 'n1', 'i1', { title: 'New title', content: 'same' });
+
+        const saved = await db.collection(COLLECTION).findOne({ noteId: 'n1' });
+        expect(saved.embeddingIndexes).toBeUndefined();
+    });
+});
+
 describe('deleteNote', () => {
     test('404 / 403 guards mirror updateNote', async () => {
         expect(await service.deleteNote(memoryDb({}), 'nope', 'i1')).toMatchObject({ ok: false, status: 404 });
@@ -100,19 +154,41 @@ describe('deleteNote', () => {
         expect(await service.deleteNote(db, 'n1', 'i1')).toMatchObject({ ok: false, status: 403 });
     });
 
-    test('soft-deletes the note and removes its vectors', async () => {
-        const db = memoryDb({ [COLLECTION]: [{ noteId: 'n1', authorId: 'i1', isDeleted: false }] });
+    test('soft-deletes the note and sweeps every profile it was indexed under', async () => {
+        const note = {
+            noteId: 'n1',
+            authorId: 'i1',
+            isDeleted: false,
+            embeddingIndexes: { 'ubc-llm-sandbox:qwen3-embedding-0_6b:v1': { collection: 'superchat_notes_qwen3_embedding_0_6b' } },
+        };
+        const db = memoryDb({ [COLLECTION]: [note] });
+
         const result = await service.deleteNote(db, 'n1', 'i1');
+
         expect(result).toEqual({ ok: true });
-        expect(mockQdrant.deleteNote).toHaveBeenCalledWith('n1');
+        // The sweep gets the stored note, so it can read its index records —
+        // deleting only from today's collection would leave the other
+        // platform's vectors to reappear on a switch.
+        expect(mockDeleteNoteEverywhere).toHaveBeenCalledWith(db, expect.objectContaining({ noteId: 'n1' }));
         expect((await db.collection(COLLECTION).findOne({ noteId: 'n1' })).isDeleted).toBe(true);
     });
 
     test('still reports success when the Qdrant delete fails (Mongo is the source of truth)', async () => {
-        mockQdrant.deleteNote.mockRejectedValueOnce(new Error('qdrant down'));
+        mockDeleteNoteEverywhere.mockRejectedValueOnce(new Error('qdrant down'));
         const db = memoryDb({ [COLLECTION]: [{ noteId: 'n1', authorId: 'i1', isDeleted: false }] });
         const result = await service.deleteNote(db, 'n1', 'i1');
         expect(result).toEqual({ ok: true });
+        expect((await db.collection(COLLECTION).findOne({ noteId: 'n1' })).isDeleted).toBe(true);
+    });
+
+    test('a per-collection failure is logged without failing the delete', async () => {
+        mockDeleteNoteEverywhere.mockResolvedValueOnce({
+            deleted: [{ collection: 'superchat_notes' }],
+            errors: [{ collection: 'superchat_notes_qwen3_embedding_0_6b', error: 'unreachable' }],
+        });
+        const db = memoryDb({ [COLLECTION]: [{ noteId: 'n1', authorId: 'i1', isDeleted: false }] });
+
+        expect(await service.deleteNote(db, 'n1', 'i1')).toEqual({ ok: true });
         expect((await db.collection(COLLECTION).findOne({ noteId: 'n1' })).isDeleted).toBe(true);
     });
 });

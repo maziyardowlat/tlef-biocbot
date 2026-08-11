@@ -14,11 +14,7 @@
 
 const { randomUUID } = require('crypto');
 const QdrantService = require('./qdrantService');
-const { collectionNameForEmbedding } = require('./embeddingConfig');
-
-const NOTES_COLLECTION_BASE = process.env.BIOCBOT_TEST_LLM_STUB === '1'
-    ? 'superchat_notes_stub'
-    : 'superchat_notes';
+const { notesCollectionBase } = require('./embeddingConfig');
 
 // Notes at or below this length are stored as a single chunk (chunking short,
 // coherent notes hurts retrieval quality). Longer notes use the toolkit chunker.
@@ -51,23 +47,33 @@ function normalizeVector(raw) {
 }
 
 class NotesQdrantService {
-    constructor() {
+    /**
+     * @param {Object} [options]
+     * @param {Object} [options.embeddingProfile] - Explicit embedding profile.
+     *   Notes get their own model-qualified collection per profile, exactly like
+     *   course documents, so a Sandbox Super Course never reads OpenAI vectors.
+     */
+    constructor(options = {}) {
         this.base = null;
         this.client = null;
         this.embeddings = null;
         this.chunker = null;
-        this.vectorSize = null;
-        this.collectionName = collectionNameForEmbedding(
-            NOTES_COLLECTION_BASE,
-            process.env.LLM_EMBEDDING_MODEL,
-            process.env.QDRANT_NOTES_COLLECTION_NAME
-        );
+        this.embeddingProfile = options.embeddingProfile || null;
+        this.vectorSize = this.embeddingProfile ? this.embeddingProfile.vectorSize : null;
+        this.collectionName = this.embeddingProfile
+            ? this.embeddingProfile.notesCollection
+            : notesCollectionBase();
         this.initialized = false;
     }
 
     /**
      * Initialize the service. Optionally reuse an already-initialized QdrantService
      * (shared client/embeddings/chunker) to avoid a second heavy init.
+     *
+     * A shared base must be running the SAME embedding profile — otherwise its
+     * embeddings would write vectors from one model into another model's notes
+     * collection.
+     *
      * @param {QdrantService|null} sharedBase
      */
     async initialize(sharedBase = null) {
@@ -76,8 +82,21 @@ class NotesQdrantService {
         if (sharedBase) {
             this.base = sharedBase;
         } else {
-            this.base = new QdrantService();
+            this.base = new QdrantService(
+                this.embeddingProfile ? { embeddingProfile: this.embeddingProfile } : {}
+            );
             await this.base.initialize();
+        }
+
+        if (this.base.embeddingProfile) {
+            if (this.embeddingProfile && this.base.embeddingProfile.key !== this.embeddingProfile.key) {
+                throw new Error(
+                    `Notes embedding profile ${this.embeddingProfile.key} does not match the shared Qdrant service `
+                    + `profile ${this.base.embeddingProfile.key}; refusing to mix embedding models.`
+                );
+            }
+            this.embeddingProfile = this.base.embeddingProfile;
+            this.collectionName = this.embeddingProfile.notesCollection;
         }
 
         this.client = this.base.client;
@@ -105,8 +124,8 @@ class NotesQdrantService {
         if (existingVectorSize !== this.vectorSize) {
             throw new Error(
                 `Qdrant notes collection ${this.collectionName} has ${existingVectorSize}-dimension vectors, ` +
-                `but the configured embedding model returns ${this.vectorSize}. ` +
-                'Choose a new QDRANT_NOTES_COLLECTION_NAME and re-index; existing notes vectors were preserved.'
+                `but embedding profile ${this.embeddingProfile ? this.embeddingProfile.key : 'unknown'} returns ${this.vectorSize}. ` +
+                'Bump the profile revision so a new collection is created; existing notes vectors are preserved.'
             );
         }
     }
@@ -175,6 +194,9 @@ class NotesQdrantService {
             });
         }
 
+        if (typeof this.base.assertNotCancelled === 'function') {
+            await this.base.assertNotCancelled();
+        }
         await this.client.upsert(this.collectionName, { points });
         return pointIds;
     }
@@ -282,5 +304,5 @@ class NotesQdrantService {
 }
 
 module.exports = NotesQdrantService;
-module.exports.NOTES_COLLECTION = NOTES_COLLECTION_BASE;
+module.exports.NOTES_COLLECTION = notesCollectionBase();
 module.exports.DEFAULT_DUP_THRESHOLD = DEFAULT_DUP_THRESHOLD;

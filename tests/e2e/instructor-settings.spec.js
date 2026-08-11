@@ -245,14 +245,19 @@ async function resetSettingsData() {
             { $set: { allowLocalLogin: true, updatedAt: new Date() } },
             { upsert: true }
         );
+        // Seed the per-platform shape explicitly. The legacy flat `{ model }`
+        // form is still read, but it maps to whichever platform LLM_PROVIDER
+        // names, which would make these assertions depend on the local .env.
         await db.collection('settings').updateOne(
             { _id: 'llm' },
             {
                 $set: {
-                    model: 'gpt-5-nano',
-                    reasoningEffort: 'minimal',
+                    providers: {
+                        openai: { chatModel: 'gpt-5-nano', embeddingModel: 'text-embedding-3-small', reasoningEffort: 'minimal' },
+                    },
                     updatedAt: new Date(),
                 },
+                $unset: { model: '', reasoningEffort: '' },
             },
             { upsert: true }
         );
@@ -695,9 +700,53 @@ async function setupMockedSettingsRoutes(page, options = {}) {
                 return;
             }
 
+            // Model settings are grouped per platform. `settings` is kept as the
+            // legacy single-platform mirror older clients still read.
             await route.fulfill(jsonResponse({
                 success: true,
-                settings: { model: 'gpt-4.1-mini', reasoningEffort: 'minimal' },
+                platforms: [
+                    {
+                        provider: 'openai',
+                        label: 'OpenAI Chat GPT',
+                        chatModel: 'gpt-4.1-mini',
+                        embeddingModel: 'text-embedding-3-small',
+                        reasoningEffort: 'minimal',
+                        supportsReasoning: false,
+                        allowedModels: ['gpt-4.1-mini', 'gpt-5-nano', 'gpt-5.4-nano', 'gpt-5.6-luna'],
+                        allowedEmbeddingModels: ['text-embedding-3-small', 'text-embedding-3-large'],
+                        reasoningEffortsByModel: {
+                            'gpt-4.1-mini': [],
+                            'gpt-5-nano': ['minimal', 'low', 'medium', 'high'],
+                            'gpt-5.4-nano': ['none', 'low', 'medium', 'high', 'xhigh'],
+                            'gpt-5.6-luna': ['none', 'low', 'medium', 'high', 'xhigh'],
+                        },
+                        defaultReasoningEffortByModel: {
+                            'gpt-5-nano': 'minimal', 'gpt-5.4-nano': 'low', 'gpt-5.6-luna': 'low',
+                        },
+                        collection: 'biocbot_documents',
+                        vectorSize: 1536,
+                        pendingEmbedding: null,
+                    },
+                    {
+                        provider: 'ubc-llm-sandbox',
+                        label: 'UBC On-Premise LLM',
+                        chatModel: 'qwen3.6-35b-a3b',
+                        embeddingModel: 'qwen3-embedding-0.6b',
+                        reasoningEffort: 'none',
+                        supportsReasoning: true,
+                        allowedModels: ['qwen3.6-35b-a3b', 'gpt-oss-120b'],
+                        allowedEmbeddingModels: ['qwen3-embedding-0.6b'],
+                        reasoningEffortsByModel: {
+                            'qwen3.6-35b-a3b': ['none', 'low', 'medium', 'high'],
+                            'gpt-oss-120b': ['low', 'medium', 'high'],
+                        },
+                        defaultReasoningEffortByModel: { 'qwen3.6-35b-a3b': 'none', 'gpt-oss-120b': 'low' },
+                        collection: 'biocbot_documents_qwen3_embedding_0_6b',
+                        vectorSize: 1024,
+                        pendingEmbedding: null,
+                    },
+                ],
+                settings: { model: 'gpt-4.1-mini', reasoningEffort: 'minimal', provider: 'openai' },
             }));
             return;
         }
@@ -1103,8 +1152,10 @@ test.describe('Instructor settings UI', () => {
             ]);
             return {
                 allowLocalLogin: globalSettings?.allowLocalLogin,
-                model: llmSettings?.model,
-                reasoningEffort: llmSettings?.reasoningEffort,
+                // Model settings are stored per platform under `providers`;
+                // the GPT controls on this page write providers.openai.
+                model: llmSettings?.providers?.openai?.chatModel,
+                reasoningEffort: llmSettings?.providers?.openai?.reasoningEffort,
                 studentTopK: course?.ragSettings?.student?.topK,
             };
         }, { timeout: 10_000 }).toMatchObject({

@@ -234,11 +234,11 @@
 
                             <section class="settings-section" id="course-llm-key-section">
                                 <h3>Course API key</h3>
-                                <p class="section-description">AI is unavailable for this course until a valid key is saved. Contact <a href="mailto:LT.hub@ubc.ca">LT.hub@ubc.ca</a> for a new or replacement key.</p>
+                                <p class="section-description">Choose the AI platform this course runs on, then save that platform’s API key. AI is unavailable until a valid key is saved.</p>
                                 <div class="settings-content">
                                     <div class="setting-item vertical">
                                         <div class="setting-info">
-                                            <h4 id="course-llm-key-label">OpenAI API key</h4>
+                                            <h4 id="course-llm-key-label">Platform API key</h4>
                                             <p id="course-llm-key-status" class="llm-key-status">Loading key status...</p>
                                         </div>
                                         <div class="setting-controls full-width-control llm-key-controls">
@@ -613,7 +613,7 @@
                                         </div>
                                         <div class="setting-controls superchat-manage-controls">
                                             <input type="text" id="new-superchat-name" class="text-input" placeholder="New bucket name" aria-labelledby="new-superchat-label" aria-describedby="new-superchat-desc">
-                                            <input type="password" id="new-superchat-key" class="text-input llm-key-input" placeholder="OpenAI key" autocomplete="off" aria-label="New bucket OpenAI API key">
+                                            <input type="password" id="new-superchat-key" class="text-input llm-key-input" placeholder="sk-..." autocomplete="off" aria-label="New bucket API key">
                                             <button type="button" id="new-superchat-btn" class="secondary-button">Create bucket</button>
                                         </div>
                                     </div>
@@ -845,7 +845,7 @@
                                                     >
                                                 </div>
                                                 <div class="transfer-field-group">
-                                                    <label for="transfer-course-api-key">New course OpenAI API key</label>
+                                                    <label for="transfer-course-api-key">New course API key</label>
                                                     <input
                                                         type="password"
                                                         id="transfer-course-api-key"
@@ -910,14 +910,16 @@
                         <!-- Admin: platform & models -->
                         <div class="settings-panel" id="settings-panel-admin-platform" data-panel="admin-platform" hidden>
                             <h2 class="settings-panel-title" tabindex="-1">Platform &amp; models</h2>
-                            <section class="settings-section" id="llm-model-section" style="display: none;">
-                                <h3>LLM model</h3>
-                                <p class="section-description">Pick the model used for chat, question generation, and analysis across courses. The available models follow the configured LLM provider.</p>
+                            <!-- GPT platform. Instructors never see these controls; they
+                                 choose the platform label only. -->
+                            <section class="settings-section" id="llm-model-section" data-platform="openai" style="display: none;">
+                                <h3>OpenAI Chat GPT models</h3>
+                                <p class="section-description">Models used by every surface running on the OpenAI Chat GPT platform. Saving applies chat-model changes immediately; an embedding-model change is staged and re-indexed before it becomes active.</p>
                                 <div class="settings-content">
                                     <div class="setting-item">
                                         <div class="setting-info">
-                                            <h4 id="llm-model-label">Model</h4>
-                                            <p id="llm-model-desc">Course-wide selection. Provider-specific reasoning controls appear when the selected model supports them.</p>
+                                            <h4 id="llm-model-label">Chat model</h4>
+                                            <p id="llm-model-desc">Applies to every OpenAI Chat GPT surface. Reasoning controls appear when the selected model supports them.</p>
                                         </div>
                                         <div class="setting-controls">
                                             <select id="llm-model-select" class="number-input" aria-labelledby="llm-model-label" aria-describedby="llm-model-desc">
@@ -942,10 +944,65 @@
                                             </select>
                                         </div>
                                     </div>
+                                    <div class="setting-item">
+                                        <div class="setting-info">
+                                            <h4 id="llm-embedding-label">Embedding model</h4>
+                                            <p id="llm-embedding-desc">Saving a different embedding model shows you the re-indexing impact first, then stages it. The current model stays active until re-indexing finishes, and no existing vectors are deleted.</p>
+                                            <p class="llm-embedding-collection-note">Collection: <span id="llm-embedding-collection"></span></p>
+                                            <p id="llm-embedding-pending" class="llm-embedding-pending" hidden></p>
+                                        </div>
+                                        <div class="setting-controls llm-embedding-controls">
+                                            <select id="llm-embedding-select" class="number-input" aria-labelledby="llm-embedding-label" aria-describedby="llm-embedding-desc"></select>
+                                            <button id="rollback-llm-embedding" class="secondary-button" hidden>Cancel staged change</button>
+                                        </div>
+                                    </div>
                                 </div>
                                 <div class="settings-section-actions">
                                     <span class="settings-dirty-note" hidden>Unsaved changes</span>
                                     <button id="save-llm-settings" class="primary-button">Save model settings</button>
+                                </div>
+                            </section>
+
+                            <!-- Sandbox platform. All Sandbox processing stays on the UBC
+                                 Sandbox/B300; OpenAI is never used for a Sandbox surface. -->
+                            <section class="settings-section" id="sandbox-llm-model-section" data-platform="ubc-llm-sandbox" style="display: none;">
+                                <h3>UBC On-Premise LLM models</h3>
+                                <p class="section-description">Models used by every surface running on the UBC On-Premise LLM platform.</p>
+                                <div class="settings-content">
+                                    <div class="setting-item">
+                                        <div class="setting-info">
+                                            <h4 id="sandbox-llm-model-label">Chat model</h4>
+                                            <p id="sandbox-llm-model-desc">Applies to every UBC On-Premise LLM surface.</p>
+                                        </div>
+                                        <div class="setting-controls">
+                                            <select id="sandbox-llm-model-select" class="number-input" aria-labelledby="sandbox-llm-model-label" aria-describedby="sandbox-llm-model-desc"></select>
+                                        </div>
+                                    </div>
+                                    <div class="setting-item" id="sandbox-llm-reasoning-item" style="display: none;">
+                                        <div class="setting-info">
+                                            <h4 id="sandbox-llm-reasoning-label">Reasoning effort</h4>
+                                            <p id="sandbox-llm-reasoning-desc">For Qwen3, “none” disables thinking for short structured calls.</p>
+                                        </div>
+                                        <div class="setting-controls">
+                                            <select id="sandbox-llm-reasoning-select" class="number-input" aria-labelledby="sandbox-llm-reasoning-label" aria-describedby="sandbox-llm-reasoning-desc"></select>
+                                        </div>
+                                    </div>
+                                    <div class="setting-item">
+                                        <div class="setting-info">
+                                            <h4 id="sandbox-llm-embedding-label">Embedding model</h4>
+                                            <p id="sandbox-llm-embedding-desc">Saving a different embedding model shows you the re-indexing impact first, then stages it. The current model stays active until re-indexing finishes.</p>
+                                            <p class="llm-embedding-collection-note">Collection: <span id="sandbox-llm-embedding-collection"></span></p>
+                                            <p id="sandbox-llm-embedding-pending" class="llm-embedding-pending" hidden></p>
+                                        </div>
+                                        <div class="setting-controls llm-embedding-controls">
+                                            <select id="sandbox-llm-embedding-select" class="number-input" aria-labelledby="sandbox-llm-embedding-label" aria-describedby="sandbox-llm-embedding-desc"></select>
+                                            <button id="rollback-sandbox-llm-embedding" class="secondary-button" hidden>Cancel staged change</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="settings-section-actions">
+                                    <span class="settings-dirty-note" hidden>Unsaved changes</span>
+                                    <button id="save-sandbox-llm-settings" class="primary-button">Save model settings</button>
                                 </div>
                             </section>
 
@@ -955,7 +1012,7 @@
                                 <div class="settings-content">
                                     <div class="setting-item vertical">
                                         <div class="setting-info">
-                                            <h4 id="notes-llm-key-label">OpenAI API key</h4>
+                                            <h4 id="notes-llm-key-label">Platform API key</h4>
                                             <p id="notes-llm-key-status" class="llm-key-status">Loading key status...</p>
                                         </div>
                                         <div class="setting-controls full-width-control llm-key-controls">
@@ -973,7 +1030,7 @@
                                 <div class="settings-content">
                                     <div class="setting-item vertical">
                                         <div class="setting-info">
-                                            <h4 id="instructor-superchat-llm-key-label">OpenAI API key</h4>
+                                            <h4 id="instructor-superchat-llm-key-label">Platform API key</h4>
                                             <p id="instructor-superchat-llm-key-status" class="llm-key-status">Loading key status...</p>
                                         </div>
                                         <div class="setting-controls full-width-control llm-key-controls">
@@ -1221,6 +1278,7 @@
          documents-page functionality and is intentionally not loaded here. -->
     <script src="./scripts/instructor-state.js"></script>
     <script src="./scripts/instructor-course.js"></script>
+    <script src="../common/scripts/llm-platform.js"></script>
     <script src="./scripts/settings.js"></script>
 </body>
 </html>

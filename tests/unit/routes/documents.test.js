@@ -13,6 +13,16 @@ jest.mock('../../../src/services/gridfs', () => ({
     openDownloadStream: jest.fn(),
     uploadBuffer: jest.fn(async () => 'grid-file-1'),
 }));
+// Deleting a document must sweep EVERY embedding profile's collection, so the
+// route uses maintenance clients rather than the course's active Qdrant service.
+const mockDeleteEverywhere = jest.fn(async () => ({
+    deleted: [{ collection: 'biocbot_documents', profileKey: 'openai:text-embedding-3-small:v1', result: { success: true, deletedCount: 2 } }],
+    errors: [],
+}));
+jest.mock('../../../src/services/qdrantMaintenance', () => ({
+    deleteDocumentEverywhere: (...args) => mockDeleteEverywhere(...args),
+    createMaintenanceFactory: jest.fn(() => jest.fn()),
+}));
 jest.mock('../../../src/routes/llmKeyMiddleware', () => ({
     resolveCourseAi: jest.fn(async () => ({
         llm: { sendMessage: jest.fn() },
@@ -654,24 +664,19 @@ describe('GET /:documentId and DELETE — remaining guards and catches', () => {
         expect((await request(app({ db: null, user: instructor })).delete('/d1').send({ instructorId: 'i1' })).status).toBe(503);
     });
 
-    test('DELETE initializes Qdrant when needed and tolerates a failed chunk delete', async () => {
-        const initialize = jest.fn(async () => {});
-        resolveCourseAi.mockResolvedValueOnce({
-            llm: {},
-            qdrant: { client: null, initialize, deleteDocumentChunks: jest.fn(async () => ({ success: false, error: 'no chunks' })) },
+    test('DELETE reports a per-collection cleanup failure without failing the delete', async () => {
+        mockDeleteEverywhere.mockResolvedValueOnce({
+            deleted: [],
+            errors: [{ collection: 'biocbot_documents', profileKey: 'openai:text-embedding-3-small:v1', error: 'no chunks' }],
         });
         const db = documentsDb();
         const res = await request(app({ db, user: instructor })).delete('/d1').send({ instructorId: 'i1' });
         expect(res.status).toBe(200);
-        expect(initialize).toHaveBeenCalled();
         expect(res.body.data.removedFromQdrant).toBe(false);
     });
 
     test('DELETE tolerates a thrown Qdrant cleanup error', async () => {
-        resolveCourseAi.mockResolvedValueOnce({
-            llm: {},
-            qdrant: { client: {}, deleteDocumentChunks: jest.fn(async () => { throw new Error('vector boom'); }) },
-        });
+        mockDeleteEverywhere.mockRejectedValueOnce(new Error('vector boom'));
         const db = documentsDb();
         const res = await request(app({ db, user: instructor })).delete('/d1').send({ instructorId: 'i1' });
         expect(res.status).toBe(200);

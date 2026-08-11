@@ -10,6 +10,8 @@ const FlashcardDeck = require('../models/FlashcardDeck');
 const { hasSystemAdminAccess } = require('../services/authorization');
 const { QUESTION_EXTRACTION_SYSTEM_PROMPT, buildQuestionExtractionPrompt } = require('../services/prompts');
 const { resolveCourseAi, sendLlmKeyError } = require('./llmKeyMiddleware');
+const qdrantMaintenance = require('../services/qdrantMaintenance');
+const { contentHash, markDocumentIndexFailed, markDocumentIndexReady } = require('../services/embeddingIndexService');
 const { encodingForModel } = require('js-tiktoken');
 const {
     MAX_DOCUMENT_BYTES,
@@ -692,21 +694,21 @@ router.delete('/:documentId', async (req, res) => {
             
             console.log(`Course delete result:`, courseDeleteResult);
             
-            // Step 2: Delete from Qdrant vector database
+            // Step 2: Delete from EVERY Qdrant collection this document was
+            // indexed into — not just the course's active profile. Vectors left
+            // in an old profile's collection would come back the moment the
+            // course switched platforms again.
             try {
-                // Ensure Qdrant service is initialized
-                if (!qdrantService.client) {
-                    await qdrantService.initialize();
+                const sweep = await qdrantMaintenance.deleteDocumentEverywhere(db, document);
+                qdrantDeletedCount = sweep.deleted.reduce(
+                    (total, entry) => total + ((entry.result && entry.result.deletedCount) || 0),
+                    0
+                );
+                qdrantDeleted = sweep.deleted.length > 0 && sweep.errors.length === 0;
+                for (const failure of sweep.errors) {
+                    console.warn(`⚠️ Failed to delete chunks from ${failure.collection}: ${failure.error}`);
                 }
-                
-                const qdrantResult = await qdrantService.deleteDocumentChunks(documentId, document.courseId);
-                if (qdrantResult.success) {
-                    qdrantDeleted = true;
-                    qdrantDeletedCount = qdrantResult.deletedCount;
-                    console.log(`✅ Deleted ${qdrantDeletedCount} chunks from Qdrant for document ${documentId}`);
-                } else {
-                    console.warn(`⚠️ Failed to delete chunks from Qdrant: ${qdrantResult.error}`);
-                }
+                console.log(`✅ Deleted ${qdrantDeletedCount} chunks across ${sweep.deleted.length} collection(s) for document ${documentId}`);
             } catch (qdrantError) {
                 console.warn(`⚠️ Error deleting from Qdrant (non-fatal):`, qdrantError.message);
                 // Don't fail the entire deletion if Qdrant cleanup fails

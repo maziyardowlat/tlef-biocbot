@@ -22,8 +22,6 @@ const { memoryDb } = require('../helpers/memory-db');
 const OLD_ENV = process.env;
 beforeEach(() => {
     process.env = { ...OLD_ENV };
-    // Default: neither openai nor the LLM stub -> scopedKeysRequired() is false,
-    // so keys are not enforced and the registry creates services with a null key.
     delete process.env.LLM_PROVIDER;
     delete process.env.BIOCBOT_TEST_LLM_STUB;
 });
@@ -31,7 +29,14 @@ afterAll(() => {
     process.env = OLD_ENV;
 });
 
+// Every selectable platform (GPT / Sandbox) now requires a per-surface key.
+// `ollama` is the only runtime left that bypasses key enforcement, so these
+// cache-behaviour tests run against it.
 describe('LlmRegistry cache behavior (keys not enforced)', () => {
+    beforeEach(() => {
+        process.env.LLM_PROVIDER = 'ollama';
+    });
+
     test('forCourse caches per scope and reuses the same services', async () => {
         const reg = new LlmRegistry();
         const db = memoryDb({ courses: [{ courseId: 'C1' }] });
@@ -144,6 +149,10 @@ describe('LlmRegistry with scoped keys enforced (openai)', () => {
 });
 
 describe('LlmRegistry notes / super-course-chat scopes', () => {
+    beforeEach(() => {
+        process.env.LLM_PROVIDER = 'ollama';
+    });
+
     test('forNotes caches and rebuilds after evictNotes', async () => {
         const reg = new LlmRegistry();
         const db = memoryDb({ settings: [] });
@@ -162,7 +171,7 @@ describe('LlmRegistry notes / super-course-chat scopes', () => {
         const db = memoryDb({ settings: [] });
 
         const first = await reg.forSuperCourseChat(db);
-        expect(first.scope).toEqual({ type: 'superCourseChat', id: 'superCourseChat' });
+        expect(first.scope).toEqual({ type: 'superCourseChat', id: 'superCourseChat', provider: 'ollama' });
         await reg.forSuperCourseChat(db);
         expect(LLMService.create).toHaveBeenCalledTimes(1);
 
@@ -193,13 +202,14 @@ describe('LlmRegistry provider bypass', () => {
         const db = memoryDb({ courses: [{ courseId: 'C1', llmApiKey: { status: 'invalid' } }] });
 
         const services = await reg.forCourse(db, 'C1'); // would throw if enforced
-        expect(services.scope).toEqual({ type: 'course', id: 'C1' });
+        expect(services.scope).toEqual({ type: 'course', id: 'C1', provider: 'ollama' });
         expect(LLMService.create).toHaveBeenCalledTimes(1);
     });
 });
 
 describe('onProviderKeyFailure callback', () => {
     test('marks the owner key status in Mongo and evicts the cached scope', async () => {
+        process.env.LLM_PROVIDER = 'ollama';
         const reg = new LlmRegistry();
         const db = memoryDb({ courses: [{ courseId: 'C1', llmApiKey: { status: 'valid' } }] });
 

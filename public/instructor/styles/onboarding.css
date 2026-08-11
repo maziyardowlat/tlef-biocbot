@@ -1608,3 +1608,49 @@ fieldset.radio-group-fieldset {
   font-style: italic;
   color: #28a745;
 }
+
+/* ---------------------------------------------------------------------------
+   AI platform choice (step 1 of the key setup): instructors pick GPT or
+   Sandbox; the key field's label, placeholder and help text follow the choice.
+   --------------------------------------------------------------------------- */
+.llm-platform-choice {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: 24px;
+    row-gap: 8px;
+    margin: 0 0 4px;
+    padding: 8px 12px;
+    border: 1px solid #d7d7d7;
+    border-radius: 6px;
+}
+
+.llm-platform-choice legend {
+    padding: 0 4px;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+/* Scoped with the parent class so this beats `.form-group label`, which is more
+   specific than a lone `.llm-platform-option` and would otherwise re-impose the
+   stacked block layout and its bottom margin. */
+.llm-platform-choice .llm-platform-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    /* Platform names are multi-word ("OpenAI Chat GPT"); keep each on one line
+       and let the row wrap instead of squeezing the text into a column. */
+    flex: 0 0 auto;
+    white-space: nowrap;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.llm-platform-choice .llm-platform-option input[type="radio"] {
+    flex: 0 0 auto;
+    width: auto;
+    margin: 0;
+    padding: 0;
+}

@@ -259,7 +259,7 @@ describe('global LLM model settings (configuration only)', () => {
     test('POST rejects unsupported models', async () => {
         const res = await request(app({ db: memoryDb({}), user: admin })).post('/llm').send({ model: 'made-up-model' });
         expect(res.status).toBe(400);
-        expect(res.body.error).toMatch(/Invalid model/);
+        expect(res.body.error).toMatch(/Invalid chat model/);
     });
 
     test('POST persists settings and clears both runtime caches', async () => {
@@ -268,7 +268,7 @@ describe('global LLM model settings (configuration only)', () => {
         const llmRegistry = { clear: jest.fn() };
         const res = await request(app({ db, user: admin, locals: { llm, llmRegistry } })).post('/llm').send({ model: 'gpt-5.4-nano', reasoningEffort: 'medium' });
         expect(res.status).toBe(200);
-        expect(res.body.settings).toEqual({ model: 'gpt-5.4-nano', reasoningEffort: 'medium', supportsReasoning: true });
+        expect(res.body.settings).toEqual({ model: 'gpt-5.4-nano', chatModel: 'gpt-5.4-nano', reasoningEffort: 'medium', supportsReasoning: true });
         expect(llm.invalidateModelSettingsCache).toHaveBeenCalled();
         expect(llmRegistry.clear).toHaveBeenCalled();
     });
@@ -280,10 +280,11 @@ describe('global LLM model settings (configuration only)', () => {
         });
         expect(res.status).toBe(200);
         expect(res.body.settings).toEqual({
-            model: 'gpt-5.6-luna', reasoningEffort: 'low', supportsReasoning: true
+            model: 'gpt-5.6-luna', chatModel: 'gpt-5.6-luna', reasoningEffort: 'low', supportsReasoning: true
         });
+        // Model settings are now stored per platform under `providers`.
         await expect(db.collection('settings').findOne({ _id: 'llm' })).resolves.toMatchObject({
-            model: 'gpt-5.6-luna', reasoningEffort: 'low'
+            providers: { openai: { chatModel: 'gpt-5.6-luna', reasoningEffort: 'low' } }
         });
         await expect(request(app({ db, user: admin })).get('/llm')).resolves.toMatchObject({
             status: 200,
@@ -318,8 +319,11 @@ describe('global LLM model settings (configuration only)', () => {
                 model: 'gpt-oss-120b', reasoningEffort: 'minimal'
             });
             expect(res.body.settings).toEqual({
-                model: 'gpt-oss-120b', reasoningEffort: 'low', supportsReasoning: true
+                model: 'gpt-oss-120b', chatModel: 'gpt-oss-120b', reasoningEffort: 'low', supportsReasoning: true
             });
+            // Both platforms are configured independently and side by side.
+            const stored = await db.collection('settings').findOne({ _id: 'llm' });
+            expect(stored.providers['ubc-llm-sandbox']).toMatchObject({ chatModel: 'gpt-oss-120b' });
         } finally {
             if (previous.provider === undefined) delete process.env.LLM_PROVIDER;
             else process.env.LLM_PROVIDER = previous.provider;

@@ -7,8 +7,23 @@
 
 const SuperChatNote = require('../models/SuperChatNote');
 const NotesQdrantService = require('./notesQdrantService');
+const qdrantMaintenance = require('./qdrantMaintenance');
+const { contentHash, markNoteIndexReady } = require('./embeddingIndexService');
 
 const DUP_THRESHOLD = NotesQdrantService.DEFAULT_DUP_THRESHOLD;
+
+/**
+ * Record which embedding profile a note was just vectorised with.
+ *
+ * Without this a Sandbox-embedded note carries only `qdrantPointIds`, which the
+ * index tracker reads as pre-tracking (legacy OpenAI) vectors — so a later
+ * migration to OpenAI would consider the note already indexed and skip it,
+ * leaving it unsearchable on that platform.
+ */
+async function recordNoteIndex(db, note, qdrant) {
+    if (!qdrant || !qdrant.embeddingProfile) return;
+    await markNoteIndexReady(db, note.noteId, qdrant.embeddingProfile, contentHash(note.content));
+}
 
 function notePayloadMeta(note) {
     return {
@@ -37,6 +52,7 @@ async function createNote(db, data, qdrantBase = null) {
     if (pointIds.length) {
         await SuperChatNote.updateNote(db, note.noteId, { qdrantPointIds: pointIds });
         note.qdrantPointIds = pointIds;
+        await recordNoteIndex(db, note, qdrant);
     }
     return note;
 }
@@ -84,6 +100,7 @@ async function updateNote(db, noteId, requesterId, updates, qdrantBase = null) {
         if (qdrantBase) await qdrant.initialize(qdrantBase);
         const pointIds = await qdrant.updateNote(noteId, updated.content, notePayloadMeta(updated));
         const finalNote = await SuperChatNote.updateNote(db, noteId, { qdrantPointIds: pointIds });
+        await recordNoteIndex(db, finalNote, qdrant);
         return { ok: true, note: finalNote };
     }
 
@@ -107,8 +124,13 @@ async function deleteNote(db, noteId, requesterId) {
     await SuperChatNote.softDeleteNote(db, noteId);
 
     try {
-        const qdrant = new NotesQdrantService();
-        await qdrant.deleteNote(noteId);
+        // Sweep every profile the note was indexed under, not just the one the
+        // Notes surface uses today — otherwise a deleted note comes back the
+        // moment the surface switches platforms.
+        const { errors } = await qdrantMaintenance.deleteNoteEverywhere(db, existing);
+        for (const failure of errors) {
+            console.error(`Failed to remove note vectors from ${failure.collection}:`, failure.error);
+        }
     } catch (error) {
         console.error('Failed to remove note vectors from Qdrant:', error.message);
         // Mongo soft-delete already succeeded; surface success but log the drift.

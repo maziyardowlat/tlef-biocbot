@@ -1,0 +1,338 @@
+/**
+ * Admin "Platforms and models" API: settings grouped by platform, immediate
+ * chat-model changes, and staged embedding-model changes with an impact preview
+ * and rollback.
+ */
+const startedMigrations = [];
+const cancelledMigrations = [];
+jest.mock('../../../src/services/providerMigrationRunner', () => ({
+    startMigration: jest.fn((db, migrationId) => { startedMigrations.push(migrationId); }),
+    cancelAndCleanup: jest.fn(async (db, migrationId, cancelledBy) => {
+        cancelledMigrations.push(migrationId);
+        const actual = jest.requireActual('../../../src/services/providerMigrationService');
+        const job = await actual.cancelMigration(db, migrationId, cancelledBy);
+        return { job, cleanup: { migrationId, deletedVectors: 3, clearedIndexRecords: 3 } };
+    }),
+}));
+jest.mock('../../../src/services/config', () => ({
+    getProviderInfra: jest.fn((provider) => ({
+        provider,
+        endpoint: provider === 'ubc-llm-sandbox' ? 'https://sandbox.example/v1' : null,
+        bootstrapApiKey: undefined,
+    })),
+}));
+
+const adminModelSettings = require('../../../src/services/adminModelSettings');
+const migrations = require('../../../src/services/providerMigrationService');
+const { buildKeySubdocument } = require('../../../src/services/llmKeyStore');
+const { providerLabel } = require('../../../src/services/llmProviders');
+const settingsRouter = require('../../../src/routes/settings');
+const { makeRouteApp, request } = require('../helpers/route-app');
+const { memoryDb } = require('../helpers/memory-db');
+
+const OPENAI = 'openai';
+const SANDBOX = 'ubc-llm-sandbox';
+
+const admin = { userId: 'a1', role: 'instructor', email: 'admin@x.com', permissions: { systemAdmin: true } };
+const instructor = { userId: 'i1', role: 'instructor', email: 'i@x.com' };
+
+const app = ({ db = memoryDb({ settings: [] }), user = admin, locals = {} } = {}) =>
+    makeRouteApp(settingsRouter, { db, user, locals });
+
+const OLD_ENV = process.env;
+beforeAll(() => jest.spyOn(console, 'error').mockImplementation(() => {}));
+afterAll(() => { process.env = OLD_ENV; jest.restoreAllMocks(); });
+beforeEach(() => {
+    process.env = { ...OLD_ENV };
+    delete process.env.LLM_PROVIDER;
+    delete process.env.LLM_EMBEDDING_MODEL;
+    startedMigrations.length = 0;
+    cancelledMigrations.length = 0;
+    adminModelSettings.invalidateCache();
+});
+
+describe('GET /llm — grouped by platform', () => {
+    test('both platforms are returned with their own models and collections', async () => {
+        const res = await request(app()).get('/llm');
+
+        expect(res.status).toBe(200);
+        expect(res.body.platforms.map(platform => platform.provider)).toEqual([OPENAI, SANDBOX]);
+
+        const [gpt, sandbox] = res.body.platforms;
+        expect(gpt).toMatchObject({
+            label: providerLabel(OPENAI),
+            chatModel: 'gpt-4.1-mini',
+            embeddingModel: 'text-embedding-3-small',
+            collection: 'biocbot_documents',
+            vectorSize: 1536,
+        });
+        expect(sandbox).toMatchObject({
+            label: providerLabel(SANDBOX),
+            chatModel: 'qwen3.6-35b-a3b',
+            embeddingModel: 'qwen3-embedding-0.6b',
+            collection: 'biocbot_documents_qwen3_embedding_0_6b',
+            vectorSize: 1024,
+        });
+    });
+
+    test('each platform only offers its own models', async () => {
+        const res = await request(app()).get('/llm');
+        const [gpt, sandbox] = res.body.platforms;
+
+        expect(gpt.allowedModels).toEqual(expect.arrayContaining(['gpt-4.1-mini', 'gpt-5-nano']));
+        expect(gpt.allowedModels).not.toContain('qwen3.6-35b-a3b');
+        expect(gpt.allowedEmbeddingModels).toEqual(expect.arrayContaining(['text-embedding-3-small']));
+        expect(gpt.allowedEmbeddingModels).not.toContain('qwen3-embedding-0.6b');
+
+        expect(sandbox.allowedModels).toEqual(expect.arrayContaining(['qwen3.6-35b-a3b', 'gpt-oss-120b']));
+        expect(sandbox.allowedEmbeddingModels).toEqual(['qwen3-embedding-0.6b']);
+    });
+
+    test('stored per-platform settings are reflected', async () => {
+        const db = memoryDb({
+            settings: [{
+                _id: 'llm',
+                providers: {
+                    [OPENAI]: { chatModel: 'gpt-5-nano', embeddingModel: 'text-embedding-3-large', reasoningEffort: 'high' },
+                    [SANDBOX]: { chatModel: 'gpt-oss-120b', reasoningEffort: 'medium' },
+                },
+            }],
+        });
+
+        const res = await request(app({ db })).get('/llm');
+        const byProvider = Object.fromEntries(res.body.platforms.map(p => [p.provider, p]));
+
+        expect(byProvider[OPENAI]).toMatchObject({
+            chatModel: 'gpt-5-nano', embeddingModel: 'text-embedding-3-large',
+            collection: 'biocbot_documents_text_embedding_3_large', vectorSize: 3072,
+        });
+        expect(byProvider[SANDBOX].chatModel).toBe('gpt-oss-120b');
+    });
+
+    test('a staged embedding change is surfaced', async () => {
+        const db = memoryDb({ settings: [] });
+        await adminModelSettings.stagePendingEmbedding(db, OPENAI, {
+            embeddingModel: 'text-embedding-3-large', migrationId: 'mig_1',
+        });
+
+        const res = await request(app({ db })).get('/llm');
+        const gpt = res.body.platforms.find(platform => platform.provider === OPENAI);
+
+        expect(gpt.embeddingModel).toBe('text-embedding-3-small');   // still active
+        expect(gpt.pendingEmbedding).toMatchObject({ embeddingModel: 'text-embedding-3-large', migrationId: 'mig_1' });
+    });
+
+    test('only system admins may read model settings', async () => {
+        expect((await request(app({ user: instructor })).get('/llm')).status).toBe(403);
+        expect((await request(app({ user: null })).get('/llm')).status).toBe(401);
+    });
+});
+
+describe('POST /llm — chat model changes are immediate', () => {
+    test('saving GPT does not disturb Sandbox', async () => {
+        const db = memoryDb({ settings: [] });
+        const llm = { invalidateModelSettingsCache: jest.fn() };
+        const llmRegistry = { clear: jest.fn() };
+
+        const res = await request(app({ db, locals: { llm, llmRegistry } }))
+            .post('/llm').send({ provider: OPENAI, chatModel: 'gpt-5-nano', reasoningEffort: 'high' });
+
+        expect(res.status).toBe(200);
+        expect(res.body).toMatchObject({ provider: OPENAI, settings: { chatModel: 'gpt-5-nano', reasoningEffort: 'high' } });
+        expect(llm.invalidateModelSettingsCache).toHaveBeenCalled();
+        expect(llmRegistry.clear).toHaveBeenCalled();
+        // No re-indexing: a chat model change touches no vectors.
+        expect(startedMigrations).toEqual([]);
+
+        const stored = await db.collection('settings').findOne({ _id: 'llm' });
+        expect(stored.providers[OPENAI].chatModel).toBe('gpt-5-nano');
+        expect(stored.providers[SANDBOX]).toBeUndefined();
+    });
+
+    test('saving Sandbox stores under its own platform', async () => {
+        const db = memoryDb({ settings: [] });
+        const res = await request(app({ db }))
+            .post('/llm').send({ provider: SANDBOX, chatModel: 'gpt-oss-120b', reasoningEffort: 'medium' });
+
+        expect(res.status).toBe(200);
+        const stored = await db.collection('settings').findOne({ _id: 'llm' });
+        expect(stored.providers[SANDBOX].chatModel).toBe('gpt-oss-120b');
+    });
+
+    test('a model from the wrong platform is rejected', async () => {
+        const res = await request(app()).post('/llm').send({ provider: OPENAI, chatModel: 'qwen3.6-35b-a3b' });
+        expect(res.status).toBe(400);
+        expect(res.body.error).toMatch(/Invalid chat model for openai/);
+    });
+
+    test('non-admins cannot change models', async () => {
+        expect((await request(app({ user: instructor })).post('/llm').send({ chatModel: 'gpt-5-nano' })).status).toBe(403);
+    });
+});
+
+describe('POST /llm/embedding/impact — preview before confirming', () => {
+    test('reports affected surfaces and how much has to be re-indexed', async () => {
+        const db = memoryDb({
+            settings: [],
+            courses: [
+                { courseId: 'C1', activeLlmProvider: OPENAI, llmCredentials: { [OPENAI]: buildKeySubdocument('sk-a', 'a', OPENAI) } },
+                { courseId: 'C2', activeLlmProvider: SANDBOX, llmCredentials: { [SANDBOX]: buildKeySubdocument('sbx-b', 'a', SANDBOX) } },
+            ],
+            documents: [
+                { documentId: 'd1', courseId: 'C1', content: 'gpt course text' },
+                { documentId: 'd2', courseId: 'C2', content: 'sandbox course text' },
+            ],
+        });
+
+        const res = await request(app({ db }))
+            .post('/llm/embedding/impact').send({ provider: OPENAI, embeddingModel: 'text-embedding-3-large' });
+
+        expect(res.status).toBe(200);
+        expect(res.body.profile).toMatchObject({
+            collection: 'biocbot_documents_text_embedding_3_large', vectorSize: 3072,
+        });
+        // Only the GPT course is affected; the Sandbox course is untouched.
+        expect(res.body.impact.courses).toBe(1);
+        expect(res.body.impact.itemsToReindex).toBe(1);
+        expect(res.body.impact.surfaces).toEqual([{ type: 'course', id: 'C1', name: 'C1' }]);
+    });
+
+    test('nothing is written by a dry run', async () => {
+        const db = memoryDb({ settings: [], courses: [], documents: [] });
+        await request(app({ db })).post('/llm/embedding/impact').send({ provider: OPENAI, embeddingModel: 'text-embedding-3-large' });
+
+        const stored = await db.collection('settings').findOne({ _id: 'llm' });
+        expect(stored).toBeNull();
+        expect(startedMigrations).toEqual([]);
+    });
+
+    test('an embedding model from the wrong platform is rejected', async () => {
+        const res = await request(app())
+            .post('/llm/embedding/impact').send({ provider: OPENAI, embeddingModel: 'qwen3-embedding-0.6b' });
+        expect(res.status).toBe(400);
+        expect(res.body.error).toContain(`Invalid embedding model for ${providerLabel(OPENAI)}`);
+    });
+});
+
+describe('POST /llm/embedding — staged, never destructive', () => {
+    test('the previous model stays active while a migration runs', async () => {
+        const db = memoryDb({
+            settings: [],
+            courses: [{ courseId: 'C1', activeLlmProvider: OPENAI, llmCredentials: { [OPENAI]: buildKeySubdocument('sk-a', 'a', OPENAI) } }],
+            documents: [{ documentId: 'd1', courseId: 'C1', content: 'text' }],
+        });
+
+        const res = await request(app({ db }))
+            .post('/llm/embedding').send({ provider: OPENAI, embeddingModel: 'text-embedding-3-large' });
+
+        expect(res.status).toBe(202);
+        expect(res.body.message).toMatch(/current embedding model stays active/);
+        expect(startedMigrations).toHaveLength(1);
+
+        // Active model unchanged; the new one is only staged.
+        const { providers, pendingEmbedding } = await adminModelSettings.getAllProviderSettings(db, { force: true });
+        expect(providers[OPENAI].embeddingModel).toBe('text-embedding-3-small');
+        expect(pendingEmbedding[OPENAI].embeddingModel).toBe('text-embedding-3-large');
+
+        // The job targets a NEW collection — the old one is untouched.
+        const job = await migrations.getMigration(db, startedMigrations[0]);
+        expect(job.kind).toBe('embedding-model');
+        expect(job.targetProfile.collection).toBe('biocbot_documents_text_embedding_3_large');
+    });
+
+    test('a second embedding change is refused while the first is still re-indexing', async () => {
+        const db = memoryDb({
+            settings: [],
+            courses: [{ courseId: 'C1', activeLlmProvider: OPENAI, llmCredentials: { [OPENAI]: buildKeySubdocument('sk-a', 'a', OPENAI) } }],
+            documents: [{ documentId: 'd1', courseId: 'C1', content: 'text' }],
+        });
+        await request(app({ db })).post('/llm/embedding').send({ provider: OPENAI, embeddingModel: 'text-embedding-3-large' });
+
+        const res = await request(app({ db }))
+            .post('/llm/embedding').send({ provider: OPENAI, embeddingModel: 'text-embedding-ada-002' });
+
+        // Two jobs would fight over the single staged setting, and whichever
+        // finished first would activate the other's not-yet-indexed model.
+        expect(res.status).toBe(409);
+        expect(res.body.code).toBe('EMBEDDING_MIGRATION_ACTIVE');
+        expect(startedMigrations).toHaveLength(1);
+        const { pendingEmbedding } = await adminModelSettings.getAllProviderSettings(db, { force: true });
+        expect(pendingEmbedding[OPENAI].embeddingModel).toBe('text-embedding-3-large');
+    });
+
+    test('selecting the model already in use is a no-op', async () => {
+        const db = memoryDb({ settings: [] });
+        const res = await request(app({ db }))
+            .post('/llm/embedding').send({ provider: OPENAI, embeddingModel: 'text-embedding-3-small' });
+
+        expect(res.status).toBe(200);
+        expect(res.body.migration).toBeNull();
+        expect(startedMigrations).toEqual([]);
+    });
+
+    test('rollback drops the staged change and keeps the active model', async () => {
+        const db = memoryDb({
+            settings: [],
+            courses: [{ courseId: 'C1', activeLlmProvider: OPENAI, llmCredentials: { [OPENAI]: buildKeySubdocument('sk-a', 'a', OPENAI) } }],
+            documents: [{ documentId: 'd1', courseId: 'C1', content: 'text' }],
+        });
+        await request(app({ db })).post('/llm/embedding').send({ provider: OPENAI, embeddingModel: 'text-embedding-3-large' });
+
+        const res = await request(app({ db })).post('/llm/embedding/rollback').send({ provider: OPENAI });
+
+        expect(res.status).toBe(200);
+        expect(res.body.message).toMatch(/vectors were not touched/i);
+        const { providers, pendingEmbedding } = await adminModelSettings.getAllProviderSettings(db, { force: true });
+        expect(providers[OPENAI].embeddingModel).toBe('text-embedding-3-small');
+        expect(pendingEmbedding[OPENAI]).toBeUndefined();
+    });
+
+    test('rollback also stops the re-indexing job it staged', async () => {
+        const db = memoryDb({
+            settings: [],
+            courses: [{ courseId: 'C1', activeLlmProvider: OPENAI, llmCredentials: { [OPENAI]: buildKeySubdocument('sk-a', 'a', OPENAI) } }],
+            documents: [{ documentId: 'd1', courseId: 'C1', content: 'text' }],
+        });
+        await request(app({ db })).post('/llm/embedding').send({ provider: OPENAI, embeddingModel: 'text-embedding-3-large' });
+        const migrationId = startedMigrations[0];
+
+        const res = await request(app({ db })).post('/llm/embedding/rollback').send({ provider: OPENAI });
+
+        // Cancelling the job stops it burning provider calls on a profile that
+        // is never going to be activated, and drops its partial vectors.
+        expect(cancelledMigrations).toEqual([migrationId]);
+        expect(res.body.cleanup).toMatchObject({ deletedVectors: 3 });
+        expect((await migrations.getMigration(db, migrationId)).status).toBe('cancelled');
+    });
+
+    test('rollback with nothing staged is a no-op', async () => {
+        const db = memoryDb({ settings: [] });
+        const res = await request(app({ db })).post('/llm/embedding/rollback').send({ provider: OPENAI });
+
+        expect(res.status).toBe(200);
+        expect(cancelledMigrations).toEqual([]);
+        expect(res.body.cleanup).toBeNull();
+    });
+
+    test('non-admins cannot stage or roll back an embedding change', async () => {
+        expect((await request(app({ user: instructor })).post('/llm/embedding').send({ embeddingModel: 'text-embedding-3-large' })).status).toBe(403);
+        expect((await request(app({ user: instructor })).post('/llm/embedding/rollback').send({})).status).toBe(403);
+    });
+});
+
+describe('instructors never see exact models', () => {
+    test('the instructor-facing key endpoints expose platform labels only', async () => {
+        const db = memoryDb({ settings: [{ _id: 'notesLlm', activeLlmProvider: SANDBOX }] });
+        const res = await request(app({ db })).get('/notes-llm-key');
+
+        expect(res.status).toBe(200);
+        expect(res.body.providers.map(provider => provider.label)).toEqual([
+            providerLabel(OPENAI), providerLabel(SANDBOX)
+        ]);
+
+        const serialised = JSON.stringify(res.body);
+        for (const modelName of ['gpt-4.1-mini', 'gpt-5-nano', 'qwen3.6-35b-a3b', 'text-embedding-3-small', 'qwen3-embedding-0.6b']) {
+            expect(serialised).not.toContain(modelName);
+        }
+    });
+});

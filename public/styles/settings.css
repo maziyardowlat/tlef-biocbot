@@ -426,6 +426,152 @@
     color: var(--danger-color);
 }
 
+/* ---------------------------------------------------------------------------
+   AI platform selector (GPT / Sandbox) + provider migration progress
+   Shared by the course, bucket, notes and instructor Super Course chat keys.
+   --------------------------------------------------------------------------- */
+.llm-platform-selector {
+    flex: 1 1 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 4px;
+}
+
+.llm-platform-choice {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: 24px;
+    row-gap: 8px;
+    margin: 0;
+    padding: 8px 12px;
+    border: 1px solid var(--border-color, #d7d7d7);
+    border-radius: 6px;
+}
+
+.llm-platform-choice legend {
+    padding: 0 4px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+/* Scoped with the parent class so this outranks `.setting-item label`, which
+   would otherwise force the stacked block layout. */
+.llm-platform-choice .llm-platform-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    /* Platform names are multi-word ("UBC On-Premise LLM"); keep each on one
+       line and let the row wrap rather than squeezing text into a column. */
+    flex: 0 0 auto;
+    white-space: nowrap;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.llm-platform-choice .llm-platform-option input[type="radio"] {
+    flex: 0 0 auto;
+    width: auto;
+    margin: 0;
+    padding: 0;
+}
+
+.llm-platform-help,
+.llm-platform-change-note,
+.llm-embedding-pending {
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.llm-platform-actions,
+.llm-migration-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 6px;
+}
+
+.llm-platform-change-note,
+.llm-embedding-pending {
+    padding: 6px 10px;
+    border-left: 3px solid var(--warning-color, #b7791f);
+    background: rgba(183, 121, 31, 0.08);
+    border-radius: 0 4px 4px 0;
+}
+
+/* Admin platform groups: keep the GPT and Sandbox rows visually aligned, and
+   stop the multi-word buttons from wrapping into narrow columns. */
+#llm-model-section .setting-controls > select,
+#sandbox-llm-model-section .setting-controls > select {
+    min-width: 220px;
+}
+
+.llm-embedding-controls {
+    flex-shrink: 1;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.llm-embedding-controls .secondary-button {
+    white-space: nowrap;
+}
+
+.llm-embedding-collection-note {
+    margin: 6px 0 0;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.llm-embedding-collection-note span {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+    word-break: break-all;
+}
+
+.llm-migration {
+    margin-top: 12px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color, #d7d7d7);
+    border-radius: 6px;
+    background: var(--surface-alt, #fafafa);
+}
+
+.llm-migration-status {
+    margin: 0 0 6px;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.llm-migration-progress {
+    width: 100%;
+    height: 8px;
+}
+
+.llm-migration-failures {
+    margin: 8px 0 0;
+    padding-left: 18px;
+    font-size: 13px;
+    color: var(--danger-color);
+}
+
+.llm-migration-failures:empty {
+    display: none;
+}
+
+.llm-migration[data-status="failed"] {
+    border-color: var(--danger-color);
+}
+
+.llm-migration[data-status="completed"] .llm-migration-status {
+    color: #1f7a46;
+}
+
 /* Per-course Super Course bucket checklist */
 .superchat-checklist {
     display: flex;

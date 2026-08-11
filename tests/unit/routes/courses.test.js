@@ -9,12 +9,22 @@ jest.mock('../../../src/services/qdrantService', () => jest.fn().mockImplementat
     initialize: jest.fn().mockResolvedValue(undefined),
 })));
 jest.mock('../../../src/services/gridfs', () => ({}));
-jest.mock('../../../src/services/llmKeyStore', () => ({
-    publicKeySummary: jest.fn((key) => (key ? { status: 'valid' } : { status: 'none' })),
-    buildKeySubdocument: jest.fn(() => ({ enc: 'stub' })),
-    decryptApiKey: jest.fn(() => 'sk'),
-    validateApiKey: jest.fn(async () => ({ ok: true })),
-}));
+// Real provider-state readers (publicProviderKeyState / credentialSetFields /
+// readProviderState) so per-course provider resolution is exercised; only
+// crypto and the network probe are stubbed.
+jest.mock('../../../src/services/llmKeyStore', () => {
+    const actual = jest.requireActual('../../../src/services/llmKeyStore');
+    return {
+        ...actual,
+        buildKeySubdocument: jest.fn((apiKey, userId, provider) => ({
+            ciphertext: 'encrypted', last4: '1234', status: 'valid', provider: provider || 'openai',
+            validatedAt: new Date(), updatedAt: new Date(), updatedBy: userId || null,
+        })),
+        decryptApiKey: jest.fn(() => 'sk'),
+        validateApiKey: jest.fn(async () => ({ ok: true })),
+        validateProviderKey: jest.fn(async () => ({ ok: true, status: 'valid', provider: 'openai' })),
+    };
+});
 jest.mock('../../../src/routes/llmKeyMiddleware', () => ({ resolveCourseAi: jest.fn() }));
 
 const { memoryDb } = require('../helpers/memory-db');
@@ -48,7 +58,7 @@ describe('GET / — instructor course list', () => {
 
     test('200 returns the instructor\'s active courses, transformed, excluding deleted', async () => {
         const db = memoryDb({ courses: [
-            { courseId: 'C1', courseName: 'Bio', instructorId: 'i1', llmApiKey: { enc: 'k' }, courseStructure: { weeks: 2, lecturesPerWeek: 3, totalUnits: 6 } },
+            { courseId: 'C1', courseName: 'Bio', instructorId: 'i1', llmApiKey: { ciphertext: 'k', status: 'valid', last4: '1234' }, courseStructure: { weeks: 2, lecturesPerWeek: 3, totalUnits: 6 } },
             { courseId: 'C2', courseName: 'Gone', instructorId: 'i1', status: 'deleted' },
             { courseId: 'C3', courseName: 'Other', instructorId: 'someone-else' },
         ] });
