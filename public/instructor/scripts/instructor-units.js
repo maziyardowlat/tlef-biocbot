@@ -145,7 +145,12 @@ function generateUnitsFromOnboarding(onboardingData) {
 
     // Generate each unit
     unitList.forEach((unit, index) => {
-        const unitElement = createUnitElement(unit.name, unit.data, index === 0); // First unit is expanded
+        const unitElement = createUnitElement(
+            unit.name,
+            unit.data,
+            index === 0,
+            unitList.length > 1
+        ); // First unit is expanded
         container.appendChild(unitElement);
     });
 
@@ -212,9 +217,10 @@ function generateUnitsFromOnboarding(onboardingData) {
  * @param {string} unitName - Name of the unit (e.g., "Unit 1")
  * @param {Object} unitData - Existing unit data from database
  * @param {boolean} isExpanded - Whether the unit should be expanded by default
+ * @param {boolean} canDelete - Whether deleting this unit would leave another unit
  * @returns {HTMLElement} The unit element
  */
-function createUnitElement(unitName, unitData, isExpanded = false) {
+function createUnitElement(unitName, unitData, isExpanded = false, canDelete = true) {
     const unitDiv = document.createElement('div');
     unitDiv.className = 'accordion-item';
     unitDiv.setAttribute('data-unit-name', unitName);
@@ -248,7 +254,11 @@ function createUnitElement(unitName, unitData, isExpanded = false) {
                     <span class="toggle-label">Published</span>
                 </div>
 
-                <button class="delete-unit-btn" onclick="openDeleteUnitModal('${unitName}')" title="Delete Unit" style="background: none; border: none; cursor: pointer; font-size: 1.2rem; margin-right: 10px; color: #dc3545;">🗑️</button>
+                <button class="delete-unit-btn" onclick="openDeleteUnitModal('${unitName}')"
+                        title="${canDelete ? 'Delete Unit' : 'A course must have at least one unit'}"
+                        aria-label="${canDelete ? `Delete ${unitName}` : `Cannot delete ${unitName}: a course must have at least one unit`}"
+                        ${canDelete ? '' : 'disabled'}
+                        style="background: none; border: none; cursor: ${canDelete ? 'pointer' : 'not-allowed'}; font-size: 1.2rem; margin-right: 10px; color: ${canDelete ? '#dc3545' : '#9ca3af'};">🗑️</button>
 
                 <span class="accordion-toggle">${isExpanded ? '▼' : '▶'}</span>
             </div>

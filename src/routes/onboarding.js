@@ -674,6 +674,13 @@ router.delete('/:courseId/unit/:unitName', async (req, res) => {
                 message: 'Only instructors with course access can delete units'
             });
         }
+
+        if ((course.lectures || []).length <= 1) {
+            return res.status(409).json({
+                success: false,
+                message: 'A course must have at least one unit'
+            });
+        }
         
         // Delete the unit
         const result = await CourseModel.deleteUnit(db, courseId, unitName);

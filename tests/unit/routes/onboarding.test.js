@@ -320,6 +320,15 @@ describe('DELETE /:courseId', () => {
 });
 
 describe('DELETE /:courseId/unit/:unitName', () => {
+    test('409 when deleting the course\'s last unit', async () => {
+        const db = memoryDb({ courses: [{ courseId: 'C1', instructorId: 'i1', lectures: [{ name: 'Unit 1' }] }] });
+        const res = await request(app({ db, user: instructor })).delete('/C1/unit/Unit 1');
+        expect(res.status).toBe(409);
+        expect(res.body.message).toMatch(/at least one unit/i);
+        const saved = await db.collection('courses').findOne({ courseId: 'C1' });
+        expect(saved.lectures.map(l => l.name)).toEqual(['Unit 1']);
+    });
+
     test('removes the named unit from the course', async () => {
         const db = memoryDb({ courses: [{ courseId: 'C1', instructorId: 'i1', lectures: [{ name: 'Unit 1' }, { name: 'Unit 2' }] }] });
         const res = await request(app({ db, user: instructor })).delete('/C1/unit/Unit 1');

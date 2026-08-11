@@ -4012,6 +4012,13 @@ router.delete('/:courseId/units/:unitName', async (req, res) => {
                 message: 'Unit not found'
             });
         }
+
+        if (course.lectures.length <= 1) {
+            return res.status(409).json({
+                success: false,
+                message: 'A course must have at least one unit'
+            });
+        }
         
         // 1. Delete all documents associated with this unit
         // Vectors are removed from every embedding profile's collection the
