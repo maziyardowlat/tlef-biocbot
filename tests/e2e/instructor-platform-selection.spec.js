@@ -583,7 +583,9 @@ test.describe('Admin platform and model settings', () => {
 
         // Splitting a lane sends an explicit override; re-linking sends only
         // the inheritance flag so the server can remove the stored override.
-        await page.locator('#llm-backend-inherit').uncheck();
+        const inheritBackendSettings = page.locator('label[for="llm-backend-inherit"]');
+        await inheritBackendSettings.click();
+        await expect(page.locator('#llm-backend-inherit')).not.toBeChecked();
         await page.locator('#llm-backend-model-select').selectOption('gpt-4.1-mini');
         await page.locator('#save-llm-settings').click();
         await expect.poll(() => savedBodies.length).toBe(1);
@@ -594,7 +596,8 @@ test.describe('Admin platform and model settings', () => {
             backendChatModel: 'gpt-4.1-mini',
         });
 
-        await page.locator('#llm-backend-inherit').check();
+        await inheritBackendSettings.click();
+        await expect(page.locator('#llm-backend-inherit')).toBeChecked();
         await page.locator('#save-llm-settings').click();
         await expect.poll(() => savedBodies.length).toBe(2);
         expect(savedBodies[1]).toMatchObject({
