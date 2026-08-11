@@ -202,9 +202,15 @@ async function saveSurfaceKey(db, {
 /**
  * Prepare all content visible to a surface for a stored provider. The current
  * provider remains active while work runs; the runner switches atomically only
- * after every item is ready.
+ * after every item is ready. A newly copied surface can opt into being disabled
+ * until this first preparation succeeds.
  */
-async function prepareStoredProvider(db, { scope, provider, requestedBy = null }) {
+async function prepareStoredProvider(db, {
+    scope,
+    provider,
+    requestedBy = null,
+    disableUntilReady = false
+}) {
     const requestedProvider = normalizeProvider(provider);
     const { target, doc } = await loadSurface(db, scope);
     const state = readProviderState(doc);
@@ -260,12 +266,36 @@ async function prepareStoredProvider(db, { scope, provider, requestedBy = null }
         requestedBy
     });
 
+    // Nothing needs rebuilding: activate synchronously so a copied course that
+    // reused current target-profile vectors never flashes a preparing state.
+    if ((job.totals?.total || 0) === 0) {
+        await migrations.activateProvider(db, scope, requestedProvider);
+        await migrations.finishMigration(
+            db,
+            job.migrationId,
+            migrations.MIGRATION_STATUSES.COMPLETED
+        );
+        const completedJob = await migrations.getMigration(db, job.migrationId);
+        const updated = await db.collection(target.collection).findOne(target.filter);
+        return {
+            ok: true,
+            httpStatus: 200,
+            body: {
+                success: true,
+                message: `${providerLabel(requestedProvider)} material is ready.`,
+                ...publicProviderKeyState(updated),
+                migration: migrations.publicMigrationView(completedJob)
+            }
+        };
+    }
+
     await db.collection(target.collection).updateOne(
         target.filter,
         {
             $set: {
                 pendingLlmProvider: requestedProvider,
                 providerMigrationId: job.migrationId,
+                ...(disableUntilReady ? { aiPreparationRequired: true } : {}),
                 updatedAt: new Date()
             }
         }

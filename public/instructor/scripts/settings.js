@@ -2608,13 +2608,18 @@ document.addEventListener('DOMContentLoaded', async () => {
                 }
 
                 const warnings = Array.isArray(result.data?.warnings) ? result.data.warnings : [];
-                const summary = warnings.length > 0
+                const preparationStarted = result.data?.preparation?.started === true;
+                const providerLabel = result.data?.preparation?.providerLabel || 'AI';
+                const copySummary = warnings.length > 0
                     ? `Course copy created with ${warnings.length} warning${warnings.length === 1 ? '' : 's'}.`
                     : 'Course copy created successfully.';
+                const summary = preparationStarted
+                    ? `${copySummary} ${providerLabel} material is being prepared in the background.`
+                    : copySummary;
 
                 sessionStorage.setItem('settingsFlashMessage', JSON.stringify({
                     message: `${summary} Switched to ${result.data.courseName}.`,
-                    type: warnings.length > 0 ? 'info' : 'success'
+                    type: warnings.length > 0 || preparationStarted ? 'info' : 'success'
                 }));
 
                 localStorage.setItem('selectedCourseId', result.data.courseId);

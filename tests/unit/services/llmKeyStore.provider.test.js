@@ -97,9 +97,11 @@ describe('reading a surface\'s provider state', () => {
             activeLlmProvider: OPENAI,
             pendingLlmProvider: SANDBOX,
             providerMigrationId: 'mig_1',
+            aiPreparationRequired: true,
         });
         expect(state.pendingProvider).toBe(SANDBOX);
         expect(state.migrationId).toBe('mig_1');
+        expect(state.preparationRequired).toBe(true);
     });
 
     test('a bogus pending provider is ignored', () => {
@@ -143,6 +145,7 @@ describe('credential writes keep platforms isolated', () => {
             activeLlmProvider: SANDBOX,
             pendingLlmProvider: null,
             providerMigrationId: null,
+            aiPreparationRequired: false,
         });
     });
 
@@ -189,6 +192,23 @@ describe('no key material in API responses', () => {
             .toBe('Feel free to use your own OpenAI API key, or contact the support team for assistance.');
         expect(publicProviderKeyState({ activeLlmProvider: SANDBOX }).llmProviderHelpText)
             .toBe('Contact the LTIC team to request a UBC LLM Sandbox API key.');
+    });
+
+    test('a valid key stays unavailable while initial material preparation is required', () => {
+        const credential = buildKeySubdocument('sbx-course-key', 'a', SANDBOX);
+        const state = publicProviderKeyState({
+            activeLlmProvider: SANDBOX,
+            llmCredentials: { [SANDBOX]: credential },
+            pendingLlmProvider: SANDBOX,
+            providerMigrationId: 'mig_prepare',
+            aiPreparationRequired: true,
+        });
+
+        expect(state).toMatchObject({
+            llmProvider: SANDBOX,
+            aiPreparationRequired: true,
+            aiAvailable: false,
+        });
     });
 
     test('stripPrivateKeyFields removes both the legacy field and the credential map', () => {

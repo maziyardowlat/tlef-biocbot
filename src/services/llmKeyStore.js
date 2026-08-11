@@ -47,6 +47,18 @@ class LlmKeyError extends Error {
     }
 }
 
+class LlmPreparationError extends Error {
+    constructor(scope = {}, provider = null) {
+        const selectedProvider = provider || scope.provider || null;
+        super(`AI material for ${providerLabel(selectedProvider)} is still being prepared.`);
+        this.name = 'LlmPreparationError';
+        this.code = 'LLM_PROVIDER_PREPARING';
+        this.scope = scope;
+        this.provider = selectedProvider;
+        this.httpStatus = 409;
+    }
+}
+
 /**
  * Safe browser-facing diagnostic for a key problem. Names the platform the
  * instructor picked ("OpenAI Chat GPT" / "UBC On-Premise LLM") rather than
@@ -99,6 +111,8 @@ function isKeyValid(llmApiKey) {
 //   llmCredentials: { <provider>: <encrypted key subdocument> }
 //   pendingLlmProvider: provider being migrated to, or null
 //   providerMigrationId: id of the in-flight migration job, or null
+//   aiPreparationRequired: true only when a newly copied surface must remain
+//                          unavailable until its first preparation succeeds
 //
 // Backward compatibility: a legacy `llmApiKey` subdocument with no provider
 // metadata is an OpenAI credential. It is read transparently and rewritten into
@@ -108,7 +122,7 @@ function isKeyValid(llmApiKey) {
 /**
  * Read the provider state of a surface document, applying legacy compatibility.
  * @param {Object|null} doc - Course / superchat / settings document
- * @returns {{activeProvider: string, credentials: Object, pendingProvider: (string|null), migrationId: (string|null), legacyOnly: boolean}}
+ * @returns {{activeProvider: string, credentials: Object, pendingProvider: (string|null), migrationId: (string|null), preparationRequired: boolean, legacyOnly: boolean}}
  */
 function readProviderState(doc) {
     const source = (doc && typeof doc === 'object') ? doc : {};
@@ -144,6 +158,7 @@ function readProviderState(doc) {
             ? source[PENDING_PROVIDER_FIELD]
             : null,
         migrationId: source[MIGRATION_ID_FIELD] || null,
+        preparationRequired: source.aiPreparationRequired === true,
         legacyOnly
     };
 }
@@ -195,9 +210,10 @@ function publicProviderKeyState(doc) {
         llmProviderHelpText: providerHelpText(state.activeProvider),
         pendingLlmProvider: state.pendingProvider,
         providerMigrationId: state.migrationId,
+        aiPreparationRequired: state.preparationRequired,
         llmKey: active,
         llmKeysByProvider: keys,
-        aiAvailable: active.status === KEY_STATUSES.VALID
+        aiAvailable: active.status === KEY_STATUSES.VALID && !state.preparationRequired
     };
 }
 
@@ -210,6 +226,7 @@ function stripPrivateKeyFields(doc) {
     clone.llmProvider = state.llmProvider;
     clone.llmKeysByProvider = state.llmKeysByProvider;
     clone.pendingLlmProvider = state.pendingLlmProvider;
+    clone.aiPreparationRequired = state.aiPreparationRequired;
     delete clone.llmApiKey;
     delete clone[CREDENTIALS_FIELD];
     return clone;
@@ -357,7 +374,8 @@ function activateProviderSetFields(provider, credential = null) {
     const set = {
         [ACTIVE_PROVIDER_FIELD]: normalized,
         [PENDING_PROVIDER_FIELD]: null,
-        [MIGRATION_ID_FIELD]: null
+        [MIGRATION_ID_FIELD]: null,
+        aiPreparationRequired: false
     };
     if (normalized === PROVIDERS.OPENAI && credential) {
         set.llmApiKey = credential;
@@ -670,6 +688,7 @@ module.exports = {
     ERROR_CODES,
     KEY_STATUSES,
     LlmKeyError,
+    LlmPreparationError,
     MIGRATION_ID_FIELD,
     PENDING_PROVIDER_FIELD,
     activateProviderSetFields,

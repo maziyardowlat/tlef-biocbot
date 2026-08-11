@@ -280,6 +280,59 @@ describe('course transfer carries the platform', () => {
         expect(clone.llmApiKey).toBeUndefined();
     });
 
+    test('an OpenAI course copied to Sandbox automatically prepares missing Sandbox vectors', async () => {
+        mockValidateProviderKey.mockResolvedValue({ ok: true, status: 'valid', provider: SANDBOX });
+        const db = memoryDb({
+            courses: [{
+                courseId: 'C1',
+                courseName: 'Source',
+                instructorId: 'i1',
+                instructors: ['i1'],
+                activeLlmProvider: OPENAI,
+                llmCredentials: { [OPENAI]: buildKeySubdocument('sk-gpt-key', 'i1', OPENAI) },
+                lectures: [{ name: 'Unit 1', documents: [] }],
+            }],
+            documents: [{
+                documentId: 'd1',
+                courseId: 'C1',
+                lectureName: 'Unit 1',
+                contentType: 'text',
+                content: 'ATP synthase uses a proton gradient.',
+                filename: 'atp.txt',
+                originalName: 'atp.txt',
+                mimeType: 'text/plain',
+                status: 'uploaded',
+            }],
+        });
+
+        const res = await request(courses({ db, user: instructor }))
+            .post('/C1/transfer').send({
+                newCourseName: 'Sandbox Clone',
+                apiKey: 'sbx-key',
+                llmProvider: SANDBOX,
+            });
+
+        expect(res.status).toBe(200);
+        expect(res.body.data).toMatchObject({
+            aiAvailable: false,
+            preparation: {
+                started: true,
+                provider: SANDBOX,
+                providerLabel: 'UBC On-Premise LLM',
+                migration: { status: 'queued', total: 1, toProvider: SANDBOX },
+            },
+        });
+        expect(startedMigrations).toEqual([res.body.data.preparation.migration.migrationId]);
+
+        const clone = await db.collection('courses').findOne({ courseId: res.body.data.courseId });
+        expect(clone).toMatchObject({
+            activeLlmProvider: SANDBOX,
+            pendingLlmProvider: SANDBOX,
+            aiPreparationRequired: true,
+            providerMigrationId: res.body.data.preparation.migration.migrationId,
+        });
+    });
+
     test('transfer defaults to the source course\'s platform', async () => {
         mockValidateProviderKey.mockResolvedValue({ ok: true, status: 'valid', provider: SANDBOX });
         const db = memoryDb({

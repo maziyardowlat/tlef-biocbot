@@ -231,6 +231,66 @@ describe('switching back to a stored platform', () => {
         expect(course.pendingLlmProvider).toBe(OPENAI);
     });
 
+    test('initial preparation can keep a new surface unavailable until its job completes', async () => {
+        const course = dualKeyCourse();
+        course.activeLlmProvider = OPENAI;
+        const db = memoryDb({
+            courses: [course],
+            documents: [{ documentId: 'd1', courseId: 'C1', content: 'text' }],
+        });
+
+        const result = await providerKeys.prepareStoredProvider(db, {
+            scope: COURSE_SCOPE,
+            provider: OPENAI,
+            requestedBy: 'i1',
+            disableUntilReady: true,
+        });
+
+        expect(result.httpStatus).toBe(202);
+        expect(result.body).toMatchObject({ aiAvailable: false, aiPreparationRequired: true });
+        const saved = await db.collection('courses').findOne({ courseId: 'C1' });
+        expect(saved).toMatchObject({
+            aiPreparationRequired: true,
+            pendingLlmProvider: OPENAI,
+            providerMigrationId: result.body.migration.migrationId,
+        });
+        expect(startedMigrations).toEqual([result.body.migration.migrationId]);
+    });
+
+    test('preparation with no missing work becomes ready synchronously', async () => {
+        const text = 'text';
+        const db = memoryDb({
+            courses: [dualKeyCourse()],
+            documents: [{
+                documentId: 'd1', courseId: 'C1', content: text,
+                embeddingIndexes: {
+                    [GPT_PROFILE.storageKey]: buildIndexRecord({
+                        profile: GPT_PROFILE,
+                        hash: contentHash(text),
+                        status: INDEX_STATUSES.READY,
+                        indexedAt: new Date(),
+                    }),
+                },
+            }],
+        });
+
+        const result = await providerKeys.prepareStoredProvider(db, {
+            scope: COURSE_SCOPE,
+            provider: OPENAI,
+            requestedBy: 'i1',
+            disableUntilReady: true,
+        });
+
+        expect(result.httpStatus).toBe(200);
+        expect(result.body).toMatchObject({ aiAvailable: true, aiPreparationRequired: false });
+        expect(result.body.migration.status).toBe('completed');
+        expect(startedMigrations).toEqual([]);
+        const saved = await db.collection('courses').findOne({ courseId: 'C1' });
+        expect(saved).toMatchObject({ activeLlmProvider: OPENAI, aiPreparationRequired: false });
+        expect(saved.pendingLlmProvider).toBeNull();
+        expect(saved.providerMigrationId).toBeNull();
+    });
+
     test('a prepared stored provider switches immediately without key re-entry', async () => {
         const text = 'text';
         const db = memoryDb({

@@ -2196,6 +2196,58 @@ router.post('/:courseId/transfer', async (req, res) => {
             }
         }
 
+        // Reuse any current vectors that were cloned for the selected profile,
+        // then asynchronously embed only copied material that is still missing
+        // or stale for that profile. A copied course must not expose AI until
+        // this first preparation pass is complete.
+        let preparation = {
+            started: false,
+            provider: transferProvider,
+            providerLabel: providerLabel(transferProvider),
+            migration: null
+        };
+        let preparationAiAvailable = true;
+        try {
+            const preparationResult = await providerKeys.prepareStoredProvider(db, {
+                scope: { type: 'course', id: targetCourseId },
+                provider: transferProvider,
+                requestedBy: user.userId,
+                disableUntilReady: true
+            });
+
+            if (preparationResult.ok) {
+                const migration = preparationResult.body.migration || null;
+                preparation = {
+                    ...preparation,
+                    started: preparationResult.httpStatus === 202,
+                    migration
+                };
+                preparationAiAvailable = preparationResult.body.aiAvailable === true;
+            } else {
+                preparationAiAvailable = false;
+                transferWarnings.push(
+                    `Automatic ${providerLabel(transferProvider)} material preparation could not start: `
+                    + `${preparationResult.body.message || 'unknown error'}`
+                );
+            }
+        } catch (error) {
+            preparationAiAvailable = false;
+            transferWarnings.push(
+                `Automatic ${providerLabel(transferProvider)} material preparation could not start: ${error.message}`
+            );
+        }
+
+        if (!preparationAiAvailable) {
+            try {
+                await db.collection('courses').updateOne(
+                    { courseId: targetCourseId },
+                    { $set: { aiPreparationRequired: true, updatedAt: new Date() } }
+                );
+            } catch (error) {
+                transferWarnings.push(`Failed to mark the copied course as awaiting AI preparation: ${error.message}`);
+            }
+        }
+
         if (deactivateSourceCourse) {
             await db.collection('courses').updateOne(
                 { courseId, $or: [{ instructorId: user.userId }, { instructors: user.userId }] },
@@ -2223,6 +2275,8 @@ router.post('/:courseId/transfer', async (req, res) => {
                 sourceCourseId: courseId,
                 sourceDeactivated: !!deactivateSourceCourse,
                 warnings: transferWarnings,
+                aiAvailable: preparationAiAvailable,
+                preparation,
                 summary: {
                     totalUnits: sourceLectures.length,
                     documentsCopied,

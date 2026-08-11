@@ -9,6 +9,7 @@ const { LANES } = require('./llmLanes');
 const {
     KEY_STATUSES,
     LlmKeyError,
+    LlmPreparationError,
     decryptApiKey,
     isOllamaProvider,
     publicKeySummary,
@@ -95,7 +96,7 @@ class LlmRegistry {
         if (!courseId) throw new LlmKeyError(KEY_STATUSES.MISSING, { type: 'course', id: courseId });
         const course = await db.collection('courses').findOne(
             { courseId },
-            { projection: { llmApiKey: 1, llmCredentials: 1, activeLlmProvider: 1, pendingLlmProvider: 1 } }
+            { projection: { llmApiKey: 1, llmCredentials: 1, activeLlmProvider: 1, pendingLlmProvider: 1, providerMigrationId: 1, aiPreparationRequired: 1 } }
         );
         return this._resolve(db, { type: 'course', id: courseId }, course);
     }
@@ -104,7 +105,7 @@ class LlmRegistry {
         if (!superchatId) throw new LlmKeyError(KEY_STATUSES.MISSING, { type: 'superchat', id: superchatId });
         const superchat = await db.collection('superchats').findOne(
             { superchatId, isDeleted: { $ne: true } },
-            { projection: { llmApiKey: 1, llmCredentials: 1, activeLlmProvider: 1, pendingLlmProvider: 1 } }
+            { projection: { llmApiKey: 1, llmCredentials: 1, activeLlmProvider: 1, pendingLlmProvider: 1, providerMigrationId: 1, aiPreparationRequired: 1 } }
         );
         return this._resolve(db, { type: 'superchat', id: superchatId }, superchat);
     }
@@ -112,7 +113,7 @@ class LlmRegistry {
     async forNotes(db) {
         const settings = await db.collection('settings').findOne(
             { _id: 'notesLlm' },
-            { projection: { llmApiKey: 1, llmCredentials: 1, activeLlmProvider: 1, pendingLlmProvider: 1 } }
+            { projection: { llmApiKey: 1, llmCredentials: 1, activeLlmProvider: 1, pendingLlmProvider: 1, providerMigrationId: 1, aiPreparationRequired: 1 } }
         );
         return this._resolve(db, { type: 'notes', id: 'notesLlm' }, settings);
     }
@@ -126,7 +127,7 @@ class LlmRegistry {
     async forSuperCourseChat(db) {
         const settings = await db.collection('settings').findOne(
             { _id: 'superCourseChat' },
-            { projection: { llmApiKey: 1, llmCredentials: 1, activeLlmProvider: 1, pendingLlmProvider: 1 } }
+            { projection: { llmApiKey: 1, llmCredentials: 1, activeLlmProvider: 1, pendingLlmProvider: 1, providerMigrationId: 1, aiPreparationRequired: 1 } }
         );
         return this._resolve(db, { type: 'superCourseChat', id: 'superCourseChat' }, settings);
     }
@@ -171,6 +172,10 @@ class LlmRegistry {
         const provider = state.activeProvider;
         const credential = state.credentials[provider];
         const summary = publicKeySummary(credential);
+
+        if (state.preparationRequired) {
+            throw new LlmPreparationError({ ...scope, provider }, provider);
+        }
 
         if (summary.status !== KEY_STATUSES.VALID || !credential || !credential.ciphertext) {
             throw new LlmKeyError(summary.status || KEY_STATUSES.MISSING, { ...scope, provider }, provider);

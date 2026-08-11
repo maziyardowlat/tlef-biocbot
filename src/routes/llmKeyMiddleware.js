@@ -1,9 +1,18 @@
 const {
     LlmKeyError,
+    LlmPreparationError,
     structuredKeyError
 } = require('../services/llmKeyStore');
 
 function sendLlmKeyError(res, error) {
+    if (error instanceof LlmPreparationError || error?.code === 'LLM_PROVIDER_PREPARING') {
+        res.status(error.httpStatus || 409).json({
+            success: false,
+            code: 'LLM_PROVIDER_PREPARING',
+            message: error.message || 'AI material is still being prepared.'
+        });
+        return true;
+    }
     if (!(error instanceof LlmKeyError) && !error?.code?.startsWith?.('LLM_KEY_')) {
         return false;
     }

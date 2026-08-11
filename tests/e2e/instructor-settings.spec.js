@@ -1476,6 +1476,12 @@ test.describe('Instructor settings UI', () => {
                 courseId: 'MOCK-SETTINGS-COPY',
                 courseName: 'Mock Settings Copy',
                 warnings: ['Document chunks were skipped'],
+                preparation: {
+                    started: true,
+                    provider: 'openai',
+                    providerLabel: 'OpenAI Chat GPT',
+                    migration: { migrationId: 'mig-copy', status: 'queued', total: 1 },
+                },
             },
         };
         await page.locator('#transfer-course-btn').click();
@@ -1486,7 +1492,9 @@ test.describe('Instructor settings UI', () => {
         });
         await page.locator('#transfer-modal-confirm').click();
         await expect(page).toHaveURL(/courseId=MOCK-SETTINGS-COPY/, { timeout: 10_000 });
-        await expect(page.locator('.notification.info', { hasText: 'Course copy created with 1 warning. Switched to Mock Settings Copy.' })).toBeVisible();
+        await expect(page.locator('.notification.info', {
+            hasText: 'Course copy created with 1 warning. OpenAI Chat GPT material is being prepared in the background. Switched to Mock Settings Copy.',
+        })).toBeVisible();
     });
 
     test('handles lifecycle cancel and API failure without changing status', async ({ page }) => {
