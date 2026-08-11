@@ -1,7 +1,5 @@
 const { memoryDb } = require('../helpers/memory-db');
 const {
-    fetchCanvasRoster,
-    fetchMoodleRoster,
     matchCourseRoster,
     syncCourseRoster
 } = require('../../../src/services/lmsRosterMatch');
@@ -29,7 +27,7 @@ function rosterEntry(overrides = {}) {
         externalUserId: '900',
         name: 'Ada Lovelace',
         email: 'ada@student.ubc.ca',
-        username: 'ada',
+        loginId: 'ada',
         sisId: '',
         ...overrides
     };
@@ -48,7 +46,7 @@ async function runMatch(db, entries, provider = 'canvas') {
 describe('LMS roster matching', () => {
     test('matches on email and records how the match was made', async () => {
         const db = memoryDb({ users: [localUser()] });
-        const summary = await runMatch(db, [rosterEntry({ username: 'different-login' })]);
+        const summary = await runMatch(db, [rosterEntry({ loginId: 'different-login' })]);
 
         expect(summary.matchedCount).toBe(1);
         expect(summary.matchedBy.email).toBe(1);
@@ -67,6 +65,27 @@ describe('LMS roster matching', () => {
         });
     });
 
+    test('prefers Canvas integration_id matched to PUID over every fallback', async () => {
+        const db = memoryDb({
+            users: [
+                localUser({ userId: 'user-1', puid: 'puid-ada', email: 'stale@ubc.ca' }),
+                localUser({ userId: 'user-2', username: 'grace', email: 'ada@student.ubc.ca' })
+            ]
+        });
+        const summary = await runMatch(db, [rosterEntry({ integrationId: 'puid-ada' })]);
+
+        expect(summary.matchedBy.integration).toBe(1);
+        const [mapping] = await db.collection('lms_identity_mappings').find({}).toArray();
+        expect(mapping.localUserId).toBe('user-1');
+    });
+
+    test('never compares Canvas sisId to a BiocBot PUID', async () => {
+        const db = memoryDb({ users: [localUser({ puid: '12345678', academicStudentId: '' })] });
+        const summary = await runMatch(db, [rosterEntry({ sisId: '12345678', email: '', loginId: '' })]);
+
+        expect(summary.matchedCount).toBe(0);
+    });
+
     test('prefers the student number over the email when both are present', async () => {
         const db = memoryDb({
             users: [
@@ -74,7 +93,7 @@ describe('LMS roster matching', () => {
                 localUser({ userId: 'user-2', username: 'grace', email: 'ada@student.ubc.ca', displayName: 'Grace Hopper' })
             ]
         });
-        const summary = await runMatch(db, [rosterEntry({ sisId: '12345678', username: '' })]);
+        const summary = await runMatch(db, [rosterEntry({ sisId: '12345678', loginId: '' })]);
 
         expect(summary.matchedBy.sis).toBe(1);
         const [mapping] = await db.collection('lms_identity_mappings').find({}).toArray();
@@ -88,7 +107,7 @@ describe('LMS roster matching', () => {
                 localUser({ userId: 'user-2', username: 'ada2', displayName: 'Ada Twin' })
             ]
         });
-        const summary = await runMatch(db, [rosterEntry({ username: '' })]);
+        const summary = await runMatch(db, [rosterEntry({ loginId: '' })]);
 
         expect(summary.matchedCount).toBe(0);
         expect(summary.unmatchedLmsStudents).toEqual([
@@ -99,7 +118,7 @@ describe('LMS roster matching', () => {
 
     test('never matches on display name alone', async () => {
         const db = memoryDb({ users: [localUser({ username: 'zzz', email: 'zzz@ubc.ca' })] });
-        const summary = await runMatch(db, [rosterEntry({ email: '', username: '' })]);
+        const summary = await runMatch(db, [rosterEntry({ email: '', loginId: '' })]);
 
         expect(summary.matchedCount).toBe(0);
         expect(summary.unmatchedLmsStudents[0]).toMatchObject({ name: 'Ada Lovelace', reason: 'no-biocbot-account' });
@@ -109,7 +128,7 @@ describe('LMS roster matching', () => {
         const db = memoryDb({ users: [localUser()] });
         const summary = await runMatch(db, [
             rosterEntry({ externalUserId: '900' }),
-            rosterEntry({ externalUserId: '901', username: '' })
+            rosterEntry({ externalUserId: '901', loginId: '' })
         ]);
 
         expect(summary.matchedCount).toBe(1);
@@ -153,44 +172,11 @@ describe('LMS roster matching', () => {
 describe('LMS roster readers', () => {
     test('reads the Canvas roster as active student enrollments', async () => {
         const client = {
-            get: jest.fn(async () => [
-                { id: 900, name: 'Ada Lovelace', email: 'ada@student.ubc.ca', login_id: 'ada', sis_user_id: '12345678' }
+            getAll: jest.fn(async () => [
+                { id: 900, name: 'Ada Lovelace', email: 'ada@student.ubc.ca', integration_id: 'puid-ada', login_id: 'ada', sis_user_id: '12345678' }
             ])
         };
-        const roster = await fetchCanvasRoster(client, '77');
-
-        expect(client.get).toHaveBeenCalledWith('/courses/77/users', expect.objectContaining({
-            enrollment_type: ['student']
-        }));
-        expect(roster).toEqual([{
-            externalUserId: '900',
-            name: 'Ada Lovelace',
-            email: 'ada@student.ubc.ca',
-            username: 'ada',
-            sisId: '12345678'
-        }]);
-    });
-
-    test('keeps only students from the Moodle enrolment list', async () => {
-        const client = {
-            call: jest.fn(async () => [
-                { id: 5, fullname: 'Ada Lovelace', email: 'ada@student.ubc.ca', username: 'ada', roles: [{ shortname: 'student' }] },
-                { id: 6, fullname: 'Prof Babbage', email: 'cb@ubc.ca', username: 'cb', roles: [{ shortname: 'editingteacher' }] }
-            ])
-        };
-        const roster = await fetchMoodleRoster(client, '20');
-
-        expect(client.call).toHaveBeenCalledWith('core_enrol_get_enrolled_users', { courseid: 20 });
-        expect(roster.map((entry) => entry.name)).toEqual(['Ada Lovelace']);
-    });
-
-    test('syncCourseRoster fetches then reconciles in one call', async () => {
         const db = memoryDb({ users: [localUser()] });
-        const client = {
-            get: jest.fn(async () => [
-                { id: 900, name: 'Ada Lovelace', email: 'ada@student.ubc.ca', login_id: 'ada' }
-            ])
-        };
         const summary = await syncCourseRoster({
             db,
             course,
@@ -202,5 +188,9 @@ describe('LMS roster readers', () => {
 
         expect(summary.matchedCount).toBe(1);
         expect(summary.rosterSize).toBe(1);
+        expect(summary.coverage).toEqual({ total: 1, integrationId: 1, sisId: 1, email: 1, loginId: 1 });
+        expect(client.getAll).toHaveBeenCalledWith('/courses/77/users', expect.objectContaining({
+            enrollment_type: ['student']
+        }));
     });
 });

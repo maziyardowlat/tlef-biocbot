@@ -50,6 +50,7 @@ function isValidCourseStatus(value) {
  *     }
 // ... (existing code)
  *   },
+ *   rosterSource: 'academicSync' | 'canvas' | 'manual', // Exclusive enrollment owner
  *   studentIdleTimeout: Number, // Idle timeout for students in seconds (default: 300)
  *   lectures: [                 // Array of lectures/units
 // ... (rest of the file)
@@ -1288,6 +1289,7 @@ async function createCourseFromOnboarding(db, onboardingData) {
             instructorId,
             instructors: [instructorId], // Initialize with primary instructor
             tas: [], // Initialize empty TA array
+            rosterSource: 'manual',
             courseDescription: courseDescription || '',
             assessmentCriteria: assessmentCriteria || '',
             courseMaterials: courseMaterials || [],

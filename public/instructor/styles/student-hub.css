@@ -141,6 +141,25 @@
     line-height: 1.5;
 }
 
+.lms-unmatched-group {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px solid #f0d7b5;
+}
+
+.lms-unmatched-group p {
+    margin: 4px 0;
+}
+
+.lms-roster-coverage {
+    margin: 10px 0 0;
+}
+
+.lms-prune-disabled {
+    color: #7a5a2d;
+    font-style: italic;
+}
+
 /* Per-card LMS grade block */
 .student-lms-grades {
     margin-top: 15px;

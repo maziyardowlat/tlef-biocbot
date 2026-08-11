@@ -13,6 +13,7 @@ let currentSurveyStats = null;
 let currentGradeCourseId = null;
 let currentGradeSources = [];
 let currentGradeView = null;
+let currentRosterMatch = null;
 // LMS grades keyed by BiocBot user id so a student card can find its own row.
 let gradesByLocalUserId = new Map();
 const dirtyEnrollment = new Map(); // studentId -> boolean (enrolled)
@@ -225,6 +226,7 @@ function gradeLabel(value) {
 }
 
 const MATCH_STRATEGY_LABELS = {
+    integration: 'Canvas integration ID',
     sis: 'student number',
     email: 'email',
     username: 'username',
@@ -249,7 +251,7 @@ function applyLmsGradeView(view) {
         if (!view?.source) {
             status.textContent = `Not linked — connect ${providerLabel(view?.provider)} when you are ready to choose a course.`;
         } else if (!view.students?.length) {
-            status.textContent = `Linked to ${view.source.code || view.source.name || view.source.courseId}. No students matched yet — run “Match students”.`;
+            status.textContent = `Linked to ${view.source.code || view.source.name || view.source.courseId}. No students matched yet — run “Sync roster”.`;
         } else if (view.importedAt) {
             status.textContent = `${view.students.length} students matched · snapshot imported ${new Date(view.importedAt).toLocaleString()}`;
         } else {
@@ -307,6 +309,8 @@ function renderUnmatchedPanel(match) {
     if (!panel || !summary || !body) return;
 
     const lms = match?.unmatchedLmsStudents || [];
+    const noBiocBotAccount = lms.filter((entry) => entry.reason === 'no-biocbot-account');
+    const identityConflicts = lms.filter((entry) => entry.reason !== 'no-biocbot-account');
     const local = match?.unmatchedBiocBotStudents || [];
     if (!lms.length && !local.length) {
         panel.hidden = true;
@@ -314,19 +318,87 @@ function renderUnmatchedPanel(match) {
     }
 
     const provider = providerLabel(match.provider);
+    currentRosterMatch = match;
     panel.hidden = false;
     summary.textContent = `${lms.length + local.length} students could not be matched`;
     const list = (entries, describe) => entries.map((entry) => `<li>${describe(entry)}</li>`).join('');
+    const coverage = match.coverage || {};
+    const coveragePercent = coverage.total
+        ? Math.round(((coverage.integrationId || 0) / coverage.total) * 100)
+        : 0;
+    const canDrop = match.prune?.allowed && match.syncToken && local.length > 0;
     body.innerHTML = `
-        ${lms.length ? `
-            <p><strong>In ${escapeHTML(provider)} but not in BiocBot (${lms.length})</strong> — they have no BiocBot account with a matching email, username, or student number.</p>
-            <ul>${list(lms, (entry) => `${escapeHTML(entry.name)}${entry.email ? ` &lt;${escapeHTML(entry.email)}&gt;` : ' (no email visible to BiocBot)'}`)}</ul>
+        ${match.provider === 'canvas' ? `
+            <p class="lms-roster-coverage"><strong>Canvas integration_id coverage:</strong> ${coveragePercent}% (${coverage.integrationId || 0}/${coverage.total || 0})</p>
+        ` : ''}
+        ${noBiocBotAccount.length ? `
+            <section class="lms-unmatched-group">
+            <p><strong>In ${escapeHTML(provider)}, not in BiocBot (${noBiocBotAccount.length})</strong></p>
+            <p>These students have not signed in to BiocBot yet. No action is needed; their account is created on first CWL login.</p>
+            <ul>${list(noBiocBotAccount, (entry) => `${escapeHTML(entry.name)}${entry.email ? ` &lt;${escapeHTML(entry.email)}&gt;` : ' (no email visible to BiocBot)'}`)}</ul>
+            </section>
+        ` : ''}
+        ${identityConflicts.length ? `
+            <section class="lms-unmatched-group">
+            <p><strong>Identity conflicts (${identityConflicts.length})</strong></p>
+            <p>More than one LMS row claimed the same BiocBot account. Review these accounts before importing grades.</p>
+            <ul>${list(identityConflicts, (entry) => `${escapeHTML(entry.name)}${entry.email ? ` &lt;${escapeHTML(entry.email)}&gt;` : ''}`)}</ul>
+            </section>
         ` : ''}
         ${local.length ? `
-            <p><strong>In BiocBot but not in ${escapeHTML(provider)} (${local.length})</strong> — no ${escapeHTML(provider)} student row matched them.</p>
+            <section class="lms-unmatched-group">
+            <p><strong>In BiocBot, not in ${escapeHTML(provider)} (${local.length})</strong></p>
+            <p>These are soft-drop candidates. Disabling access keeps their account and history intact.</p>
             <ul>${list(local, (entry) => `${escapeHTML(entry.displayName)}${entry.email ? ` &lt;${escapeHTML(entry.email)}&gt;` : ' (no email on file)'}`)}</ul>
+            ${canDrop ? `
+                <button id="drop-unmatched-lms-students" class="btn-small btn-danger" type="button">
+                    Disable access for ${local.length} student${local.length === 1 ? '' : 's'}
+                </button>
+            ` : `
+                <p class="lms-prune-disabled">Drop action unavailable: ${match.provider !== 'canvas'
+                    ? 'soft-drop sync is only available for Canvas.'
+                    : (match.prune?.reason === 'empty-roster'
+                        ? 'the Canvas roster was empty.'
+                        : (match.prune?.reason === 'already-applied'
+                            ? 'these changes were already applied.'
+                            : 'integration_id coverage is below the safety threshold.'))}</p>
+            `}
+            </section>
         ` : ''}
     `;
+    document.getElementById('drop-unmatched-lms-students')?.addEventListener('click', dropUnmatchedLmsStudents);
+}
+
+async function dropUnmatchedLmsStudents() {
+    const match = currentRosterMatch;
+    const button = document.getElementById('drop-unmatched-lms-students');
+    if (!match?.syncToken || !currentGradeCourseId || !button) return;
+    if (!confirm(`Disable course access for ${match.unmatchedBiocBotStudents.length} students who are not in Canvas? Their accounts and history will be kept.`)) return;
+
+    button.disabled = true;
+    button.textContent = 'Disabling access…';
+    try {
+        const response = await authenticatedFetch(
+            `/api/lms/roster/courses/${encodeURIComponent(currentGradeCourseId)}/drop-unmatched`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ syncToken: match.syncToken })
+            }
+        );
+        const result = await readLmsJson(response);
+        if (!response.ok || !result.success) throw new Error(result.message || `HTTP ${response.status}`);
+
+        currentRosterMatch = { ...match, prune: { ...match.prune, allowed: false, reason: 'already-applied' } };
+        renderUnmatchedPanel(currentRosterMatch);
+        showNotification(result.message, 'success');
+        await loadStudents(currentGradeCourseId);
+    } catch (error) {
+        console.error('Error soft-dropping unmatched Canvas students:', error);
+        showNotification(`Could not update enrollment: ${error.message}`, 'error');
+        button.disabled = false;
+        button.textContent = 'Disable access';
+    }
 }
 
 /**
@@ -546,11 +618,14 @@ async function matchLmsStudents() {
     if (!provider || !currentGradeCourseId || !button) return;
 
     button.disabled = true;
-    button.textContent = 'Matching…';
+    button.textContent = 'Syncing…';
     if (status) status.textContent = `Reading the ${providerLabel(provider)} roster…`;
     try {
+        const endpoint = provider === 'canvas'
+            ? `/api/lms/roster/courses/${encodeURIComponent(currentGradeCourseId)}/sync`
+            : `/api/lms/grades/courses/${encodeURIComponent(currentGradeCourseId)}/match-students`;
         const response = await authenticatedFetch(
-            `/api/lms/grades/courses/${encodeURIComponent(currentGradeCourseId)}/match-students`,
+            endpoint,
             {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -563,8 +638,12 @@ async function matchLmsStudents() {
             throw new Error(result.message || result.error || `HTTP ${response.status}`);
         }
 
-        const match = result.data.match;
-        applyLmsGradeView(result.data);
+        const match = provider === 'canvas' ? result.data : result.data.match;
+        if (provider === 'canvas') {
+            await loadLmsGrades(currentGradeCourseId, provider);
+        } else {
+            applyLmsGradeView(result.data);
+        }
         renderUnmatchedPanel(match);
         showNotification(
             `Matched ${match.matchedCount} of ${match.rosterSize} ${providerLabel(provider)} students.`,
@@ -576,7 +655,7 @@ async function matchLmsStudents() {
         showNotification(`Could not match ${providerLabel(provider)} students.`, 'error');
     } finally {
         button.disabled = false;
-        button.textContent = '1. Match students';
+        button.textContent = '1. Sync roster';
     }
 }
 
