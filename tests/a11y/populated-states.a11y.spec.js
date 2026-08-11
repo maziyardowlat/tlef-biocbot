@@ -53,7 +53,6 @@ test.describe('Accessibility: instructor student hub (populated)', () => {
         await page.goto(`/instructor/student-hub?courseId=${HUB_COURSE_ID}`);
         await expect(page.locator('#students-container')).toBeVisible({ timeout: 15_000 });
         await expect(page.locator('.student-card').first()).toBeVisible({ timeout: 15_000 });
-        await expect(page.getByRole('button', { name: 'Connect Canvas' })).toBeVisible();
 
         await expectNoA11yViolations(page);
     });

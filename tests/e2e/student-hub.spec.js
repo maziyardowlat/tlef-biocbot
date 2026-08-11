@@ -113,9 +113,32 @@ test.describe('Student Hub UI', () => {
             }
         });
 
-        // resetStudentHubData intentionally creates this course without an LMS
-        // link. This test uses only the normal BiocBot instructor storage state;
-        // it does not seed or mock a Canvas login/token.
+        // CI intentionally has no Canvas environment configuration. Model only
+        // the app's provider metadata so this exercises "configured but
+        // unlinked" everywhere, without seeding or mocking Canvas login/token.
+        await page.route(
+            new RegExp(`/api/lms/grades/courses/${HUB_COURSE_ID}(?:\\?.*)?$`),
+            (route) => route.fulfill({
+                status: 200,
+                json: {
+                    success: true,
+                    data: {
+                        provider: 'canvas',
+                        source: null,
+                        sources: [
+                            { provider: 'canvas', configured: true, linked: false },
+                            { provider: 'moodle', configured: false, linked: false },
+                        ],
+                        students: [],
+                        gradeItems: [],
+                        importedAt: null,
+                    },
+                },
+            })
+        );
+
+        // resetStudentHubData creates the course without any LMS link. The page
+        // still uses only the normal BiocBot instructor storage state.
         await openStudentHub(page);
 
         await expect(page).toHaveURL(new RegExp(`/instructor/student-hub\\?courseId=${HUB_COURSE_ID}$`));
