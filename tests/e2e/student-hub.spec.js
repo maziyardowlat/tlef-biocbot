@@ -103,6 +103,50 @@ test.describe('Student Hub UI', () => {
         await expect(studentCard(page, HUB_OTHER_STUDENT.displayName)).toHaveCount(0);
     });
 
+    test('opening an unlinked Student Hub does not contact Canvas or start Canvas login', async ({ page }) => {
+        /** @type {string[]} */
+        const canvasRequests = [];
+        page.on('request', (request) => {
+            const url = request.url();
+            if (url.includes('/available-courses?provider=canvas') || url.includes('/api/lms/canvas/auth/')) {
+                canvasRequests.push(url);
+            }
+        });
+
+        // CI intentionally has no Canvas environment configuration. Model only
+        // the app's provider metadata so this exercises "configured but
+        // unlinked" everywhere, without seeding or mocking Canvas login/token.
+        await page.route(
+            new RegExp(`/api/lms/grades/courses/${HUB_COURSE_ID}(?:\\?.*)?$`),
+            (route) => route.fulfill({
+                status: 200,
+                json: {
+                    success: true,
+                    data: {
+                        provider: 'canvas',
+                        source: null,
+                        sources: [
+                            { provider: 'canvas', configured: true, linked: false },
+                            { provider: 'moodle', configured: false, linked: false },
+                        ],
+                        students: [],
+                        gradeItems: [],
+                        importedAt: null,
+                    },
+                },
+            })
+        );
+
+        // resetStudentHubData creates the course without any LMS link. The page
+        // still uses only the normal BiocBot instructor storage state.
+        await openStudentHub(page);
+
+        await expect(page).toHaveURL(new RegExp(`/instructor/student-hub\\?courseId=${HUB_COURSE_ID}$`));
+        await expect(page.getByRole('button', { name: 'Connect Canvas' })).toBeVisible();
+        await expect(page.locator('#lms-grades-status')).toContainText('Not linked');
+        expect(canvasRequests).toEqual([]);
+    });
+
     test('falls back to the selected course in localStorage when no courseId is in the URL', async ({ page }) => {
         await page.addInitScript((courseIdToStore) => {
             try {
