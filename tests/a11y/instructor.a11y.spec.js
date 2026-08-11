@@ -32,6 +32,13 @@ test.describe('Accessibility: instructor pages', () => {
             await expectNoA11yViolations(page);
         });
     }
+
+    test('expanded student preview options have no critical/serious a11y violations', async ({ page }) => {
+        await page.goto('/instructor/home');
+        await page.locator('#nav-student-preview').click();
+        await expect(page.locator('#nav-student-preview-skip')).toBeVisible();
+        await expectNoA11yViolations(page);
+    });
 });
 
 test.describe('Accessibility: instructor onboarding page', () => {

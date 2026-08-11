@@ -853,11 +853,17 @@ test.describe('preview UI', () => {
         await expect(page.locator('#nav-student-preview')).toHaveText(/view as student/i);
 
         const skipTutorial = page.locator('#nav-student-preview-skip');
+        await expect(skipTutorial).toBeHidden();
+        await page.locator('#nav-student-preview').click();
         await expect(skipTutorial).toBeVisible();
+        await expect(page.locator('#nav-student-preview')).toHaveAttribute('aria-expanded', 'true');
+        await expect(page.locator('#nav-student-preview')).toHaveText(/open as student/i);
         await expect(skipTutorial).not.toBeChecked();
         await skipTutorial.check();
 
         await page.reload();
+        await expect(page.locator('#nav-student-preview-skip')).toBeHidden();
+        await page.locator('#nav-student-preview').click();
         await expect(page.locator('#nav-student-preview-skip')).toBeChecked();
     });
 

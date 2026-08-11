@@ -194,10 +194,13 @@ function addStudentPreviewNavItem() {
     item.id = 'nav-student-preview-li';
     item.innerHTML = `
         <div class="student-preview-control">
-            <a href="#" id="nav-student-preview">View as Student</a>
-            <label class="student-preview-option" for="nav-student-preview-skip">
+            <a href="#" id="nav-student-preview" aria-expanded="false"
+               aria-controls="nav-student-preview-options">View as Student</a>
+            <label class="student-preview-option" id="nav-student-preview-options"
+                   for="nav-student-preview-skip" hidden>
                 <input type="checkbox" id="nav-student-preview-skip">
-                <span>Skip tutorial</span>
+                <span class="student-preview-checkbox" aria-hidden="true"></span>
+                <span class="student-preview-option-label">Skip tutorial</span>
             </label>
         </div>
     `;
@@ -206,6 +209,7 @@ function addStudentPreviewNavItem() {
     navList.appendChild(item);
 
     const previewLink = item.querySelector('#nav-student-preview');
+    const previewOptions = item.querySelector('#nav-student-preview-options');
     const skipTutorialToggle = item.querySelector('#nav-student-preview-skip');
 
     try {
@@ -224,6 +228,15 @@ function addStudentPreviewNavItem() {
 
     previewLink.addEventListener('click', async event => {
         event.preventDefault();
+
+        if (previewOptions.hidden) {
+            previewOptions.hidden = false;
+            previewLink.setAttribute('aria-expanded', 'true');
+            previewLink.textContent = 'Open as Student';
+            skipTutorialToggle.focus();
+            return;
+        }
+
         await startStudentPreview(event.currentTarget, skipTutorialToggle.checked);
     });
 }
