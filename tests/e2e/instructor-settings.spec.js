@@ -1234,7 +1234,8 @@ test.describe('Instructor settings UI', () => {
         expect(copiedCourse.status).toBe('active');
         expect(copiedCourse.instructorId).toBe(instructorId);
         expect(copiedCourse.tas).toEqual([]);
-        expect(copiedCourse.llmApiKey?.status).toBe('valid');
+        expect(copiedCourse.activeLlmProvider).toBe('openai');
+        expect(copiedCourse.llmCredentials?.openai?.status).toBe('valid');
         expect(copiedCourse.quizSettings).toBeUndefined();
         expect(copiedCourse.prompts).toBeUndefined();
         expect(unit1.isPublished).toBe(false);

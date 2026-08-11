@@ -109,7 +109,10 @@ describe('onboarding: choosing a platform then entering its key', () => {
 
         const course = await db.collection('courses').findOne({ courseId: 'C1' });
         expect(course.activeLlmProvider).toBe(OPENAI);
-        expect(course.llmApiKey).toBeTruthy();
+        expect(course.llmCredentials[OPENAI]).toMatchObject({
+            provider: OPENAI,
+            status: 'valid',
+        });
     });
 
     test('a rejected Sandbox key names the Sandbox platform', async () => {
