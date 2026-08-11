@@ -103,6 +103,27 @@ test.describe('Student Hub UI', () => {
         await expect(studentCard(page, HUB_OTHER_STUDENT.displayName)).toHaveCount(0);
     });
 
+    test('opening an unlinked Student Hub does not contact Canvas or start Canvas login', async ({ page }) => {
+        /** @type {string[]} */
+        const canvasRequests = [];
+        page.on('request', (request) => {
+            const url = request.url();
+            if (url.includes('/available-courses?provider=canvas') || url.includes('/api/lms/canvas/auth/')) {
+                canvasRequests.push(url);
+            }
+        });
+
+        // resetStudentHubData intentionally creates this course without an LMS
+        // link. This test uses only the normal BiocBot instructor storage state;
+        // it does not seed or mock a Canvas login/token.
+        await openStudentHub(page);
+
+        await expect(page).toHaveURL(new RegExp(`/instructor/student-hub\\?courseId=${HUB_COURSE_ID}$`));
+        await expect(page.getByRole('button', { name: 'Connect Canvas' })).toBeVisible();
+        await expect(page.locator('#lms-grades-status')).toContainText('Not linked');
+        expect(canvasRequests).toEqual([]);
+    });
+
     test('falls back to the selected course in localStorage when no courseId is in the URL', async ({ page }) => {
         await page.addInitScript((courseIdToStore) => {
             try {

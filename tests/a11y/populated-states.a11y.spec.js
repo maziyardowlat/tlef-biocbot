@@ -44,19 +44,6 @@ test.describe('Accessibility: instructor student hub (populated)', () => {
     });
 
     test('/instructor/student-hub with student cards has no critical/serious a11y violations', async ({ page }) => {
-        // This scan covers BiocBot's populated student cards, not the external
-        // Canvas OAuth flow. A configured Canvas provider otherwise redirects
-        // the page to login when the test session has no Canvas access token.
-        await page.route(/\/api\/lms\/grades\/courses\/[^/]+\/available-courses(?:\?.*)?$/, (route) => {
-            return route.fulfill({
-                status: 200,
-                json: {
-                    success: true,
-                    data: { provider: 'canvas', current: null, courses: [] },
-                },
-            });
-        });
-
         await page.addInitScript((storedCourseId) => {
             try {
                 localStorage.setItem('selectedCourseId', storedCourseId);
@@ -66,6 +53,7 @@ test.describe('Accessibility: instructor student hub (populated)', () => {
         await page.goto(`/instructor/student-hub?courseId=${HUB_COURSE_ID}`);
         await expect(page.locator('#students-container')).toBeVisible({ timeout: 15_000 });
         await expect(page.locator('.student-card').first()).toBeVisible({ timeout: 15_000 });
+        await expect(page.getByRole('button', { name: 'Connect Canvas' })).toBeVisible();
 
         await expectNoA11yViolations(page);
     });
