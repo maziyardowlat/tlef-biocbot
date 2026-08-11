@@ -176,6 +176,33 @@ describe('LMS roster readers', () => {
                 { id: 900, name: 'Ada Lovelace', email: 'ada@student.ubc.ca', integration_id: 'puid-ada', login_id: 'ada', sis_user_id: '12345678' }
             ])
         };
+        const toolkit = {
+            canvas: {
+                getCourseUsers: jest.fn(async (apiClient, courseId) => {
+                    const users = await apiClient.getAll(`/courses/${courseId}/users`, {
+                        enrollment_type: ['student'],
+                        enrollment_state: ['active', 'invited'],
+                        include: ['email']
+                    });
+                    return users.map((user) => ({
+                        id: String(user.id),
+                        name: user.name,
+                        email: user.email,
+                        integrationId: user.integration_id,
+                        sisId: user.sis_user_id,
+                        loginId: user.login_id,
+                        raw: user
+                    }));
+                })
+            },
+            rosterFieldCoverage: jest.fn((users) => ({
+                total: users.length,
+                integrationId: users.filter((user) => user.integrationId).length,
+                sisId: users.filter((user) => user.sisId).length,
+                email: users.filter((user) => user.email).length,
+                loginId: users.filter((user) => user.loginId).length
+            }))
+        };
         const db = memoryDb({ users: [localUser()] });
         const summary = await syncCourseRoster({
             db,
@@ -183,7 +210,8 @@ describe('LMS roster readers', () => {
             provider: 'canvas',
             client,
             externalCourseId: '77',
-            matchedBy: 'inst-1'
+            matchedBy: 'inst-1',
+            toolkit
         });
 
         expect(summary.matchedCount).toBe(1);
@@ -192,5 +220,7 @@ describe('LMS roster readers', () => {
         expect(client.getAll).toHaveBeenCalledWith('/courses/77/users', expect.objectContaining({
             enrollment_type: ['student']
         }));
+        expect(toolkit.canvas.getCourseUsers).toHaveBeenCalledWith(client, '77');
+        expect(toolkit.rosterFieldCoverage).toHaveBeenCalled();
     });
 });

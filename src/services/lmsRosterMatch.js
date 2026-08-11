@@ -248,12 +248,15 @@ async function matchCourseRoster({ db, course, provider, roster, matchedBy }) {
 }
 
 /** Fetches the roster and reconciles it in one step. */
-async function syncCourseRoster({ db, course, provider, client, externalCourseId, matchedBy }) {
+async function syncCourseRoster({ db, course, provider, client, externalCourseId, matchedBy, toolkit: injectedToolkit }) {
     if (!SUPPORTED_PROVIDERS.includes(provider)) {
         throw new Error(`Unsupported LMS provider: ${provider}`);
     }
 
-    const toolkit = loadRosterToolkit();
+    // Injection keeps unit tests deterministic when the optional GitHub
+    // Packages dependency is intentionally unavailable in CI. Production
+    // callers omit it and use the installed toolkit package.
+    const toolkit = injectedToolkit || loadRosterToolkit();
     const entries = await toolkit[provider].getCourseUsers(client, externalCourseId);
     const coverage = toolkit.rosterFieldCoverage(entries);
     if (entries.length && !entries.some((entry) => entry.integrationId || entry.sisId || entry.email || entry.loginId)) {
