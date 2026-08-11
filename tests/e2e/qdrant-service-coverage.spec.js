@@ -207,7 +207,7 @@ test.describe('qdrantService.cloneDocumentChunks — full clone with real chunks
             content: sourceContent,
             contentType: 'text',
             mimeType: 'text/plain',
-            status: 'parsed',
+            status: 'uploaded',
         });
 
         // Ingest the source content into Qdrant so cloneDocumentChunks has

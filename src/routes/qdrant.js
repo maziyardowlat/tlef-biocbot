@@ -8,6 +8,7 @@ const router = express.Router();
 const QdrantService = require('../services/qdrantService');
 const CourseModel = require('../models/Course');
 const { hasSystemAdminAccess } = require('../services/authorization');
+const { contentHash, markDocumentIndexReady } = require('../services/embeddingIndexService');
 const { resolveCourseAi, sendLlmKeyError } = require('./llmKeyMiddleware');
 
 // Initialize Qdrant service
@@ -168,6 +169,18 @@ router.post('/process-document', async (req, res) => {
         });
 
         if (result.success) {
+            // This direct endpoint bypasses documentIngestion, so it must write
+            // the same per-profile readiness record itself. Without it, the
+            // vectors exist in Qdrant but provider switching and course
+            // transfer cannot discover or reuse them.
+            if (ai.qdrant.embeddingProfile) {
+                await markDocumentIndexReady(
+                    req.app.locals.db,
+                    documentId,
+                    ai.qdrant.embeddingProfile,
+                    contentHash(content)
+                );
+            }
             res.json({
                 success: true,
                 message: result.message,
