@@ -19,6 +19,7 @@ const StruggleActivity = require('../models/StruggleActivity');
 const CourseModel = require('../models/Course');
 const { resolveSuperchatAi, sendLlmKeyError } = require('./llmKeyMiddleware');
 const { structuredKeyError } = require('../services/llmKeyStore');
+const { LANES } = require('../services/llmLanes');
 
 // Resolve a course's effective year level: prefer the stored value, fall back to
 // deriving it from the course name (covers courses created before yearLevel
@@ -500,6 +501,7 @@ router.post('/chat', async (req, res) => {
         );
 
         const response = await llmService.sendMessage(prompt, {
+            lane: LANES.FRONTEND,
             temperature: 0.4,
             maxTokens: 32768,
             systemPrompt

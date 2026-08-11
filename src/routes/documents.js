@@ -12,6 +12,7 @@ const { QUESTION_EXTRACTION_SYSTEM_PROMPT, buildQuestionExtractionPrompt } = req
 const { resolveCourseAi, sendLlmKeyError } = require('./llmKeyMiddleware');
 const qdrantMaintenance = require('../services/qdrantMaintenance');
 const { contentHash, markDocumentIndexFailed, markDocumentIndexReady } = require('../services/embeddingIndexService');
+const { LANES } = require('../services/llmLanes');
 const { encodingForModel } = require('js-tiktoken');
 const {
     MAX_DOCUMENT_BYTES,
@@ -935,6 +936,7 @@ async function extractQuestionsFromText(llm, text) {
     const prompt = buildQuestionExtractionPrompt(text);
 
     const response = await llm.sendMessage(prompt, {
+        lane: LANES.BACKEND,
         temperature: 0.1,
         maxTokens: 4096,
         systemPrompt: QUESTION_EXTRACTION_SYSTEM_PROMPT

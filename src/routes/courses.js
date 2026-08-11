@@ -33,6 +33,7 @@ const {
     indexesOf
 } = require('../services/embeddingIndexService');
 const qdrantMaintenance = require('../services/qdrantMaintenance');
+const { LANES } = require('../services/llmLanes');
 const { resolveCourseAi } = require('./llmKeyMiddleware');
 const { getAcademicApiClient, isAcademicApiEnabled } = require('../services/academicApi');
 
@@ -1653,6 +1654,7 @@ router.post('/:courseId/extract-topics', async (req, res) => {
         if (llm && typeof llm.sendMessage === 'function') {
             const contentBatches = splitTopicExtractionBatches(sourceContent);
             const extractionOptions = {
+                lane: LANES.BACKEND,
                 temperature: 0.1,
                 maxTokens: 300,
                 systemPrompt: 'You extract concise chemistry and biochemistry topic labels only. If the content is not chemistry or biochemistry, return {"topics":[]}. Return strict JSON only.'
@@ -1682,6 +1684,7 @@ router.post('/:courseId/extract-topics', async (req, res) => {
                 if (filteredCandidates.length > 0) {
                     const consolidationPrompt = buildTopicConsolidationPrompt(filteredCandidates, topicLimit);
                     const consolidationResponse = await llm.sendMessage(consolidationPrompt, {
+                        lane: LANES.BACKEND,
                         temperature: 0.1,
                         maxTokens: 300,
                         systemPrompt: 'You consolidate and deduplicate chemistry and biochemistry topic labels. Return strict JSON only.'

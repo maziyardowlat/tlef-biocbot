@@ -49,8 +49,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Cached bucket summaries so the per-course checklist can re-render without a
     // page refresh whenever buckets are created/renamed/deleted.
     let availableSuperchats = [];
-    let llmReasoningEffortsByModel = {};
-    let llmDefaultReasoningEffortByModel = {};
     // Per-surface platform state (active platform, key status per platform, and
     // any in-flight migration). Declared here because loadSettings() runs before
     // the helper definitions further down would otherwise be evaluated.
@@ -282,20 +280,21 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
-    function updateReasoningVisibility() {
-        const modelSelect = document.getElementById('llm-model-select');
-        const reasoningItem = document.getElementById('llm-reasoning-item');
-        const reasoningSelect = document.getElementById('llm-reasoning-select');
+    function updateReasoningVisibility(idPrefix, lane, reasoningEffortsByModel, defaultReasoningEffortByModel) {
+        const lanePrefix = lane === 'backend' ? `${idPrefix}-backend` : idPrefix;
+        const modelSelect = document.getElementById(`${lanePrefix}-model-select`);
+        const reasoningItem = document.getElementById(`${lanePrefix}-reasoning-item`);
+        const reasoningSelect = document.getElementById(`${lanePrefix}-reasoning-select`);
         if (!modelSelect || !reasoningItem) return;
 
-        const efforts = llmReasoningEffortsByModel[modelSelect.value] || [];
+        const efforts = reasoningEffortsByModel[modelSelect.value] || [];
         reasoningItem.style.display = efforts.length > 0 ? '' : 'none';
 
         if (reasoningSelect) {
             const selected = reasoningSelect.value;
             const allEfforts = [...new Set([
                 ...Array.from(reasoningSelect.options, option => option.value),
-                ...Object.values(llmReasoningEffortsByModel).flat()
+                ...Object.values(reasoningEffortsByModel).flat()
             ])];
             for (const effort of allEfforts) {
                 let option = reasoningSelect.querySelector(`option[value="${effort}"]`);
@@ -309,7 +308,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 option.hidden = !supported;
                 option.disabled = !supported;
             }
-            const modelDefault = llmDefaultReasoningEffortByModel[modelSelect.value];
+            const modelDefault = defaultReasoningEffortByModel[modelSelect.value];
             const fallback = efforts.includes(modelDefault) ? modelDefault : (efforts[0] || '');
             reasoningSelect.value = efforts.includes(selected) ? selected : fallback;
         }
@@ -746,33 +745,51 @@ document.addEventListener('DOMContentLoaded', async () => {
         const ui = LLM_PLATFORM_UI[platform.provider];
         if (!ui) return;
         const { idPrefix } = ui;
+        const effortsByModel = platform.reasoningEffortsByModel || {};
+        const defaultsByModel = platform.defaultReasoningEffortByModel || {};
 
         const modelSelect = document.getElementById(`${idPrefix}-model-select`);
         fillSelect(modelSelect, platform.allowedModels || [], platform.chatModel);
-
-        if (platform.provider === 'openai') {
-            // The shared reasoning helper is bound to the GPT controls.
-            llmReasoningEffortsByModel = platform.reasoningEffortsByModel || {};
-            llmDefaultReasoningEffortByModel = platform.defaultReasoningEffortByModel || {};
-            if (modelSelect) {
-                modelSelect.removeEventListener('change', updateReasoningVisibility);
-                modelSelect.addEventListener('change', updateReasoningVisibility);
-            }
-            updateReasoningVisibility();
-        }
-
-        const reasoningItem = document.getElementById(`${idPrefix}-reasoning-item`);
         const reasoningSelect = document.getElementById(`${idPrefix}-reasoning-select`);
-        const efforts = (platform.reasoningEffortsByModel || {})[platform.chatModel] || [];
-        if (reasoningItem) reasoningItem.style.display = efforts.length > 0 ? '' : 'none';
-        if (reasoningSelect && platform.provider !== 'openai') {
-            fillSelect(reasoningSelect, efforts, platform.reasoningEffort);
-        } else if (reasoningSelect) {
-            const modelDefault = (platform.defaultReasoningEffortByModel || {})[platform.chatModel];
-            reasoningSelect.value = efforts.includes(platform.reasoningEffort)
-                ? platform.reasoningEffort
-                : (efforts.includes(modelDefault) ? modelDefault : (efforts[0] || 'minimal'));
+        updateReasoningVisibility(idPrefix, 'frontend', effortsByModel, defaultsByModel);
+        if (reasoningSelect && (effortsByModel[platform.chatModel] || []).includes(platform.reasoningEffort)) {
+            reasoningSelect.value = platform.reasoningEffort;
         }
+
+        const backendModelSelect = document.getElementById(`${idPrefix}-backend-model-select`);
+        const backendReasoningSelect = document.getElementById(`${idPrefix}-backend-reasoning-select`);
+        const inheritToggle = document.getElementById(`${idPrefix}-backend-inherit`);
+        fillSelect(backendModelSelect, platform.allowedModels || [], platform.backendChatModel || platform.chatModel);
+        updateReasoningVisibility(idPrefix, 'backend', effortsByModel, defaultsByModel);
+        if (backendReasoningSelect
+            && (effortsByModel[backendModelSelect?.value] || []).includes(platform.backendReasoningEffort)) {
+            backendReasoningSelect.value = platform.backendReasoningEffort;
+        }
+        if (inheritToggle) inheritToggle.checked = platform.backendInheritsFrontend !== false;
+
+        const syncBackendInheritance = () => {
+            const inherits = inheritToggle?.checked !== false;
+            if (backendModelSelect) backendModelSelect.disabled = inherits;
+            if (backendReasoningSelect) backendReasoningSelect.disabled = inherits;
+            if (inherits && modelSelect && backendModelSelect) {
+                backendModelSelect.value = modelSelect.value;
+                updateReasoningVisibility(idPrefix, 'backend', effortsByModel, defaultsByModel);
+                if (reasoningSelect && backendReasoningSelect) {
+                    backendReasoningSelect.value = reasoningSelect.value;
+                }
+            }
+        };
+
+        if (modelSelect) modelSelect.onchange = () => {
+            updateReasoningVisibility(idPrefix, 'frontend', effortsByModel, defaultsByModel);
+            syncBackendInheritance();
+        };
+        if (reasoningSelect) reasoningSelect.onchange = syncBackendInheritance;
+        if (backendModelSelect) backendModelSelect.onchange = () => {
+            updateReasoningVisibility(idPrefix, 'backend', effortsByModel, defaultsByModel);
+        };
+        if (inheritToggle) inheritToggle.onchange = syncBackendInheritance;
+        syncBackendInheritance();
 
         fillSelect(
             document.getElementById(`${idPrefix}-embedding-select`),
@@ -845,13 +862,24 @@ document.addEventListener('DOMContentLoaded', async () => {
         const { idPrefix, label } = LLM_PLATFORM_UI[provider];
         const chatModel = document.getElementById(`${idPrefix}-model-select`)?.value;
         const reasoningEffort = document.getElementById(`${idPrefix}-reasoning-select`)?.value || 'minimal';
+        const backendInheritsFrontend = document.getElementById(`${idPrefix}-backend-inherit`)?.checked !== false;
+        const backendChatModel = document.getElementById(`${idPrefix}-backend-model-select`)?.value;
+        const backendReasoningEffort = document.getElementById(`${idPrefix}-backend-reasoning-select`)?.value || 'minimal';
         if (!chatModel) throw new Error('Select a model first');
+        if (!backendInheritsFrontend && !backendChatModel) throw new Error('Select a back-end model first');
 
         const response = await fetch('/api/settings/llm', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',
-            body: JSON.stringify({ provider, chatModel, model: chatModel, reasoningEffort })
+            body: JSON.stringify({
+                provider,
+                chatModel,
+                model: chatModel,
+                reasoningEffort,
+                backendInheritsFrontend,
+                ...(backendInheritsFrontend ? {} : { backendChatModel, backendReasoningEffort })
+            })
         });
         const result = await response.json();
         if (!response.ok || !result.success) {

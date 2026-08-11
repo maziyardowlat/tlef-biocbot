@@ -6,6 +6,7 @@ const CourseModel = require('../models/Course');
 const prompts = require('../services/prompts');
 const { hasSystemAdminAccess } = require('../services/authorization');
 const { resolveCourseAi, sendLlmKeyError } = require('./llmKeyMiddleware');
+const { LANES } = require('../services/llmLanes');
 
 // Middleware for JSON parsing
 router.use(express.json());
@@ -207,6 +208,7 @@ async function linkQuestionsToLearningObjectives(llmService, learningObjectives 
 
     const prompt = prompts.buildQuestionObjectiveLinkingPrompt(normalizedObjectives, questionsToMatch);
     const response = await llmService.sendMessage(prompt, {
+        lane: LANES.BACKEND,
         temperature: 0.1,
         maxTokens: 2048,
         response_format: { type: 'json_object' }

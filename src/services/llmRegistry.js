@@ -5,6 +5,7 @@ const adminModelSettings = require('./adminModelSettings');
 const { DEFAULT_PROFILE_REVISION, buildEmbeddingProfile } = require('./embeddingConfig');
 const { normalizeProvider } = require('./llmProviders');
 const { configuredDefaultModel, defaultEmbeddingModelForProvider } = require('./llmModels');
+const { LANES } = require('./llmLanes');
 const {
     KEY_STATUSES,
     LlmKeyError,
@@ -27,8 +28,26 @@ function cacheKey(scope) {
  * would produce different behaviour changes: the selected provider, the models
  * that provider is configured with, or the credential itself.
  */
-function resolutionSignature({ provider, chatModel, embeddingModel, embeddingRevision, keyUpdatedAt }) {
-    return [provider, chatModel, embeddingModel, embeddingRevision, keyUpdatedAt].join('|');
+function resolutionSignature({
+    provider,
+    chatModel,
+    reasoningEffort,
+    backendChatModel,
+    backendReasoningEffort,
+    embeddingModel,
+    embeddingRevision,
+    keyUpdatedAt
+}) {
+    return [
+        provider,
+        chatModel,
+        reasoningEffort,
+        backendChatModel,
+        backendReasoningEffort,
+        embeddingModel,
+        embeddingRevision,
+        keyUpdatedAt
+    ].join('|');
 }
 
 /**
@@ -186,6 +205,9 @@ class LlmRegistry {
         const signature = resolutionSignature({
             provider: normalizedProvider,
             chatModel: modelSettings.chatModel,
+            reasoningEffort: modelSettings.reasoningEffort,
+            backendChatModel: modelSettings.lanes?.[LANES.BACKEND]?.chatModel || modelSettings.chatModel,
+            backendReasoningEffort: modelSettings.lanes?.[LANES.BACKEND]?.reasoningEffort || modelSettings.reasoningEffort,
             embeddingModel: modelSettings.embeddingModel,
             embeddingRevision: modelSettings.embeddingRevision,
             keyUpdatedAt

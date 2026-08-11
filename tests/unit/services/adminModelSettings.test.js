@@ -84,6 +84,47 @@ describe('reading settings', () => {
         expect(providers[SANDBOX]).toMatchObject({ chatModel: 'gpt-oss-120b', reasoningEffort: 'high' });
     });
 
+    test('an absent back-end lane mirrors the complete front-end model and effort', async () => {
+        const db = memoryDb({
+            settings: [{
+                _id: 'llm',
+                providers: { [OPENAI]: { chatModel: 'gpt-5-nano', reasoningEffort: 'high' } },
+            }],
+        });
+
+        const settings = await adminModelSettings.getProviderSettings(db, OPENAI, { force: true });
+        expect(settings.backendInheritsFrontend).toBe(true);
+        expect(settings.lanes.backend).toEqual(settings.lanes.frontend);
+        expect(adminModelSettings.chatSettingsForLane(settings, 'backend')).toEqual({
+            chatModel: 'gpt-5-nano', reasoningEffort: 'high',
+        });
+    });
+
+    test('a valid back-end override resolves independently and an invalid one falls back', async () => {
+        const db = memoryDb({
+            settings: [{
+                _id: 'llm',
+                providers: {
+                    [OPENAI]: {
+                        chatModel: 'gpt-4.1-mini',
+                        backend: { chatModel: 'gpt-5.4-nano', reasoningEffort: 'xhigh' },
+                    },
+                    [SANDBOX]: {
+                        chatModel: 'gpt-oss-120b',
+                        reasoningEffort: 'high',
+                        backend: { chatModel: 'gpt-5-nano', reasoningEffort: 'low' },
+                    },
+                },
+            }],
+        });
+
+        const { providers } = await adminModelSettings.getAllProviderSettings(db, { force: true });
+        expect(providers[OPENAI].backendInheritsFrontend).toBe(false);
+        expect(providers[OPENAI].lanes.backend).toEqual({ chatModel: 'gpt-5.4-nano', reasoningEffort: 'xhigh' });
+        expect(providers[SANDBOX].backendInheritsFrontend).toBe(true);
+        expect(providers[SANDBOX].lanes.backend).toEqual(providers[SANDBOX].lanes.frontend);
+    });
+
     test('a legacy flat document is read as the env platform\'s settings', async () => {
         process.env.LLM_PROVIDER = SANDBOX;
         const db = memoryDb({ settings: [{ _id: 'llm', model: 'gpt-oss-120b', reasoningEffort: 'medium' }] });
@@ -174,6 +215,47 @@ describe('saving chat settings (immediate)', () => {
 
         const settings = await adminModelSettings.getProviderSettings(db, OPENAI);
         expect(settings.chatModel).toBe('gpt-5-nano');
+    });
+
+    test('older front-end-only saves preserve an existing back-end override', async () => {
+        const db = memoryDb({
+            settings: [{
+                _id: 'llm',
+                providers: { [OPENAI]: { backend: { chatModel: 'gpt-5.4-nano', reasoningEffort: 'high' } } },
+            }],
+        });
+
+        await adminModelSettings.saveChatSettings(db, OPENAI, {
+            chatModel: 'gpt-5-nano', reasoningEffort: 'low',
+        });
+
+        const stored = await db.collection('settings').findOne({ _id: 'llm' });
+        expect(stored.providers[OPENAI].backend).toEqual({ chatModel: 'gpt-5.4-nano', reasoningEffort: 'high' });
+    });
+
+    test('a back-end override can be saved and restored to front-end inheritance', async () => {
+        const db = memoryDb({ settings: [] });
+        await adminModelSettings.saveChatSettings(db, OPENAI, {
+            chatModel: 'gpt-5-nano',
+            reasoningEffort: 'low',
+            backendChatModel: 'gpt-5.4-nano',
+            backendReasoningEffort: 'xhigh',
+            backendInheritsFrontend: false,
+        });
+        let settings = await adminModelSettings.getProviderSettings(db, OPENAI, { force: true });
+        expect(settings.backendInheritsFrontend).toBe(false);
+        expect(settings.lanes.backend).toEqual({ chatModel: 'gpt-5.4-nano', reasoningEffort: 'xhigh' });
+
+        await adminModelSettings.saveChatSettings(db, OPENAI, {
+            chatModel: 'gpt-5-nano',
+            reasoningEffort: 'high',
+            backendInheritsFrontend: true,
+        });
+        settings = await adminModelSettings.getProviderSettings(db, OPENAI, { force: true });
+        expect(settings.backendInheritsFrontend).toBe(true);
+        expect(settings.lanes.backend).toEqual({ chatModel: 'gpt-5-nano', reasoningEffort: 'high' });
+        const stored = await db.collection('settings').findOne({ _id: 'llm' });
+        expect(stored.providers[OPENAI].backend).toBeUndefined();
     });
 });
 

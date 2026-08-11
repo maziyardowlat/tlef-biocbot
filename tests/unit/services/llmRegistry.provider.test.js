@@ -262,6 +262,27 @@ describe('cache identity', () => {
         expect(LLMService.create).toHaveBeenCalledTimes(2);
     });
 
+    test('changing only the back-end lane rebuilds the services', async () => {
+        const registry = new LlmRegistry();
+        const db = memoryDb({ courses: [{ courseId: 'C1', ...keyedSurface(OPENAI) }], settings: [] });
+
+        await registry.forCourse(db, 'C1');
+        expect(LLMService.create).toHaveBeenCalledTimes(1);
+
+        await db.collection('settings').updateOne(
+            { _id: 'llm' },
+            { $set: {
+                'providers.openai.backend.chatModel': 'gpt-5.4-nano',
+                'providers.openai.backend.reasoningEffort': 'high',
+            } },
+            { upsert: true }
+        );
+        adminModelSettings.invalidateCache();
+
+        await registry.forCourse(db, 'C1');
+        expect(LLMService.create).toHaveBeenCalledTimes(2);
+    });
+
     test('clear() also drops the admin model settings cache', async () => {
         const registry = new LlmRegistry();
         const db = memoryDb({ courses: [{ courseId: 'C1', ...keyedSurface(OPENAI) }], settings: [] });

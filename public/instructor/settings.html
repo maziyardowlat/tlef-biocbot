@@ -918,8 +918,8 @@
                                 <div class="settings-content">
                                     <div class="setting-item">
                                         <div class="setting-info">
-                                            <h4 id="llm-model-label">Chat model</h4>
-                                            <p id="llm-model-desc">Applies to every OpenAI Chat GPT surface. Reasoning controls appear when the selected model supports them.</p>
+                                            <h4 id="llm-model-label">Front-end model</h4>
+                                            <p id="llm-model-desc">Used for interactive, student-facing output. Reasoning controls appear when the selected model supports them.</p>
                                         </div>
                                         <div class="setting-controls">
                                             <select id="llm-model-select" class="number-input" aria-labelledby="llm-model-label" aria-describedby="llm-model-desc">
@@ -932,7 +932,7 @@
                                     </div>
                                     <div class="setting-item" id="llm-reasoning-item" style="display: none;">
                                         <div class="setting-info">
-                                            <h4 id="llm-reasoning-label">Reasoning effort</h4>
+                                            <h4 id="llm-reasoning-label">Front-end reasoning effort</h4>
                                             <p id="llm-reasoning-desc">Available values depend on the selected model. For Qwen3, “none” disables thinking for short structured calls.</p>
                                         </div>
                                         <div class="setting-controls">
@@ -942,6 +942,37 @@
                                                 <option value="medium">medium</option>
                                                 <option value="high">high</option>
                                             </select>
+                                        </div>
+                                    </div>
+                                    <div class="setting-item">
+                                        <div class="setting-info">
+                                            <h4 id="llm-backend-inherit-label">Back-end model</h4>
+                                            <p id="llm-backend-inherit-desc">Used for authoring, ingestion, classification, and other processing. Keep it linked to the front-end model or configure it independently.</p>
+                                        </div>
+                                        <div class="setting-controls">
+                                            <label class="toggle-switch">
+                                                <input type="checkbox" id="llm-backend-inherit" checked aria-labelledby="llm-backend-inherit-label" aria-describedby="llm-backend-inherit-desc">
+                                                <span class="toggle-slider"></span>
+                                            </label>
+                                            <span>Same as front-end</span>
+                                        </div>
+                                    </div>
+                                    <div class="setting-item">
+                                        <div class="setting-info">
+                                            <h4 id="llm-backend-model-label">Back-end model override</h4>
+                                            <p id="llm-backend-model-desc">Takes effect when “Same as front-end” is off.</p>
+                                        </div>
+                                        <div class="setting-controls">
+                                            <select id="llm-backend-model-select" class="number-input" aria-labelledby="llm-backend-model-label" aria-describedby="llm-backend-model-desc"></select>
+                                        </div>
+                                    </div>
+                                    <div class="setting-item" id="llm-backend-reasoning-item" style="display: none;">
+                                        <div class="setting-info">
+                                            <h4 id="llm-backend-reasoning-label">Back-end reasoning effort</h4>
+                                            <p id="llm-backend-reasoning-desc">Available values depend on the selected back-end model.</p>
+                                        </div>
+                                        <div class="setting-controls">
+                                            <select id="llm-backend-reasoning-select" class="number-input" aria-labelledby="llm-backend-reasoning-label" aria-describedby="llm-backend-reasoning-desc"></select>
                                         </div>
                                     </div>
                                     <div class="setting-item">
@@ -971,8 +1002,8 @@
                                 <div class="settings-content">
                                     <div class="setting-item">
                                         <div class="setting-info">
-                                            <h4 id="sandbox-llm-model-label">Chat model</h4>
-                                            <p id="sandbox-llm-model-desc">Applies to every UBC On-Premise LLM surface.</p>
+                                            <h4 id="sandbox-llm-model-label">Front-end model</h4>
+                                            <p id="sandbox-llm-model-desc">Used for interactive, student-facing output.</p>
                                         </div>
                                         <div class="setting-controls">
                                             <select id="sandbox-llm-model-select" class="number-input" aria-labelledby="sandbox-llm-model-label" aria-describedby="sandbox-llm-model-desc"></select>
@@ -980,11 +1011,42 @@
                                     </div>
                                     <div class="setting-item" id="sandbox-llm-reasoning-item" style="display: none;">
                                         <div class="setting-info">
-                                            <h4 id="sandbox-llm-reasoning-label">Reasoning effort</h4>
+                                            <h4 id="sandbox-llm-reasoning-label">Front-end reasoning effort</h4>
                                             <p id="sandbox-llm-reasoning-desc">For Qwen3, “none” disables thinking for short structured calls.</p>
                                         </div>
                                         <div class="setting-controls">
                                             <select id="sandbox-llm-reasoning-select" class="number-input" aria-labelledby="sandbox-llm-reasoning-label" aria-describedby="sandbox-llm-reasoning-desc"></select>
+                                        </div>
+                                    </div>
+                                    <div class="setting-item">
+                                        <div class="setting-info">
+                                            <h4 id="sandbox-llm-backend-inherit-label">Back-end model</h4>
+                                            <p id="sandbox-llm-backend-inherit-desc">Used for authoring, ingestion, classification, and other processing. Keep it linked to the front-end model or configure it independently.</p>
+                                        </div>
+                                        <div class="setting-controls">
+                                            <label class="toggle-switch">
+                                                <input type="checkbox" id="sandbox-llm-backend-inherit" checked aria-labelledby="sandbox-llm-backend-inherit-label" aria-describedby="sandbox-llm-backend-inherit-desc">
+                                                <span class="toggle-slider"></span>
+                                            </label>
+                                            <span>Same as front-end</span>
+                                        </div>
+                                    </div>
+                                    <div class="setting-item">
+                                        <div class="setting-info">
+                                            <h4 id="sandbox-llm-backend-model-label">Back-end model override</h4>
+                                            <p id="sandbox-llm-backend-model-desc">Takes effect when “Same as front-end” is off.</p>
+                                        </div>
+                                        <div class="setting-controls">
+                                            <select id="sandbox-llm-backend-model-select" class="number-input" aria-labelledby="sandbox-llm-backend-model-label" aria-describedby="sandbox-llm-backend-model-desc"></select>
+                                        </div>
+                                    </div>
+                                    <div class="setting-item" id="sandbox-llm-backend-reasoning-item" style="display: none;">
+                                        <div class="setting-info">
+                                            <h4 id="sandbox-llm-backend-reasoning-label">Back-end reasoning effort</h4>
+                                            <p id="sandbox-llm-backend-reasoning-desc">Available values depend on the selected back-end model.</p>
+                                        </div>
+                                        <div class="setting-controls">
+                                            <select id="sandbox-llm-backend-reasoning-select" class="number-input" aria-labelledby="sandbox-llm-backend-reasoning-label" aria-describedby="sandbox-llm-backend-reasoning-desc"></select>
                                         </div>
                                     </div>
                                     <div class="setting-item">

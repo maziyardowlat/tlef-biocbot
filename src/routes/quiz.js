@@ -15,6 +15,7 @@ const BadWordsFilter = require('bad-words');
 const { resolveCourseAi, sendLlmKeyError } = require('./llmKeyMiddleware');
 const { publicKeySummary } = require('../services/llmKeyStore');
 const { evaluateObjectiveAnswer } = require('../services/objectiveAnswer');
+const { LANES } = require('../services/llmLanes');
 const profanityFilter = new BadWordsFilter();
 
 router.use(express.json());
@@ -670,6 +671,7 @@ Student's new message: ${message}`;
 
         // Call LLM
         const response = await llmService.sendMessage(messageToSend, {
+            lane: LANES.FRONTEND,
             temperature: 0.5,
             maxTokens: 1024,
             systemPrompt: basePrompt + '\n\n' + quizHelpPrompt
