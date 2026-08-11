@@ -47,16 +47,8 @@ function buildPruneSafety(coverage = {}, provider = 'canvas', env = process.env)
 }
 
 async function claimCanvasRosterOwnership(db, course) {
-    if (effectiveRosterSource(course) === 'academicSync') {
-        return false;
-    }
-
     const result = await db.collection('courses').updateOne(
-        {
-            courseId: course.courseId,
-            rosterSource: { $ne: 'academicSync' },
-            'academicSync.sectionIds.0': { $exists: false }
-        },
+        { courseId: course.courseId },
         { $set: { rosterSource: 'canvas', updatedAt: new Date() } }
     );
     return result.matchedCount > 0;
@@ -131,15 +123,6 @@ function createLmsRosterSyncRouter(integration, dependencies = {}) {
                         message: 'Enrollment roster sync currently requires Canvas integration_id coverage'
                     });
                 }
-                if (effectiveRosterSource(course) === 'academicSync') {
-                    return res.status(409).json({
-                        success: false,
-                        provider,
-                        code: 'ROSTER_SOURCE_CONFLICT',
-                        message: 'This course roster is managed by Academic Sync and cannot also be managed by Canvas'
-                    });
-                }
-
                 const source = getGradeSource(course, provider);
                 if (!source) {
                     return res.status(400).json({
@@ -150,11 +133,10 @@ function createLmsRosterSyncRouter(integration, dependencies = {}) {
                 }
 
                 if (!await claimCanvasRosterOwnership(req.app.locals.db, course)) {
-                    return res.status(409).json({
+                    return res.status(404).json({
                         success: false,
                         provider,
-                        code: 'ROSTER_SOURCE_CONFLICT',
-                        message: 'Another roster source claimed this course; reload before trying again'
+                        message: 'Course not found while claiming Canvas roster ownership'
                     });
                 }
 

@@ -138,13 +138,6 @@ async function syncCourseRoster(db, courseId, options = {}) {
         return { success: false, error: 'Course not found' };
     }
 
-    if (course.rosterSource && course.rosterSource !== 'academicSync') {
-        return {
-            success: false,
-            error: `Course roster is managed by ${course.rosterSource}; Academic Sync cannot modify it`
-        };
-    }
-
     const academicPeriod = options.academicPeriod || course.academicSync?.academicPeriod;
     const sectionIds = Array.isArray(options.sectionIds) && options.sectionIds.length > 0
         ? options.sectionIds

@@ -204,14 +204,6 @@ router.put('/courses/:courseId/link', async (req, res) => {
         const course = await requireInstructorCourse(req, res, req.params.courseId);
         if (!course) return;
 
-        if (course.rosterSource === 'canvas') {
-            return res.status(409).json({
-                success: false,
-                code: 'ROSTER_SOURCE_CONFLICT',
-                message: 'This course roster is managed by Canvas and cannot also be linked to Academic Sync'
-            });
-        }
-
         const sectionIds = Array.isArray(req.body.sectionIds)
             ? req.body.sectionIds.map((value) => String(value || '').trim()).filter(Boolean)
             : [];
@@ -235,14 +227,13 @@ router.put('/courses/:courseId/link', async (req, res) => {
         };
 
         const update = await db.collection('courses').updateOne(
-            { courseId: course.courseId, rosterSource: { $ne: 'canvas' } },
+            { courseId: course.courseId },
             { $set: { academicSync, rosterSource: 'academicSync', updatedAt: now } }
         );
         if (!update.matchedCount) {
-            return res.status(409).json({
+            return res.status(404).json({
                 success: false,
-                code: 'ROSTER_SOURCE_CONFLICT',
-                message: 'Another roster source claimed this course; reload before trying again'
+                message: 'Course not found while claiming Academic Sync roster ownership'
             });
         }
 
@@ -262,14 +253,6 @@ router.post('/courses/:courseId/sync', async (req, res) => {
         const db = req.app.locals.db;
         const course = await requireInstructorCourse(req, res, req.params.courseId);
         if (!course) return;
-
-        if (course.rosterSource && course.rosterSource !== 'academicSync') {
-            return res.status(409).json({
-                success: false,
-                code: 'ROSTER_SOURCE_CONFLICT',
-                message: `This course roster is managed by ${course.rosterSource} and cannot be synced from the Academic API`
-            });
-        }
 
         const result = await syncCourseRoster(db, course.courseId, {
             academicApi: getAcademicApi(req),
