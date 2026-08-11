@@ -553,6 +553,20 @@ describe('DELETE /:courseId/units/:unitName', () => {
         expect(res.body.message).toMatch(/unit not found/i);
     });
 
+    test('409 when deleting the course\'s last unit', async () => {
+        const db = memoryDb({ courses: [{
+            courseId: 'C1', instructorId: 'i1',
+            lectures: [{ name: 'Unit 1', documents: [] }],
+            courseStructure: { totalUnits: 1 },
+        }] });
+        const res = await request(app({ db, user: instructor })).delete('/C1/units/Unit 1?instructorId=i1');
+        expect(res.status).toBe(409);
+        expect(res.body.message).toMatch(/at least one unit/i);
+        const saved = await db.collection('courses').findOne({ courseId: 'C1' });
+        expect(saved.lectures.map(l => l.name)).toEqual(['Unit 1']);
+        expect(saved.courseStructure.totalUnits).toBe(1);
+    });
+
     test('removes the unit (no documents) and decrements totalUnits', async () => {
         const db = memoryDb({ courses: [{
             courseId: 'C1', instructorId: 'i1',

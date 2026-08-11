@@ -221,7 +221,7 @@ describe('unhappy-path contracts', () => {
 
     test('unit deletion tolerates document and vector cleanup failures', async () => {
         const del = jest.spyOn(DocumentModel, 'deleteDocument').mockRejectedValueOnce(new Error('mongo cleanup'));
-        const db = memoryDb({ courses: [{ courseId: 'C1', instructorId: 'i1', courseStructure: { totalUnits: 1 }, lectures: [{ name: 'Unit 1', documents: [{ documentId: 'd1' }] }] }] });
+        const db = memoryDb({ courses: [{ courseId: 'C1', instructorId: 'i1', courseStructure: { totalUnits: 2 }, lectures: [{ name: 'Unit 1', documents: [{ documentId: 'd1' }] }, { name: 'Unit 2', documents: [] }] }] });
         const res = await request(app({ db, user: instructor })).delete('/C1/units/Unit%201?instructorId=i1');
         expect(res.status).toBe(200);
         expect(res.body.data.deletedDocumentsCount).toBe(0);
@@ -563,7 +563,7 @@ describe('last-mile edge and exception coverage', () => {
     });
 
     test('unit deletion removes document data and vector chunks', async () => {
-        const db = memoryDb({ courses: [{ ...course, courseStructure: { totalUnits: 1 }, lectures: [{ name: 'Unit 1', documents: [{ documentId: 'd1' }] }] }], documents: [{ documentId: 'd1' }] });
+        const db = memoryDb({ courses: [{ ...course, courseStructure: { totalUnits: 2 }, lectures: [{ name: 'Unit 1', documents: [{ documentId: 'd1' }] }, { name: 'Unit 2', documents: [] }] }], documents: [{ documentId: 'd1' }] });
         const res = await request(app({ db, user: instructor })).delete('/C1/units/Unit%201?instructorId=i1');
         expect(res.status).toBe(200);
         expect(res.body.data.deletedDocumentsCount).toBe(1);
@@ -573,7 +573,7 @@ describe('last-mile edge and exception coverage', () => {
 
     test('unit deletion counts Mongo cleanup when vector cleanup fails', async () => {
         mockQdrant.deleteDocumentChunks.mockRejectedValueOnce(new Error('vector cleanup failed'));
-        const db = memoryDb({ courses: [{ ...course, courseStructure: { totalUnits: 1 }, lectures: [{ name: 'Unit 1', documents: [{ documentId: 'd1' }] }] }], documents: [{ documentId: 'd1' }] });
+        const db = memoryDb({ courses: [{ ...course, courseStructure: { totalUnits: 2 }, lectures: [{ name: 'Unit 1', documents: [{ documentId: 'd1' }] }, { name: 'Unit 2', documents: [] }] }], documents: [{ documentId: 'd1' }] });
         const res = await request(app({ db, user: instructor })).delete('/C1/units/Unit%201?instructorId=i1');
         expect(res.status).toBe(200);
         expect(res.body.data.deletedDocumentsCount).toBe(1);

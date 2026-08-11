@@ -184,6 +184,12 @@ function openDeleteUnitModal(unitName) {
     if (window.event) {
         window.event.stopPropagation();
     }
+
+    if (Array.isArray(window.currentCourseData?.lectures)
+        && window.currentCourseData.lectures.length <= 1) {
+        showNotification('A course must have at least one unit.', 'warning');
+        return;
+    }
     
     unitToDelete = unitName;
     const modal = document.getElementById('delete-unit-modal');
@@ -231,11 +237,11 @@ async function confirmDeleteUnit() {
             body: JSON.stringify({ instructorId })
         });
         
+        const result = await response.json().catch(() => ({}));
         if (!response.ok) {
-            throw new Error('Failed to delete unit');
+            throw new Error(result.message || 'Failed to delete unit');
         }
-        
-        const result = await response.json();
+
         showNotification(result.message, 'success');
         
         closeDeleteUnitModal();
