@@ -58,7 +58,7 @@
   },
   "optionalDependencies": {
     "@ubc/ubc-genai-toolkit-course-list-sync": "^0.1.3",
-    "@ubc/ubc-genai-toolkit-lms-integration": "^1.0.3"
+    "@ubc/ubc-genai-toolkit-lms-integration": "^1.0.4"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",

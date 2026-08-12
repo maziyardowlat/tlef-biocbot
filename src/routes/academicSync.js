@@ -226,10 +226,16 @@ router.put('/courses/:courseId/link', async (req, res) => {
             linkedBy: req.user.userId
         };
 
-        await db.collection('courses').updateOne(
+        const update = await db.collection('courses').updateOne(
             { courseId: course.courseId },
-            { $set: { academicSync, updatedAt: now } }
+            { $set: { academicSync, rosterSource: 'academicSync', updatedAt: now } }
         );
+        if (!update.matchedCount) {
+            return res.status(404).json({
+                success: false,
+                message: 'Course not found while claiming Academic Sync roster ownership'
+            });
+        }
 
         return res.json({
             success: true,

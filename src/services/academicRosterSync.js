@@ -241,6 +241,7 @@ async function syncCourseRoster(db, courseId, options = {}) {
                     lastSyncAt: now,
                     lastSyncSummary: summary
                 },
+                rosterSource: 'academicSync',
                 updatedAt: now
             }
         }

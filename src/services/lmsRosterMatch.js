@@ -2,10 +2,10 @@
  * Matches an LMS course roster against BiocBot accounts.
  *
  * Grade snapshots are stored against a BiocBot `localUserId`, so before any
- * grades can be imported the two systems have to agree on who is who. The only
- * identifier both sides reliably hold is the institutional email address, so
- * that is the primary key here; username/login and SIS id are fallbacks for
- * deployments where the email is hidden or differs. Display names are never
+ * grades can be imported the two systems have to agree on who is who. The
+ * strongest key at UBC is Canvas's integration_id (the CWL PUID). Student
+ * number, email, and username remain fallbacks for deployments or tokens where
+ * that field is unavailable. Display names are never
  * used to match automatically — "J. Smith" vs "Jane Smith" vs a second Jane
  * Smith is exactly the ambiguity that silently attaches one student's grades to
  * another. Anyone who cannot be matched is reported back so the instructor can
@@ -33,11 +33,18 @@ function emailLocalPart(email) {
  */
 const MATCH_STRATEGIES = Object.freeze([
     {
+        id: 'integration',
+        label: 'integration id',
+        // At UBC Canvas integration_id is the PUID supplied by CWL.
+        lmsKey: (entry) => normalizeKey(entry.integrationId),
+        localKeys: (user) => [normalizeKey(user.puid)]
+    },
+    {
         id: 'sis',
         label: 'student number',
         // Populated on BiocBot accounts created by the academic-API roster sync.
         lmsKey: (entry) => normalizeKey(entry.sisId),
-        localKeys: (user) => [normalizeKey(user.academicStudentId), normalizeKey(user.puid)]
+        localKeys: (user) => [normalizeKey(user.academicStudentId)]
     },
     {
         id: 'email',
@@ -48,7 +55,7 @@ const MATCH_STRATEGIES = Object.freeze([
     {
         id: 'username',
         label: 'username',
-        lmsKey: (entry) => normalizeKey(entry.username),
+        lmsKey: (entry) => normalizeKey(entry.loginId),
         localKeys: (user) => [normalizeKey(user.username)]
     },
     {
@@ -57,54 +64,23 @@ const MATCH_STRATEGIES = Object.freeze([
         // Covers deployments where BiocBot stores the CWL as the username and
         // the LMS only exposes the full institutional email.
         lmsKey: (entry) => emailLocalPart(entry.email),
-        localKeys: (user) => [normalizeKey(user.username), emailLocalPart(user.email)]
+        localKeys: (user) => [normalizeKey(user.username)]
     }
 ]);
 
-/** Canvas exposes the roster as course users filtered to student enrollments. */
-async function fetchCanvasRoster(client, canvasCourseId) {
-    const users = await client.get(`/courses/${encodeURIComponent(String(canvasCourseId))}/users`, {
-        enrollment_type: ['student'],
-        enrollment_state: ['active', 'invited'],
-        include: ['email'],
-        per_page: 100
-    });
-    return (users || []).map((user) => ({
-        externalUserId: String(user.id),
-        name: user.name || user.sortable_name || `Canvas user ${user.id}`,
-        email: user.email || user.login_id || '',
-        username: user.login_id || '',
-        sisId: user.sis_user_id || ''
-    }));
+function loadRosterToolkit() {
+    try {
+        return require('@ubc/ubc-genai-toolkit-lms-integration');
+    } catch (error) {
+        const wrapped = new Error('LMS roster matching requires @ubc/ubc-genai-toolkit-lms-integration 1.0.4 or newer');
+        wrapped.code = 'LMS_TOOLKIT_MISSING';
+        wrapped.cause = error;
+        throw wrapped;
+    }
 }
 
-/**
- * Moodle returns every enrolled user with their roles, so students are filtered
- * here rather than by the web-service call. `email` is only populated when the
- * token's account can see user identity fields (`moodle/site:viewuseridentity`).
- */
-async function fetchMoodleRoster(client, moodleCourseId) {
-    const users = await client.call('core_enrol_get_enrolled_users', {
-        courseid: Number(moodleCourseId) || moodleCourseId
-    });
-    return (users || [])
-        .filter((user) => {
-            const roles = user.roles || [];
-            return roles.length === 0 || roles.some((role) => role.shortname === 'student');
-        })
-        .map((user) => ({
-            externalUserId: String(user.id),
-            name: user.fullname || `Moodle user ${user.id}`,
-            email: user.email || '',
-            username: user.username || '',
-            sisId: user.idnumber || ''
-        }));
-}
-
-async function fetchRoster(provider, client, externalCourseId) {
-    if (provider === 'canvas') return fetchCanvasRoster(client, externalCourseId);
-    if (provider === 'moodle') return fetchMoodleRoster(client, externalCourseId);
-    throw new Error(`Unsupported LMS provider: ${provider}`);
+function externalUserId(entry) {
+    return String(entry.id ?? entry.externalUserId);
 }
 
 /**
@@ -199,12 +175,13 @@ async function matchCourseRoster({ db, course, provider, roster, matchedBy }) {
 
     for (const entry of roster.entries) {
         const match = matchRosterEntry(entry, indexes);
+        const entryExternalUserId = externalUserId(entry);
         // The mapping collection holds one row per local user, so a second LMS
         // row claiming an already-matched account is a data problem in the LMS
         // (duplicate account) and is surfaced rather than silently overwritten.
         if (!match || claimedLocalUserIds.has(match.localUser.localUserId)) {
             unmatchedLmsStudents.push({
-                externalUserId: entry.externalUserId,
+                externalUserId: entryExternalUserId,
                 name: entry.name,
                 email: entry.email,
                 reason: match ? 'duplicate-biocbot-account' : 'no-biocbot-account'
@@ -222,7 +199,7 @@ async function matchCourseRoster({ db, course, provider, roster, matchedBy }) {
                     courseId: course.courseId,
                     provider,
                     externalCourseId,
-                    externalUserId: entry.externalUserId
+                    externalUserId: externalUserId(entry)
                 },
                 update: {
                     $set: {
@@ -241,7 +218,7 @@ async function matchCourseRoster({ db, course, provider, roster, matchedBy }) {
 
     // Anyone who dropped the course in the LMS should stop appearing here, and
     // stale rows would also collide with the unique local-user index above.
-    const keptExternalIds = matched.map(({ entry }) => entry.externalUserId);
+    const keptExternalIds = matched.map(({ entry }) => externalUserId(entry));
     await db.collection('lms_identity_mappings').deleteMany({
         courseId: course.courseId,
         provider,
@@ -271,28 +248,35 @@ async function matchCourseRoster({ db, course, provider, roster, matchedBy }) {
 }
 
 /** Fetches the roster and reconciles it in one step. */
-async function syncCourseRoster({ db, course, provider, client, externalCourseId, matchedBy }) {
-    const entries = await fetchRoster(provider, client, externalCourseId);
-    if (entries.length && !entries.some((entry) => entry.email || entry.username || entry.sisId)) {
+async function syncCourseRoster({ db, course, provider, client, externalCourseId, matchedBy, toolkit: injectedToolkit }) {
+    if (!SUPPORTED_PROVIDERS.includes(provider)) {
+        throw new Error(`Unsupported LMS provider: ${provider}`);
+    }
+
+    // Injection keeps unit tests deterministic when the optional GitHub
+    // Packages dependency is intentionally unavailable in CI. Production
+    // callers omit it and use the installed toolkit package.
+    const toolkit = injectedToolkit || loadRosterToolkit();
+    const entries = await toolkit[provider].getCourseUsers(client, externalCourseId);
+    const coverage = toolkit.rosterFieldCoverage(entries);
+    if (entries.length && !entries.some((entry) => entry.integrationId || entry.sisId || entry.email || entry.loginId)) {
         console.warn(
-            `⚠️ ${provider} roster for course ${externalCourseId} exposed no email, username, or student number — nothing can be matched.`
+            `⚠️ ${provider} roster for course ${externalCourseId} exposed no integration id, student number, email, or login id — nothing can be matched.`
         );
     }
-    return matchCourseRoster({
+    const report = await matchCourseRoster({
         db,
         course,
         provider,
         roster: { externalCourseId, entries },
         matchedBy
     });
+    return { ...report, coverage };
 }
 
 module.exports = {
     MATCH_STRATEGIES,
     SUPPORTED_PROVIDERS,
-    fetchCanvasRoster,
-    fetchMoodleRoster,
-    fetchRoster,
     indexLocalCandidates,
     listLocalCandidates,
     matchCourseRoster,

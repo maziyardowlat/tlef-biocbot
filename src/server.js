@@ -43,6 +43,7 @@ const academicSyncRoutes = require('./routes/academicSync');
 const previewRoutes = require('./routes/preview');
 const { createCanvasLmsRouter } = require('./routes/canvasLms');
 const { createLmsGradesRouter } = require('./routes/lmsGrades');
+const { createLmsRosterSyncRouter } = require('./routes/lmsRosterSync');
 const { createMoodleLmsRouter } = require('./routes/moodleLms');
 const LLMService = require('./services/llm');
 const LlmRegistry = require('./services/llmRegistry');
@@ -718,6 +719,13 @@ function setupAPIRoutes() {
         authMiddleware.populateUser,
         authMiddleware.requireInstructor,
         createLmsGradesRouter(lmsIntegration)
+    );
+    app.use(
+        '/api/lms/roster',
+        authMiddleware.requireAuth,
+        authMiddleware.populateUser,
+        authMiddleware.requireInstructor,
+        createLmsRosterSyncRouter(lmsIntegration)
     );
     app.use('/api/student/super-course', authMiddleware.requireAuth, authMiddleware.populateUser, studentSuperCourseRoutes);
     app.use('/api/students', authMiddleware.requireAuth, authMiddleware.populateUser, authMiddleware.requireActiveCourseForNonInstructors, authMiddleware.requireStudentEnrolled, studentsRoutes);
