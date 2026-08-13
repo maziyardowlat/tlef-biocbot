@@ -90,9 +90,9 @@ describe.each([
         let res = await request(app()).get(base);
         expect(res.body).toMatchObject({ success: true, aiAvailable: false, llmProvider: 'openai' });
         // Instructors/admins choose a platform label; no model names are exposed.
-        expect(res.body.providers.map(p => p.provider)).toEqual(['openai', 'ubc-llm-sandbox']);
+        expect(res.body.providers.map(p => p.provider)).toEqual(['openai', 'ubc-llm-sandbox', 'ubc-llm-proxy']);
         expect(res.body.providers.map(p => p.label)).toEqual([
-            providerLabel('openai'), providerLabel('ubc-llm-sandbox')
+            providerLabel('openai'), providerLabel('ubc-llm-sandbox'), providerLabel('ubc-llm-proxy')
         ]);
         expect(JSON.stringify(res.body)).not.toMatch(/text-embedding|gpt-5|qwen3/);
 

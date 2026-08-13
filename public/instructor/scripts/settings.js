@@ -64,7 +64,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     // the historical un-prefixed ids.
     const LLM_PLATFORM_UI = {
         openai: { idPrefix: 'llm', label: 'OpenAI Chat GPT' },
-        'ubc-llm-sandbox': { idPrefix: 'sandbox-llm', label: 'UBC On-Premise LLM' }
+        'ubc-llm-sandbox': { idPrefix: 'sandbox-llm', label: 'UBC On-Premise LLM' },
+        'ubc-llm-proxy': { idPrefix: 'proxy-llm', label: 'UBC LLM Proxy' }
     };
     // Latest per-platform settings from /api/settings/llm, keyed by provider.
     let llmPlatformSettings = {};
@@ -607,6 +608,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (response.ok && result.success) {
             input.value = '';
             applyLlmSurfaceState(statusPrefix, result, { resetSelection: false });
+            if (llmProvider === 'ubc-llm-proxy') {
+                // System admins see the newly discovered exact ids immediately.
+                // For regular instructors the admin-only endpoint simply
+                // returns 403 and loadLLMSettings() leaves the UI unchanged.
+                await loadLLMSettings();
+            }
         } else if (result.llmKey) {
             renderLlmKeyStatus(statusPrefix, result.llmKey);
         }
@@ -750,6 +757,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const modelSelect = document.getElementById(`${idPrefix}-model-select`);
         fillSelect(modelSelect, platform.allowedModels || [], platform.chatModel);
+        if (platform.provider === 'ubc-llm-proxy' && !platform.chatModel && modelSelect) {
+            const placeholder = new Option('Select a front-end model', '', true, true);
+            placeholder.disabled = true;
+            modelSelect.prepend(placeholder);
+        }
         const reasoningSelect = document.getElementById(`${idPrefix}-reasoning-select`);
         updateReasoningVisibility(idPrefix, 'frontend', effortsByModel, defaultsByModel);
         if (reasoningSelect && (effortsByModel[platform.chatModel] || []).includes(platform.reasoningEffort)) {
@@ -762,6 +774,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         const backendReasoningItem = document.getElementById(`${idPrefix}-backend-reasoning-item`);
         const inheritToggle = document.getElementById(`${idPrefix}-backend-inherit`);
         fillSelect(backendModelSelect, platform.allowedModels || [], platform.backendChatModel || platform.chatModel);
+        if (platform.provider === 'ubc-llm-proxy' && !platform.backendChatModel && backendModelSelect) {
+            const placeholder = new Option('Select a back-end model', '', true, true);
+            placeholder.disabled = true;
+            backendModelSelect.prepend(placeholder);
+        }
         updateReasoningVisibility(idPrefix, 'backend', effortsByModel, defaultsByModel);
         if (backendReasoningSelect
             && (effortsByModel[backendModelSelect?.value] || []).includes(platform.backendReasoningEffort)) {
@@ -797,15 +814,30 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (inheritToggle) inheritToggle.onchange = syncBackendInheritance;
         syncBackendInheritance();
 
+        const embeddingSelect = document.getElementById(`${idPrefix}-embedding-select`);
         fillSelect(
-            document.getElementById(`${idPrefix}-embedding-select`),
+            embeddingSelect,
             platform.allowedEmbeddingModels || [],
             platform.embeddingModel
         );
+        if (platform.provider === 'ubc-llm-proxy' && !platform.embeddingModel && embeddingSelect) {
+            const placeholder = new Option('Select an embedding model', '', true, true);
+            placeholder.disabled = true;
+            embeddingSelect.prepend(placeholder);
+        }
+
+        const discovery = document.getElementById(`${idPrefix}-discovery-status`);
+        if (discovery) {
+            discovery.textContent = platform.modelsDiscovered
+                ? 'Models loaded from saved UBC LLM Proxy keys. Selections are validated with chat and embedding operations when saved.'
+                : 'Save a UBC LLM Proxy key on a course, Super Course, notes, or instructor chat to load models.';
+        }
 
         const collection = document.getElementById(`${idPrefix}-embedding-collection`);
         if (collection) {
-            collection.textContent = `${platform.collection} (${platform.vectorSize} dimensions)`;
+            collection.textContent = platform.collection
+                ? `${platform.collection} (${platform.vectorSize} dimensions)`
+                : 'Not configured';
         }
 
         const pending = document.getElementById(`${idPrefix}-embedding-pending`);
@@ -2079,12 +2111,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         await savePlatformModelSettings('ubc-llm-sandbox');
     }, { busyLabel: 'Saving...' });
 
+    wireSectionButton('save-proxy-llm-settings', async () => {
+        await savePlatformModelSettings('ubc-llm-proxy');
+    }, { busyLabel: 'Saving...' });
+
     wireSectionButton('rollback-llm-embedding', async () => {
         await rollbackPlatformEmbeddingModel('openai');
     }, { busyLabel: 'Cancelling...' });
 
     wireSectionButton('rollback-sandbox-llm-embedding', async () => {
         await rollbackPlatformEmbeddingModel('ubc-llm-sandbox');
+    }, { busyLabel: 'Cancelling...' });
+
+    wireSectionButton('rollback-proxy-llm-embedding', async () => {
+        await rollbackPlatformEmbeddingModel('ubc-llm-proxy');
     }, { busyLabel: 'Cancelling...' });
 
     // Admin: login restrictions
@@ -2299,11 +2339,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         const meta = window.LlmPlatform
             ? window.LlmPlatform.providerMeta(provider)
             : {
-                label: provider === 'ubc-llm-sandbox' ? 'UBC On-Premise LLM' : 'OpenAI Chat GPT',
-                helpText: provider === 'ubc-llm-sandbox'
-                    ? 'Contact the LTIC team to request a UBC LLM Sandbox API key.'
-                    : 'Feel free to use your own OpenAI API key, or contact the support team for assistance.',
-                keyPlaceholder: provider === 'ubc-llm-sandbox' ? 'UBC LLM Sandbox API key' : 'sk-...'
+                label: provider === 'ubc-llm-proxy'
+                    ? 'UBC LLM Proxy'
+                    : provider === 'ubc-llm-sandbox' ? 'UBC On-Premise LLM' : 'OpenAI Chat GPT',
+                helpText: provider === 'ubc-llm-proxy'
+                    ? 'Enter the UBC LLM Proxy key issued for this course.'
+                    : provider === 'ubc-llm-sandbox'
+                        ? 'Contact the LTIC team to request a UBC LLM Sandbox API key.'
+                        : 'Feel free to use your own OpenAI API key, or contact the support team for assistance.',
+                keyPlaceholder: provider === 'ubc-llm-proxy'
+                    ? 'UBC LLM Proxy API key'
+                    : provider === 'ubc-llm-sandbox' ? 'UBC LLM Sandbox API key' : 'sk-...'
             };
 
         const keyLabel = document.querySelector('label[for="transfer-course-api-key"]');
@@ -2917,6 +2963,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             'system-admin-section',
             'llm-model-section',
             'sandbox-llm-model-section',
+            'proxy-llm-model-section',
             'notes-llm-key-section',
             'instructor-superchat-llm-key-section'
         ];

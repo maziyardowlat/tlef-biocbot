@@ -636,7 +636,8 @@ async function getTransferQdrantService(cache, record) {
     const profile = buildEmbeddingProfile({
         provider: record.provider,
         embeddingModel: record.model,
-        revision: record.revision
+        revision: record.revision,
+        vectorSize: record.vectorSize || undefined
     });
     const service = new QdrantService({ skipEmbeddings: true, embeddingProfile: profile });
     await service.initialize();

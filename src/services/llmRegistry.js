@@ -140,12 +140,30 @@ class LlmRegistry {
     async embeddingProfileForScope(db, scope, doc) {
         const provider = this._providerFor(doc);
         const settings = await this._modelSettingsFor(db, provider);
+        this._assertConfigured(provider, settings);
         return buildEmbeddingProfile({
             provider,
             embeddingModel: settings.embeddingModel,
             revision: settings.embeddingRevision,
+            vectorSize: settings.vectorSize || undefined,
             endpoint: this._endpointFor(provider)
         });
+    }
+
+    _assertConfigured(provider, settings) {
+        if (provider !== 'ubc-llm-proxy') return;
+        const missing = [];
+        if (!settings?.chatModel) missing.push('front-end chat model');
+        if (!settings?.lanes?.[LANES.BACKEND]?.chatModel) missing.push('back-end chat model');
+        if (!settings?.embeddingModel || !settings?.vectorSize) missing.push('embedding model');
+        if (missing.length === 0) return;
+
+        const error = new Error(
+            `UBC LLM Proxy is not configured yet. A system admin must select and save the ${missing.join(', ')}.`
+        );
+        error.code = 'LLM_PROVIDER_UNCONFIGURED';
+        error.httpStatus = 409;
+        throw error;
     }
 
     _providerFor(doc) {
@@ -203,6 +221,7 @@ class LlmRegistry {
     async _getOrCreate(db, scope, doc, credential, provider) {
         const normalizedProvider = provider === 'ollama' ? 'ollama' : normalizeProvider(provider);
         const modelSettings = await this._modelSettingsFor(db, normalizedProvider);
+        this._assertConfigured(normalizedProvider, modelSettings);
         const keyUpdatedAt = credential && credential.updatedAt
             ? new Date(credential.updatedAt).getTime()
             : 0;
@@ -271,6 +290,7 @@ class LlmRegistry {
             provider: normalizedProvider,
             embeddingModel: modelSettings.embeddingModel,
             revision: modelSettings.embeddingRevision,
+            vectorSize: modelSettings.vectorSize || undefined,
             endpoint,
             apiKey
         });

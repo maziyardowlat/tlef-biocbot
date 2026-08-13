@@ -25,6 +25,12 @@
             label: 'UBC On-Premise LLM',
             helpText: 'Contact the LTIC team to request a UBC LLM Sandbox API key.',
             keyPlaceholder: 'UBC LLM Sandbox API key'
+        },
+        {
+            provider: 'ubc-llm-proxy',
+            label: 'UBC LLM Proxy',
+            helpText: 'Enter the UBC LLM Proxy key issued for this AI surface. Available models are loaded after the key is validated.',
+            keyPlaceholder: 'UBC LLM Proxy API key'
         }
     ];
 

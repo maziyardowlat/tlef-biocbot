@@ -150,7 +150,7 @@ function chunkingSignature(config = chunkingConfig()) {
  * Build the full embedding profile for a provider + model.
  *
  * @param {Object} options
- * @param {string} options.provider - Provider id ('openai' | 'ubc-llm-sandbox')
+ * @param {string} options.provider - Provider id ('openai' | 'ubc-llm-sandbox' | 'ubc-llm-proxy')
  * @param {string} options.embeddingModel - Exact embedding model id
  * @param {string} [options.revision] - Profile revision, defaults to 'v1'
  * @param {string} [options.endpoint] - Provider endpoint (infrastructure config)

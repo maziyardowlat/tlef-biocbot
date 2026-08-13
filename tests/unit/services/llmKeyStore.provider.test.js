@@ -5,6 +5,7 @@
  */
 jest.mock('node-fetch', () => jest.fn());
 const fetchMock = require('node-fetch');
+const { LLMModule } = require('ubc-genai-toolkit-llm');
 
 const {
     KEY_STATUSES,
@@ -30,6 +31,7 @@ const {
 
 const OPENAI = 'openai';
 const SANDBOX = 'ubc-llm-sandbox';
+const PROXY = 'ubc-llm-proxy';
 
 const OLD_ENV = process.env;
 beforeEach(() => {
@@ -70,6 +72,20 @@ describe('reading a surface\'s provider state', () => {
         expect(activeCredential(course).last4).toBe('2222');
         expect(credentialForProvider(course, OPENAI).last4).toBe('1111');
         expect(state.legacyOnly).toBe(false);
+    });
+
+    test('proxy credentials use the same isolated per-surface storage map', () => {
+        const course = {
+            activeLlmProvider: PROXY,
+            llmCredentials: {
+                [OPENAI]: { ciphertext: 'c-gpt', status: 'valid' },
+                [SANDBOX]: { ciphertext: 'c-sbx', status: 'valid' },
+                [PROXY]: { ciphertext: 'c-proxy', status: 'valid', last4: '3333' },
+            },
+        };
+        expect(readProviderState(course).activeProvider).toBe(PROXY);
+        expect(activeCredential(course).last4).toBe('3333');
+        expect(publicProviderKeyState(course).llmKeysByProvider[PROXY].status).toBe('valid');
     });
 
     test('a status-only update never loses the legacy ciphertext', () => {
@@ -233,6 +249,29 @@ describe('no key material in API responses', () => {
 });
 
 describe('provider-aware validation', () => {
+    test('Proxy constructs the toolkit with key and endpoint and preserves exact /models ids', async () => {
+        const models = ['openai/gpt-5.6-luna:2026-08', 'vendor/embed.model-v2'];
+        const available = jest.spyOn(LLMModule.prototype, 'getAvailableModels').mockResolvedValue(models);
+
+        const result = await validateProviderKey({
+            provider: PROXY,
+            apiKey: 'prx-real',
+            endpoint: 'https://proxy.example/v1',
+        });
+
+        expect(result).toEqual({ ok: true, status: 'valid', provider: PROXY, models });
+        expect(available).toHaveBeenCalledTimes(1);
+        expect(fetchMock).not.toHaveBeenCalled();
+        available.mockRestore();
+    });
+
+    test('Proxy discovery requires its configured endpoint and never guesses models', async () => {
+        const result = await validateProviderKey({ provider: PROXY, apiKey: 'prx-real' });
+        expect(result).toMatchObject({ ok: false, status: KEY_STATUSES.INVALID, provider: PROXY });
+        expect(result.message).toMatch(/Proxy endpoint is not configured/);
+        expect(fetchMock).not.toHaveBeenCalled();
+    });
+
     test('OpenAI probes api.openai.com with the configured chat and embedding models', async () => {
         fetchMock.mockResolvedValue(okResponse());
         const result = await validateProviderKey({
@@ -313,10 +352,13 @@ describe('provider-aware validation', () => {
 
     test('stub mode classifies both platforms by prefix without any network call', async () => {
         process.env.BIOCBOT_TEST_LLM_STUB = '1';
+        process.env.BIOCBOT_TEST_PROXY_MODELS = 'proxy-chat,proxy-embed';
         await expect(validateProviderKey({ provider: OPENAI, apiKey: 'sk-test-x' }))
             .resolves.toMatchObject({ ok: true, provider: OPENAI });
         await expect(validateProviderKey({ provider: SANDBOX, apiKey: 'sbx-test-x' }))
             .resolves.toMatchObject({ ok: true, provider: SANDBOX });
+        await expect(validateProviderKey({ provider: PROXY, apiKey: 'prx-test-x' }))
+            .resolves.toMatchObject({ ok: true, provider: PROXY, models: ['proxy-chat', 'proxy-embed'] });
         await expect(validateProviderKey({ provider: SANDBOX, apiKey: 'sbx-quota-x' }))
             .resolves.toMatchObject({ ok: false, status: KEY_STATUSES.QUOTA_EXHAUSTED });
         await expect(validateProviderKey({ provider: SANDBOX, apiKey: 'garbage' }))
@@ -333,10 +375,12 @@ describe('provider-aware validation', () => {
 });
 
 describe('key enforcement and diagnostics', () => {
-    test('both selectable platforms require a scoped key; only ollama bypasses', () => {
+    test('all selectable platforms require a scoped key; only ollama bypasses', () => {
         process.env.LLM_PROVIDER = OPENAI;
         expect(scopedKeysRequired()).toBe(true);
         process.env.LLM_PROVIDER = SANDBOX;
+        expect(scopedKeysRequired()).toBe(true);
+        process.env.LLM_PROVIDER = PROXY;
         expect(scopedKeysRequired()).toBe(true);
         process.env.LLM_PROVIDER = 'ollama';
         expect(scopedKeysRequired()).toBe(false);

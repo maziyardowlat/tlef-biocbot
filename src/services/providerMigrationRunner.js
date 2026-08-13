@@ -159,6 +159,7 @@ async function resolveTargetProfile(db, job, scope = job.scope) {
         provider,
         embeddingModel: job.targetProfile.embeddingModel,
         revision: job.targetProfile.revision,
+        vectorSize: job.targetProfile.vectorSize,
         endpoint: infra.endpoint,
         apiKey: decryptApiKey(credential.ciphertext)
     });
@@ -244,7 +245,8 @@ async function cleanupMigrationTarget(db, migrationIdOrJob) {
     const profile = buildEmbeddingProfile({
         provider: job.targetProfile.provider,
         embeddingModel: job.targetProfile.embeddingModel,
-        revision: job.targetProfile.revision
+        revision: job.targetProfile.revision,
+        vectorSize: job.targetProfile.vectorSize
     });
     const qdrant = new QdrantService({
         embeddingProfile: profile,
@@ -397,7 +399,8 @@ async function runMigration(db, migrationId, options = {}) {
     const profile = buildEmbeddingProfile({
         provider: job.targetProfile.provider,
         embeddingModel: job.targetProfile.embeddingModel,
-        revision: job.targetProfile.revision
+        revision: job.targetProfile.revision,
+        vectorSize: job.targetProfile.vectorSize
     });
     const servicesFor = createServiceResolver(db, job);
 

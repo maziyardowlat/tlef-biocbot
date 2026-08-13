@@ -191,7 +191,8 @@ function indexedCollections(doc) {
             profileKey,
             collection: record.collection,
             provider: record.provider || null,
-            model: record.model || null
+            model: record.model || null,
+            vectorSize: record.vectorSize || null
         });
     }
     return [...seen.values()];
@@ -202,6 +203,7 @@ function buildIndexRecord({ profile, hash, status, error = null, indexedAt = nul
         provider: profile.provider,
         model: profile.embeddingModel,
         revision: profile.revision,
+        vectorSize: profile.vectorSize,
         // Notes live in the profile's notes collection, documents in its
         // documents collection — the record must name the one actually holding
         // the vectors, because deletion sweeps every recorded collection.
@@ -390,7 +392,8 @@ async function deleteDocumentFromAllCollections(db, doc, serviceFactory) {
             const profile = buildEmbeddingProfile({
                 provider: target.provider || 'openai',
                 embeddingModel: target.model || 'text-embedding-3-small',
-                revision: (target.profileKey || '').split(':').pop() || undefined
+                revision: (target.profileKey || '').split(':').pop() || undefined,
+                vectorSize: target.vectorSize || undefined
             });
             const service = await serviceFactory(target, profile);
             if (!service) continue;

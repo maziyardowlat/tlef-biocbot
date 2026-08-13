@@ -69,7 +69,11 @@ class QdrantService {
         // The profile decides the collection AND the dimensionality. Vectors
         // from different embedding models never share a collection, even when
         // their dimensionality happens to match.
-        this.embeddingProfile = options.embeddingProfile || envFallbackProfile();
+        this.embeddingProfile = options.embeddingProfile || (this.skipEmbeddings
+            // Maintenance-only clients never generate vectors. Give them the
+            // historical collection profile without inventing a proxy model.
+            ? buildEmbeddingProfile({ provider: 'openai', embeddingModel: 'text-embedding-3-small' })
+            : envFallbackProfile());
         this.provider = this.embeddingProfile.provider;
         this.embeddingModel = this.embeddingProfile.embeddingModel;
         this.collectionName = this.embeddingProfile.collection;

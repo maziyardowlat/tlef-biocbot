@@ -13,12 +13,17 @@
 
 const PROVIDERS = Object.freeze({
     OPENAI: 'openai',
-    SANDBOX: 'ubc-llm-sandbox'
+    SANDBOX: 'ubc-llm-sandbox',
+    PROXY: 'ubc-llm-proxy'
 });
 
 // Providers an instructor can select for a keyed surface. `ollama` remains
 // supported as a local development runtime but is never offered in the UI.
-const SELECTABLE_PROVIDERS = Object.freeze([PROVIDERS.OPENAI, PROVIDERS.SANDBOX]);
+const SELECTABLE_PROVIDERS = Object.freeze([
+    PROVIDERS.OPENAI,
+    PROVIDERS.SANDBOX,
+    PROVIDERS.PROXY
+]);
 
 const DEFAULT_PROVIDER = PROVIDERS.OPENAI;
 
@@ -27,6 +32,7 @@ const DEFAULT_PROVIDER = PROVIDERS.OPENAI;
 const PROVIDER_LABELS = Object.freeze({
     [PROVIDERS.OPENAI]: 'OpenAI Chat GPT',
     [PROVIDERS.SANDBOX]: 'UBC On-Premise LLM',
+    [PROVIDERS.PROXY]: 'UBC LLM Proxy',
     ollama: 'Ollama (local)'
 });
 
@@ -34,12 +40,14 @@ const SUPPORT_EMAIL = 'LT.hub@ubc.ca';
 
 const PROVIDER_HELP_TEXT = Object.freeze({
     [PROVIDERS.OPENAI]: 'Feel free to use your own OpenAI API key, or contact the support team for assistance.',
-    [PROVIDERS.SANDBOX]: 'Contact the LTIC team to request a UBC LLM Sandbox API key.'
+    [PROVIDERS.SANDBOX]: 'Contact the LTIC team to request a UBC LLM Sandbox API key.',
+    [PROVIDERS.PROXY]: 'Enter the UBC LLM Proxy key issued for this AI surface. Available models are loaded from the proxy after the key is validated.'
 });
 
 const PROVIDER_KEY_PLACEHOLDERS = Object.freeze({
     [PROVIDERS.OPENAI]: 'sk-...',
-    [PROVIDERS.SANDBOX]: 'UBC LLM Sandbox API key'
+    [PROVIDERS.SANDBOX]: 'UBC LLM Sandbox API key',
+    [PROVIDERS.PROXY]: 'UBC LLM Proxy API key'
 });
 
 function isSelectableProvider(provider) {

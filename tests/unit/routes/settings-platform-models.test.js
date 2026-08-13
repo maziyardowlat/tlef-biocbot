@@ -17,7 +17,9 @@ jest.mock('../../../src/services/providerMigrationRunner', () => ({
 jest.mock('../../../src/services/config', () => ({
     getProviderInfra: jest.fn((provider) => ({
         provider,
-        endpoint: provider === 'ubc-llm-sandbox' ? 'https://sandbox.example/v1' : null,
+        endpoint: provider === 'ubc-llm-sandbox'
+            ? 'https://sandbox.example/v1'
+            : provider === 'ubc-llm-proxy' ? 'https://proxy.example/v1' : null,
         bootstrapApiKey: undefined,
     })),
 }));
@@ -32,6 +34,7 @@ const { memoryDb } = require('../helpers/memory-db');
 
 const OPENAI = 'openai';
 const SANDBOX = 'ubc-llm-sandbox';
+const PROXY = 'ubc-llm-proxy';
 
 const admin = { userId: 'a1', role: 'instructor', email: 'admin@x.com', permissions: { systemAdmin: true } };
 const instructor = { userId: 'i1', role: 'instructor', email: 'i@x.com' };
@@ -56,9 +59,9 @@ describe('GET /llm — grouped by platform', () => {
         const res = await request(app()).get('/llm');
 
         expect(res.status).toBe(200);
-        expect(res.body.platforms.map(platform => platform.provider)).toEqual([OPENAI, SANDBOX]);
+        expect(res.body.platforms.map(platform => platform.provider)).toEqual([OPENAI, SANDBOX, PROXY]);
 
-        const [gpt, sandbox] = res.body.platforms;
+        const [gpt, sandbox, proxy] = res.body.platforms;
         expect(gpt).toMatchObject({
             label: providerLabel(OPENAI),
             chatModel: 'gpt-4.1-mini',
@@ -74,6 +77,16 @@ describe('GET /llm — grouped by platform', () => {
             embeddingModel: 'qwen3-embedding-0.6b',
             collection: 'biocbot_documents_qwen3_embedding_0_6b',
             vectorSize: 1024,
+        });
+        expect(proxy).toMatchObject({
+            provider: PROXY,
+            label: providerLabel(PROXY),
+            chatModel: null,
+            embeddingModel: null,
+            allowedModels: [],
+            allowedEmbeddingModels: [],
+            configured: false,
+            modelsDiscovered: false,
         });
     });
 
@@ -111,6 +124,21 @@ describe('GET /llm — grouped by platform', () => {
         expect(byProvider[SANDBOX].chatModel).toBe('gpt-oss-120b');
     });
 
+    test('proxy selectors expose exact discovered ids without choosing defaults', async () => {
+        const discovered = ['openai/gpt-5.6-luna:2026', 'vendor/embed.model-v2'];
+        const db = memoryDb({
+            settings: [{ _id: 'llm', providers: { [PROXY]: { availableModels: discovered } } }],
+        });
+
+        const res = await request(app({ db })).get('/llm');
+        const proxy = res.body.platforms.find(platform => platform.provider === PROXY);
+
+        expect(proxy.allowedModels).toEqual(discovered);
+        expect(proxy.allowedEmbeddingModels).toEqual(discovered);
+        expect(proxy.chatModel).toBeNull();
+        expect(proxy.embeddingModel).toBeNull();
+    });
+
     test('a staged embedding change is surfaced', async () => {
         const db = memoryDb({ settings: [] });
         await adminModelSettings.stagePendingEmbedding(db, OPENAI, {
@@ -131,6 +159,34 @@ describe('GET /llm — grouped by platform', () => {
 });
 
 describe('POST /llm — chat model changes are immediate', () => {
+    test('proxy chat selections are operation-validated before being saved', async () => {
+        process.env.BIOCBOT_TEST_LLM_STUB = '1';
+        process.env.BIOCBOT_TEST_PROXY_MODELS = 'proxy-chat,proxy-embed';
+        const db = memoryDb({
+            settings: [{
+                _id: 'llm',
+                providers: { [PROXY]: { availableModels: ['proxy-chat', 'proxy-embed'] } },
+            }],
+            courses: [{
+                courseId: 'C1',
+                llmCredentials: { [PROXY]: buildKeySubdocument('prx-test-key', 'a', PROXY) },
+            }],
+        });
+
+        const res = await request(app({ db })).post('/llm').send({
+            provider: PROXY,
+            chatModel: 'proxy-chat',
+            reasoningEffort: 'low',
+            backendInheritsFrontend: true,
+        });
+
+        expect(res.status).toBe(200);
+        const stored = await db.collection('settings').findOne({ _id: 'llm' });
+        expect(stored.providers[PROXY]).toMatchObject({
+            chatModel: 'proxy-chat', reasoningEffort: 'low',
+        });
+    });
+
     test('saving GPT does not disturb Sandbox', async () => {
         const db = memoryDb({ settings: [] });
         const llm = { invalidateModelSettingsCache: jest.fn() };
@@ -252,6 +308,35 @@ describe('POST /llm/embedding/impact — preview before confirming', () => {
 });
 
 describe('POST /llm/embedding — staged, never destructive', () => {
+    test('proxy embedding validation records the returned dimension in the staged profile', async () => {
+        process.env.BIOCBOT_TEST_LLM_STUB = '1';
+        process.env.BIOCBOT_TEST_PROXY_MODELS = 'proxy-chat,proxy-embed';
+        process.env.BIOCBOT_TEST_PROXY_VECTOR_SIZE = '19';
+        const db = memoryDb({
+            settings: [{
+                _id: 'llm',
+                providers: { [PROXY]: { availableModels: ['proxy-chat', 'proxy-embed'] } },
+            }],
+            courses: [{
+                courseId: 'C1',
+                llmCredentials: { [PROXY]: buildKeySubdocument('prx-test-key', 'a', PROXY) },
+            }],
+        });
+
+        const res = await request(app({ db })).post('/llm/embedding').send({
+            provider: PROXY,
+            embeddingModel: 'proxy-embed',
+        });
+
+        expect(res.status).toBe(202);
+        const { pendingEmbedding } = await adminModelSettings.getAllProviderSettings(db, { force: true });
+        expect(pendingEmbedding[PROXY]).toMatchObject({
+            embeddingModel: 'proxy-embed', vectorSize: 19,
+        });
+        const job = await migrations.getMigration(db, startedMigrations[0]);
+        expect(job.targetProfile.vectorSize).toBe(19);
+    });
+
     test('the previous model stays active while a migration runs', async () => {
         const db = memoryDb({
             settings: [],
@@ -364,7 +449,7 @@ describe('instructors never see exact models', () => {
 
         expect(res.status).toBe(200);
         expect(res.body.providers.map(provider => provider.label)).toEqual([
-            providerLabel(OPENAI), providerLabel(SANDBOX)
+            providerLabel(OPENAI), providerLabel(SANDBOX), providerLabel(PROXY)
         ]);
 
         const serialised = JSON.stringify(res.body);

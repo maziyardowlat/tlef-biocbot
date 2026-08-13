@@ -439,6 +439,7 @@ function selectedOnboardingProvider() {
 
 function onboardingProviderLabel(provider) {
     if (window.LlmPlatform) return window.LlmPlatform.providerLabel(provider);
+    if (provider === 'ubc-llm-proxy') return 'UBC LLM Proxy';
     return provider === 'ubc-llm-sandbox' ? 'UBC On-Premise LLM' : 'OpenAI Chat GPT';
 }
 
@@ -451,10 +452,14 @@ function refreshOnboardingPlatformHelp() {
         ? window.LlmPlatform.providerMeta(provider)
         : {
             label: onboardingProviderLabel(provider),
-            helpText: provider === 'ubc-llm-sandbox'
-                ? 'Contact the LTIC team to request a UBC LLM Sandbox API key.'
-                : 'Feel free to use your own OpenAI API key, or contact the support team for assistance.',
-            keyPlaceholder: provider === 'ubc-llm-sandbox' ? 'UBC LLM Sandbox API key' : 'sk-...'
+            helpText: provider === 'ubc-llm-proxy'
+                ? 'Enter the UBC LLM Proxy key issued for this course.'
+                : provider === 'ubc-llm-sandbox'
+                    ? 'Contact the LTIC team to request a UBC LLM Sandbox API key.'
+                    : 'Feel free to use your own OpenAI API key, or contact the support team for assistance.',
+            keyPlaceholder: provider === 'ubc-llm-proxy'
+                ? 'UBC LLM Proxy API key'
+                : provider === 'ubc-llm-sandbox' ? 'UBC LLM Sandbox API key' : 'sk-...'
         };
 
     const label = document.getElementById('course-api-key-label');

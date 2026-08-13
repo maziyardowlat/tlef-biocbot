@@ -855,6 +855,10 @@
                                                             <input type="radio" name="transfer-llm-provider" id="transfer-llm-provider-ubc-llm-sandbox" value="ubc-llm-sandbox">
                                                             <span>UBC On-Premise LLM</span>
                                                         </label>
+                                                        <label class="llm-platform-option">
+                                                            <input type="radio" name="transfer-llm-provider" id="transfer-llm-provider-ubc-llm-proxy" value="ubc-llm-proxy">
+                                                            <span>UBC LLM Proxy</span>
+                                                        </label>
                                                     </fieldset>
                                                 </div>
                                                 <div class="transfer-field-group">
@@ -1090,6 +1094,86 @@
                                 <div class="settings-section-actions">
                                     <span class="settings-dirty-note" hidden>Unsaved changes</span>
                                     <button id="save-sandbox-llm-settings" class="primary-button">Save model settings</button>
+                                </div>
+                            </section>
+
+                            <!-- UBC LLM Proxy. The proxy model roster comes from
+                                 each entered key; no application defaults are supplied. -->
+                            <section class="settings-section" id="proxy-llm-model-section" data-platform="ubc-llm-proxy" style="display: none;">
+                                <h3>UBC LLM Proxy models</h3>
+                                <p class="section-description">Models available through saved proxy keys. The proxy returns a flat list, so each selected model is validated with the operation it will perform.</p>
+                                <p id="proxy-llm-discovery-status" class="section-description">Save a UBC LLM Proxy key to load models.</p>
+                                <div class="settings-content">
+                                    <div class="setting-item">
+                                        <div class="setting-info">
+                                            <h4 id="proxy-llm-model-label">Front-end model</h4>
+                                            <p id="proxy-llm-model-desc">Used for interactive, student-facing output.</p>
+                                        </div>
+                                        <div class="setting-controls">
+                                            <select id="proxy-llm-model-select" class="number-input" aria-labelledby="proxy-llm-model-label" aria-describedby="proxy-llm-model-desc"></select>
+                                        </div>
+                                    </div>
+                                    <div class="setting-item" id="proxy-llm-reasoning-item" style="display: none;">
+                                        <div class="setting-info">
+                                            <h4 id="proxy-llm-reasoning-label">Front-end reasoning effort</h4>
+                                            <p id="proxy-llm-reasoning-desc">The selected effort is validated against the selected chat model.</p>
+                                        </div>
+                                        <div class="setting-controls">
+                                            <select id="proxy-llm-reasoning-select" class="number-input" aria-labelledby="proxy-llm-reasoning-label" aria-describedby="proxy-llm-reasoning-desc"></select>
+                                        </div>
+                                    </div>
+                                    <div class="setting-item llm-inherit-setting">
+                                        <div class="setting-info">
+                                            <h4 id="proxy-llm-backend-inherit-label">Back-end processing</h4>
+                                            <p id="proxy-llm-backend-inherit-desc">Used for authoring, ingestion, classification, and other processing. Keep it linked to the front-end model or configure it independently.</p>
+                                        </div>
+                                        <div class="setting-controls">
+                                            <label class="llm-inherit-control" for="proxy-llm-backend-inherit">
+                                                <span class="llm-inherit-control-copy">
+                                                    <strong>Use front-end settings</strong>
+                                                    <small>Model and reasoning effort</small>
+                                                </span>
+                                                <span class="toggle-switch">
+                                                    <input type="checkbox" id="proxy-llm-backend-inherit" checked aria-describedby="proxy-llm-backend-inherit-desc">
+                                                    <span class="toggle-slider"></span>
+                                                </span>
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div class="setting-item" id="proxy-llm-backend-model-item">
+                                        <div class="setting-info">
+                                            <h4 id="proxy-llm-backend-model-label">Back-end model override</h4>
+                                            <p id="proxy-llm-backend-model-desc">Shown when front-end settings are not being reused.</p>
+                                        </div>
+                                        <div class="setting-controls">
+                                            <select id="proxy-llm-backend-model-select" class="number-input" aria-labelledby="proxy-llm-backend-model-label" aria-describedby="proxy-llm-backend-model-desc"></select>
+                                        </div>
+                                    </div>
+                                    <div class="setting-item" id="proxy-llm-backend-reasoning-item" style="display: none;">
+                                        <div class="setting-info">
+                                            <h4 id="proxy-llm-backend-reasoning-label">Back-end reasoning effort</h4>
+                                            <p id="proxy-llm-backend-reasoning-desc">Available values are validated against the selected back-end model.</p>
+                                        </div>
+                                        <div class="setting-controls">
+                                            <select id="proxy-llm-backend-reasoning-select" class="number-input" aria-labelledby="proxy-llm-backend-reasoning-label" aria-describedby="proxy-llm-backend-reasoning-desc"></select>
+                                        </div>
+                                    </div>
+                                    <div class="setting-item">
+                                        <div class="setting-info">
+                                            <h4 id="proxy-llm-embedding-label">Embedding model</h4>
+                                            <p id="proxy-llm-embedding-desc">The selection is validated by generating an embedding. Its returned vector size defines the new collection before re-indexing starts.</p>
+                                            <p class="llm-embedding-collection-note">Collection: <span id="proxy-llm-embedding-collection">Not configured</span></p>
+                                            <p id="proxy-llm-embedding-pending" class="llm-embedding-pending" hidden></p>
+                                        </div>
+                                        <div class="setting-controls llm-embedding-controls">
+                                            <select id="proxy-llm-embedding-select" class="number-input" aria-labelledby="proxy-llm-embedding-label" aria-describedby="proxy-llm-embedding-desc"></select>
+                                            <button id="rollback-proxy-llm-embedding" class="secondary-button" hidden>Cancel staged change</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="settings-section-actions">
+                                    <span class="settings-dirty-note" hidden>Unsaved changes</span>
+                                    <button id="save-proxy-llm-settings" class="primary-button">Save model settings</button>
                                 </div>
                             </section>
 

@@ -50,6 +50,16 @@ class ConfigService {
                     endpoint: process.env.LLM_ENDPOINT,
                     defaultModel: process.env.LLM_DEFAULT_MODEL
                 };
+
+            case 'ubc-llm-proxy':
+                return {
+                    provider: 'ubc-llm-proxy',
+                    apiKey: process.env.UBC_LLM_PROXY_API_KEY || process.env.LLM_API_KEY || undefined,
+                    endpoint: process.env.UBC_LLM_PROXY_ENDPOINT,
+                    // Deliberately no defaultModel: proxy models are discovered
+                    // per key and selected by a system admin.
+                    defaultModel: undefined
+                };
                 
             default:
                 throw new Error(`Unsupported LLM provider: ${provider}`);
@@ -61,7 +71,7 @@ class ConfigService {
      * server-wide LLM_PROVIDER. Models are NOT included here — those come from
      * the admin settings stored in MongoDB (see adminModelSettings.js).
      *
-     * @param {string} provider - 'openai' | 'ubc-llm-sandbox' | 'ollama'
+     * @param {string} provider - 'openai' | 'ubc-llm-sandbox' | 'ubc-llm-proxy' | 'ollama'
      * @returns {{provider: string, endpoint: (string|null), bootstrapApiKey: (string|undefined)}}
      */
     getProviderInfra(provider) {
@@ -78,6 +88,13 @@ class ConfigService {
                     provider,
                     endpoint: process.env.SANDBOX_LLM_ENDPOINT || process.env.LLM_ENDPOINT || null,
                     bootstrapApiKey: process.env.SANDBOX_LLM_API_KEY || process.env.LLM_API_KEY || undefined
+                };
+
+            case 'ubc-llm-proxy':
+                return {
+                    provider,
+                    endpoint: process.env.UBC_LLM_PROXY_ENDPOINT || null,
+                    bootstrapApiKey: process.env.UBC_LLM_PROXY_API_KEY || undefined
                 };
 
             case 'openai':
@@ -172,6 +189,10 @@ class ConfigService {
             }
             if (!process.env.LLM_DEFAULT_MODEL) {
                 throw new Error('LLM_DEFAULT_MODEL is required for UBC LLM Sandbox provider');
+            }
+        } else if (provider === 'ubc-llm-proxy') {
+            if (!process.env.UBC_LLM_PROXY_ENDPOINT) {
+                throw new Error('UBC_LLM_PROXY_ENDPOINT is required for UBC LLM Proxy provider');
             }
         }
         // Embedding models are NOT validated here: they are per-platform admin

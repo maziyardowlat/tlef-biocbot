@@ -34,6 +34,7 @@ const migrations = require('../services/providerMigrationService');
 const migrationRunner = require('../services/providerMigrationRunner');
 const superCourse = require('../services/superCourseService');
 const {
+    PROVIDERS,
     SELECTABLE_PROVIDERS,
     normalizeProvider,
     providerCatalog,
@@ -1024,14 +1025,17 @@ router.get('/llm', async (req, res) => {
             { force: true, throwOnError: true }
         );
         const platforms = SELECTABLE_PROVIDERS.map((provider) => {
-            const catalog = adminCatalogForProvider(provider);
             const current = providers[provider];
+            const catalog = adminCatalogForProvider(provider, current.availableModels);
             const backend = adminModelSettings.chatSettingsForLane(current, 'backend');
-            const profile = buildEmbeddingProfile({
-                provider,
-                embeddingModel: current.embeddingModel,
-                revision: current.embeddingRevision
-            });
+            const profile = current.embeddingModel
+                ? buildEmbeddingProfile({
+                    provider,
+                    embeddingModel: current.embeddingModel,
+                    revision: current.embeddingRevision,
+                    vectorSize: current.vectorSize || undefined
+                })
+                : null;
 
             return {
                 provider,
@@ -1043,6 +1047,8 @@ router.get('/llm', async (req, res) => {
                 reasoningEffort: current.reasoningEffort,
                 backendReasoningEffort: backend.reasoningEffort,
                 backendInheritsFrontend: current.backendInheritsFrontend,
+                configured: current.configured,
+                modelsDiscovered: current.availableModels.length > 0,
                 supportsReasoning: supportsReasoning(provider, current.chatModel),
                 backendSupportsReasoning: supportsReasoning(provider, backend.chatModel),
                 allowedModels: catalog.allowedModels,
@@ -1051,10 +1057,10 @@ router.get('/llm', async (req, res) => {
                 allowedBackendReasoningEfforts: catalog.reasoningEffortsByModel[backend.chatModel] || [],
                 reasoningEffortsByModel: catalog.reasoningEffortsByModel,
                 defaultReasoningEffortByModel: catalog.defaultReasoningEffortByModel,
-                collection: profile.collection,
-                notesCollection: profile.notesCollection,
-                vectorSize: profile.vectorSize,
-                profileKey: profile.key,
+                collection: profile?.collection || null,
+                notesCollection: profile?.notesCollection || null,
+                vectorSize: profile?.vectorSize || null,
+                profileKey: profile?.key || null,
                 pendingEmbedding: pendingEmbedding[provider] || null
             };
         });
@@ -1102,6 +1108,32 @@ router.post('/llm', async (req, res) => {
         const body = req.body || {};
         const provider = normalizeProvider(body.provider, configuredProvider());
         const chatModel = body.chatModel || body.model;
+
+        if (provider === PROVIDERS.PROXY) {
+            const current = await adminModelSettings.getProviderSettings(db, provider, { force: true });
+            const backendInheritsFrontend = typeof body.backendInheritsFrontend === 'boolean'
+                ? body.backendInheritsFrontend
+                : true;
+            const selections = [{ model: chatModel, reasoningEffort: body.reasoningEffort }];
+            if (!backendInheritsFrontend) {
+                selections.push({
+                    model: body.backendChatModel,
+                    reasoningEffort: body.backendReasoningEffort
+                });
+            }
+            const unavailable = selections.find(selection => !current.availableModels.includes(selection.model));
+            if (unavailable) {
+                return res.status(400).json({
+                    success: false,
+                    error: `Invalid chat model for ${providerLabel(provider)}: ${unavailable.model}`
+                });
+            }
+            try {
+                await providerKeys.validateProxyChatSettings(db, selections);
+            } catch (error) {
+                return res.status(400).json({ success: false, error: error.message, code: error.code });
+            }
+        }
 
         let saved;
         try {
@@ -1161,17 +1193,28 @@ router.post('/llm/embedding/impact', async (req, res) => {
         const body = req.body || {};
         const provider = normalizeProvider(body.provider, configuredProvider());
         const embeddingModel = body.embeddingModel;
-        if (!isAllowedEmbeddingModel(provider, embeddingModel)) {
+        const current = await adminModelSettings.getProviderSettings(db, provider, { force: true });
+        if (!isAllowedEmbeddingModel(provider, embeddingModel, current.availableModels)) {
             return res.status(400).json({
                 success: false,
                 error: `Invalid embedding model for ${providerLabel(provider)}`
             });
         }
 
+        let vectorSize = current.vectorSize || undefined;
+        if (provider === PROVIDERS.PROXY) {
+            try {
+                ({ vectorSize } = await providerKeys.validateProxyEmbeddingModel(db, embeddingModel));
+            } catch (error) {
+                return res.status(400).json({ success: false, error: error.message, code: error.code });
+            }
+        }
+
         const profile = buildEmbeddingProfile({
             provider,
             embeddingModel,
-            revision: body.embeddingRevision || undefined
+            revision: body.embeddingRevision || undefined,
+            vectorSize
         });
         const surfaces = await affectedSurfacesForProvider(db, provider);
         const work = await migrations.calculateWork({
@@ -1222,16 +1265,29 @@ router.post('/llm/embedding', async (req, res) => {
         const provider = normalizeProvider(body.provider, configuredProvider());
         const embeddingModel = body.embeddingModel;
         const embeddingRevision = body.embeddingRevision || undefined;
+        const current = await adminModelSettings.getProviderSettings(db, provider, { force: true });
 
-        if (!isAllowedEmbeddingModel(provider, embeddingModel)) {
+        if (!isAllowedEmbeddingModel(provider, embeddingModel, current.availableModels)) {
             return res.status(400).json({
                 success: false,
                 error: `Invalid embedding model for ${providerLabel(provider)}`
             });
         }
 
-        const current = await adminModelSettings.getProviderSettings(db, provider, { force: true });
-        const profile = buildEmbeddingProfile({ provider, embeddingModel, revision: embeddingRevision });
+        let vectorSize = current.vectorSize || undefined;
+        if (provider === PROVIDERS.PROXY) {
+            try {
+                ({ vectorSize } = await providerKeys.validateProxyEmbeddingModel(db, embeddingModel));
+            } catch (error) {
+                return res.status(400).json({ success: false, error: error.message, code: error.code });
+            }
+        }
+        const profile = buildEmbeddingProfile({
+            provider,
+            embeddingModel,
+            revision: embeddingRevision,
+            vectorSize
+        });
         if (current.embeddingModel === embeddingModel
             && current.embeddingRevision === profile.revision) {
             return res.json({
@@ -1272,6 +1328,7 @@ router.post('/llm/embedding', async (req, res) => {
         await adminModelSettings.stagePendingEmbedding(db, provider, {
             embeddingModel,
             embeddingRevision: profile.revision,
+            vectorSize: profile.vectorSize,
             migrationId: job.migrationId
         });
 

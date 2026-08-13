@@ -15,12 +15,13 @@
  */
 
 const adminModelSettings = require('./adminModelSettings');
+const { LLMModule } = require('ubc-genai-toolkit-llm');
 const config = require('./config');
 const migrations = require('./providerMigrationService');
 const migrationRunner = require('./providerMigrationRunner');
 const superCourse = require('./superCourseService');
-const { buildEmbeddingProfile } = require('./embeddingConfig');
-const { normalizeProvider, providerLabel } = require('./llmProviders');
+const { buildEmbeddingProfile, vectorSizeForEmbeddingModel } = require('./embeddingConfig');
+const { PROVIDERS, normalizeProvider, providerLabel } = require('./llmProviders');
 const {
     KEY_STATUSES,
     buildKeySubdocument,
@@ -52,13 +53,178 @@ async function validateForProvider(db, provider, apiKey) {
         endpoint = null;
     }
 
-    return validateProviderKey({
+    const validation = await validateProviderKey({
         provider: normalizedProvider,
         apiKey,
         chatModel: settings.chatModel,
         embeddingModel: settings.embeddingModel,
         endpoint
     });
+
+    if (!validation.ok || normalizedProvider !== PROVIDERS.PROXY) {
+        return validation;
+    }
+
+    const current = await adminModelSettings.getProviderSettings(db, normalizedProvider, { force: true });
+    if (current.chatModel || current.embeddingModel) {
+        try {
+            const listed = validation.models || [];
+            for (const selected of [
+                current.chatModel,
+                current.lanes?.backend?.chatModel,
+                current.embeddingModel
+            ].filter(Boolean)) {
+                if (!listed.includes(selected)) {
+                    throw incompatibleModelError(
+                        selected,
+                        `The selected model is not available to this ${providerLabel(normalizedProvider)} key.`
+                    );
+                }
+            }
+            await validateProxyOperations({
+                apiKey,
+                endpoint,
+                chatSelections: proxyChatSelectionsFromSettings(current),
+                embeddingModel: current.embeddingModel
+            });
+        } catch (error) {
+            return {
+                ok: false,
+                status: KEY_STATUSES.INVALID,
+                provider: normalizedProvider,
+                message: error.message,
+                detail: error.cause?.message || error.message
+            };
+        }
+    }
+
+    await adminModelSettings.recordDiscoveredModels(db, normalizedProvider, validation.models);
+    return validation;
+}
+
+function incompatibleModelError(model, detail, operation = null) {
+    const action = operation ? ` for ${operation}` : '';
+    const error = new Error(`${model} cannot be used${action} with the saved UBC LLM Proxy key. ${detail}`);
+    error.code = 'MODEL_OPERATION_INCOMPATIBLE';
+    return error;
+}
+
+function proxyChatSelectionsFromSettings(settings) {
+    const selections = [];
+    const frontend = settings?.lanes?.frontend || settings;
+    const backend = settings?.lanes?.backend || frontend;
+    for (const lane of [frontend, backend]) {
+        if (!lane?.chatModel) continue;
+        if (!selections.some(item => item.model === lane.chatModel && item.reasoningEffort === lane.reasoningEffort)) {
+            selections.push({ model: lane.chatModel, reasoningEffort: lane.reasoningEffort });
+        }
+    }
+    return selections;
+}
+
+async function validateProxyOperations({ apiKey, endpoint, chatSelections = [], embeddingModel = null }) {
+    if (process.env.BIOCBOT_TEST_LLM_STUB === '1') {
+        return {
+            vectorSize: embeddingModel
+                ? vectorSizeForEmbeddingModel(
+                    embeddingModel,
+                    Number(process.env.BIOCBOT_TEST_PROXY_VECTOR_SIZE) || 8
+                )
+                : null
+        };
+    }
+
+    const llm = new LLMModule({
+        provider: PROVIDERS.PROXY,
+        apiKey,
+        endpoint,
+        ...(embeddingModel ? { embeddingModel } : {})
+    });
+
+    for (const selection of chatSelections) {
+        try {
+            await llm.sendMessage('BiocBot model validation', {
+                model: selection.model,
+                reasoningEffort: selection.reasoningEffort,
+                maxTokens: 16
+            });
+        } catch (cause) {
+            const error = incompatibleModelError(
+                selection.model,
+                cause.message || 'The proxy rejected the chat request.',
+                'chat'
+            );
+            error.cause = cause;
+            throw error;
+        }
+    }
+
+    let vectorSize = null;
+    if (embeddingModel) {
+        try {
+            const response = await llm.embed(['BiocBot embedding validation'], { model: embeddingModel });
+            const vector = response?.embeddings?.[0];
+            if (!Array.isArray(vector) || vector.length === 0) {
+                throw new Error('The proxy returned an empty or invalid embedding vector.');
+            }
+            vectorSize = vector.length;
+        } catch (cause) {
+            const error = incompatibleModelError(
+                embeddingModel,
+                cause.message || 'The proxy rejected the embedding request.',
+                'embeddings'
+            );
+            error.cause = cause;
+            throw error;
+        }
+    }
+
+    return { vectorSize };
+}
+
+async function proxyValidationCredential(db) {
+    const provider = PROVIDERS.PROXY;
+    const candidates = [
+        await db.collection('settings').findOne({ _id: 'notesLlm', [`llmCredentials.${provider}.status`]: KEY_STATUSES.VALID }),
+        await db.collection('settings').findOne({ _id: 'superCourseChat', [`llmCredentials.${provider}.status`]: KEY_STATUSES.VALID }),
+        await db.collection('courses').findOne({ [`llmCredentials.${provider}.status`]: KEY_STATUSES.VALID }),
+        await db.collection('superchats').findOne({
+            [`llmCredentials.${provider}.status`]: KEY_STATUSES.VALID,
+            isDeleted: { $ne: true }
+        })
+    ];
+    const doc = candidates.find(Boolean);
+    const credential = doc && credentialForProvider(doc, provider);
+    if (!credential?.ciphertext) {
+        const error = new Error(
+            'Save and validate a UBC LLM Proxy key on a course, Super Course, notes, or instructor chat before selecting proxy models.'
+        );
+        error.code = 'PROXY_KEY_REQUIRED';
+        throw error;
+    }
+    return decryptApiKey(credential.ciphertext);
+}
+
+async function validateProxyChatSettings(db, selections) {
+    const apiKey = await proxyValidationCredential(db);
+    const endpoint = config.getProviderInfra(PROVIDERS.PROXY).endpoint;
+    if (!endpoint) {
+        const error = new Error('UBC_LLM_PROXY_ENDPOINT is not configured.');
+        error.code = 'PROXY_ENDPOINT_MISSING';
+        throw error;
+    }
+    return validateProxyOperations({ apiKey, endpoint, chatSelections: selections });
+}
+
+async function validateProxyEmbeddingModel(db, embeddingModel) {
+    const apiKey = await proxyValidationCredential(db);
+    const endpoint = config.getProviderInfra(PROVIDERS.PROXY).endpoint;
+    if (!endpoint) {
+        const error = new Error('UBC_LLM_PROXY_ENDPOINT is not configured.');
+        error.code = 'PROXY_ENDPOINT_MISSING';
+        throw error;
+    }
+    return validateProxyOperations({ apiKey, endpoint, embeddingModel });
 }
 
 /**
@@ -68,6 +234,13 @@ async function validateForProvider(db, provider, apiKey) {
 async function embeddingProfileFor(db, provider, apiKey = null) {
     const normalizedProvider = normalizeProvider(provider);
     const settings = await adminModelSettings.getProviderSettings(db, normalizedProvider);
+    if (!settings.embeddingModel || (normalizedProvider === PROVIDERS.PROXY && !settings.configured)) {
+        const error = new Error(
+            `${providerLabel(normalizedProvider)} is not fully configured. A system admin must select and save its chat and embedding models first.`
+        );
+        error.code = 'LLM_PROVIDER_UNCONFIGURED';
+        throw error;
+    }
     let endpoint = null;
     try {
         endpoint = config.getProviderInfra(normalizedProvider).endpoint;
@@ -78,6 +251,7 @@ async function embeddingProfileFor(db, provider, apiKey = null) {
         provider: normalizedProvider,
         embeddingModel: settings.embeddingModel,
         revision: settings.embeddingRevision,
+        vectorSize: settings.vectorSize || undefined,
         endpoint,
         apiKey
     });
@@ -253,7 +427,17 @@ async function prepareStoredProvider(db, {
         };
     }
 
-    const profile = await embeddingProfileFor(db, requestedProvider);
+    let profile;
+    try {
+        profile = await embeddingProfileFor(db, requestedProvider);
+    } catch (error) {
+        if (error.code !== 'LLM_PROVIDER_UNCONFIGURED') throw error;
+        return {
+            ok: false,
+            httpStatus: 409,
+            body: { success: false, code: error.code, message: error.message }
+        };
+    }
     const { courseIds, includeNotes } = await migrationScopeContent(db, scope);
     const { job } = await migrations.createMigration(db, {
         scope,
@@ -415,7 +599,17 @@ async function switchToStoredProvider(db, { scope, provider, requestedBy = null,
         };
     }
 
-    const profile = await embeddingProfileFor(db, requestedProvider);
+    let profile;
+    try {
+        profile = await embeddingProfileFor(db, requestedProvider);
+    } catch (error) {
+        if (error.code !== 'LLM_PROVIDER_UNCONFIGURED') throw error;
+        return {
+            ok: false,
+            httpStatus: 409,
+            body: { success: false, code: error.code, message: error.message }
+        };
+    }
     const { courseIds, includeNotes } = await migrationScopeContent(db, scope);
     const { items } = await migrations.calculateWork({ db, profile, courseIds, includeNotes });
     if (items.length > 0) {
@@ -477,5 +671,7 @@ module.exports = {
     surfaceKeyState,
     switchToStoredProvider,
     testSurfaceKey,
-    validateForProvider
+    validateForProvider,
+    validateProxyChatSettings,
+    validateProxyEmbeddingModel
 };
