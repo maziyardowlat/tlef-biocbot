@@ -1027,7 +1027,6 @@ test.describe('instructor publish, TA, course, and polling branches', () => {
         await openInstructorScriptHarness(page, {
             selectedCourseId: 'LOCAL-STORAGE-COURSE',
         });
-
         const selectedCourse = await page.evaluate(async () => {
             const instructorWindow = /** @type {InstructorWindow} */ (window);
             window.history.replaceState({}, '', '/instructor/branch-harness');
