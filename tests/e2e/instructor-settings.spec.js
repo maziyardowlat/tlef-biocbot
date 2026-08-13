@@ -720,7 +720,7 @@ async function setupMockedSettingsRoutes(page, options = {}) {
                             'gpt-4.1-mini': [],
                             'gpt-5-nano': ['minimal', 'low', 'medium', 'high'],
                             'gpt-5.4-nano': ['none', 'low', 'medium', 'high', 'xhigh'],
-                            'gpt-5.6-luna': ['none', 'low', 'medium', 'high', 'xhigh'],
+                            'gpt-5.6-luna': ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
                         },
                         defaultReasoningEffortByModel: {
                             'gpt-5-nano': 'minimal', 'gpt-5.4-nano': 'low', 'gpt-5.6-luna': 'low',
@@ -1125,6 +1125,7 @@ test.describe('Instructor settings UI', () => {
         await page.locator('#llm-model-select').selectOption('gpt-5.6-luna');
         await expect(page.locator('#llm-reasoning-select')).toHaveValue('low');
         await expect(page.locator('#llm-reasoning-select option[value="minimal"]')).toBeDisabled();
+        await expect(page.locator('#llm-reasoning-select option[value="max"]')).toBeEnabled();
         await page.locator('#save-llm-settings').click();
         await expect(page.locator('.notification.success', { hasText: 'Model settings saved' })).toBeVisible({
             timeout: 10_000,

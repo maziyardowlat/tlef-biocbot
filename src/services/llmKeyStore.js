@@ -1,5 +1,6 @@
 const crypto = require('crypto');
 const fetch = require('node-fetch');
+const { LLMModule } = require('ubc-genai-toolkit-llm');
 const {
     PROVIDERS,
     SELECTABLE_PROVIDERS,
@@ -107,7 +108,7 @@ function isKeyValid(llmApiKey) {
 // Per-surface provider state
 //
 // Shape stored on each keyed surface:
-//   activeLlmProvider: 'openai' | 'ubc-llm-sandbox'
+//   activeLlmProvider: 'openai' | 'ubc-llm-sandbox' | 'ubc-llm-proxy'
 //   llmCredentials: { <provider>: <encrypted key subdocument> }
 //   pendingLlmProvider: provider being migrated to, or null
 //   providerMigrationId: id of the in-flight migration job, or null
@@ -238,7 +239,7 @@ function getEncryptionKey() {
         if (process.env.BIOCBOT_TEST_LLM_STUB === '1' || process.env.NODE_ENV === 'test') {
             return crypto.createHash('sha256').update('biocbot-test-llm-key-secret').digest();
         }
-        throw new Error('BIOCBOT_KEY_ENCRYPTION_SECRET is required to store OpenAI API keys. Generate one with: openssl rand -base64 32');
+        throw new Error('BIOCBOT_KEY_ENCRYPTION_SECRET is required to store AI provider API keys. Generate one with: openssl rand -base64 32');
     }
 
     const trimmed = raw.trim();
@@ -298,7 +299,7 @@ function decryptApiKey(ciphertext) {
 function buildKeySubdocument(apiKey, updatedBy, provider = PROVIDERS.OPENAI) {
     const trimmed = normalizeApiKey(apiKey);
     if (!trimmed) {
-        throw new TypeError('OpenAI API key must be a non-empty string');
+        throw new TypeError('Provider API key must be a non-empty string');
     }
     const now = new Date();
     return {
@@ -497,7 +498,8 @@ function mapProviderErrorToStatus(error) {
     if (openaiStatus) return openaiStatus;
     if (!error) return null;
 
-    const statusCode = error.status || error.statusCode || error.response?.status;
+    const statusCode = error.status || error.statusCode || error.response?.status
+        || (Number.isInteger(Number(error.code)) ? Number(error.code) : null);
     if (statusCode === 401 || statusCode === 403) return KEY_STATUSES.INVALID;
     if (statusCode === 429) return KEY_STATUSES.QUOTA_EXHAUSTED;
     return null;
@@ -512,10 +514,13 @@ function joinUrl(base, path) {
  * Sandbox keys may use either the shared `sk-` prefixes or `sbx-`.
  */
 function stubValidation(trimmed) {
-    if (/^(sk|sbx)-test-/.test(trimmed)) {
-        return { ok: true, status: KEY_STATUSES.VALID };
+    const discoveredModels = (process.env.BIOCBOT_TEST_PROXY_MODELS || '')
+        .split(',')
+        .filter(Boolean);
+    if (/^(sk|sbx|prx)-test-/.test(trimmed)) {
+        return { ok: true, status: KEY_STATUSES.VALID, models: discoveredModels };
     }
-    if (/^(sk|sbx)-quota-/.test(trimmed)) {
+    if (/^(sk|sbx|prx)-quota-/.test(trimmed)) {
         return { ok: false, status: KEY_STATUSES.QUOTA_EXHAUSTED, message: messageForStatus(KEY_STATUSES.QUOTA_EXHAUSTED) };
     }
     return { ok: false, status: KEY_STATUSES.INVALID, message: messageForStatus(KEY_STATUSES.INVALID) };
@@ -541,6 +546,8 @@ function validationFailure(status, error, provider) {
  * Sandbox — probes the configured Sandbox endpoint with the configured Sandbox
  *           chat model and the Qwen embedding model. Sandbox work never touches
  *           OpenAI.
+ * Proxy   — constructs the toolkit provider with only the key and endpoint and
+ *           calls getAvailableModels(). No model is guessed or hardcoded.
  *
  * A non-OpenAI key is never assumed valid.
  *
@@ -550,7 +557,7 @@ function validationFailure(status, error, provider) {
  * @param {string} [options.chatModel]
  * @param {string} [options.embeddingModel]
  * @param {string} [options.endpoint] - Required for the sandbox provider
- * @returns {Promise<{ok: boolean, status: string, provider: string, message?: string, detail?: string}>}
+ * @returns {Promise<{ok: boolean, status: string, provider: string, models?: string[], message?: string, detail?: string}>}
  */
 async function validateProviderKey({ provider, apiKey, chatModel, embeddingModel, endpoint } = {}) {
     const normalizedProvider = normalizeProvider(provider);
@@ -566,6 +573,41 @@ async function validateProviderKey({ provider, apiKey, chatModel, embeddingModel
 
     if (process.env.BIOCBOT_TEST_LLM_STUB === '1') {
         return { ...stubValidation(trimmed), provider: normalizedProvider };
+    }
+
+    if (normalizedProvider === PROVIDERS.PROXY) {
+        const base = endpoint || process.env.UBC_LLM_PROXY_ENDPOINT;
+        if (!base) {
+            return {
+                ok: false,
+                status: KEY_STATUSES.INVALID,
+                provider: normalizedProvider,
+                message: `The UBC LLM Proxy endpoint is not configured. Contact ${CONTACT_EMAIL}.`,
+                detail: 'Missing UBC_LLM_PROXY_ENDPOINT'
+            };
+        }
+
+        try {
+            const llm = new LLMModule({
+                provider: PROVIDERS.PROXY,
+                apiKey: trimmed,
+                endpoint: base
+            });
+            const models = await llm.getAvailableModels();
+            if (!Array.isArray(models) || models.length === 0) {
+                throw new Error('The proxy returned no models for this API key');
+            }
+            return {
+                ok: true,
+                status: KEY_STATUSES.VALID,
+                provider: normalizedProvider,
+                // Preserve ids and ordering exactly as the toolkit returned them.
+                models
+            };
+        } catch (error) {
+            const status = mapProviderErrorToStatus(error) || KEY_STATUSES.INVALID;
+            return validationFailure(status, error, normalizedProvider);
+        }
     }
 
     if (normalizedProvider === PROVIDERS.SANDBOX) {

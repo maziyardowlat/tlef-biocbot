@@ -141,11 +141,16 @@ function indexesOf(doc) {
     return { [LEGACY_PROFILE.storageKey]: legacyIndexRecord(doc) };
 }
 
+function expectedCollectionFor(doc, profile) {
+    return doc?.noteId ? profile.notesCollection : profile.collection;
+}
+
 /**
  * Does this content need (re)processing for the target profile?
  *
- * True when the index is missing, not ready, has a different content hash, or
- * has a different fingerprint (model/revision/chunking changed).
+ * True when the index is missing, not ready, points at a different collection,
+ * has a different content hash, or has a different fingerprint
+ * (provider/model/revision/chunking changed).
  *
  * @param {Object} doc - Document or note with an optional `embeddingIndexes`
  * @param {Object} profile - Target embedding profile
@@ -156,6 +161,7 @@ function needsIndexing(doc, profile, expectedHash) {
     const record = indexesOf(doc)[profile.storageKey];
     if (!record) return true;
     if (record.status !== INDEX_STATUSES.READY) return true;
+    if (!record.collection || record.collection !== expectedCollectionFor(doc, profile)) return true;
     if (!record.contentHash || record.contentHash !== expectedHash) return true;
 
     const expectedFingerprint = indexFingerprint({ contentHash: expectedHash, profile });
@@ -170,6 +176,7 @@ function indexingReason(doc, profile, expectedHash) {
     const record = indexesOf(doc)[profile.storageKey];
     if (!record) return 'missing';
     if (record.status !== INDEX_STATUSES.READY) return record.status === INDEX_STATUSES.FAILED ? 'failed' : 'not-ready';
+    if (!record.collection || record.collection !== expectedCollectionFor(doc, profile)) return 'collection-changed';
     if (record.contentHash !== expectedHash) return 'content-changed';
     if (record.indexFingerprint !== indexFingerprint({ contentHash: expectedHash, profile })) return 'profile-changed';
     return null;
@@ -191,7 +198,8 @@ function indexedCollections(doc) {
             profileKey,
             collection: record.collection,
             provider: record.provider || null,
-            model: record.model || null
+            model: record.model || null,
+            vectorSize: record.vectorSize || null
         });
     }
     return [...seen.values()];
@@ -202,6 +210,7 @@ function buildIndexRecord({ profile, hash, status, error = null, indexedAt = nul
         provider: profile.provider,
         model: profile.embeddingModel,
         revision: profile.revision,
+        vectorSize: profile.vectorSize,
         // Notes live in the profile's notes collection, documents in its
         // documents collection — the record must name the one actually holding
         // the vectors, because deletion sweeps every recorded collection.
@@ -216,15 +225,35 @@ function buildIndexRecord({ profile, hash, status, error = null, indexedAt = nul
 
 async function setIndexRecord(db, collectionName, filter, profile, record) {
     const set = { [`embeddingIndexes.${profile.storageKey}`]: record, updatedAt: new Date() };
+    const existing = await db.collection(collectionName).findOne(filter);
+    const stored = existing?.embeddingIndexes && typeof existing.embeddingIndexes === 'object'
+        ? existing.embeddingIndexes
+        : {};
+
+    // Repair records created while OpenAI and Proxy accidentally shared a
+    // physical collection for text-embedding-3-small. Moving the target record
+    // to its isolated collection cannot prove that the old collection still
+    // contains the other provider's vectors: the last migration may have
+    // overwritten them. Mark every colliding provider record stale so switching
+    // back runs the normal preparation flow instead of trusting mixed vectors.
+    const previousTarget = stored[profile.storageKey];
+    if (previousTarget?.collection && previousTarget.collection !== record.collection) {
+        for (const [otherKey, otherRecord] of Object.entries(stored)) {
+            if (otherKey === profile.storageKey || !otherRecord || typeof otherRecord !== 'object') continue;
+            if (otherRecord.collection !== previousTarget.collection) continue;
+            if (otherRecord.provider === profile.provider) continue;
+            set[`embeddingIndexes.${otherKey}.status`] = INDEX_STATUSES.MISSING;
+            set[`embeddingIndexes.${otherKey}.error`] =
+                `Re-index required: ${previousTarget.collection} was previously shared with ${profile.provider}.`;
+        }
+    }
 
     // A pre-profile-tracking note can have real GPT vectors represented only by
     // its stored point ids. Materialize that implicit GPT record before adding
     // the first non-GPT profile. Documents are deliberately excluded because
     // their lifecycle status is not evidence that vector storage succeeded.
     if (profile.storageKey !== LEGACY_PROFILE.storageKey) {
-        const existing = await db.collection(collectionName).findOne(filter);
-        const stored = existing && existing.embeddingIndexes;
-        const hasStoredIndexes = stored && typeof stored === 'object' && Object.keys(stored).length > 0;
+        const hasStoredIndexes = Object.keys(stored).length > 0;
         if (!hasStoredIndexes && hasLegacyVectors(existing)) {
             set[`embeddingIndexes.${LEGACY_PROFILE.storageKey}`] = legacyIndexRecord(existing);
         }
@@ -390,7 +419,8 @@ async function deleteDocumentFromAllCollections(db, doc, serviceFactory) {
             const profile = buildEmbeddingProfile({
                 provider: target.provider || 'openai',
                 embeddingModel: target.model || 'text-embedding-3-small',
-                revision: (target.profileKey || '').split(':').pop() || undefined
+                revision: (target.profileKey || '').split(':').pop() || undefined,
+                vectorSize: target.vectorSize || undefined
             });
             const service = await serviceFactory(target, profile);
             if (!service) continue;

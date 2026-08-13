@@ -12,7 +12,9 @@ jest.mock('../../../src/services/providerMigrationRunner', () => ({
 jest.mock('../../../src/services/config', () => ({
     getProviderInfra: jest.fn((provider) => ({
         provider,
-        endpoint: provider === 'ubc-llm-sandbox' ? 'https://sandbox.example/v1' : null,
+        endpoint: provider === 'ubc-llm-sandbox'
+            ? 'https://sandbox.example/v1'
+            : provider === 'ubc-llm-proxy' ? 'https://proxy.example/v1' : null,
         bootstrapApiKey: undefined,
     })),
 }));
@@ -34,6 +36,7 @@ const { memoryDb } = require('../helpers/memory-db');
 
 const OPENAI = 'openai';
 const SANDBOX = 'ubc-llm-sandbox';
+const PROXY = 'ubc-llm-proxy';
 const COURSE_SCOPE = { type: 'course', id: 'C1' };
 const GPT_PROFILE = buildEmbeddingProfile({ provider: OPENAI, embeddingModel: 'text-embedding-3-small' });
 
@@ -88,6 +91,47 @@ describe('validating against the right platform', () => {
         expect(mockValidateProviderKey).toHaveBeenCalledWith(expect.objectContaining({
             chatModel: 'gpt-5-nano', embeddingModel: 'text-embedding-3-large',
         }));
+    });
+
+    test('a proxy key discovers exact ids and leaves model settings unconfigured', async () => {
+        const models = ['openai/gpt-5.6-luna:2026', 'vendor/embed.model'];
+        mockValidateProviderKey.mockResolvedValue({
+            ok: true, status: 'valid', provider: PROXY, models,
+        });
+        const db = memoryDb({ settings: [] });
+
+        const result = await providerKeys.validateForProvider(db, PROXY, 'prx-key');
+        const settings = await adminModelSettings.getProviderSettings(db, PROXY, { force: true });
+
+        expect(result.models).toEqual(models);
+        expect(mockValidateProviderKey).toHaveBeenCalledWith(expect.objectContaining({
+            provider: PROXY,
+            apiKey: 'prx-key',
+            chatModel: null,
+            embeddingModel: null,
+            endpoint: 'https://proxy.example/v1',
+        }));
+        expect(settings.availableModels).toEqual(models);
+        expect(settings.configured).toBe(false);
+    });
+
+    test('proxy reasoning discovery returns operation-supported values without inspecting the model name', async () => {
+        const oldStub = process.env.BIOCBOT_TEST_LLM_STUB;
+        const oldEfforts = process.env.BIOCBOT_TEST_PROXY_REASONING_EFFORTS;
+        process.env.BIOCBOT_TEST_LLM_STUB = '1';
+        process.env.BIOCBOT_TEST_PROXY_REASONING_EFFORTS = 'none,low,UBERFAST';
+
+        try {
+            await expect(providerKeys.discoverProxyReasoningEfforts(
+                memoryDb({ settings: [] }),
+                'vendor/model.with-an-unrelated-name'
+            )).resolves.toEqual(['none', 'low', 'UBERFAST']);
+        } finally {
+            if (oldStub === undefined) delete process.env.BIOCBOT_TEST_LLM_STUB;
+            else process.env.BIOCBOT_TEST_LLM_STUB = oldStub;
+            if (oldEfforts === undefined) delete process.env.BIOCBOT_TEST_PROXY_REASONING_EFFORTS;
+            else process.env.BIOCBOT_TEST_PROXY_REASONING_EFFORTS = oldEfforts;
+        }
     });
 });
 

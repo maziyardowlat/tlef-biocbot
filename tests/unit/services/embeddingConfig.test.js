@@ -51,6 +51,16 @@ describe('collection routing per platform', () => {
         expect(gpt.collection).not.toBe(sandbox.collection);
     });
 
+    test('Proxy never shares a collection with OpenAI, even for the same model id', () => {
+        const openai = buildEmbeddingProfile({ provider: 'openai', embeddingModel: 'text-embedding-3-small' });
+        const proxy = buildEmbeddingProfile({ provider: 'ubc-llm-proxy', embeddingModel: 'text-embedding-3-small' });
+
+        expect(openai.collection).toBe('biocbot_documents');
+        expect(proxy.collection).toBe('biocbot_documents_ubc_llm_proxy_text_embedding_3_small');
+        expect(proxy.notesCollection).toBe('superchat_notes_ubc_llm_proxy_text_embedding_3_small');
+        expect(proxy.collection).not.toBe(openai.collection);
+    });
+
     test('same-dimension models still get separate collections', () => {
         // ada-002 is also 1536, but its vectors are not comparable to 3-small's.
         const small = buildEmbeddingProfile({ provider: 'openai', embeddingModel: 'text-embedding-3-small' });
@@ -89,6 +99,8 @@ describe('collection routing per platform', () => {
         expect(modelCollectionSuffix('text-embedding-3-small')).toBe('');
         expect(modelCollectionSuffix('text-embedding-3-small', 'v2')).toBe('_text_embedding_3_small_v2');
         expect(modelCollectionSuffix('nomic-embed-text')).toBe('_nomic_embed_text');
+        expect(modelCollectionSuffix('text-embedding-3-small', 'v1', 'ubc-llm-proxy'))
+            .toBe('_ubc_llm_proxy_text_embedding_3_small');
         expect(modelCollectionSuffix(null)).toBe('');
     });
 });

@@ -8,7 +8,8 @@
  *     _id: 'llm',
  *     providers: {
  *       openai:            { chatModel, reasoningEffort, backend: { chatModel, reasoningEffort }, ... },
- *       'ubc-llm-sandbox': { chatModel, reasoningEffort, backend: { chatModel, reasoningEffort }, ... }
+ *       'ubc-llm-sandbox': { chatModel, reasoningEffort, backend: { chatModel, reasoningEffort }, ... },
+ *       'ubc-llm-proxy':   { availableModels, chatModel?, embeddingModel?, vectorSize?, ... }
  *     },
  *     pendingEmbedding: { <provider>: { embeddingModel, embeddingRevision, migrationId, startedAt } }
  *   }
@@ -37,6 +38,7 @@ const {
     configuredProvider,
     defaultEmbeddingModelForProvider,
     fallbackModelForProvider,
+    PROXY_PROVIDER,
     normalizeReasoningEffort,
     supportsReasoning
 } = require('./llmModels');
@@ -62,7 +64,8 @@ function bootstrapDefaults(provider) {
         chatModel,
         embeddingModel: defaultEmbeddingModelForProvider(provider),
         embeddingRevision: DEFAULT_PROFILE_REVISION,
-        reasoningEffort: normalizeReasoningEffort(provider, chatModel)
+        reasoningEffort: chatModel ? normalizeReasoningEffort(provider, chatModel) : null,
+        vectorSize: null
     };
 }
 
@@ -71,9 +74,9 @@ function bootstrapDefaults(provider) {
  * inherits the effective front-end pair rather than falling back to an env
  * default belonging to a different configuration.
  */
-function normalizeLaneSettings(provider, stored, fallback) {
+function normalizeLaneSettings(provider, stored, fallback, availableModels = []) {
     const source = stored && typeof stored === 'object' ? stored : {};
-    const allowed = allowedModelsForProvider(provider);
+    const allowed = allowedModelsForProvider(provider, configuredDefaultModel(provider), availableModels);
     if (!allowed.includes(source.chatModel)) {
         return { ...fallback };
     }
@@ -92,12 +95,21 @@ function normalizeLaneSettings(provider, stored, fallback) {
 function normalizeProviderSettings(provider, stored) {
     const defaults = bootstrapDefaults(provider);
     const source = stored && typeof stored === 'object' ? stored : {};
+    const availableModels = provider === PROXY_PROVIDER
+        ? (Array.isArray(source.availableModels) ? [...source.availableModels] : [])
+        : [];
+    const allowedChatModels = allowedModelsForProvider(
+        provider,
+        configuredDefaultModel(provider),
+        availableModels
+    );
+    const allowedEmbeddingModels = allowedEmbeddingModelsForProvider(provider, availableModels);
 
-    const chatModel = allowedModelsForProvider(provider).includes(source.chatModel)
+    const chatModel = allowedChatModels.includes(source.chatModel)
         ? source.chatModel
         : defaults.chatModel;
 
-    const embeddingModel = allowedEmbeddingModelsForProvider(provider).includes(source.embeddingModel)
+    const embeddingModel = allowedEmbeddingModels.includes(source.embeddingModel)
         ? source.embeddingModel
         : defaults.embeddingModel;
 
@@ -107,20 +119,31 @@ function normalizeProviderSettings(provider, stored) {
 
     const frontend = {
         chatModel,
-        reasoningEffort: normalizeReasoningEffort(provider, chatModel, source.reasoningEffort)
+        reasoningEffort: chatModel
+            ? normalizeReasoningEffort(provider, chatModel, source.reasoningEffort)
+            : null
     };
     const hasBackendOverride = !!(
         source.backend
         && typeof source.backend === 'object'
-        && allowedModelsForProvider(provider).includes(source.backend.chatModel)
+        && allowedChatModels.includes(source.backend.chatModel)
     );
-    const backend = normalizeLaneSettings(provider, source.backend, frontend);
+    const backend = normalizeLaneSettings(provider, source.backend, frontend, availableModels);
+    const vectorSize = Number.isInteger(source.vectorSize) && source.vectorSize > 0
+        ? source.vectorSize
+        : null;
 
     return {
         // Flat fields remain the front-end lane for existing readers.
         ...frontend,
         embeddingModel,
         embeddingRevision,
+        vectorSize,
+        availableModels,
+        discoveredAt: source.discoveredAt || null,
+        configured: provider === PROXY_PROVIDER
+            ? !!(chatModel && embeddingModel && vectorSize)
+            : !!(chatModel && embeddingModel),
         lanes: {
             [LANES.FRONTEND]: frontend,
             [LANES.BACKEND]: backend
@@ -179,6 +202,9 @@ function normalizeSettingsDocument(doc) {
             pendingEmbedding[provider] = {
                 embeddingModel: pending.embeddingModel,
                 embeddingRevision: pending.embeddingRevision || DEFAULT_PROFILE_REVISION,
+                vectorSize: Number.isInteger(pending.vectorSize) && pending.vectorSize > 0
+                    ? pending.vectorSize
+                    : null,
                 migrationId: pending.migrationId || null,
                 startedAt: pending.startedAt || null
             };
@@ -228,6 +254,40 @@ async function getProviderSettings(db, provider, options = {}) {
     return all.providers[normalizedProvider];
 }
 
+/**
+ * Add the exact ids returned by a proxy key's `/models` response to the admin
+ * catalog. Existing ids and their order are retained so one surface's narrower
+ * entitlement cannot silently erase settings used by another surface.
+ */
+async function recordDiscoveredModels(db, provider, models) {
+    const normalizedProvider = normalizeProvider(provider);
+    if (normalizedProvider !== PROXY_PROVIDER) return [];
+
+    const incoming = Array.isArray(models)
+        ? models.filter(model => typeof model === 'string' && model.length > 0)
+        : [];
+    const doc = await db.collection('settings').findOne({ _id: SETTINGS_ID });
+    const existing = doc?.providers?.[normalizedProvider]?.availableModels;
+    const merged = [];
+    for (const model of [...(Array.isArray(existing) ? existing : []), ...incoming]) {
+        if (!merged.includes(model)) merged.push(model);
+    }
+
+    await db.collection('settings').updateOne(
+        { _id: SETTINGS_ID },
+        {
+            $set: {
+                [`providers.${normalizedProvider}.availableModels`]: merged,
+                [`providers.${normalizedProvider}.discoveredAt`]: new Date(),
+                updatedAt: new Date()
+            }
+        },
+        { upsert: true }
+    );
+    invalidateCache();
+    return merged;
+}
+
 
 /**
  * Build the active embedding profile for a platform, optionally binding a
@@ -240,6 +300,7 @@ async function getEmbeddingProfile(db, provider, { apiKey = null, endpoint = nul
         provider: normalizedProvider,
         embeddingModel: settings.embeddingModel,
         revision: settings.embeddingRevision,
+        vectorSize: settings.vectorSize || undefined,
         endpoint,
         apiKey
     });
@@ -257,9 +318,15 @@ async function saveChatSettings(db, provider, {
     backendInheritsFrontend
 }, updatedBy = null) {
     const normalizedProvider = normalizeProvider(provider);
-    if (!allowedModelsForProvider(normalizedProvider).includes(chatModel)) {
+    const current = await getProviderSettings(db, normalizedProvider, { force: true });
+    const allowedModels = allowedModelsForProvider(
+        normalizedProvider,
+        configuredDefaultModel(normalizedProvider),
+        current.availableModels
+    );
+    if (!allowedModels.includes(chatModel)) {
         const error = new Error(
-            `Invalid chat model for ${normalizedProvider}. Allowed: ${allowedModelsForProvider(normalizedProvider).join(', ')}`
+            `Invalid chat model for ${normalizedProvider}. Allowed: ${allowedModels.join(', ')}`
         );
         error.code = 'INVALID_CHAT_MODEL';
         throw error;
@@ -277,9 +344,9 @@ async function saveChatSettings(db, provider, {
     if (backendInheritsFrontend === true) {
         unset[`providers.${normalizedProvider}.backend`] = '';
     } else if (backendChatModel !== undefined || backendInheritsFrontend === false) {
-        if (!allowedModelsForProvider(normalizedProvider).includes(backendChatModel)) {
+        if (!allowedModels.includes(backendChatModel)) {
             const error = new Error(
-                `Invalid back-end chat model for ${normalizedProvider}. Allowed: ${allowedModelsForProvider(normalizedProvider).join(', ')}`
+                `Invalid back-end chat model for ${normalizedProvider}. Allowed: ${allowedModels.join(', ')}`
             );
             error.code = 'INVALID_CHAT_MODEL';
             throw error;
@@ -318,11 +385,13 @@ async function saveChatSettings(db, provider, {
  * Stage an embedding-model change. The previous profile stays active until the
  * migration completes — this only records the intent.
  */
-async function stagePendingEmbedding(db, provider, { embeddingModel, embeddingRevision, migrationId }) {
+async function stagePendingEmbedding(db, provider, { embeddingModel, embeddingRevision, vectorSize, migrationId }) {
     const normalizedProvider = normalizeProvider(provider);
-    if (!allowedEmbeddingModelsForProvider(normalizedProvider).includes(embeddingModel)) {
+    const current = await getProviderSettings(db, normalizedProvider, { force: true });
+    const allowedModels = allowedEmbeddingModelsForProvider(normalizedProvider, current.availableModels);
+    if (!allowedModels.includes(embeddingModel)) {
         const error = new Error(
-            `Invalid embedding model for ${normalizedProvider}. Allowed: ${allowedEmbeddingModelsForProvider(normalizedProvider).join(', ')}`
+            `Invalid embedding model for ${normalizedProvider}. Allowed: ${allowedModels.join(', ')}`
         );
         error.code = 'INVALID_EMBEDDING_MODEL';
         throw error;
@@ -331,6 +400,7 @@ async function stagePendingEmbedding(db, provider, { embeddingModel, embeddingRe
     const pending = {
         embeddingModel,
         embeddingRevision: embeddingRevision || DEFAULT_PROFILE_REVISION,
+        vectorSize: Number.isInteger(vectorSize) && vectorSize > 0 ? vectorSize : null,
         migrationId: migrationId || null,
         startedAt: new Date()
     };
@@ -382,6 +452,9 @@ async function activatePendingEmbedding(db, provider, expected = null) {
             $set: {
                 [`providers.${normalizedProvider}.embeddingModel`]: pending.embeddingModel,
                 [`providers.${normalizedProvider}.embeddingRevision`]: pending.embeddingRevision,
+                ...(pending.vectorSize
+                    ? { [`providers.${normalizedProvider}.vectorSize`]: pending.vectorSize }
+                    : {}),
                 updatedAt: new Date()
             },
             $unset: { [`pendingEmbedding.${normalizedProvider}`]: '' }
@@ -415,6 +488,7 @@ module.exports = {
     normalizeProviderSettings,
     normalizeLaneSettings,
     normalizeSettingsDocument,
+    recordDiscoveredModels,
     saveChatSettings,
     stagePendingEmbedding
 };

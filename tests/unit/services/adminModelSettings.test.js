@@ -8,6 +8,7 @@ const { memoryDb } = require('../helpers/memory-db');
 
 const OPENAI = 'openai';
 const SANDBOX = 'ubc-llm-sandbox';
+const PROXY = 'ubc-llm-proxy';
 
 const OLD_ENV = process.env;
 const TOUCHED = [
@@ -32,6 +33,11 @@ describe('bootstrap defaults', () => {
             chatModel: 'qwen3.6-35b-a3b',
             embeddingModel: 'qwen3-embedding-0.6b',
             embeddingRevision: 'v1',
+        });
+        expect(adminModelSettings.bootstrapDefaults(PROXY)).toMatchObject({
+            chatModel: null,
+            embeddingModel: null,
+            reasoningEffort: null,
         });
     });
 
@@ -64,6 +70,50 @@ describe('reading settings', () => {
 
         expect(providers[OPENAI].chatModel).toBe('gpt-4.1-mini');
         expect(providers[SANDBOX].embeddingModel).toBe('qwen3-embedding-0.6b');
+        expect(providers[PROXY]).toMatchObject({
+            chatModel: null,
+            embeddingModel: null,
+            configured: false,
+            availableModels: [],
+        });
+    });
+
+    test('records exact proxy model ids without creating model settings', async () => {
+        const db = memoryDb({ settings: [] });
+        const first = ['openai/gpt-5.6-luna:latest', 'text-embedding/vendor.v2'];
+        await adminModelSettings.recordDiscoveredModels(db, PROXY, first);
+        await adminModelSettings.recordDiscoveredModels(db, PROXY, ['second/key-model', first[0]]);
+
+        const settings = await adminModelSettings.getProviderSettings(db, PROXY, { force: true });
+        expect(settings.availableModels).toEqual([...first, 'second/key-model']);
+        expect(settings.chatModel).toBeNull();
+        expect(settings.embeddingModel).toBeNull();
+        expect(settings.configured).toBe(false);
+    });
+
+    test('proxy chat and embedding fields become configured only after explicit saves', async () => {
+        const db = memoryDb({ settings: [] });
+        const models = ['proxy-chat', 'proxy-embed'];
+        await adminModelSettings.recordDiscoveredModels(db, PROXY, models);
+        await adminModelSettings.saveChatSettings(db, PROXY, {
+            chatModel: 'proxy-chat',
+            reasoningEffort: 'low',
+            backendInheritsFrontend: true,
+        });
+        await adminModelSettings.stagePendingEmbedding(db, PROXY, {
+            embeddingModel: 'proxy-embed',
+            vectorSize: 1536,
+        });
+        await adminModelSettings.activatePendingEmbedding(db, PROXY);
+
+        const settings = await adminModelSettings.getProviderSettings(db, PROXY, { force: true });
+        expect(settings).toMatchObject({
+            chatModel: 'proxy-chat',
+            reasoningEffort: 'low',
+            embeddingModel: 'proxy-embed',
+            vectorSize: 1536,
+            configured: true,
+        });
     });
 
     test('MongoDB is authoritative once settings exist', async () => {

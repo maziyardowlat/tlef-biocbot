@@ -6,6 +6,8 @@ describe('provider-aware LLM model catalog', () => {
         expect(catalog.defaultModel).toBe('gpt-5-nano');
         expect(catalog.allowedModels).toContain('gpt-4.1-mini');
         expect(catalog.reasoningEffortsByModel['gpt-5-nano']).toEqual(['minimal', 'low', 'medium', 'high']);
+        expect(catalog.reasoningEffortsByModel['gpt-5.6-luna'])
+            .toEqual(['none', 'low', 'medium', 'high', 'xhigh', 'max']);
         expect(catalog.defaultReasoningEffortByModel).toMatchObject({
             'gpt-5-nano': 'minimal',
             'gpt-5.4-nano': 'low',
@@ -28,11 +30,23 @@ describe('provider-aware LLM model catalog', () => {
         expect(models.maxOutputTokensForModel('ubc-llm-sandbox', 'gpt-oss-120b')).toBeNull();
     });
 
-    test('keeps a newly configured sandbox model selectable', () => {
+    test('keeps the sandbox restricted to its approved BiocBot chat models', () => {
         const catalog = models.catalogForProvider('ubc-llm-sandbox', 'future-model');
-        expect(catalog.defaultModel).toBe('future-model');
-        expect(catalog.allowedModels).toContain('future-model');
-        expect(catalog.reasoningEffortsByModel['future-model']).toContain('none');
+        expect(catalog.defaultModel).toBe('qwen3.6-35b-a3b');
+        expect(catalog.allowedModels).toEqual(['qwen3.6-35b-a3b', 'gpt-oss-120b']);
+        expect(catalog.allowedModels).not.toContain('future-model');
+    });
+
+    test('uses exact discovered proxy ids for both flat admin selectors and has no defaults', () => {
+        const discovered = ['openai/gpt-5.6-luna:2026-08-01', 'vendor/embed.model-v2'];
+        const catalog = models.adminCatalogForProvider('ubc-llm-proxy', discovered);
+
+        expect(catalog.defaultModel).toBeNull();
+        expect(catalog.defaultEmbeddingModel).toBeNull();
+        expect(catalog.allowedModels).toEqual(discovered);
+        expect(catalog.allowedEmbeddingModels).toEqual(discovered);
+        expect(catalog.reasoningEffortsByModel[discovered[0]])
+            .toEqual(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
     });
 
     test('limits Ollama selection to its configured local model', () => {

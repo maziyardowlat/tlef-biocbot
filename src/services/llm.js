@@ -1,7 +1,7 @@
 /**
  * LLM Service
  * Integrates with UBC GenAI Toolkit for chat functionality
- * Supports multiple providers: Ollama, OpenAI, UBC LLM Sandbox
+ * Supports multiple providers: Ollama, OpenAI, UBC LLM Sandbox, UBC LLM Proxy
  */
 
 const { LLMModule } = require('ubc-genai-toolkit-llm');
@@ -99,7 +99,7 @@ class LLMService {
                 // make an admin's change take up to twice as long to apply.
                 const stored = await adminModelSettings.getProviderSettings(db, provider, { force: true });
                 const laneSettings = adminModelSettings.chatSettingsForLane(stored, normalizedLane);
-                if (catalog.allowedModels.includes(laneSettings.chatModel)) {
+                if (provider === 'ubc-llm-proxy' || catalog.allowedModels.includes(laneSettings.chatModel)) {
                     model = laneSettings.chatModel;
                 }
                 reasoningEffort = normalizeReasoningEffort(provider, model, laneSettings.reasoningEffort);
@@ -122,7 +122,7 @@ class LLMService {
      * Returns the requested effort if supported, otherwise the closest fallback.
      * gpt-5-nano:    minimal, low, medium, high
      * gpt-5.4-nano:  none,    low, medium, high, xhigh   (no "minimal")
-     * gpt-5.6-luna:  none,    low, medium, high, xhigh   (no "minimal")
+     * gpt-5.6-luna:  none,    low, medium, high, xhigh, max (no "minimal")
      */
     _coerceReasoningEffort(model, requested) {
         const provider = this.llmConfig?.provider || process.env.LLM_PROVIDER || 'openai';
@@ -451,6 +451,8 @@ class LLMService {
                 return {
                     num_ctx: 2048  // UBC sandbox likely uses Ollama-compatible parameters
                 };
+            case 'ubc-llm-proxy':
+                return {};
             default:
                 console.warn(`⚠️ Unknown provider: ${provider}, using default options`);
                 return {};

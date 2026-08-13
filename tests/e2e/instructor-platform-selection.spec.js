@@ -2,7 +2,7 @@
 /**
  * Browser coverage for the AI platform selector.
  *
- * Instructors choose a platform label (OpenAI Chat GPT / UBC On-Premise LLM)
+ * Instructors choose a platform label (OpenAI Chat GPT / UBC On-Premise LLM / UBC LLM Proxy)
  * and enter that platform's
  * key — they never see or choose a chat or embedding model. Admins configure
  * models per platform on the same page, grouped by platform.
@@ -21,6 +21,7 @@ const COURSE_NAME = 'BIOC E2E Platform Selection';
 
 const GPT_HELP = 'Feel free to use your own OpenAI API key, or contact the support team for assistance.';
 const SANDBOX_HELP = 'Contact the LTIC team to request a UBC LLM Sandbox API key.';
+const PROXY_HELP = 'Enter the UBC LLM Proxy key issued for this AI surface.';
 
 // Model names must never appear anywhere an instructor can see.
 const MODEL_NAMES = [
@@ -163,6 +164,7 @@ function baseState(overrides = {}) {
         llmKeysByProvider: {
             openai: { status: 'valid', last4: '1111', validatedAt: null, updatedAt: null },
             'ubc-llm-sandbox': { status: 'missing', last4: null, validatedAt: null, updatedAt: null },
+            'ubc-llm-proxy': { status: 'missing', last4: null, validatedAt: null, updatedAt: null },
         },
         aiAvailable: true,
         ...overrides,
@@ -200,7 +202,7 @@ test.describe('Instructor platform selection', () => {
         await seedCourse();
     });
 
-    test('onboarding offers GPT and Sandbox with platform-specific help text', async ({ page }) => {
+    test('onboarding offers all three platforms with platform-specific help text', async ({ page }) => {
         await openOnboardingCourseSetup(page);
         await expect(page.locator('#onboarding-llm-platform')).toBeVisible();
 
@@ -215,6 +217,12 @@ test.describe('Instructor platform selection', () => {
         await expect(page.locator('#onboarding-llm-platform-help')).toHaveText(SANDBOX_HELP);
         await expect(page.locator('#course-api-key-label')).toContainText('UBC On-Premise LLM');
         await expect(page.locator('#course-api-key')).toHaveAttribute('placeholder', 'UBC LLM Sandbox API key');
+
+        // Proxy is a separate keyed platform and does not expose model choices.
+        await page.locator('#onboarding-llm-provider-ubc-llm-proxy').check();
+        await expect(page.locator('#onboarding-llm-platform-help')).toContainText(PROXY_HELP);
+        await expect(page.locator('#course-api-key-label')).toContainText('UBC LLM Proxy');
+        await expect(page.locator('#course-api-key')).toHaveAttribute('placeholder', 'UBC LLM Proxy API key');
 
         // Switching back restores the GPT copy.
         await page.locator('#onboarding-llm-provider-openai').check();
@@ -372,6 +380,7 @@ test.describe('Instructor platform selection', () => {
         // Admin model controls are hidden from a non-admin instructor entirely.
         await expect(page.locator('#llm-model-section')).toBeHidden();
         await expect(page.locator('#sandbox-llm-model-section')).toBeHidden();
+        await expect(page.locator('#proxy-llm-model-section')).toBeHidden();
 
         const visibleText = await page.locator('body').innerText();
         for (const modelName of MODEL_NAMES) {
@@ -504,6 +513,19 @@ test.describe('Admin platform and model settings', () => {
     test('model controls are grouped by platform, each with its own collection', async ({ page }) => {
         /** @type {Array<Record<string, any>>} */
         const savedBodies = [];
+        await page.route('**/api/settings/llm/reasoning-efforts', async (route) => {
+            const body = route.request().postDataJSON();
+            await route.fulfill({
+                status: 200,
+                contentType: 'application/json',
+                body: JSON.stringify({
+                    success: true,
+                    provider: 'ubc-llm-proxy',
+                    model: body.model,
+                    reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
+                }),
+            });
+        });
         await page.route('**/api/settings/llm', async (route) => {
             if (route.request().method() === 'POST') {
                 savedBodies.push(route.request().postDataJSON());
@@ -545,6 +567,25 @@ test.describe('Admin platform and model settings', () => {
                             collection: 'biocbot_documents_qwen3_embedding_0_6b', vectorSize: 1024,
                             pendingEmbedding: null,
                         },
+                        {
+                            provider: 'ubc-llm-proxy', label: 'UBC LLM Proxy',
+                            chatModel: null, embeddingModel: null,
+                            reasoningEffort: null, supportsReasoning: false,
+                            backendChatModel: null, backendReasoningEffort: null,
+                            backendSupportsReasoning: false, backendInheritsFrontend: true,
+                            allowedModels: ['openai/gpt-5.6-luna:2026', 'vendor/embed.model-v2'],
+                            allowedEmbeddingModels: ['openai/gpt-5.6-luna:2026', 'vendor/embed.model-v2'],
+                            reasoningEffortsByModel: {
+                                'openai/gpt-5.6-luna:2026': ['none', 'low'],
+                                'vendor/embed.model-v2': ['none', 'low'],
+                            },
+                            defaultReasoningEffortByModel: {
+                                'openai/gpt-5.6-luna:2026': 'low',
+                                'vendor/embed.model-v2': 'low',
+                            },
+                            collection: null, vectorSize: null, pendingEmbedding: null,
+                            modelsDiscovered: true, configured: false,
+                        },
                     ],
                     settings: { model: 'gpt-5-nano', reasoningEffort: 'minimal', provider: 'openai' },
                 }),
@@ -575,6 +616,24 @@ test.describe('Admin platform and model settings', () => {
         await expect(page.locator('#sandbox-llm-embedding-select')).toHaveValue('qwen3-embedding-0.6b');
         await expect(page.locator('#sandbox-llm-embedding-collection'))
             .toContainText('biocbot_documents_qwen3_embedding_0_6b (1024 dimensions)');
+
+        // Proxy preserves discovered ids exactly, but no model is selected by
+        // the application on an unconfigured installation.
+        await expect(page.locator('#proxy-llm-model-section')).toBeVisible();
+        await expect(page.locator('#proxy-llm-model-select')).toHaveValue('');
+        await expect(page.locator('#proxy-llm-embedding-select')).toHaveValue('');
+        await expect(page.locator('#proxy-llm-model-select option').nth(1))
+            .toHaveAttribute('value', 'openai/gpt-5.6-luna:2026');
+        await expect(page.locator('#proxy-llm-embedding-select option').nth(2))
+            .toHaveAttribute('value', 'vendor/embed.model-v2');
+        await expect(page.locator('#proxy-llm-embedding-collection')).toHaveText('Not configured');
+
+        // Proxy reasoning values come from live operation probing, not model-id
+        // naming rules. Unsupported `minimal` is hidden while `max` remains.
+        await page.locator('#proxy-llm-model-select').selectOption('openai/gpt-5.6-luna:2026');
+        await expect(page.locator('#proxy-llm-reasoning-select option[value="minimal"]')).toHaveCount(0);
+        await expect(page.locator('#proxy-llm-reasoning-select option[value="max"]')).toBeEnabled();
+        await expect(page.locator('#save-proxy-llm-settings')).toBeEnabled();
 
         // Each platform only offers its own models.
         await expect(page.locator('#llm-model-select option[value="qwen3.6-35b-a3b"]')).toHaveCount(0);

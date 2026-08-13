@@ -37,10 +37,14 @@ const GPT = buildEmbeddingProfile({ provider: 'openai', embeddingModel: 'text-em
 const SANDBOX = buildEmbeddingProfile({ provider: 'ubc-llm-sandbox', embeddingModel: 'qwen3-embedding-0.6b' });
 const COURSE_SCOPE = { type: 'course', id: 'C1' };
 
-function readyFor(profile, content) {
+function readyFor(profile, content, collection = null) {
     return {
         [profile.storageKey]: buildIndexRecord({
-            profile, hash: contentHash(content), status: INDEX_STATUSES.READY, indexedAt: new Date(),
+            profile,
+            hash: contentHash(content),
+            status: INDEX_STATUSES.READY,
+            indexedAt: new Date(),
+            collection,
         }),
     };
 }
@@ -132,7 +136,11 @@ describe('calculateWork', () => {
         const db = memoryDb({
             superchat_notes: [
                 { noteId: 'n1', content: 'note one', title: 'Note one' },
-                { noteId: 'n2', content: 'note two', embeddingIndexes: readyFor(SANDBOX, 'note two') },
+                {
+                    noteId: 'n2',
+                    content: 'note two',
+                    embeddingIndexes: readyFor(SANDBOX, 'note two', SANDBOX.notesCollection),
+                },
             ],
         });
 

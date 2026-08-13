@@ -14,8 +14,10 @@
  * Collection naming:
  *   openai:text-embedding-3-small:v1  -> biocbot_documents            (legacy name preserved)
  *   ubc-llm-sandbox:qwen3-embedding-0.6b:v1 -> biocbot_documents_qwen3_embedding_0_6b
- * The suffix is derived from the model plus a non-`v1` revision, so future
- * models and re-chunk revisions get their own collections automatically.
+ *   ubc-llm-proxy:text-embedding-3-small:v1 -> biocbot_documents_ubc_llm_proxy_text_embedding_3_small
+ * Proxy collections include the provider because a proxy model id matching an
+ * OpenAI id does not guarantee byte-compatible vectors. Existing OpenAI and
+ * Sandbox collection names remain unchanged.
  */
 
 const { DEFAULT_PROVIDER } = require('./llmProviders');
@@ -71,7 +73,14 @@ function slugify(value) {
  * Suffix appended to a base collection name for a given model/revision.
  * Empty only for the legacy OpenAI small model at revision v1.
  */
-function modelCollectionSuffix(model, revision = DEFAULT_PROFILE_REVISION) {
+function modelCollectionSuffix(model, revision = DEFAULT_PROFILE_REVISION, provider = DEFAULT_PROVIDER) {
+    if (provider === 'ubc-llm-proxy') {
+        if (!model) return `_${slugify(provider)}`;
+        const parts = [slugify(provider), slugify(model)];
+        if (revision && revision !== DEFAULT_PROFILE_REVISION) parts.push(slugify(revision));
+        return `_${parts.filter(Boolean).join('_')}`;
+    }
+
     const isLegacy = model === LEGACY_COLLECTION_MODEL && revision === DEFAULT_PROFILE_REVISION;
     if (!model || isLegacy) return '';
     const parts = [slugify(model)];
@@ -150,7 +159,7 @@ function chunkingSignature(config = chunkingConfig()) {
  * Build the full embedding profile for a provider + model.
  *
  * @param {Object} options
- * @param {string} options.provider - Provider id ('openai' | 'ubc-llm-sandbox')
+ * @param {string} options.provider - Provider id ('openai' | 'ubc-llm-sandbox' | 'ubc-llm-proxy')
  * @param {string} options.embeddingModel - Exact embedding model id
  * @param {string} [options.revision] - Profile revision, defaults to 'v1'
  * @param {string} [options.endpoint] - Provider endpoint (infrastructure config)
@@ -171,7 +180,7 @@ function buildEmbeddingProfile({
         throw new Error(`An embedding model is required to build an embedding profile for ${normalizedProvider}`);
     }
 
-    const suffix = modelCollectionSuffix(embeddingModel, revision);
+    const suffix = modelCollectionSuffix(embeddingModel, revision, normalizedProvider);
     const documentsBase = documentsCollectionBase();
     const notesBase = notesCollectionBase();
 

@@ -40,6 +40,7 @@ const { memoryDb } = require('../helpers/memory-db');
 
 const OPENAI = 'openai';
 const SANDBOX = 'ubc-llm-sandbox';
+const PROXY = 'ubc-llm-proxy';
 const instructor = { userId: 'i1', role: 'instructor' };
 
 const courses = (opts) => makeRouteApp(coursesRouter, opts);
@@ -147,6 +148,10 @@ describe('onboarding: choosing a platform then entering its key', () => {
                 label: 'UBC On-Premise LLM',
                 helpText: 'Contact the LTIC team to request a UBC LLM Sandbox API key.',
             }),
+            expect.objectContaining({
+                provider: PROXY,
+                label: 'UBC LLM Proxy',
+            }),
         ]);
         const serialised = JSON.stringify(res.body);
         for (const modelName of ['gpt-4.1-mini', 'qwen3.6-35b-a3b', 'text-embedding-3-small', 'qwen3-embedding-0.6b']) {
@@ -179,7 +184,9 @@ describe('course key settings', () => {
         expect(res.body).toMatchObject({ llmProvider: SANDBOX, aiAvailable: true });
         expect(res.body.llmKeysByProvider[OPENAI].last4).toBe('1111');
         expect(res.body.llmKeysByProvider[SANDBOX].last4).toBe('2222');
-        expect(res.body.providers.map(provider => provider.label)).toEqual(['OpenAI Chat GPT', 'UBC On-Premise LLM']);
+        expect(res.body.providers.map(provider => provider.label)).toEqual([
+            'OpenAI Chat GPT', 'UBC On-Premise LLM', 'UBC LLM Proxy'
+        ]);
 
         const serialised = JSON.stringify(res.body);
         expect(serialised).not.toContain('ciphertext');
