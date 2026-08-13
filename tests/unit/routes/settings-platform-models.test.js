@@ -26,6 +26,8 @@ jest.mock('../../../src/services/config', () => ({
 
 const adminModelSettings = require('../../../src/services/adminModelSettings');
 const migrations = require('../../../src/services/providerMigrationService');
+const { buildEmbeddingProfile } = require('../../../src/services/embeddingConfig');
+const { buildIndexRecord, contentHash, INDEX_STATUSES } = require('../../../src/services/embeddingIndexService');
 const { buildKeySubdocument } = require('../../../src/services/llmKeyStore');
 const { providerLabel } = require('../../../src/services/llmProviders');
 const settingsRouter = require('../../../src/routes/settings');
@@ -419,6 +421,64 @@ describe('POST /llm/embedding — staged, never destructive', () => {
         expect(res.status).toBe(200);
         expect(res.body.migration).toBeNull();
         expect(startedMigrations).toEqual([]);
+    });
+
+    test('the current Proxy model is rebuilt when its record points at the old shared OpenAI collection', async () => {
+        process.env.BIOCBOT_TEST_LLM_STUB = '1';
+        process.env.BIOCBOT_TEST_PROXY_MODELS = 'gpt-5.6-luna,text-embedding-3-small';
+        process.env.BIOCBOT_TEST_PROXY_VECTOR_SIZE = '1536';
+        const profile = buildEmbeddingProfile({
+            provider: PROXY,
+            embeddingModel: 'text-embedding-3-small',
+            vectorSize: 1536,
+        });
+        const hash = contentHash('migrated content');
+        const oldSharedRecord = buildIndexRecord({
+            profile,
+            hash,
+            status: INDEX_STATUSES.READY,
+            indexedAt: new Date(),
+            collection: 'biocbot_documents',
+        });
+        const db = memoryDb({
+            settings: [{
+                _id: 'llm',
+                providers: {
+                    [PROXY]: {
+                        availableModels: ['gpt-5.6-luna', 'text-embedding-3-small'],
+                        chatModel: 'gpt-5.6-luna',
+                        reasoningEffort: 'low',
+                        embeddingModel: 'text-embedding-3-small',
+                        embeddingRevision: 'v1',
+                        vectorSize: 1536,
+                    },
+                },
+            }],
+            courses: [{
+                courseId: 'C1',
+                activeLlmProvider: PROXY,
+                llmCredentials: { [PROXY]: buildKeySubdocument('prx-test-key', 'a', PROXY) },
+            }],
+            documents: [{
+                documentId: 'd1',
+                courseId: 'C1',
+                content: 'migrated content',
+                embeddingIndexes: { [profile.storageKey]: oldSharedRecord },
+            }],
+        });
+
+        const res = await request(app({ db })).post('/llm/embedding').send({
+            provider: PROXY,
+            embeddingModel: 'text-embedding-3-small',
+        });
+
+        expect(res.status).toBe(202);
+        expect(startedMigrations).toHaveLength(1);
+        const job = await migrations.getMigration(db, startedMigrations[0]);
+        expect(job.items).toHaveLength(1);
+        expect(job.items[0].reason).toBe('collection-changed');
+        expect(job.targetProfile.collection)
+            .toBe('biocbot_documents_stub_ubc_llm_proxy_text_embedding_3_small');
     });
 
     test('rollback drops the staged change and keeps the active model', async () => {

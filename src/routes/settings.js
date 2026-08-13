@@ -1324,13 +1324,29 @@ router.post('/llm/embedding', async (req, res) => {
             revision: embeddingRevision,
             vectorSize
         });
-        if (current.embeddingModel === embeddingModel
-            && current.embeddingRevision === profile.revision) {
-            return res.json({
-                success: true,
-                message: `${providerLabel(provider)} already uses this embedding model`,
-                migration: null
+        const sameConfiguredProfile = current.embeddingModel === embeddingModel
+            && current.embeddingRevision === profile.revision;
+
+        // A collection-routing or chunking change can make records stale even
+        // when the configured model id/revision did not change. Calculate work
+        // before declaring a no-op so an installation that previously mixed
+        // OpenAI and Proxy vectors can rebuild Proxy into its isolated collection.
+        let surfaces = null;
+        if (sameConfiguredProfile) {
+            surfaces = await affectedSurfacesForProvider(db, provider);
+            const work = await migrations.calculateWork({
+                db,
+                profile,
+                courseIds: surfaces.courseIds,
+                includeNotes: surfaces.includeNotes
             });
+            if (work.items.length === 0) {
+                return res.json({
+                    success: true,
+                    message: `${providerLabel(provider)} already uses this embedding profile`,
+                    migration: null
+                });
+            }
         }
 
         const scope = { type: 'adminEmbedding', id: provider };
@@ -1349,7 +1365,7 @@ router.post('/llm/embedding', async (req, res) => {
             });
         }
 
-        const surfaces = await affectedSurfacesForProvider(db, provider);
+        surfaces ||= await affectedSurfacesForProvider(db, provider);
         const { job } = await migrations.createMigration(db, {
             scope,
             kind: 'embedding-model',

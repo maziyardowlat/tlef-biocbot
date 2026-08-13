@@ -1028,7 +1028,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Unchanged embedding model: nothing to re-index.
         const current = llmPlatformSettings[provider];
-        if (current && current.embeddingModel === embeddingModel && !current.pendingEmbedding) {
+        if (current && current.embeddingModel === embeddingModel
+            && !current.pendingEmbedding
+            && provider !== 'ubc-llm-proxy') {
             return false;
         }
 
@@ -1041,6 +1043,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         const impact = await impactResponse.json();
         if (!impactResponse.ok || !impact.success) {
             throw new Error(impact.error || 'Could not calculate the impact of this change');
+        }
+        if (current && current.embeddingModel === embeddingModel
+            && !current.pendingEmbedding
+            && impact.impact.itemsToReindex === 0) {
+            return false;
         }
 
         const confirmed = window.confirm(

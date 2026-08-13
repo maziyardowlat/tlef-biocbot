@@ -27,6 +27,7 @@ const { memoryDb } = require('../helpers/memory-db');
 
 const GPT = buildEmbeddingProfile({ provider: 'openai', embeddingModel: 'text-embedding-3-small' });
 const SANDBOX = buildEmbeddingProfile({ provider: 'ubc-llm-sandbox', embeddingModel: 'qwen3-embedding-0.6b' });
+const PROXY = buildEmbeddingProfile({ provider: 'ubc-llm-proxy', embeddingModel: 'text-embedding-3-small' });
 
 const OLD_ENV = process.env;
 beforeEach(() => {
@@ -119,6 +120,52 @@ describe('needsIndexing', () => {
         const rechunked = buildEmbeddingProfile({ provider: 'openai', embeddingModel: 'text-embedding-3-small' });
         expect(needsIndexing(doc, rechunked, contentHash(doc.content))).toBe(true);
         expect(indexingReason(doc, rechunked, contentHash(doc.content))).toBe('profile-changed');
+    });
+
+    test('a legacy Proxy record in the shared OpenAI collection is stale', () => {
+        const doc = indexedDoc(PROXY, 'cell biology');
+        doc.embeddingIndexes[PROXY.storageKey].collection = GPT.collection;
+
+        expect(needsIndexing(doc, PROXY, contentHash(doc.content))).toBe(true);
+        expect(indexingReason(doc, PROXY, contentHash(doc.content))).toBe('collection-changed');
+    });
+
+    test('moving Proxy out of a shared collection invalidates the colliding OpenAI record', async () => {
+        const content = 'cell biology';
+        const hash = contentHash(content);
+        const proxyInOldSharedCollection = buildIndexRecord({
+            profile: PROXY,
+            hash,
+            status: INDEX_STATUSES.READY,
+            indexedAt: new Date(),
+            collection: GPT.collection,
+        });
+        const db = memoryDb({
+            documents: [{
+                documentId: 'doc-1',
+                courseId: 'C1',
+                content,
+                embeddingIndexes: {
+                    [GPT.storageKey]: buildIndexRecord({
+                        profile: GPT, hash, status: INDEX_STATUSES.READY, indexedAt: new Date(),
+                    }),
+                    [PROXY.storageKey]: proxyInOldSharedCollection,
+                },
+            }],
+        });
+
+        await markDocumentIndexReady(db, 'doc-1', PROXY, hash);
+
+        const stored = await db.collection('documents').findOne({ documentId: 'doc-1' });
+        expect(stored.embeddingIndexes[PROXY.storageKey]).toMatchObject({
+            status: INDEX_STATUSES.READY,
+            collection: PROXY.collection,
+        });
+        expect(stored.embeddingIndexes[GPT.storageKey]).toMatchObject({
+            status: INDEX_STATUSES.MISSING,
+            collection: GPT.collection,
+        });
+        expect(stored.embeddingIndexes[GPT.storageKey].error).toMatch(/previously shared/);
     });
 
     test.each([
