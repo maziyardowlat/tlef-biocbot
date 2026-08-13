@@ -513,6 +513,19 @@ test.describe('Admin platform and model settings', () => {
     test('model controls are grouped by platform, each with its own collection', async ({ page }) => {
         /** @type {Array<Record<string, any>>} */
         const savedBodies = [];
+        await page.route('**/api/settings/llm/reasoning-efforts', async (route) => {
+            const body = route.request().postDataJSON();
+            await route.fulfill({
+                status: 200,
+                contentType: 'application/json',
+                body: JSON.stringify({
+                    success: true,
+                    provider: 'ubc-llm-proxy',
+                    model: body.model,
+                    reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
+                }),
+            });
+        });
         await page.route('**/api/settings/llm', async (route) => {
             if (route.request().method() === 'POST') {
                 savedBodies.push(route.request().postDataJSON());
@@ -610,10 +623,17 @@ test.describe('Admin platform and model settings', () => {
         await expect(page.locator('#proxy-llm-model-select')).toHaveValue('');
         await expect(page.locator('#proxy-llm-embedding-select')).toHaveValue('');
         await expect(page.locator('#proxy-llm-model-select option').nth(1))
-            .toHaveValue('openai/gpt-5.6-luna:2026');
+            .toHaveAttribute('value', 'openai/gpt-5.6-luna:2026');
         await expect(page.locator('#proxy-llm-embedding-select option').nth(2))
-            .toHaveValue('vendor/embed.model-v2');
+            .toHaveAttribute('value', 'vendor/embed.model-v2');
         await expect(page.locator('#proxy-llm-embedding-collection')).toHaveText('Not configured');
+
+        // Proxy reasoning values come from live operation probing, not model-id
+        // naming rules. Unsupported `minimal` is hidden while `max` remains.
+        await page.locator('#proxy-llm-model-select').selectOption('openai/gpt-5.6-luna:2026');
+        await expect(page.locator('#proxy-llm-reasoning-select option[value="minimal"]')).toBeDisabled();
+        await expect(page.locator('#proxy-llm-reasoning-select option[value="max"]')).toBeEnabled();
+        await expect(page.locator('#save-proxy-llm-settings')).toBeEnabled();
 
         // Each platform only offers its own models.
         await expect(page.locator('#llm-model-select option[value="qwen3.6-35b-a3b"]')).toHaveCount(0);

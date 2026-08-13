@@ -22,6 +22,7 @@ const migrationRunner = require('./providerMigrationRunner');
 const superCourse = require('./superCourseService');
 const { buildEmbeddingProfile, vectorSizeForEmbeddingModel } = require('./embeddingConfig');
 const { PROVIDERS, normalizeProvider, providerLabel } = require('./llmProviders');
+const { PROXY_REASONING_EFFORTS } = require('./llmModels');
 const {
     KEY_STATUSES,
     buildKeySubdocument,
@@ -214,6 +215,66 @@ async function validateProxyChatSettings(db, selections) {
         throw error;
     }
     return validateProxyOperations({ apiKey, endpoint, chatSelections: selections });
+}
+
+/**
+ * Discover the normalized reasoning efforts accepted by one proxy model.
+ *
+ * `/models` deliberately returns no capability metadata, so this uses the
+ * provider operation as the source of truth. Model ids and naming conventions
+ * are never inspected. A small request is made for each toolkit-supported
+ * effort and only successful values are returned to the admin UI.
+ */
+async function discoverProxyReasoningEfforts(db, model) {
+    if (!model || typeof model !== 'string') {
+        const error = new Error('Select a proxy model before checking reasoning support.');
+        error.code = 'PROXY_MODEL_REQUIRED';
+        throw error;
+    }
+
+    if (process.env.BIOCBOT_TEST_LLM_STUB === '1') {
+        const configured = process.env.BIOCBOT_TEST_PROXY_REASONING_EFFORTS;
+        return configured
+            ? configured.split(',').map(value => value.trim()).filter(Boolean)
+            : [...PROXY_REASONING_EFFORTS];
+    }
+
+    const apiKey = await proxyValidationCredential(db);
+    const endpoint = config.getProviderInfra(PROVIDERS.PROXY).endpoint;
+    if (!endpoint) {
+        const error = new Error('UBC_LLM_PROXY_ENDPOINT is not configured.');
+        error.code = 'PROXY_ENDPOINT_MISSING';
+        throw error;
+    }
+
+    const llm = new LLMModule({ provider: PROVIDERS.PROXY, apiKey, endpoint });
+    const supported = [];
+    let firstFailure = null;
+
+    for (const reasoningEffort of PROXY_REASONING_EFFORTS) {
+        try {
+            await llm.sendMessage('Reply with OK.', {
+                model,
+                reasoningEffort,
+                maxTokens: 32
+            });
+            supported.push(reasoningEffort);
+        } catch (error) {
+            firstFailure ||= error;
+        }
+    }
+
+    if (supported.length === 0) {
+        const error = incompatibleModelError(
+            model,
+            firstFailure?.message || 'No supported reasoning efforts were detected.',
+            'reasoning discovery'
+        );
+        error.cause = firstFailure;
+        throw error;
+    }
+
+    return supported;
 }
 
 async function validateProxyEmbeddingModel(db, embeddingModel) {
@@ -673,5 +734,6 @@ module.exports = {
     testSurfaceKey,
     validateForProvider,
     validateProxyChatSettings,
-    validateProxyEmbeddingModel
+    validateProxyEmbeddingModel,
+    discoverProxyReasoningEfforts
 };

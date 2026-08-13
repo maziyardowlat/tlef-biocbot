@@ -122,7 +122,7 @@ class LLMService {
      * Returns the requested effort if supported, otherwise the closest fallback.
      * gpt-5-nano:    minimal, low, medium, high
      * gpt-5.4-nano:  none,    low, medium, high, xhigh   (no "minimal")
-     * gpt-5.6-luna:  none,    low, medium, high, xhigh   (no "minimal")
+     * gpt-5.6-luna:  none,    low, medium, high, xhigh, max (no "minimal")
      */
     _coerceReasoningEffort(model, requested) {
         const provider = this.llmConfig?.provider || process.env.LLM_PROVIDER || 'openai';

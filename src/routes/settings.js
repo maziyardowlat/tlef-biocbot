@@ -1090,6 +1090,42 @@ router.get('/llm', async (req, res) => {
 });
 
 /**
+ * POST /api/settings/llm/reasoning-efforts
+ * Probe one discovered proxy model and return only reasoning efforts accepted
+ * by a real chat operation. The proxy roster does not expose capabilities, so
+ * this intentionally does not infer support from the model id.
+ */
+router.post('/llm/reasoning-efforts', async (req, res) => {
+    try {
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({ success: false, message: 'Database connection not available' });
+        }
+        if (!requireSystemAdmin(req, res)) return;
+
+        const provider = normalizeProvider(req.body?.provider);
+        const model = req.body?.model;
+        if (provider !== PROVIDERS.PROXY) {
+            return res.status(400).json({ success: false, error: 'Reasoning discovery is only available for UBC LLM Proxy models.' });
+        }
+
+        const current = await adminModelSettings.getProviderSettings(db, provider, { force: true });
+        if (!current.availableModels.includes(model)) {
+            return res.status(400).json({
+                success: false,
+                error: `Invalid chat model for ${providerLabel(provider)}: ${model || '(missing)'}`
+            });
+        }
+
+        const reasoningEfforts = await providerKeys.discoverProxyReasoningEfforts(db, model);
+        return res.json({ success: true, provider, model, reasoningEfforts });
+    } catch (error) {
+        console.error('Error discovering proxy reasoning efforts:', error);
+        return res.status(400).json({ success: false, error: error.message, code: error.code });
+    }
+});
+
+/**
  * POST /api/settings/llm
  * Update a platform's chat model / reasoning effort. Chat changes are
  * immediate — no vectors are involved.

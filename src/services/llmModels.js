@@ -9,7 +9,13 @@ const MODEL_PROFILES = Object.freeze({
     'gpt-4.1-mini': { providers: ['openai'], reasoningEfforts: [], defaultReasoningEffort: 'minimal' },
     'gpt-5-nano': { providers: ['openai'], reasoningEfforts: ['minimal', 'low', 'medium', 'high'], defaultReasoningEffort: 'minimal' },
     'gpt-5.4-nano': { providers: ['openai'], reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh'], defaultReasoningEffort: 'low' },
-    'gpt-5.6-luna': { providers: ['openai'], reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh'], defaultReasoningEffort: 'low' },
+    'gpt-5.6-luna': {
+        providers: ['openai'],
+        reasoningEfforts: ['none', 'low', 'medium', 'high', 'xhigh', 'max'],
+        // BiocBot intentionally suggests the lower-cost selection; this is a
+        // UI choice, not the model vendor's default.
+        defaultReasoningEffort: 'low'
+    },
     'qwen3.6-35b-a3b': {
         providers: ['ubc-llm-sandbox'],
         // `none` is important for short/structured calls: b3000 translates it

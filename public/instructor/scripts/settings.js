@@ -69,6 +69,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
     // Latest per-platform settings from /api/settings/llm, keyed by provider.
     let llmPlatformSettings = {};
+    // Proxy `/models` responses do not include reasoning capabilities. Cache
+    // operation-probed results for this settings-page session by exact model id.
+    const proxyReasoningEffortCache = new Map();
+    let proxyReasoningProbeCount = 0;
     // Buckets created in this session get a "New" badge until membership is saved.
     const newlyCreatedSuperchatIds = new Set();
 
@@ -312,6 +316,71 @@ document.addEventListener('DOMContentLoaded', async () => {
             const modelDefault = defaultReasoningEffortByModel[modelSelect.value];
             const fallback = efforts.includes(modelDefault) ? modelDefault : (efforts[0] || '');
             reasoningSelect.value = efforts.includes(selected) ? selected : fallback;
+        }
+    }
+
+    async function refreshProxyReasoningEfforts(platform, lane) {
+        const { idPrefix } = LLM_PLATFORM_UI[platform.provider];
+        const lanePrefix = lane === 'backend' ? `${idPrefix}-backend` : idPrefix;
+        const modelSelect = document.getElementById(`${lanePrefix}-model-select`);
+        const reasoningItem = document.getElementById(`${lanePrefix}-reasoning-item`);
+        const reasoningSelect = document.getElementById(`${lanePrefix}-reasoning-select`);
+        const saveButton = document.getElementById('save-proxy-llm-settings');
+        const model = modelSelect?.value;
+        if (!model || !reasoningItem || !reasoningSelect) return;
+
+        const previouslySelected = reasoningSelect.value;
+        let discoverySucceeded = false;
+        proxyReasoningProbeCount += 1;
+        if (saveButton) saveButton.disabled = true;
+        reasoningItem.style.display = '';
+        reasoningSelect.disabled = true;
+        reasoningSelect.replaceChildren(new Option('Checking supported efforts…', '', true, true));
+
+        try {
+            let discovery = proxyReasoningEffortCache.get(model);
+            if (!discovery) {
+                discovery = fetch('/api/settings/llm/reasoning-efforts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ provider: platform.provider, model })
+                }).then(async response => {
+                    const result = await parseJsonResponse(response);
+                    if (!response.ok || !result.success) {
+                        throw new Error(result.error || 'Unable to detect supported reasoning efforts');
+                    }
+                    return result.reasoningEfforts || [];
+                });
+                proxyReasoningEffortCache.set(model, discovery);
+            }
+
+            const efforts = await discovery;
+            platform.reasoningEffortsByModel ||= {};
+            platform.defaultReasoningEffortByModel ||= {};
+            platform.reasoningEffortsByModel[model] = efforts;
+            platform.defaultReasoningEffortByModel[model] = efforts.includes(previouslySelected)
+                ? previouslySelected
+                : efforts.includes('low') ? 'low' : efforts[0];
+
+            reasoningSelect.replaceChildren();
+            updateReasoningVisibility(
+                idPrefix,
+                lane,
+                platform.reasoningEffortsByModel,
+                platform.defaultReasoningEffortByModel
+            );
+            discoverySucceeded = true;
+        } catch (error) {
+            proxyReasoningEffortCache.delete(model);
+            reasoningSelect.replaceChildren(new Option('Reasoning check failed', '', true, true));
+            reasoningItem.style.display = '';
+            showNotification(error.message, 'error');
+        } finally {
+            const inherits = document.getElementById(`${idPrefix}-backend-inherit`)?.checked !== false;
+            reasoningSelect.disabled = !discoverySucceeded || (lane === 'backend' && inherits);
+            proxyReasoningProbeCount = Math.max(0, proxyReasoningProbeCount - 1);
+            if (saveButton && proxyReasoningProbeCount === 0) saveButton.disabled = false;
         }
     }
 
@@ -803,16 +872,32 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         };
 
-        if (modelSelect) modelSelect.onchange = () => {
-            updateReasoningVisibility(idPrefix, 'frontend', effortsByModel, defaultsByModel);
+        if (modelSelect) modelSelect.onchange = async () => {
+            if (platform.provider === 'ubc-llm-proxy') {
+                await refreshProxyReasoningEfforts(platform, 'frontend');
+            } else {
+                updateReasoningVisibility(idPrefix, 'frontend', effortsByModel, defaultsByModel);
+            }
             syncBackendInheritance();
         };
         if (reasoningSelect) reasoningSelect.onchange = syncBackendInheritance;
-        if (backendModelSelect) backendModelSelect.onchange = () => {
-            updateReasoningVisibility(idPrefix, 'backend', effortsByModel, defaultsByModel);
+        if (backendModelSelect) backendModelSelect.onchange = async () => {
+            if (platform.provider === 'ubc-llm-proxy') {
+                await refreshProxyReasoningEfforts(platform, 'backend');
+            } else {
+                updateReasoningVisibility(idPrefix, 'backend', effortsByModel, defaultsByModel);
+            }
         };
-        if (inheritToggle) inheritToggle.onchange = syncBackendInheritance;
+        if (inheritToggle) inheritToggle.onchange = async () => {
+            syncBackendInheritance();
+            if (platform.provider === 'ubc-llm-proxy' && !inheritToggle.checked) {
+                await refreshProxyReasoningEfforts(platform, 'backend');
+            }
+        };
         syncBackendInheritance();
+        if (platform.provider === 'ubc-llm-proxy' && modelSelect?.value) {
+            void refreshProxyReasoningEfforts(platform, 'frontend').then(syncBackendInheritance);
+        }
 
         const embeddingSelect = document.getElementById(`${idPrefix}-embedding-select`);
         fillSelect(

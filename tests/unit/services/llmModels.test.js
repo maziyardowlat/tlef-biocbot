@@ -6,6 +6,8 @@ describe('provider-aware LLM model catalog', () => {
         expect(catalog.defaultModel).toBe('gpt-5-nano');
         expect(catalog.allowedModels).toContain('gpt-4.1-mini');
         expect(catalog.reasoningEffortsByModel['gpt-5-nano']).toEqual(['minimal', 'low', 'medium', 'high']);
+        expect(catalog.reasoningEffortsByModel['gpt-5.6-luna'])
+            .toEqual(['none', 'low', 'medium', 'high', 'xhigh', 'max']);
         expect(catalog.defaultReasoningEffortByModel).toMatchObject({
             'gpt-5-nano': 'minimal',
             'gpt-5.4-nano': 'low',

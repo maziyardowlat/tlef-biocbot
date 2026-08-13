@@ -114,6 +114,25 @@ describe('validating against the right platform', () => {
         expect(settings.availableModels).toEqual(models);
         expect(settings.configured).toBe(false);
     });
+
+    test('proxy reasoning discovery returns operation-supported values without inspecting the model name', async () => {
+        const oldStub = process.env.BIOCBOT_TEST_LLM_STUB;
+        const oldEfforts = process.env.BIOCBOT_TEST_PROXY_REASONING_EFFORTS;
+        process.env.BIOCBOT_TEST_LLM_STUB = '1';
+        process.env.BIOCBOT_TEST_PROXY_REASONING_EFFORTS = 'none,low,UBERFAST';
+
+        try {
+            await expect(providerKeys.discoverProxyReasoningEfforts(
+                memoryDb({ settings: [] }),
+                'vendor/model.with-an-unrelated-name'
+            )).resolves.toEqual(['none', 'low', 'UBERFAST']);
+        } finally {
+            if (oldStub === undefined) delete process.env.BIOCBOT_TEST_LLM_STUB;
+            else process.env.BIOCBOT_TEST_LLM_STUB = oldStub;
+            if (oldEfforts === undefined) delete process.env.BIOCBOT_TEST_PROXY_REASONING_EFFORTS;
+            else process.env.BIOCBOT_TEST_PROXY_REASONING_EFFORTS = oldEfforts;
+        }
+    });
 });
 
 describe('saving a key', () => {

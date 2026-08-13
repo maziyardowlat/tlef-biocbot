@@ -159,6 +159,35 @@ describe('GET /llm — grouped by platform', () => {
 });
 
 describe('POST /llm — chat model changes are immediate', () => {
+    test('discovers supported proxy reasoning efforts through provider operations', async () => {
+        const oldStub = process.env.BIOCBOT_TEST_LLM_STUB;
+        const oldEfforts = process.env.BIOCBOT_TEST_PROXY_REASONING_EFFORTS;
+        process.env.BIOCBOT_TEST_LLM_STUB = '1';
+        process.env.BIOCBOT_TEST_PROXY_REASONING_EFFORTS = 'none,low,medium,high,xhigh,max';
+        const db = memoryDb({
+            settings: [{
+                _id: 'llm',
+                providers: { [PROXY]: { availableModels: ['gpt-5.6-luna'] } },
+            }],
+        });
+
+        try {
+            const res = await request(app({ db })).post('/llm/reasoning-efforts').send({
+                provider: PROXY,
+                model: 'gpt-5.6-luna',
+            });
+
+            expect(res.status).toBe(200);
+            expect(res.body.reasoningEfforts).toEqual(['none', 'low', 'medium', 'high', 'xhigh', 'max']);
+            expect(res.body.reasoningEfforts).not.toContain('minimal');
+        } finally {
+            if (oldStub === undefined) delete process.env.BIOCBOT_TEST_LLM_STUB;
+            else process.env.BIOCBOT_TEST_LLM_STUB = oldStub;
+            if (oldEfforts === undefined) delete process.env.BIOCBOT_TEST_PROXY_REASONING_EFFORTS;
+            else process.env.BIOCBOT_TEST_PROXY_REASONING_EFFORTS = oldEfforts;
+        }
+    });
+
     test('proxy chat selections are operation-validated before being saved', async () => {
         process.env.BIOCBOT_TEST_LLM_STUB = '1';
         process.env.BIOCBOT_TEST_PROXY_MODELS = 'proxy-chat,proxy-embed';
