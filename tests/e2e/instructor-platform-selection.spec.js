@@ -631,7 +631,7 @@ test.describe('Admin platform and model settings', () => {
         // Proxy reasoning values come from live operation probing, not model-id
         // naming rules. Unsupported `minimal` is hidden while `max` remains.
         await page.locator('#proxy-llm-model-select').selectOption('openai/gpt-5.6-luna:2026');
-        await expect(page.locator('#proxy-llm-reasoning-select option[value="minimal"]')).toBeDisabled();
+        await expect(page.locator('#proxy-llm-reasoning-select option[value="minimal"]')).toHaveCount(0);
         await expect(page.locator('#proxy-llm-reasoning-select option[value="max"]')).toBeEnabled();
         await expect(page.locator('#save-proxy-llm-settings')).toBeEnabled();
 
