@@ -1,0 +1,7 @@
+# Required to install @ubc/* packages, which are published to GitHub Packages.
+# Copy this file to .npmrc (which is gitignored) before running `npm install`.
+@ubc:registry=https://npm.pkg.github.com
+
+# Authentication is per-developer and MUST NOT be committed. Either put the
+# token in your user-level ~/.npmrc, or export NODE_AUTH_TOKEN and uncomment:
+# //npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}

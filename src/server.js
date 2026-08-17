@@ -43,6 +43,7 @@ const academicSyncRoutes = require('./routes/academicSync');
 const previewRoutes = require('./routes/preview');
 const { createCanvasLmsRouter } = require('./routes/canvasLms');
 const { createLmsGradesRouter } = require('./routes/lmsGrades');
+const { createStudentHubCanvasGradesRouter } = require('./routes/studentHubCanvasGrades');
 const { createLmsRosterSyncRouter } = require('./routes/lmsRosterSync');
 const { createMoodleLmsRouter } = require('./routes/moodleLms');
 const LLMService = require('./services/llm');
@@ -50,6 +51,7 @@ const LlmRegistry = require('./services/llmRegistry');
 const AuthService = require('./services/authService');
 const { isAcademicApiEnabled } = require('./services/academicApi');
 const { createLmsIntegration, ensureLmsIndexes, getLmsDiagnostics } = require('./services/lmsIntegration');
+const canvasGradeSync = require('./services/canvasGradeSync');
 const createAuthMiddleware = require('./middleware/auth');
 const initializePassport = require('./config/passport');
 
@@ -57,8 +59,9 @@ const app = express();
 const port = process.env.TLEF_BIOCBOT_PORT || 8080;
 
 // Configure CORS to allow requests from localhost:3002 (browser-sync proxy)
+const ALLOWED_BROWSER_ORIGINS = ['http://localhost:3000', 'http://localhost:3002', 'http://localhost:8050'];
 app.use(cors({
-    origin: ['http://localhost:3000', 'http://localhost:3002', 'http://localhost:8050'],
+    origin: ALLOWED_BROWSER_ORIGINS,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'Cookie']
@@ -194,6 +197,10 @@ async function initializeLms() {
 
     if (lmsIntegration.canvas || lmsIntegration.moodle) {
         await ensureLmsIndexes(db);
+    }
+
+    if (lmsIntegration.canvas) {
+        await canvasGradeSync.ensureIndexes(db);
     }
 
     if (lmsIntegration.toolkitMissing) {
@@ -727,6 +734,28 @@ function setupAPIRoutes() {
         authMiddleware.requireInstructor,
         createLmsRosterSyncRouter(lmsIntegration)
     );
+    // Student Hub Canvas submission/grade synchronization. Canvas-only and
+    // mounted only when Canvas is usable: unlike the read-only grade view, every
+    // route here needs a live Canvas client.
+    if (lmsIntegration.canvas) {
+        app.use(
+            '/api/student-hub/canvas',
+            authMiddleware.requireAuth,
+            authMiddleware.populateUser,
+            authMiddleware.requireInstructor,
+            createStudentHubCanvasGradesRouter(lmsIntegration.canvas, {
+                allowedOrigins: ALLOWED_BROWSER_ORIGINS
+            })
+        );
+    } else {
+        app.use(
+            '/api/student-hub/canvas',
+            authMiddleware.requireAuth,
+            authMiddleware.populateUser,
+            authMiddleware.requireInstructor,
+            disabledLmsProviderHandler('canvas')
+        );
+    }
     app.use('/api/student/super-course', authMiddleware.requireAuth, authMiddleware.populateUser, studentSuperCourseRoutes);
     app.use('/api/students', authMiddleware.requireAuth, authMiddleware.populateUser, authMiddleware.requireActiveCourseForNonInstructors, authMiddleware.requireStudentEnrolled, studentsRoutes);
     app.use('/api/user-agreement', authMiddleware.requireAuth, userAgreementRoutes);

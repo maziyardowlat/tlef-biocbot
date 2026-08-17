@@ -88,6 +88,35 @@
                 <div id="students-container" class="students-grid"></div>
             </div>
 
+            <!-- Canvas grades for one assignment: import, draft locally, then
+                 export in two steps. Hidden until the course is linked to Canvas. -->
+            <div class="dashboard-section canvas-grades-section" id="canvas-grades-section" hidden>
+                <h2>Grades</h2>
+                <div class="section-description">
+                    <p id="canvas-grades-course-note">Import Canvas submissions and grades for one assignment, record local scores and feedback, then export them back to Canvas.</p>
+                </div>
+
+                <div class="canvas-grades-bar">
+                    <div class="canvas-grades-actions">
+                        <label for="canvas-assignment-select">Assignment:</label>
+                        <select id="canvas-assignment-select" aria-describedby="canvas-grades-status">
+                            <option value="">Loading assignments…</option>
+                        </select>
+                        <button id="canvas-import-submissions" class="btn-small btn-secondary" type="button" disabled>Import submissions</button>
+                        <button id="canvas-import-grades" class="btn-small btn-secondary" type="button" disabled>Import grades</button>
+                        <button id="canvas-preview-export" class="btn-small btn-primary" type="button" disabled>Preview Canvas export</button>
+                    </div>
+                    <div id="canvas-grades-status" class="canvas-grades-status" role="status" aria-live="polite">Checking the Canvas link…</div>
+                </div>
+
+                <details class="canvas-roster-panel" id="canvas-roster-panel" hidden>
+                    <summary id="canvas-roster-summary">Roster match</summary>
+                    <div id="canvas-roster-body"></div>
+                </details>
+
+                <div id="canvas-grades-table-wrap" class="canvas-grades-table-wrap"></div>
+            </div>
+
             <div class="dashboard-section survey-responses-section">
                 <div class="survey-section-header">
                     <div>
@@ -137,8 +166,29 @@
         </main>
     </div>
 
+    <!-- Canvas grade export preview. Confirmation is deliberately a second,
+         explicit step: under an automatic posting policy the scores and
+         comments become visible to students the moment they are written. -->
+    <div id="canvas-export-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="canvas-export-title">Review Canvas grade export</h2>
+                <button class="modal-close" id="canvas-export-close" type="button" aria-label="Close"><span aria-hidden="true">×</span></button>
+            </div>
+            <div class="modal-body" id="canvas-export-body"></div>
+            <div class="modal-footer">
+                <div class="modal-actions">
+                    <button id="canvas-export-cancel" class="btn-small btn-secondary" type="button">Cancel</button>
+                    <button id="canvas-export-confirm" class="btn-small btn-primary" type="button">Export to Canvas</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="../common/scripts/auth.js"></script>
     <script src="../common/scripts/notifications.js"></script>
+    <script src="../common/scripts/modal-a11y.js"></script>
     <script src="./scripts/student-hub.js"></script>
+    <script src="./scripts/student-hub-canvas-grades.js"></script>
 </body>
 </html>
