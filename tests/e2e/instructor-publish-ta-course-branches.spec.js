@@ -400,7 +400,7 @@ test.describe('instructor publish, TA, course, and polling branches', () => {
         });
 
         expect(buttonCount).toBe(0);
-        await expect(page.locator('.accordion-item[data-unit-name="Harness Unit"] .status-text')).toHaveText('Processed');
+        await expect(page.locator('.accordion-item[data-unit-name="Harness Unit"] .status-text')).toHaveText('Uploaded');
     });
 
     test('parses fallback filenames when content disposition is absent or malformed', async ({ page }) => {
@@ -482,7 +482,7 @@ test.describe('instructor publish, TA, course, and polling branches', () => {
             documentId: 'doc-practice',
             documentType: 'practice_q_tutorials',
             actionCount: 3,
-            status: 'Processed',
+            status: 'Uploaded',
         });
     });
 

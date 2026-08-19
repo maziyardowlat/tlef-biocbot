@@ -67,7 +67,7 @@ function isValidCourseStatus(value) {
  *           size: Number,
  *           mimeType: String,
  *           uploadDate: Date,
- *           status: String      // "parsed", "needs-verify", "error"
+ *           status: String      // "uploaded"; detailed parsing state is stored on the document record
  *         }
  *       ]
  *     }

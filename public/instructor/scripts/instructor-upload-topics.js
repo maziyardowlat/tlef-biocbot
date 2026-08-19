@@ -669,10 +669,13 @@ function extractFilenameFromDisposition(contentDisposition) {
  * @param {string} fileName - The file name to display
  * @param {string} description - The file description
  * @param {string} documentId - The document ID from the database
- * @param {string} status - The status to display ('uploaded' or 'processed')
+ * @param {string} status - The status to display ('uploaded' or temporary 'parsing')
  * @param {string} contentType - The content type ('lecture-notes', 'practice-quiz', etc.)
  */
 function addContentToWeek(week, fileName, description, documentId, status = 'uploaded', contentType = null) {
+    // `uploaded` is the single successful public status. Parsing is only a
+    // temporary display state while the background service is running.
+    const displayStatus = status === 'parsing' ? 'parsing' : 'uploaded';
     // Find the week accordion item using data-unit-name attribute (internal name like "Unit 1")
     const weekAccordion = document.querySelector(`.accordion-item[data-unit-name="${week}"]`);
     
@@ -722,10 +725,8 @@ function addContentToWeek(week, fileName, description, documentId, status = 'upl
             targetFileItem.querySelector('.file-info').insertBefore(typeBadge, targetFileItem.querySelector('.status-text'));
         }
         typeBadge.textContent = getDocumentTypeLabel(contentType);
-        targetFileItem.querySelector('.status-text').textContent = status === 'processed'
-            ? 'Processed'
-            : (status === 'parsing' ? 'Processing' : 'Uploaded');
-        targetFileItem.querySelector('.status-text').className = `status-text ${status}`;
+        targetFileItem.querySelector('.status-text').textContent = displayStatus === 'parsing' ? 'Processing' : 'Uploaded';
+        targetFileItem.querySelector('.status-text').className = `status-text ${displayStatus}`;
         
         // Set document ID for proper deletion
         if (documentId) {
@@ -757,7 +758,7 @@ function addContentToWeek(week, fileName, description, documentId, status = 'upl
                 <h3>${fileName}</h3>
                 <p>${description}</p>
                 <span class="document-type-badge">${getDocumentTypeLabel(contentType)}</span>
-                <span class="status-text ${status}">${status === 'processed' ? 'Processed' : (status === 'parsing' ? 'Processing' : 'Uploaded')}</span>
+                <span class="status-text ${displayStatus}">${displayStatus === 'parsing' ? 'Processing' : 'Uploaded'}</span>
             </div>
             <div class="file-actions">
                 ${buildDocumentActionButtons(documentId)}

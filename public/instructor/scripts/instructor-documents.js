@@ -727,12 +727,12 @@ async function confirmCourseMaterials(week) {
             console.log(`🔍 [CONFIRM_MATERIALS] Item ${index + 1}: "${titleText}" - Status: "${status}" - Type: "${documentType}"`);
             console.log(`🔍 [CONFIRM_MATERIALS] Debug - documentType === 'lecture_notes': ${documentType === 'lecture_notes'}, documentType === 'practice_q_tutorials': ${documentType === 'practice_q_tutorials'}`);
             
-            // Check if this is a lecture notes document that's processed/uploaded
+            // Check if this is an uploaded lecture notes document (or one still parsing).
             // Use document type for more reliable checking, fallback to title text
             const isLectureNotesType = documentType === 'lecture_notes' || 
                                      documentType === 'lecture-notes' ||
                                      titleText.includes('Lecture Notes');
-            const isLectureNotesStatus = status === 'Processed' || status === 'Uploaded' || status === 'uploaded' || status === 'parsed' || status === 'Processing';
+            const isLectureNotesStatus = status === 'Uploaded' || status === 'uploaded' || status === 'Processing';
             console.log(`🔍 [CONFIRM_MATERIALS] Lecture Notes check - Type match: ${isLectureNotesType}, Status match: ${isLectureNotesStatus}`);
             
             if (isLectureNotesType && isLectureNotesStatus) {
@@ -740,13 +740,13 @@ async function confirmCourseMaterials(week) {
                 console.log(`✅ [CONFIRM_MATERIALS] Found valid lecture notes with status: "${status}" and type: "${documentType}"`);
             }
             
-            // Check if this is a practice questions document that's processed/uploaded
+            // Check if this is an uploaded practice-questions document (or one still parsing).
             // Use document type for more reliable checking, fallback to title text
             const isPracticeQuestionsType = documentType === 'practice_q_tutorials' || 
                                           documentType === 'practice-quiz' ||
                                           titleText.includes('Practice Questions') || 
                                           titleText.includes('Practice Questions/Tutorial');
-            const isPracticeQuestionsStatus = status === 'Processed' || status === 'Uploaded' || status === 'uploaded' || status === 'parsed' || status === 'Processing';
+            const isPracticeQuestionsStatus = status === 'Uploaded' || status === 'uploaded' || status === 'Processing';
             console.log(`🔍 [CONFIRM_MATERIALS] Practice Questions check - Type match: ${isPracticeQuestionsType}, Status match: ${isPracticeQuestionsStatus}`);
             
             if (isPracticeQuestionsType && isPracticeQuestionsStatus) {
@@ -828,7 +828,7 @@ function checkLectureNotesUploaded(week) {
         const documentType = item.dataset.documentType || '';
         const isLectureNotes = documentType === 'lecture_notes' || documentType === 'lecture-notes';
         const status = item.querySelector('.status-text')?.textContent?.trim();
-        return isLectureNotes && status === 'Processed';
+        return isLectureNotes && status === 'Uploaded';
     });
 }
 
@@ -1056,14 +1056,13 @@ function checkCourseMaterialsAvailable(week) {
         const status = item.querySelector('.status-text');
         if (status) {
             const statusText = status.textContent;
-            // Consider both 'Processed' and 'Uploaded' as valid statuses
-            if (statusText === 'Processed' || statusText === 'Uploaded' || statusText === 'uploaded') {
+            if (statusText === 'Uploaded' || statusText === 'uploaded') {
                 console.log(`🔍 [MATERIALS_CHECK] Found valid material (${statusText}) in ${week}`);
                 return true;
             }
         }
     }
 
-    console.log(`🔍 [MATERIALS_CHECK] No processed materials found in ${week}`);
+    console.log(`🔍 [MATERIALS_CHECK] No uploaded materials found in ${week}`);
     return false;
 }
