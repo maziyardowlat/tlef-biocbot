@@ -148,7 +148,8 @@ describe('Canvas LMS routes', () => {
         const ingestFile = jest.fn(async (input) => ({
             result: { documentId: 'doc-1', filename: input.title },
             courseResult: { success: true },
-            qdrantResult: { success: true, chunksStored: 2 }
+            qdrantResult: null,
+            jobId: 'parse-job-1'
         }));
         const resolveAi = jest.fn(async () => ({ llm: {}, qdrant: {} }));
         const db = memoryDb({
@@ -163,7 +164,11 @@ describe('Canvas LMS routes', () => {
             .send({ canvasFileId: '31', lectureName: 'Unit 1', documentType: 'lecture-notes' })
             .expect(201);
 
-        expect(res.body.data).toMatchObject({ documentId: 'doc-1', chunksStored: 2 });
+        expect(res.body.data).toMatchObject({
+            documentId: 'doc-1',
+            chunksStored: 0,
+            parsing: { jobId: 'parse-job-1', status: 'processing' }
+        });
         expect(downloadFile).toHaveBeenCalledWith(
             harness.canvasClient,
             '10',
@@ -174,6 +179,7 @@ describe('Canvas LMS routes', () => {
             courseId: 'BIOC-1',
             lectureName: 'Unit 1',
             instructorId: 'inst-1',
+            awaitParse: false,
             buffer: expect.any(Buffer),
             metadata: expect.objectContaining({
                 lms: expect.objectContaining({

@@ -168,6 +168,57 @@ async function extractTopicsForUploadedDocument(courseId, documentId) {
     return dedupeTopics(result?.data?.topicLabels || result?.data?.topics || []);
 }
 
+/**
+ * Wait for an asynchronous parsing-service upload to reach a canonical Mongo
+ * state. The upload request itself has already returned; this polling belongs
+ * in the browser so a proxy timeout or closed modal cannot abandon the job.
+ */
+async function waitForUploadedDocumentParsing(documentId, options = {}) {
+    if (!documentId) throw new Error('A document id is required while waiting for parsing.');
+
+    const intervalMs = Number(options.intervalMs) > 0 ? Number(options.intervalMs) : 2000;
+    const timeoutMs = Number(options.timeoutMs) > 0 ? Number(options.timeoutMs) : 30 * 60 * 1000;
+    const fetchImpl = options.fetchImpl || fetch;
+    const sleep = options.sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+    const deadline = Date.now() + timeoutMs;
+    let polls = 0;
+
+    while (Date.now() < deadline) {
+        polls += 1;
+        const response = await fetchImpl(`/api/documents/${encodeURIComponent(documentId)}`);
+        if (!response.ok) {
+            const error = new Error(response.status === 404
+                ? 'The document was deleted while parsing.'
+                : `Could not check document parsing status (${response.status}).`);
+            error.status = response.status;
+            throw error;
+        }
+
+        const body = await response.json();
+        const documentRecord = body?.data || {};
+        const parsing = documentRecord.metadata?.parsing || null;
+        if (typeof options.onProgress === 'function') {
+            options.onProgress({ polls, document: documentRecord, parsing });
+        }
+
+        if (!parsing || parsing.status === 'ready' || documentRecord.status === 'parsed') {
+            return documentRecord;
+        }
+        if (parsing.status === 'failed' || documentRecord.status === 'parse-failed') {
+            const error = new Error(parsing.message || 'Document parsing failed.');
+            error.code = parsing.reason || 'DOCPARSE_ERROR';
+            error.parsing = parsing;
+            throw error;
+        }
+
+        await sleep(intervalMs);
+    }
+
+    const error = new Error('Document parsing is taking longer than expected. It will continue in the background.');
+    error.code = 'DOCPARSE_POLL_TIMEOUT';
+    throw error;
+}
+
 async function saveCourseApprovedTopics(courseId, topics) {
     const response = await fetch(`/api/courses/${courseId}/approved-topics`, {
         method: 'PUT',

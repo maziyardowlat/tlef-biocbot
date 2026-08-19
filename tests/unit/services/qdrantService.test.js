@@ -279,6 +279,22 @@ describe('QdrantService', () => {
         expect(stored[0]).toMatchObject({ documentId: 'D', chunkIndex: 0 });
     });
 
+    test('storeChunks preserves global indexes when a document is written in batches', async () => {
+        const service = makeService();
+        await service.storeChunks({
+            courseId: 'C',
+            lectureName: 'U',
+            documentId: 'D',
+            fileName: 'f',
+            chunkIndexOffset: 100,
+            totalChunks: 205
+        }, ['one', 'two'], [[1, 2, 3], [1, 2, 3]]);
+
+        const payloads = service.client.upsert.mock.calls[0][1].points.map((point) => point.payload);
+        expect(payloads.map(({ chunkIndex, totalChunks }) => [chunkIndex, totalChunks]))
+            .toEqual([[100, 205], [101, 205]]);
+    });
+
     test.each([
         [[[1, 2, 3]], [1, 2, 3]],
         [{ embedding: [1, 2, 3] }, [1, 2, 3]],

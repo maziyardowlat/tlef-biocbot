@@ -226,7 +226,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
         const storedInstructorId = access.user.role === 'instructor'
             ? access.user.userId
             : (access.course?.instructorId || instructorId);
-        const { result, courseResult, qdrantResult } = await ingestFileBuffer({
+        const { result, courseResult, qdrantResult, jobId } = await ingestFileBuffer({
             db,
             ai,
             buffer: file.buffer,
@@ -249,9 +249,14 @@ router.post('/upload', upload.single('file'), async (req, res) => {
         
         console.log(`Document uploaded: ${file.originalname} for ${lectureName}`);
         
+        // When the parsing service has the document, this response goes out
+        // while it is still parsing — so there is no chunk count to report yet.
+        // `parsing` is how a client tells that apart from "indexed nothing".
         res.json({
             success: true,
-            message: 'Document uploaded successfully!',
+            message: jobId
+                ? 'Document uploaded. Parsing has started and the text will be indexed shortly.'
+                : 'Document uploaded successfully!',
             data: {
                 documentId: result.documentId,
                 filename: result.filename,
@@ -259,7 +264,8 @@ router.post('/upload', upload.single('file'), async (req, res) => {
                 uploadDate: result.uploadDate,
                 linkedToCourse: courseResult.success,
                 qdrantProcessed: qdrantResult ? qdrantResult.success : false,
-                chunksStored: qdrantResult ? qdrantResult.chunksStored : 0
+                chunksStored: qdrantResult ? qdrantResult.chunksStored : 0,
+                ...(jobId ? { parsing: { jobId, status: 'processing' } } : {})
             }
         });
         

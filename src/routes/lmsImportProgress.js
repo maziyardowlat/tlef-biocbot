@@ -9,6 +9,8 @@
  * single-shot JSON response.
  */
 
+const { describeReason, isFinal } = require('../services/docparse/errors');
+
 const NDJSON_CONTENT_TYPE = 'application/x-ndjson';
 
 /**
@@ -24,10 +26,20 @@ const IMPORT_STEP_IDS = Object.freeze([
     'index'
 ]);
 
-/** Ingestion phases (from documentIngestion) mapped onto the ids above. */
+/**
+ * Ingestion phases (from documentIngestion) mapped onto the ids above.
+ *
+ * `parsing` shares the `extract` step rather than adding a sixth one. It is the
+ * same work from the instructor's point of view — the text is being pulled out
+ * of the file — the difference is only that a remote service is doing it, and
+ * that it now takes minutes rather than seconds. Sharing the step also keeps
+ * the id list identical for the in-process path, which never emits `parsing`
+ * and would otherwise show a step that could never complete.
+ */
 const PHASE_TO_STEP = Object.freeze({
     storing: 'store',
     extracting: 'extract',
+    parsing: 'extract',
     saving: 'save',
     indexing: 'index'
 });
@@ -40,6 +52,36 @@ function describeExtraction({ characters = 0, slides = 0 }) {
     if (slides > 0) return `${slides} slides read`;
     if (characters > 0) return `${characters.toLocaleString('en-US')} characters read`;
     return 'No text could be extracted';
+}
+
+const PARSING_STATUS_LABELS = Object.freeze({
+    awaiting_upload: 'Sending the file to the parsing service',
+    queued: 'Queued at the parsing service',
+    processing: 'Parsing the document',
+    done: 'Parsed',
+    rejected: 'The parsing service rejected this file'
+});
+
+/**
+ * A line for the `extract` step while the parsing service works.
+ *
+ * Without this the step sits silent for however long the parse takes — which is
+ * minutes for a real lecture, and up to 20 for an image-heavy one — and the
+ * import looks frozen.
+ */
+function describeParsing({ status = '', reason = null, polls = 0 }) {
+    const checks = polls > 0 ? ` · check ${polls}` : '';
+    // `failed` on a transient reason is not a verdict: the service retries a job
+    // up to three times and can still finish `done`. Reporting the first
+    // `failed` as a failure tells an instructor their lecture broke while it is
+    // in fact still being parsed.
+    if (status === 'failed' && !isFinal(status, reason)) {
+        return `Parsing service is retrying${checks}`;
+    }
+    if (status === 'failed') {
+        return `Parsing failed: ${describeReason(reason)}`;
+    }
+    return `${PARSING_STATUS_LABELS[status] || 'Parsing the document'}${checks}`;
 }
 
 /**
@@ -79,6 +121,12 @@ function createImportProgressStream(req, res, { diagnostics = null } = {}) {
             diagnostics?.onIngestionProgress({ phase, ...details });
             if (phase === 'extracted') {
                 write({ type: 'detail', step: 'extract', detail: describeExtraction(details) });
+                return;
+            }
+            // A detail rather than a step: `extracting` already moved the UI to
+            // this step, and these arrive repeatedly as the job progresses.
+            if (phase === 'parsing') {
+                write({ type: 'detail', step: 'extract', detail: describeParsing(details) });
                 return;
             }
             const stepId = PHASE_TO_STEP[phase];

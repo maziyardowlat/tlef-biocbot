@@ -221,10 +221,13 @@ function createMoodleLmsRouter(
                 { maxBytes: MAX_DOCUMENT_BYTES }
             );
             const buffer = Buffer.from(download.data);
-            const { result, courseResult, qdrantResult } = await ingestFile({
+            const { result, courseResult, qdrantResult, jobId } = await ingestFile({
                 db,
                 ai,
                 buffer,
+                // Parsing is never awaited by a request handler. The browser
+                // polls the canonical document record when a jobId is returned.
+                awaitParse: false,
                 onProgress: progress?.onIngestionProgress || diagnostics.onIngestionProgress,
                 originalName: normalized.filename || normalized.name,
                 mimeType: normalized.mimeType,
@@ -252,7 +255,8 @@ function createMoodleLmsRouter(
                 lectureName,
                 linkedToCourse: courseResult.success,
                 qdrantProcessed: qdrantResult?.success === true,
-                chunksStored: qdrantResult?.chunksStored || 0
+                chunksStored: qdrantResult?.chunksStored || 0,
+                ...(jobId ? { parsing: { jobId, status: 'processing' } } : {})
             };
             if (progress) return progress.done(data);
             diagnostics.done(data);

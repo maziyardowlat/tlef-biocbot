@@ -13,6 +13,13 @@ const {
 } = require('./embeddingIndexService');
 const { DocumentParsingModule } = require('ubc-genai-toolkit-document-parsing');
 const { ConsoleLogger } = require('ubc-genai-toolkit-core');
+const {
+    collectChunks,
+    describeReason,
+    getDocParse,
+    shouldUseDocParse,
+    submitDocument
+} = require('./docparse');
 
 const PPTX_MIME_TYPE = 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
 const MAX_DOCUMENT_BYTES = 50 * 1024 * 1024;
@@ -125,6 +132,27 @@ function createProgressEmitter(onProgress) {
     };
 }
 
+async function recordParseFailure(db, documentId, reason, message = describeReason(reason)) {
+    await DocumentModel.updateDocumentStatus(db, documentId, 'parse-failed', {
+        'metadata.parsing.status': 'failed',
+        'metadata.parsing.reason': reason,
+        'metadata.parsing.message': message,
+        'metadata.parsing.finishedAt': new Date()
+    }).catch((error) => console.warn(`⚠️ Could not record parse failure: ${error.message}`));
+    return { success: false, reason, message, chunksStored: 0 };
+}
+
+async function documentExists(db, documentId) {
+    return Boolean(await DocumentModel.getDocumentById(db, documentId));
+}
+
+async function removePartialChunks(qdrantService, documentId, courseId) {
+    if (typeof qdrantService?.deleteDocumentChunks !== 'function') return;
+    await qdrantService.deleteDocumentChunks(documentId, courseId).catch((error) => {
+        console.warn(`⚠️ Could not remove partial chunks for ${documentId}: ${error.message}`);
+    });
+}
+
 async function ingestDocument({
     db,
     qdrantService,
@@ -186,6 +214,287 @@ async function ingestDocument({
     return { result, courseResult, qdrantResult };
 }
 
+/**
+ * Everything that happens once the parsing service has finished with a job.
+ *
+ * Runs detached from every upload request. Tests may await it through the
+ * internal `awaitParse` seam, but production callers observe the persisted
+ * state instead. It must always reach a terminal state: a document left saying
+ * "processing" forever is worse than one that says it failed.
+ *
+ * Results live one hour from the terminal state and then answer 410, so this
+ * collects and stores them as soon as the job is done rather than deferring to
+ * a later user action.
+ */
+async function finishDocParseJob({
+    db,
+    ai,
+    docparse,
+    jobId,
+    documentId,
+    documentType,
+    type,
+    courseId,
+    lectureName,
+    filename,
+    mimeType,
+    emit
+}) {
+    const { client, config, tracker } = docparse;
+    const qdrantService = ai.qdrant;
+
+    try {
+        const final = await tracker.track(jobId, {
+            onStatus: ({ status, reason, polls }) => emit('parsing', { jobId, status, reason, polls })
+        });
+        const reason = final.reason || null;
+
+        if (final.status !== 'done') {
+            const message = describeReason(reason);
+            console.error(`❌ Parsing service did not complete ${filename} (${final.status}/${reason}): ${message}`);
+            return recordParseFailure(db, documentId, reason, message);
+        }
+
+        // A user can delete a document while its service job is still running.
+        // Stop before fetching or indexing results rather than resurrecting it in Qdrant.
+        if (!(await documentExists(db, documentId))) {
+            return { success: false, reason: 'document_deleted', message: describeReason('document_deleted'), chunksStored: 0 };
+        }
+
+        // `metadata` is null until terminal. Warnings such as
+        // image_description_unavailable do not invalidate otherwise intact text.
+        const warnings = final.metadata?.warnings || [];
+        if (warnings.length > 0) {
+            console.log(`ℹ️ Parsing service warnings for ${filename}: ${warnings.join(', ')}`);
+        }
+
+        let collected;
+        try {
+            collected = await collectChunks({ client, jobId });
+        } catch (error) {
+            error.reason = error.reason || 'result_error';
+            throw error;
+        }
+        const { texts, chunkMetadata, textContent } = collected;
+        if (texts.length === 0) {
+            const message = 'The parsing service returned no text for this document.';
+            console.error(`❌ ${message} (${filename})`);
+            return recordParseFailure(db, documentId, 'empty_result', message);
+        }
+
+        emit('saving');
+        const saved = await DocumentModel.updateDocumentContent(db, documentId, textContent);
+        if (!saved?.success) {
+            const error = new Error(saved?.error || 'Parsed document content could not be saved');
+            error.reason = 'persistence_error';
+            throw error;
+        }
+
+        emit('indexing');
+        const profile = qdrantService && qdrantService.embeddingProfile;
+        const hash = contentHash(textContent);
+        let qdrantResult = { success: false, chunksProcessed: texts.length, chunksStored: 0 };
+        const storedChunks = [];
+        try {
+            const batchSize = config.embedBatchSize || 100;
+            for (let offset = 0; offset < texts.length; offset += batchSize) {
+                if (!(await documentExists(db, documentId))) {
+                    await removePartialChunks(qdrantService, documentId, courseId);
+                    return { success: false, reason: 'document_deleted', message: describeReason('document_deleted'), chunksStored: 0 };
+                }
+
+                const batchTexts = texts.slice(offset, offset + batchSize);
+                const batchMetadata = chunkMetadata.slice(offset, offset + batchSize);
+                const embeddings = await qdrantService.generateEmbeddings(batchTexts);
+                const storedBatch = await qdrantService.storeChunks(
+                    {
+                        courseId,
+                        lectureName,
+                        documentId,
+                        type,
+                        fileName: filename,
+                        mimeType,
+                        documentType,
+                        chunkMetadata: batchMetadata,
+                        chunkIndexOffset: offset,
+                        totalChunks: texts.length
+                    },
+                    batchTexts,
+                    embeddings,
+                    `docparse-${config.chunkStrategy}`
+                );
+                storedChunks.push(...storedBatch);
+            }
+
+            // Close the deletion race after the final upsert as well.
+            if (!(await documentExists(db, documentId))) {
+                await removePartialChunks(qdrantService, documentId, courseId);
+                return { success: false, reason: 'document_deleted', message: describeReason('document_deleted'), chunksStored: 0 };
+            }
+
+            qdrantResult = {
+                success: true,
+                chunksProcessed: texts.length,
+                chunksStored: storedChunks.length,
+                message: `Document parsed and ${storedChunks.length} chunks stored successfully`
+            };
+            if (profile) await markDocumentIndexReady(db, documentId, profile, hash);
+        } catch (error) {
+            await removePartialChunks(qdrantService, documentId, courseId);
+            if (profile) {
+                await markDocumentIndexFailed(db, documentId, profile, hash, error).catch(() => {});
+            }
+            console.warn('Warning: Document parsed but Qdrant processing failed:', error.message);
+            qdrantResult.error = error.message;
+        }
+
+        const statusResult = await DocumentModel.updateDocumentStatus(db, documentId, 'uploaded', {
+            'metadata.parsing.status': 'ready',
+            'metadata.parsing.reason': null,
+            'metadata.parsing.warnings': warnings,
+            'metadata.parsing.chunkCount': texts.length,
+            'metadata.parsing.chunksStored': qdrantResult.chunksStored,
+            'metadata.parsing.indexed': qdrantResult.success,
+            'metadata.parsing.finishedAt': new Date()
+        });
+        if (!statusResult?.matchedCount) {
+            await removePartialChunks(qdrantService, documentId, courseId);
+            return { success: false, reason: 'document_deleted', message: describeReason('document_deleted'), chunksStored: 0 };
+        }
+        await FlashcardDeck.markUnitStale(db, courseId, lectureName);
+        return qdrantResult;
+    } catch (error) {
+        const reason = error.reason || 'persistence_error';
+        const message = error.message || describeReason(reason);
+        console.error(`❌ Background parse completion failed for ${filename} (${jobId}): ${message}`);
+        await removePartialChunks(qdrantService, documentId, courseId);
+        if (!(await documentExists(db, documentId))) {
+            return { success: false, reason: 'document_deleted', message: describeReason('document_deleted'), chunksStored: 0 };
+        }
+        return recordParseFailure(db, documentId, reason, message);
+    }
+}
+
+/**
+ * Ingest a document through the UBC Document Parsing API instead of the
+ * in-process parser.
+ *
+ * The shape differs from the legacy path in one important way: the Mongo
+ * document is written BEFORE the text exists, carrying `metadata.parsing` so
+ * the UI can tell "still parsing" from "parsed and empty". That is what lets
+ * the upload request return immediately instead of holding a connection open
+ * for the length of the parse.
+ */
+async function ingestViaDocParse({
+    db,
+    ai,
+    docparse,
+    buffer,
+    effectiveName,
+    effectiveSize,
+    mimeType,
+    gridfsFileId,
+    courseId,
+    lectureName,
+    documentType,
+    instructorId,
+    title,
+    metadata,
+    emit,
+    awaitParse
+}) {
+    const { client, config } = docparse;
+
+    // Creating the job and streaming the bytes to the gateway is a byte
+    // transfer, not a parse — a sample lecture measured 164ms — so this much is
+    // safe to await inside a request handler. The parse is watched separately.
+    emit('extracting', { mimeType, parser: 'docparse' });
+    const { jobId } = await submitDocument({
+        client,
+        config,
+        buffer,
+        originalName: effectiveName,
+        mimeType
+    });
+
+    const filename = title || effectiveName;
+    const documentData = {
+        courseId,
+        lectureName,
+        documentType,
+        instructorId,
+        contentType: 'file',
+        filename,
+        originalName: effectiveName,
+        fileId: gridfsFileId,
+        mimeType,
+        size: effectiveSize,
+        content: '',
+        metadata: {
+            description: '',
+            tags: [],
+            learningObjectives: [],
+            ...metadata,
+            parsing: {
+                provider: 'docparse',
+                jobId,
+                status: 'processing',
+                startedAt: new Date()
+            }
+        }
+    };
+
+    // Written before the text exists so the file is listed immediately and the
+    // background finisher has a row to update. The `saving` phase is emitted
+    // later, when the parsed content actually lands, to keep the progress
+    // stream moving forwards.
+    const result = await DocumentModel.uploadDocument(db, documentData);
+    const courseResult = await CourseModel.addDocumentToUnit(
+        db,
+        courseId,
+        lectureName,
+        {
+            documentId: result.documentId,
+            documentType,
+            ...(title ? { title } : {}),
+            filename,
+            originalName: effectiveName,
+            mimeType,
+            size: effectiveSize,
+            status: 'uploaded',
+            metadata: documentData.metadata
+        },
+        instructorId
+    );
+    await FlashcardDeck.markUnitStale(db, courseId, lectureName);
+
+    const finish = () => finishDocParseJob({
+        db,
+        ai,
+        docparse,
+        jobId,
+        documentId: result.documentId,
+        documentType,
+        type: result.type,
+        courseId,
+        lectureName,
+        filename,
+        mimeType,
+        emit
+    });
+
+    // Kept as an internal/testing seam only. Request handlers must leave this
+    // false: browser polling reports completion without holding HTTP open.
+    if (awaitParse) {
+        return { result, courseResult, qdrantResult: await finish(), jobId };
+    }
+
+    finish().catch((error) => {
+        console.error(`❌ Background parse of ${filename} (job ${jobId}) failed: ${error.message}`);
+    });
+    return { result, courseResult, qdrantResult: null, jobId };
+}
+
 async function ingestFileBuffer({
     db,
     ai,
@@ -199,7 +508,9 @@ async function ingestFileBuffer({
     instructorId,
     title,
     metadata = {},
-    onProgress
+    onProgress,
+    awaitParse = false,
+    env = process.env
 }) {
     const emit = createProgressEmitter(onProgress);
     if (!Buffer.isBuffer(buffer)) {
@@ -223,6 +534,33 @@ async function ingestFileBuffer({
         contentType: mimeType,
         metadata: { courseId, lectureName, originalName: effectiveName }
     });
+
+    // Only some formats go to the parsing service — PPTX and DOCX keep the
+    // in-process describer, and .doc/.rtf are rejected there outright. See
+    // docparse/config.js for why each one is where it is. Everything that
+    // answers false below, and every format when DOCPARSE_ENABLED is off,
+    // follows exactly the same path it did before this integration.
+    const docparse = getDocParse(env);
+    if (docparse && shouldUseDocParse(mimeType, docparse.config)) {
+        return ingestViaDocParse({
+            db,
+            ai,
+            docparse,
+            buffer,
+            effectiveName,
+            effectiveSize,
+            mimeType,
+            gridfsFileId,
+            courseId,
+            lectureName,
+            documentType,
+            instructorId,
+            title,
+            metadata,
+            emit,
+            awaitParse
+        });
+    }
 
     let textContent = '';
     let parsedSlides = [];
@@ -311,8 +649,10 @@ module.exports = {
     SUPPORTED_DOCUMENT_MIME_TYPES,
     createDocumentParser,
     createProgressEmitter,
+    finishDocParseJob,
     ingestDocument,
     ingestFileBuffer,
+    ingestViaDocParse,
     isSupportedDocumentMimeType,
     parseDocumentBuffer
 };

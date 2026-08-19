@@ -22,7 +22,7 @@ const { createId } = require('../services/id');
  *   fileData: Buffer,             // File binary data (for file uploads)
  *   mimeType: String,             // MIME type of the file
  *   size: Number,                 // File size in bytes
- *   status: String,               // "uploaded", "parsing", "parsed", "error"
+ *   status: String,               // "uploaded" for success, "parse-failed" for parsing failure
  *   uploadDate: Date,             // When the document was uploaded
  *   lastModified: Date,           // Last modification timestamp
  *   metadata: {                   // Additional metadata
@@ -144,7 +144,9 @@ async function updateDocumentContent(db, documentId, content) {
                 $set: { 
                     content: content,
                     lastModified: new Date(),
-                    status: 'parsed'
+                    // Keep the historical public lifecycle stable. Detailed
+                    // parse/index readiness lives under metadata.parsing.
+                    status: 'uploaded'
                 }
             }
         );

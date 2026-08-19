@@ -577,6 +577,22 @@
             if (failure) throw failure;
             if (!finished) throw new Error('The import ended without confirming a result.');
 
+            if (finished.parsing) {
+                renderImportStages('extract');
+                setStageDetail('extract', 'Parsing continues in the background · check 0');
+                const parsedDocument = await waitForUploadedDocumentParsing(finished.documentId, {
+                    onProgress: ({ polls, parsing }) => {
+                        const label = parsing?.status === 'processing' ? 'Parsing the document' : 'Waiting for parsed content';
+                        setStageDetail('extract', `${label} · check ${polls}`);
+                    }
+                });
+                finished.qdrantProcessed = parsedDocument.metadata?.parsing?.indexed === true;
+                finished.chunksStored = parsedDocument.metadata?.parsing?.chunksStored || 0;
+                if (!finished.qdrantProcessed) {
+                    throw new Error('The document was parsed, but its search index could not be created.');
+                }
+            }
+
             renderImportStages('done');
             const chunkNote = finished.chunksStored
                 ? ` ${finished.chunksStored} searchable chunks were created.`

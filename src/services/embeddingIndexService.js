@@ -1,7 +1,7 @@
 /**
  * Embedding index tracking
  *
- * A document's `status: 'parsed'` says nothing about *which* embedding model
+ * A document's `status: 'uploaded'` says nothing about *which* embedding model
  * indexed it, so it cannot answer the only question that matters when a surface
  * switches platforms: "does this content already have current vectors for the
  * profile I am about to search?"

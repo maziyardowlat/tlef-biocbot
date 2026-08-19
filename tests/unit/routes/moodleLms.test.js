@@ -123,7 +123,8 @@ describe('Moodle LMS routes', () => {
         const ingestFile = jest.fn(async (input) => ({
             result: { documentId: 'doc-2', filename: input.title },
             courseResult: { success: true },
-            qdrantResult: { success: true, chunksStored: 2 }
+            qdrantResult: null,
+            jobId: 'parse-job-2'
         }));
         const resolveAi = jest.fn(async () => ({ llm: {}, qdrant: {} }));
         const db = memoryDb({
@@ -142,7 +143,11 @@ describe('Moodle LMS routes', () => {
             .send({ moodleFileId: 'file-hash', lectureName: 'Unit 1', documentType: 'lecture-notes' })
             .expect(201);
 
-        expect(response.body.data).toMatchObject({ documentId: 'doc-2', chunksStored: 2 });
+        expect(response.body.data).toMatchObject({
+            documentId: 'doc-2',
+            chunksStored: 0,
+            parsing: { jobId: 'parse-job-2', status: 'processing' }
+        });
         expect(downloadFile).toHaveBeenCalledWith(
             harness.moodleClient,
             '20',
@@ -152,6 +157,7 @@ describe('Moodle LMS routes', () => {
         expect(ingestFile).toHaveBeenCalledWith(expect.objectContaining({
             courseId: 'BIOC-1',
             lectureName: 'Unit 1',
+            awaitParse: false,
             buffer: expect.any(Buffer),
             metadata: expect.objectContaining({
                 lms: expect.objectContaining({

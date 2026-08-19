@@ -458,6 +458,19 @@ async function handleUpload() {
         }
 
         const uploadedDocumentId = uploadResult?.data?.documentId || null;
+
+        if (uploadResult?.data?.parsing) {
+            showNotification('Upload complete. Parsing and indexing are continuing in the background…', 'info');
+            try {
+                const parsedDocument = await waitForUploadedDocumentParsing(uploadedDocumentId);
+                if (parsedDocument.metadata?.parsing?.indexed !== true) {
+                    throw new Error('The document was parsed, but its search index could not be created.');
+                }
+            } catch (error) {
+                error.uploadSucceeded = true;
+                throw error;
+            }
+        }
         
         // Update status badge based on content type
         let statusBadge = null;
@@ -518,7 +531,9 @@ async function handleUpload() {
 
     } catch (error) {
         console.error('Error uploading content:', error);
-        showNotification(`Error uploading content: ${error.message}. Please try again.`, 'error');
+        showNotification(error.uploadSucceeded
+            ? `The file was uploaded, but processing failed: ${error.message}`
+            : `Error uploading content: ${error.message}. Please try again.`, 'error');
 
         // Hide loading indicator and show upload section on error
         if (loadingIndicator) loadingIndicator.style.display = 'none';

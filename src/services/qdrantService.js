@@ -545,8 +545,8 @@ class QdrantService {
                         mimeType: documentData.mimeType,
                         documentType: documentData.documentType || 'unknown',
                         type: documentData.type || 'unknown',
-                        chunkIndex: i,
-                        totalChunks: chunks.length,
+                        chunkIndex: (Number(documentData.chunkIndexOffset) || 0) + i,
+                        totalChunks: Number(documentData.totalChunks) || chunks.length,
                         chunkText: chunks[i],
                         chunkLength: chunks[i].length,
                         strategyUsed: strategyUsed,
@@ -557,7 +557,7 @@ class QdrantService {
                 points.push(point);
                 storedChunks.push({ 
                     id: chunkId, 
-                    chunkIndex: i,
+                    chunkIndex: (Number(documentData.chunkIndexOffset) || 0) + i,
                     documentId: documentData.documentId,
                     chunkText: chunks[i].substring(0, 50) + '...' // First 50 chars for reference
                 });

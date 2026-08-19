@@ -36,16 +36,27 @@ async function loadDocuments() {
                 continue;
             }
             
-            // Load documents from the course structure instead of separate API
-            const response = await fetch(`/api/courses/${courseId}?instructorId=${getCurrentInstructorId()}`);
-            
+            // The canonical document record carries asynchronous parse/index
+            // status. Course.lectures[].documents is only a reference snapshot
+            // and can be stale after background completion.
+            const response = await fetch(
+                `/api/documents/lecture?courseId=${encodeURIComponent(courseId)}&lectureName=${encodeURIComponent(lectureName)}`
+            );
+
             if (response.ok) {
                 const result = await response.json();
-                const course = result.data;
-                
-                if (course && course.lectures) {
-                    const unit = course.lectures.find(l => l.name === lectureName);
-                    const documents = unit ? (unit.documents || []) : [];
+                let documents = result?.data?.documents;
+
+                // Compatibility fallback for older deployments during rollout.
+                if (!Array.isArray(documents)) {
+                    const courseResponse = await fetch(`/api/courses/${courseId}?instructorId=${getCurrentInstructorId()}`);
+                    if (!courseResponse.ok) throw new Error(`Failed to load course documents: ${courseResponse.status}`);
+                    const course = (await courseResponse.json()).data;
+                    const unit = course?.lectures?.find(l => l.name === lectureName);
+                    documents = unit ? (unit.documents || []) : [];
+                }
+
+                if (Array.isArray(documents)) {
                     
                     // Find the course materials section
                     const courseMaterialsSection = item.querySelector('.course-materials-section .section-content');
@@ -84,8 +95,6 @@ async function loadDocuments() {
                     } else {
                         console.error('Course materials section not found for', lectureName);
                     }
-                } else {
-                    // No course or lectures data found
                 }
             } else {
                 console.error('Failed to load course data:', response.status);
@@ -178,12 +187,25 @@ function createDocumentItem(doc) {
     
     // Map status values to display text consistently
     let statusText;
-    switch (doc.status) {
+    const parsingStatus = doc.metadata?.parsing?.status;
+    switch (parsingStatus || doc.status) {
+        case 'processing':
+            statusText = 'Processing';
+            break;
+        case 'failed':
+        case 'parse-failed':
+            statusText = 'Error';
+            break;
+        case 'ready':
+            statusText = doc.metadata?.parsing?.indexed === false ? 'Indexing failed' : 'Uploaded';
+            break;
         case 'uploaded':
             statusText = 'Uploaded';
             break;
         case 'parsed':
-            statusText = 'Processed';
+            // Backward compatibility for old rows created before successful
+            // documents standardized on `uploaded`.
+            statusText = 'Uploaded';
             break;
         case 'parsing':
             statusText = 'Processing';

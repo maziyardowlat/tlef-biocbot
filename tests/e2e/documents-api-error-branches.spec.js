@@ -74,13 +74,23 @@ test.afterAll(async () => {
 test.describe('POST /api/documents/upload — parse paths', () => {
     test.use({ storageState: storageStatePath('instructor') });
 
-    test('PDF upload with garbage bytes fires the docParser failure catch and still stores the doc', async ({ request: api }) => {
+    test('PDF upload with garbage bytes still stores the doc and reports the failure', async ({ request: api }) => {
         await seedCourse({ courseId: COURSE_A, instructorId });
         // application/pdf mime + .pdf extension forces the upload handler down
-        // the non-text branch (lines 217-255). The bytes are not a real PDF, so
-        // docParser.parse throws and the `catch (parseError)` arm fires
-        // (lines 256-259). The document should still be saved with empty
-        // content and the API should return success.
+        // the non-text branch. The bytes are not a real PDF, so the parse
+        // fails — and the assertions below hold whichever parser ran:
+        //
+        //   * in-process (DOCPARSE_ENABLED=false, or a non-PDF format): the
+        //     `catch (parseError)` arm fires and content stays empty;
+        //   * parsing service: the job ends `failed` with `parse_error`
+        //     (verified against the service — these bytes are accepted for
+        //     parsing and then fail to open, rather than being rejected up
+        //     front). The route has already returned by then, so content is
+        //     empty here too — the difference is that the verdict lands on
+        //     `metadata.parsing` afterwards.
+        //
+        // Either way the upload must return 200 with a stored document, and
+        // must never leave that document saying "processing" forever.
         const tmpPath = path.join(os.tmpdir(), `biocbot-e2e-docerr-${Date.now()}.pdf`);
         fs.writeFileSync(tmpPath, 'this is not a real PDF, just bytes');
         try {
@@ -114,6 +124,32 @@ test.describe('POST /api/documents/upload — parse paths', () => {
             // Either the parser produced nothing (parseError catch) or the
             // produced result was falsy — both branches end with empty content.
             expect(stored.content === '' || stored.content == null).toBe(true);
+
+            // When the parsing service took the job, the response says so and
+            // the document must reach a terminal parse state on its own. A
+            // document stuck on "processing" is the failure mode this asserts
+            // against — nothing downstream would ever retry it.
+            if (body.data.parsing) {
+                expect(body.data.parsing.jobId).toBeTruthy();
+                expect(body.data.parsing.status).toBe('processing');
+
+                const deadline = Date.now() + 60_000;
+                let parsing = stored.metadata?.parsing;
+                while (Date.now() < deadline && parsing?.status === 'processing') {
+                    await new Promise((resolve) => setTimeout(resolve, 1_000));
+                    const latest = await withDb((db) =>
+                        db.collection('documents').findOne({ documentId: body.data.documentId })
+                    );
+                    parsing = latest.metadata?.parsing;
+                }
+                expect(parsing.status).toBe('failed');
+                // The bytes decide, not the extension. `parse_error` is the
+                // service's verdict for a file it accepts and then cannot open;
+                // `unsupported_type` covers formats it declines up front.
+                expect(['parse_error', 'unsupported_type', 'retries_exhausted'])
+                    .toContain(parsing.reason);
+                expect(parsing.message).toBeTruthy();
+            }
         } finally {
             try { fs.unlinkSync(tmpPath); } catch (_) { /* ignore */ }
         }

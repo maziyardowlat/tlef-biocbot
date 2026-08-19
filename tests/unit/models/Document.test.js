@@ -119,7 +119,7 @@ describe('Document.updateDocumentContent', () => {
         });
 
         const updated = await Document.getDocumentById(db, 'doc-1');
-        expect(updated).toMatchObject({ content: 'Extracted text', status: 'parsed' });
+        expect(updated).toMatchObject({ content: 'Extracted text', status: 'uploaded' });
         expect(updated.lastModified).toBeInstanceOf(Date);
     });
 

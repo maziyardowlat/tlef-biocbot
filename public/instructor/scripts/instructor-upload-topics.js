@@ -551,10 +551,35 @@ async function handleUpload() {
         
         // Add the content to the appropriate week with document ID
         const documentId = uploadResult?.data?.documentId;
-        const uploadStatus = uploadResult?.data?.qdrantProcessed ? 'processed' : 'uploaded';
+        const uploadStatus = uploadResult?.data?.parsing
+            ? 'parsing'
+            : 'uploaded';
         addContentToWeek(currentWeek, fileName, `Uploaded successfully - ${uploadResult?.data?.filename || fileName}`, documentId, uploadStatus, currentContentType);
-        
-        showNotification(uploadResult?.message || 'Content uploaded successfully!', 'success');
+
+        if (uploadResult?.data?.parsing) {
+            showNotification('Upload complete. Parsing and indexing are continuing in the background…', 'info');
+            try {
+                const parsedDocument = await waitForUploadedDocumentParsing(documentId, {
+                    onProgress: ({ polls }) => {
+                        const status = document.querySelector(`.file-item[data-document-id="${documentId}"] .status-text`);
+                        if (status) status.textContent = `Processing · check ${polls}`;
+                    }
+                });
+                uploadResult.data.qdrantProcessed = parsedDocument.metadata?.parsing?.indexed === true;
+                uploadResult.data.chunksStored = parsedDocument.metadata?.parsing?.chunksStored || 0;
+                if (!uploadResult.data.qdrantProcessed) {
+                    throw new Error('The document was parsed, but its search index could not be created.');
+                }
+                if (typeof loadDocuments === 'function') await loadDocuments();
+            } catch (error) {
+                error.uploadSucceeded = true;
+                throw error;
+            }
+        }
+
+        showNotification(uploadResult?.data?.parsing
+            ? 'Content parsed and indexed successfully!'
+            : (uploadResult?.message || 'Content uploaded successfully!'), 'success');
         if (typeof loadFlashcardDecks === 'function') {
             await loadFlashcardDecks();
         }
@@ -585,7 +610,9 @@ async function handleUpload() {
 
     } catch (error) {
         console.error('Error uploading content:', error);
-        showNotification(`Error uploading content: ${error.message}`, 'error');
+        showNotification(error.uploadSucceeded
+            ? `The file was uploaded, but processing failed: ${error.message}`
+            : `Error uploading content: ${error.message}`, 'error');
 
         // Hide loading indicator and show upload section on error
         if (loadingIndicator) loadingIndicator.style.display = 'none';
@@ -695,7 +722,9 @@ function addContentToWeek(week, fileName, description, documentId, status = 'upl
             targetFileItem.querySelector('.file-info').insertBefore(typeBadge, targetFileItem.querySelector('.status-text'));
         }
         typeBadge.textContent = getDocumentTypeLabel(contentType);
-        targetFileItem.querySelector('.status-text').textContent = status === 'processed' ? 'Processed' : 'Uploaded';
+        targetFileItem.querySelector('.status-text').textContent = status === 'processed'
+            ? 'Processed'
+            : (status === 'parsing' ? 'Processing' : 'Uploaded');
         targetFileItem.querySelector('.status-text').className = `status-text ${status}`;
         
         // Set document ID for proper deletion
@@ -728,7 +757,7 @@ function addContentToWeek(week, fileName, description, documentId, status = 'upl
                 <h3>${fileName}</h3>
                 <p>${description}</p>
                 <span class="document-type-badge">${getDocumentTypeLabel(contentType)}</span>
-                <span class="status-text ${status}">${status === 'processed' ? 'Processed' : 'Uploaded'}</span>
+                <span class="status-text ${status}">${status === 'processed' ? 'Processed' : (status === 'parsing' ? 'Processing' : 'Uploaded')}</span>
             </div>
             <div class="file-actions">
                 ${buildDocumentActionButtons(documentId)}
