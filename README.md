@@ -200,6 +200,22 @@ BiocBot uses Qdrant for vector-based semantic search:
 
 Visit `/qdrant-test` to test the Qdrant functionality interactively.
 
+## 🔐 Field-Level Encryption
+
+Chat transcripts, mental health flags, and Super Chat notes can be encrypted
+before they reach MongoDB, so a copy of the database — a dump, a snapshot, a
+leaked connection string — does not expose what students wrote.
+
+Encryption is **off by default**. To turn it on:
+
+```bash
+npm run encryption:keygen   # then set the key + ENCRYPTION_ENABLED=true
+```
+
+Read [documentation/ENCRYPTION.md](documentation/ENCRYPTION.md) before enabling
+it in an environment that already holds data — existing rows need a migration,
+and the Qdrant copy of the same text is **not** covered.
+
 ## 🔧 Development
 
 ### Project Structure

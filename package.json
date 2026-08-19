@@ -9,6 +9,11 @@
     "dev:server": "cross-env NODE_ENV=development nodemon src/server.js",
     "dev:client": "browser-sync start --proxy 'http://localhost:8050' --files 'public' --browser 'Google Chrome'",
     "grant:system-admin": "node scripts/grant-system-admin.js",
+    "encryption:keygen": "node scripts/generate-encryption-key.js",
+    "encryption:plan": "ubc-genai-encryption plan --config ./src/config/encryption.config.js --all-configured",
+    "encryption:status": "ubc-genai-encryption status --config ./src/config/encryption.config.js",
+    "encryption:migrate": "ubc-genai-encryption migrate --config ./src/config/encryption.config.js",
+    "encryption:verify": "ubc-genai-encryption verify --config ./src/config/encryption.config.js",
     "seed:local-lms-grades": "node scripts/seed-local-lms-grades.js --yes",
     "test": "playwright test",
     "test:e2e": "playwright test",
@@ -54,6 +59,7 @@
     "ubc-genai-toolkit-core": "^0.1.0",
     "ubc-genai-toolkit-document-parsing": "^0.3.1",
     "ubc-genai-toolkit-embeddings": "^0.2.0",
+    "ubc-genai-toolkit-encryption": "file:vendor/ubc-genai-toolkit-encryption-0.1.0.tgz",
     "ubc-genai-toolkit-llm": "^0.7.0"
   },
   "optionalDependencies": {

@@ -13,6 +13,8 @@ const { ensureIndexes: ensureChatSurveyResponseIndexes } = require('./models/Cha
 const { ensureIndexes: ensureFlashcardIndexes } = require('./models/FlashcardDeck');
 const { ensureIndexes: ensureProviderMigrationIndexes } = require('./services/providerMigrationService');
 const { resumePendingMigrations } = require('./services/providerMigrationRunner');
+const { protectDatabase } = require('./services/encryption');
+const { resolveRawDb } = require('./services/rawDb');
 const coursesRoutes = require('./routes/courses');
 const flagsRoutes = require('./routes/flags');
 const lecturesRoutes = require('./routes/lectures');
@@ -274,13 +276,18 @@ async function connectToMongoDB() {
             delete global._resolveMongoClient;
         }
 
-        // Get the database instance
-        db = client.db();
+        // Get the database instance, wrapped with field-level encryption when it
+        // is enabled. Everything downstream sees the protected handle, so a
+        // configured collection cannot be written in plaintext by accident.
+        db = await protectDatabase(client.db());
 
         console.log('✅ Successfully connected to MongoDB');
 
         // Make the database available to routes
         app.locals.db = db;
+        // The driver Db underneath, for GridFS and administrative commands the
+        // wrapper deliberately does not expose. See src/services/rawDb.js.
+        app.locals.rawDb = resolveRawDb(db);
 
         // Test the connection by listing collections
         const collections = await db.listCollections().toArray();
@@ -573,7 +580,7 @@ app.get('/api/health', async (req, res) => {
             healthStatus.services.mongodb = { status: 'error', message: 'Database not connected' };
         } else {
             try {
-                await db.admin().ping();
+                await resolveRawDb(db).admin().ping();
                 healthStatus.services.mongodb = { status: 'healthy', message: 'Connected' };
             } catch (error) {
                 healthStatus.services.mongodb = { status: 'error', message: error.message };

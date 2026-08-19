@@ -38,6 +38,9 @@ function getCollection(db) {
     return db.collection('mentalHealthFlags');
 }
 
+/** Every status a flag can hold, in the order the statistics object reports them. */
+const FLAG_STATUSES = ['pending', 'escalated', 'dismissed', 'resolved', 'disregarded'];
+
 /**
  * Create a new mental health flag
  * @param {Object} db - MongoDB database instance
@@ -141,17 +144,14 @@ async function updateFlagStatus(db, flagId, newStatus, userId) {
 async function getMentalHealthFlagStats(db, courseId) {
     const collection = getCollection(db);
 
-    const pipeline = [
-        { $match: { courseId } },
-        {
-            $group: {
-                _id: '$status',
-                count: { $sum: 1 }
-            }
-        }
-    ];
-
-    const stats = await collection.aggregate(pipeline).toArray();
+    // Counted with one query per status rather than a $group: this collection is
+    // field-level encrypted, and the encryption wrapper only allows aggregation
+    // stages it can prove safe over encrypted paths ($match/$sort/$skip/$limit/
+    // $project). $status is plaintext, but the analyzer rejects the stage, not
+    // the field. The status set is fixed and small, so the cost is bounded.
+    const counts = await Promise.all(
+        FLAG_STATUSES.map(status => collection.countDocuments({ courseId, status }))
+    );
 
     const statistics = {
         total: 0,
@@ -162,9 +162,9 @@ async function getMentalHealthFlagStats(db, courseId) {
         disregarded: 0
     };
 
-    stats.forEach(stat => {
-        statistics[stat._id] = stat.count;
-        statistics.total += stat.count;
+    FLAG_STATUSES.forEach((status, index) => {
+        statistics[status] = counts[index];
+        statistics.total += counts[index];
     });
 
     return statistics;

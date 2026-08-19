@@ -10,6 +10,7 @@ const CourseModel = require('../models/Course');
 const { hasSystemAdminAccess } = require('../services/authorization');
 const { contentHash, markDocumentIndexReady } = require('../services/embeddingIndexService');
 const { resolveCourseAi, sendLlmKeyError } = require('./llmKeyMiddleware');
+const { resolveRawDb } = require('../services/rawDb');
 
 // Initialize Qdrant service
 const qdrantService = new QdrantService({ skipEmbeddings: true });
@@ -441,8 +442,10 @@ router.delete('/delete-all-collections', async (req, res) => {
             });
         }
 
-        // Delete MongoDB collections using existing connection
-        const db = req.app.locals.db;
+        // Delete MongoDB collections using existing connection. Dropping a
+        // collection is a driver-level operation the encryption wrapper does not
+        // expose, so this route works against the raw Db.
+        const db = resolveRawDb(req.app.locals.db);
         if (!db) {
             return res.status(500).json({
                 success: false,

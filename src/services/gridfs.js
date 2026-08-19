@@ -11,6 +11,7 @@
 
 const { GridFSBucket, ObjectId } = require('mongodb');
 const { Readable } = require('stream');
+const { resolveRawDb } = require('./rawDb');
 
 const BUCKET_NAME = 'documentFiles';
 
@@ -19,7 +20,10 @@ const BUCKET_NAME = 'documentFiles';
  * @returns {GridFSBucket}
  */
 function getBucket(db) {
-    return new GridFSBucket(db, { bucketName: BUCKET_NAME });
+    // GridFSBucket needs a driver Db, and the field-level encryption wrapper is
+    // not one. Binary streams are outside that toolkit's scope either way, so
+    // these bytes are stored exactly as they were before encryption was added.
+    return new GridFSBucket(resolveRawDb(db), { bucketName: BUCKET_NAME });
 }
 
 /** Coerce a string or ObjectId into an ObjectId (returns null if invalid). */
