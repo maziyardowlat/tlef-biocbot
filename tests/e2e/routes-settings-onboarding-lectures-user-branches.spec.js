@@ -258,7 +258,9 @@ test.describe('settings.js — system-admin happy paths', () => {
         expect(res.ok()).toBeTruthy();
         const body = await res.json();
         expect(body.isCourseSpecific).toBe(true);
-        expect(body.prompts.systemPrompt).toBe('COURSE_SYS');
+        expect(body.prompts.systemPrompt).toContain('COURSE_SYS');
+        expect(body.prompts.systemPrompt).toContain('CRITICAL LaTeX FORMATTING');
+        expect(body.prompts.systemPrompt).toContain('CRITICAL SMILES FORMATTING');
         // Falls back to default for missing fields.
         expect(typeof body.prompts.trueFalse).toBe('string');
     });
@@ -286,7 +288,9 @@ test.describe('settings.js — system-admin happy paths', () => {
         const doc = await withDb((db) =>
             db.collection('courses').findOne({ courseId: COURSE_A })
         );
-        expect(doc.questionPrompts.systemPrompt).toBe('s');
+        expect(doc.questionPrompts.systemPrompt.startsWith('s\n\n')).toBe(true);
+        expect(doc.questionPrompts.systemPrompt).toContain('CRITICAL LaTeX FORMATTING');
+        expect(doc.questionPrompts.systemPrompt).toContain('CRITICAL SMILES FORMATTING');
     });
 
     test('POST /question-prompts/reset 400 when courseId missing', async ({ request: api }) => {

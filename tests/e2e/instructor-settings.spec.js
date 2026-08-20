@@ -1102,7 +1102,9 @@ test.describe('Instructor settings UI', () => {
         await expect(page.locator('#question-generation-section')).toBeVisible();
         await expect(page.locator('#mental-health-detection-section')).toBeVisible();
         await expect(page.locator('#mental-health-detection-prompt')).toHaveValue('Seed mental health detection prompt');
-        await expect(page.locator('#question-system-prompt')).toHaveValue('Seed question system prompt');
+        await expect(page.locator('#question-system-prompt')).toHaveValue(
+            /^Seed question system prompt[\s\S]*CRITICAL LaTeX FORMATTING[\s\S]*CRITICAL SMILES FORMATTING/
+        );
 
         await openSettingsPanel(page, 'student-chat');
         await expect(page.locator('#student-chat-section')).toBeVisible();
