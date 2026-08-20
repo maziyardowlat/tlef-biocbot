@@ -669,3 +669,77 @@
         align-self: stretch;
     }
 }
+
+/* Export Change Log */
+.downloads-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.changelog-modal-content {
+    max-width: 900px;
+}
+
+.changelog-status {
+    color: #5f666d;
+    font-size: 0.95rem;
+    padding: 1rem 0;
+}
+
+.changelog-error {
+    color: #a4373a;
+}
+
+.changelog-updated {
+    color: #5f666d;
+    font-size: 0.85rem;
+    margin: 0 0 1rem 0;
+}
+
+.changelog-intro p {
+    color: #3d4551;
+    font-size: 0.95rem;
+    line-height: 1.6;
+    margin: 0 0 0.75rem 0;
+}
+
+.changelog-entries {
+    margin-top: 1.5rem;
+    border-top: 1px solid #e2e8f0;
+}
+
+.changelog-entry {
+    padding: 1.25rem 0;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.changelog-entry h3 {
+    margin: 0 0 0.25rem 0;
+    color: #2c3e50;
+    font-size: 1.05rem;
+    font-weight: 600;
+}
+
+.changelog-entry p {
+    color: #3d4551;
+    font-size: 0.9rem;
+    line-height: 1.6;
+    margin: 0 0 0.6rem 0;
+}
+
+.changelog-entry p:last-child {
+    margin-bottom: 0;
+}
+
+.changelog-entry p.changelog-meta {
+    color: #5f666d;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+}
+
+.changelog-entry p.changelog-references {
+    color: #5f666d;
+    font-size: 0.8rem;
+}

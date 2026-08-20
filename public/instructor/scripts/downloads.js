@@ -1467,6 +1467,214 @@ function handleLogout() {
     window.location.href = '/login';
 }
 
+/* ------------------------------------------------------------------ *
+ * Export change log
+ *
+ * The curated log of changes that affect what a downloaded chat contains
+ * (src/data/export-change-log.json). Shown in a modal here and downloadable as
+ * Markdown with the instructor export guide appended.
+ * ------------------------------------------------------------------ */
+
+// Fetched once per page load; the log only changes on deploy.
+let changeLogCache = null;
+
+/**
+ * Open the change log modal, loading its content on first open
+ */
+async function openChangeLogModal() {
+    const modal = document.getElementById('changelog-modal');
+    if (!modal) return;
+
+    modal.style.display = 'block';
+    a11yModal.open(modal, { onRequestClose: closeChangeLogModal });
+
+    await loadChangeLog();
+}
+
+/**
+ * Close the change log modal
+ */
+function closeChangeLogModal() {
+    const modal = document.getElementById('changelog-modal');
+    if (modal) {
+        a11yModal.close(modal);
+        modal.style.display = 'none';
+    }
+}
+
+/**
+ * Fetch the change log and render it into the modal
+ */
+async function loadChangeLog() {
+    const loadingElement = document.getElementById('changelog-loading');
+    const errorElement = document.getElementById('changelog-error');
+    const bodyElement = document.getElementById('changelog-body');
+
+    if (changeLogCache) {
+        renderChangeLog(changeLogCache);
+        return;
+    }
+
+    if (loadingElement) loadingElement.style.display = 'block';
+    if (errorElement) errorElement.style.display = 'none';
+    if (bodyElement) bodyElement.style.display = 'none';
+
+    try {
+        const response = await fetch('/api/export-change-log', { credentials: 'include' });
+        const result = await response.json();
+
+        if (!response.ok || !result.success) {
+            throw new Error(result.message || `Request failed with status ${response.status}`);
+        }
+
+        changeLogCache = result.data;
+        renderChangeLog(result.data);
+    } catch (error) {
+        console.error('Error loading export change log:', error);
+        if (loadingElement) loadingElement.style.display = 'none';
+        if (errorElement) {
+            errorElement.textContent = 'Unable to load the change log. Please try again.';
+            errorElement.style.display = 'block';
+        }
+    }
+}
+
+/**
+ * Render the change log document into the modal
+ * @param {Object} changeLog - Change log returned by the API
+ */
+function renderChangeLog(changeLog) {
+    const loadingElement = document.getElementById('changelog-loading');
+    const errorElement = document.getElementById('changelog-error');
+    const bodyElement = document.getElementById('changelog-body');
+    const updatedElement = document.getElementById('changelog-updated');
+    const introElement = document.getElementById('changelog-intro');
+    const entriesElement = document.getElementById('changelog-entries');
+
+    if (loadingElement) loadingElement.style.display = 'none';
+    if (errorElement) errorElement.style.display = 'none';
+
+    if (updatedElement) {
+        updatedElement.textContent = changeLog.lastUpdated
+            ? `Last updated ${changeLog.lastUpdated}`
+            : '';
+    }
+
+    if (introElement) {
+        introElement.innerHTML = '';
+        (changeLog.intro || []).forEach(paragraph => {
+            const p = document.createElement('p');
+            p.textContent = paragraph;
+            introElement.appendChild(p);
+        });
+    }
+
+    if (entriesElement) {
+        entriesElement.innerHTML = '';
+        (changeLog.entries || []).forEach(entry => {
+            entriesElement.appendChild(createChangeLogEntry(entry));
+        });
+    }
+
+    if (bodyElement) bodyElement.style.display = 'block';
+}
+
+/**
+ * Build the element for a single change log entry
+ * @param {Object} entry - Change log entry
+ * @returns {HTMLElement} Entry element
+ */
+function createChangeLogEntry(entry) {
+    const article = document.createElement('article');
+    article.className = 'changelog-entry';
+
+    const heading = document.createElement('h3');
+    heading.textContent = entry.title;
+    article.appendChild(heading);
+
+    const meta = document.createElement('p');
+    meta.className = 'changelog-meta';
+    meta.textContent = entry.area ? `${entry.date} · ${entry.area}` : entry.date;
+    article.appendChild(meta);
+
+    const summary = document.createElement('p');
+    summary.textContent = entry.summary;
+    article.appendChild(summary);
+
+    if (entry.exportImpact) {
+        article.appendChild(createLabelledParagraph('What you see in exports now:', entry.exportImpact));
+    }
+    if (entry.beforeThisChange) {
+        article.appendChild(createLabelledParagraph('In exports of earlier sessions:', entry.beforeThisChange));
+    }
+    if (Array.isArray(entry.references) && entry.references.length > 0) {
+        const references = createLabelledParagraph('Reference:', entry.references.join(', '));
+        references.classList.add('changelog-references');
+        article.appendChild(references);
+    }
+
+    return article;
+}
+
+/**
+ * Build a paragraph with a bold lead-in label
+ * @param {string} label - Bold label text
+ * @param {string} text - Body text
+ * @returns {HTMLElement} Paragraph element
+ */
+function createLabelledParagraph(label, text) {
+    const paragraph = document.createElement('p');
+    const strong = document.createElement('strong');
+    strong.textContent = label;
+    paragraph.appendChild(strong);
+    paragraph.appendChild(document.createTextNode(` ${text}`));
+    return paragraph;
+}
+
+/**
+ * Download the change log (plus the export guide) as a Markdown file
+ */
+async function downloadChangeLogMarkdown() {
+    const button = document.getElementById('changelog-download-btn');
+    if (button) button.disabled = true;
+
+    try {
+        const response = await fetch('/api/export-change-log/markdown', { credentials: 'include' });
+        if (!response.ok) {
+            throw new Error(`Request failed with status ${response.status}`);
+        }
+
+        const markdown = await response.text();
+        const fileName = parseFileNameFromResponse(response) || 'biocbot-chat-export-change-log.md';
+        const blob = new Blob([markdown], { type: 'text/markdown' });
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    } catch (error) {
+        console.error('Error downloading export change log:', error);
+        showNotification('Unable to download the change log. Please try again.', 'error');
+    } finally {
+        if (button) button.disabled = false;
+    }
+}
+
+/**
+ * Read the server-provided file name from a Content-Disposition header
+ * @param {Response} response - Fetch response
+ * @returns {string|null} File name, or null when the header is absent
+ */
+function parseFileNameFromResponse(response) {
+    const header = response.headers.get('Content-Disposition') || '';
+    const match = header.match(/filename="?([^"';]+)"?/i);
+    return match ? match[1] : null;
+}
+
 // Make functions globally available
 window.viewStudentSessions = viewStudentSessions;
 window.downloadSession = downloadSession;
@@ -1475,3 +1683,6 @@ window.downloadAllCourseSessions = downloadAllCourseSessions;
 window.closeStudentModal = closeStudentModal;
 window.toggleDownloadMenu = toggleDownloadMenu;
 window.toggleChatPreview = toggleChatPreview;
+window.openChangeLogModal = openChangeLogModal;
+window.closeChangeLogModal = closeChangeLogModal;
+window.downloadChangeLogMarkdown = downloadChangeLogMarkdown;

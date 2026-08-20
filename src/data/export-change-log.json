@@ -1,0 +1,112 @@
+{
+    "title": "BiocBot Chat Export Change Log",
+    "subtitle": "Changes that affect what you see in a downloaded student chat",
+    "lastUpdated": "2026-08-20",
+    "intro": [
+        "This document lists the changes we have made to BiocBot that change what a downloaded student chat contains, or how it should be read. It is meant to be read alongside the export guide included at the end of this document.",
+        "Exports are generated from the stored session when you press Download, so a chat that was recorded before a change listed here still reflects the behaviour of the app at the time it happened. Downloading it again today does not retroactively correct it. Each entry therefore says both what newer exports look like and what to expect in exports of older sessions.",
+        "Dates are the date the change landed in the BiocBot codebase. A change reaches your course when the app is next deployed, which may be slightly later."
+    ],
+    "entries": [
+        {
+            "id": "tutor-mode-start",
+            "date": "2026-08-03",
+            "area": "Teaching mode",
+            "title": "New chats start in Tutor mode, and later mode switches are recorded",
+            "summary": "A new chat begins in Tutor mode unless the student has deliberately used the mode toggle before, and a first-time student who finishes the walkthrough is left in Tutor mode rather than being placed straight into Protege mode. Students who pass the assessment are still offered Protege mode, and many of them switch back to Tutor immediately.",
+            "exportImpact": "In the JSON, 'metadata.currentMode' is the mode the session was in at export time, which is not necessarily the mode the assessment chose. The 'mode-result' message records the mode the assessment determined, in 'modeData.determinedMode'. If the student changed it afterwards, a separate 'mode-toggle-result' message records that change. Read the three together before concluding that a student was mis-assigned.",
+            "beforeThisChange": "Older sessions can show a student being placed in Protege mode at the start of their very first chat, before they had any chance to choose.",
+            "references": ["Issue #463", "Issue #458", "commit 6bafdde"]
+        },
+        {
+            "id": "session-restore-replay-fix",
+            "date": "2026-07-31",
+            "area": "Reload and session restore",
+            "title": "Reloading a chat no longer replays earlier turns into the conversation",
+            "summary": "How a chat is restored and auto-saved after a browser refresh was reworked between 2026-07-14 and 2026-07-31. A refreshed session could previously rebuild its context in a way that presented one of BiocBot's own earlier replies to the model in the position normally held by student text, and could re-add an assessment question the student had already answered.",
+            "exportImpact": "A session that was refreshed exports the same messages that were on screen: no duplicated assessment question, and no bot turn that treats an earlier bot reply as something the student wrote.",
+            "beforeThisChange": "In exports of sessions refreshed before this fix you may see two consecutive BIOCBOT turns where the second one praises 'you' - for example 'You explained it perfectly' or 'You summarised that explanation perfectly'. That is BiocBot reacting to its own previous message. It is a poorly constructed response, not evidence that a student turn is missing from the export.",
+            "references": ["commit 562bdf2", "commit 95ba39b"]
+        },
+        {
+            "id": "assessment-summary-repair",
+            "date": "2026-07-23",
+            "area": "Assessment scoring",
+            "title": "The assessment score card now matches the stored answers",
+            "summary": "The summary card shown at the end of the assessment could display the wrong total - for example 1/3 for a student who had actually answered 3 of 3 correctly - even though the stored answers and the stored score were correct. Scoring was moved into a single shared module used by the chat, the stored session and the export, so all three agree. A repair script (scripts/repair-assessment-summaries.js, dry-run by default) can correct summaries that were already stored.",
+            "exportImpact": "The score shown in the 'mode-result' message agrees with the per-question records in 'practiceTests' and 'studentAnswers'.",
+            "beforeThisChange": "If an older export shows a 'mode-result' score card that disagrees with 'practiceTests', the per-question records in 'practiceTests' and 'studentAnswers' are the reliable ones - the student's answers were always stored correctly.",
+            "references": ["Issue #459", "commit 4a6decd"]
+        },
+        {
+            "id": "assessment-saved-immediately",
+            "date": "2026-07-23",
+            "area": "Assessment scoring",
+            "title": "A completed assessment is saved as soon as it finishes",
+            "summary": "The finished assessment result is written to the server as soon as it appears on the student's screen, instead of waiting for the student's next chat message to trigger a save.",
+            "exportImpact": "A session where the student took the assessment and then stopped still exports with its questions, answers and mode result.",
+            "beforeThisChange": "A student who completed the assessment and then left without chatting could produce a session with no record of the assessment.",
+            "references": ["commit 4a6decd"]
+        },
+        {
+            "id": "explain-button-labelled",
+            "date": "2026-07-14",
+            "area": "Explain button",
+            "title": "Explain responses are labelled and linked to the message they explain",
+            "summary": "When a student clicks Explain, the interface sends BiocBot's preceding reply back to the model as a background request. Clicking the button does not create or save a student turn, and never did. Explain-generated replies are now marked so you can tell them apart from ordinary replies.",
+            "exportImpact": "In the JSON, an Explain reply carries 'triggeredBy': 'explain_button', 'actionStatus': 'success', and 'sourceMessageId' pointing at the bot message the student asked BiocBot to explain. In the TXT transcript it still appears as a BIOCBOT turn with no student turn before it, which is expected for a button-triggered reply.",
+            "beforeThisChange": "Explain replies were indistinguishable from ordinary replies, so a bot turn with no preceding student turn looked like missing data.",
+            "references": ["Issue #447", "commit 95ba39b"]
+        },
+        {
+            "id": "summarize-event-logged",
+            "date": "2026-07-14",
+            "area": "Summarize button",
+            "title": "Summarize is recorded as a session event",
+            "summary": "A successful Summarize click is logged in the session's 'events' array, and the summarised session's end time is updated to the time of the click.",
+            "exportImpact": "The JSON gains an optional top-level 'events' array. A Summarize event has 'type': 'button_action', 'triggeredBy': 'summarize_button' and 'actionStatus': 'success' with its own timestamp. It is absent when a session has no session-level actions.",
+            "beforeThisChange": "Summarize left no trace in the export. A session simply ended, and the next one opened with a long, polished message attributed to the student.",
+            "references": ["Issue #449", "commit 95ba39b"]
+        },
+        {
+            "id": "timing-preserved",
+            "date": "2026-07-14",
+            "area": "Timing fields",
+            "title": "Message timing survives reloads, and reconstructed timing is flagged",
+            "summary": "Each message's 'elapsedTime' - the gap in milliseconds since the previous message - is stored with the message and preserved when the chat is reopened from History or restored after a reload. Intervals that had to be rebuilt from stored timestamps for older records are flagged rather than silently mixed in.",
+            "exportImpact": "'elapsedTime' reflects when the conversation actually happened. 'elapsedTimeDerived': true marks an interval reconstructed from timestamps; false marks one captured as the message was created. 'sessionInfo.duration' measures from the first student message to the last real bot response, so it excludes the welcome and assessment at the start.",
+            "beforeThisChange": "Reopening an older chat could overwrite its intervals with the time of the reload, so some gaps in older exports describe when the chat was viewed rather than when it happened. Check 'elapsedTimeDerived' before relying on a gap.",
+            "references": ["commit 95ba39b"]
+        },
+        {
+            "id": "session-inactivity-timeout",
+            "date": "2026-07-13",
+            "area": "Session boundaries",
+            "title": "Chats end after a configurable period of inactivity",
+            "summary": "Instructor Settings has a 'Chat session inactivity timeout (minutes)' setting, defaulting to 30 minutes. After that much inactivity, a returning student automatically starts a new chat and repeats the unit assessment. Their previous chat remains in their History.",
+            "exportImpact": "One student's work on a single unit routinely spans several session files. Order them by 'sessionInfo.startTime' and read them in sequence. Seeing the same unit's assessment repeated across those files is expected, not duplicated data.",
+            "beforeThisChange": "Session breaks were governed by the earlier, less predictable timeout handling, so the number of sessions per student is not directly comparable across this date.",
+            "references": ["commit c7e4b59"]
+        },
+        {
+            "id": "summarize-new-chat",
+            "date": "2026-06-26",
+            "area": "Summarize button",
+            "title": "Summarize and New chat split long conversations into linked sessions",
+            "summary": "Students can end a chat and carry an automatically generated recap into the next one, and the app does the same when a conversation reaches its message limit.",
+            "exportImpact": "The new session opens with a message of type 'user' whose 'isSummarySeed' is true. It is the generated recap, not something the student typed. A session created this way starts with that seed instead of the usual welcome and unit-selection message.",
+            "beforeThisChange": "Not applicable - sessions before this date were not bridged by a summary.",
+            "references": ["commit 1159af4", "commit 958729e"]
+        },
+        {
+            "id": "thumbs-rating",
+            "date": "2026-06-26",
+            "area": "Student feedback",
+            "title": "Students can rate BiocBot replies with a thumbs up or down",
+            "summary": "A thumbs up / thumbs down control was added to BiocBot's replies so students can rate individual answers.",
+            "exportImpact": "Bot messages carry 'feedbackRating': 'up', 'down' or null when the student did not rate the reply. The rating is the student's opinion of that reply; it is never something BiocBot set.",
+            "beforeThisChange": "Exports from before this date have no rating field, which means ratings were unavailable rather than withheld.",
+            "references": ["commit 3ecbd0d"]
+        }
+    ]
+}
