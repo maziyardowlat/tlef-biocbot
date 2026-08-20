@@ -393,6 +393,31 @@ test.describe('Instructor downloads page — system admin UI', () => {
         await expect(page.locator('#total-students')).toHaveText('2');
     });
 
+    test('opens the export change log modal and downloads it as Markdown', async ({ page }) => {
+        await openDownloadsPage(page);
+
+        await page.getByRole('button', { name: 'What changed in exports' }).click();
+
+        const modal = page.locator('#changelog-modal');
+        await expect(modal).toBeVisible({ timeout: 10_000 });
+        await expect(modal.locator('#changelog-error')).toBeHidden();
+        await expect(modal.locator('.changelog-entry').first()).toBeVisible({ timeout: 10_000 });
+
+        const [download] = await Promise.all([
+            page.waitForEvent('download'),
+            modal.getByRole('button', { name: 'Download as Markdown (.md)' }).click(),
+        ]);
+
+        expect(download.suggestedFilename()).toMatch(/^biocbot-chat-export-change-log-\d{4}-\d{2}-\d{2}\.md$/);
+
+        const markdown = await readDownloadedText(download);
+        expect(markdown).toContain('## Changes');
+        expect(markdown).toContain('## Appendix: Interpreting the JSON Chat Export');
+
+        await modal.locator('.modal-close').click();
+        await expect(modal).toBeHidden();
+    });
+
     test('closes the student modal via the close button', async ({ page }) => {
         await openDownloadsPage(page);
         const modal = await openStudentModal(page);

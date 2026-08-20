@@ -51,10 +51,13 @@
         <main class="main-content">
             <header class="downloads-header">
                 <h1 id="main" tabindex="-1"><span id="course-title">BIOC202 - Chat Downloads</span></h1>
-                <div class="course-selector" id="scope-selector-container" style="display: none;">
-                    <select id="scope-selector" aria-label="Download scope">
-                        <!-- Course + superchat bucket options populated dynamically -->
-                    </select>
+                <div class="downloads-header-actions">
+                    <div class="course-selector" id="scope-selector-container" style="display: none;">
+                        <select id="scope-selector" aria-label="Download scope">
+                            <!-- Course + superchat bucket options populated dynamically -->
+                        </select>
+                    </div>
+                    <button type="button" class="btn-secondary" id="changelog-btn" onclick="openChangeLogModal()">What changed in exports</button>
                 </div>
             </header>
 
@@ -148,6 +151,33 @@
                             <button onclick="downloadAllSessions('txt')">Download TXT</button>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Export Change Log Modal -->
+    <div id="changelog-modal" class="modal">
+        <div class="modal-content changelog-modal-content">
+            <div class="modal-header">
+                <h2 id="changelog-modal-title">What changed in chat exports</h2>
+                <button class="modal-close" onclick="closeChangeLogModal()" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+            </div>
+
+            <div class="modal-body">
+                <div id="changelog-loading" class="changelog-status" role="status">Loading the change log...</div>
+                <div id="changelog-error" class="changelog-status changelog-error" style="display: none;" role="alert"></div>
+                <div id="changelog-body" style="display: none;">
+                    <p class="changelog-updated" id="changelog-updated"></p>
+                    <div class="changelog-intro" id="changelog-intro"></div>
+                    <div class="changelog-entries" id="changelog-entries"></div>
+                </div>
+            </div>
+
+            <div class="modal-footer">
+                <div class="modal-actions">
+                    <button class="btn-secondary" onclick="closeChangeLogModal()">Close</button>
+                    <button class="btn-primary" id="changelog-download-btn" onclick="downloadChangeLogMarkdown()">Download as Markdown (.md)</button>
                 </div>
             </div>
         </div>
