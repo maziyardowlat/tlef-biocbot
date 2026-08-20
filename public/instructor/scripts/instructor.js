@@ -161,8 +161,11 @@ async function addNewUnit() {
         const result = await response.json();
         showNotification(result.message, 'success');
         
-        // Reload course data to refresh the UI
+        // Reload course data to refresh the UI. Hand the new unit's name to the
+        // renderer so it opens and scrolls to that unit instead of resetting the
+        // page to Unit 1.
         if (container) delete container.dataset.addingUnit;
+        window.pendingFocusUnitName = result?.data?.unit?.name || null;
         await loadSpecificCourse(courseId);
         
     } catch (error) {

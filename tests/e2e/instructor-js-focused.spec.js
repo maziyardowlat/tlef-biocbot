@@ -1690,4 +1690,38 @@ test.describe('instructor.js focused browser coverage', () => {
         expect(edgeResults.structuredTfAnswer).toContain('True');
         expect(edgeResults.structuredMcq).toContain('Beta');
     });
+
+    test('re-runs the topic scan from the document view modal', async ({ page }) => {
+        const captured = await openInstructorDocuments(page);
+
+        await page.evaluate((courseId) => {
+            const instructorWindow = /** @type {InstructorWindow} */ (window);
+            instructorWindow.showDocumentModal({
+                documentId: 'doc_lecture',
+                originalName: 'Metabolism notes.pdf',
+                documentType: 'lecture-notes',
+                content: 'Lecture content about the citric acid cycle.',
+                lectureName: 'Unit 1',
+                courseId,
+            });
+        }, COURSE_ID);
+
+        await page.locator('.document-modal .rescan-topics-btn').click();
+
+        // The document modal hands off to the shared topic-review modal
+        await expect(page.locator('#topic-review-modal')).toHaveClass(/show/, { timeout: 10_000 });
+        await expect(page.locator('.document-modal')).toHaveCount(0);
+        await expect(page.locator('#topic-review-context')).toContainText('Metabolism notes.pdf');
+        await expect(page.locator('#topic-review-list .topic-review-item')).toHaveCount(2);
+
+        await page.locator('#topic-review-save-btn').click();
+
+        await expect.poll(() => captured.savedTopics.length).toBe(1);
+        expect(captured.savedTopics.at(-1).topics.map((topic) => topic.topic)).toEqual([
+            'Glycolysis',
+            'Oxidative Phosphorylation',
+            'Citric Acid Cycle',
+            'ATP Synthase',
+        ]);
+    });
 });

@@ -75,8 +75,12 @@ function openTopicReviewModal(courseId, sourceName, existingTopics, suggestedTop
  * the equivalent for callers that have no modal of their own to transition
  * within, such as the Canvas/Moodle import. `unitId` must be passed explicitly
  * by those callers, since `currentWeek` is only set by the upload modal.
+ *
+ * `onExtracted` runs after extraction finishes but before the review modal
+ * opens, so a caller that put up its own loading state (the document viewer)
+ * can tear it down at the moment the modal takes over.
  */
-async function runTopicReviewAfterUpload(courseId, documentId, sourceName, unitId = currentWeek) {
+async function runTopicReviewAfterUpload(courseId, documentId, sourceName, unitId = currentWeek, onExtracted = null) {
     if (!courseId) return;
 
     let existingTopics = [];
@@ -92,6 +96,10 @@ async function runTopicReviewAfterUpload(courseId, documentId, sourceName, unitI
         suggestedTopics = await extractTopicsForUploadedDocument(courseId, documentId);
     } catch (error) {
         console.warn('Could not extract topics from uploaded document:', error);
+    }
+
+    if (typeof onExtracted === 'function') {
+        onExtracted();
     }
 
     // Modal only shows NEW topics from this upload (existing are hidden)
@@ -110,6 +118,52 @@ async function runTopicReviewAfterUpload(courseId, documentId, sourceName, unitI
         showNotification(`Added ${addedCount} new topic${addedCount === 1 ? '' : 's'} (${savedTopics.length} total).`, 'success');
     } else {
         showNotification('No new topics were added.', 'info');
+    }
+}
+
+/**
+ * Re-run topic extraction for a document that is already uploaded, triggered
+ * from the "View" document modal. Unlike the upload flow this can be run as
+ * often as the instructor likes; the review modal shows whatever the fresh
+ * scan found that is not already an approved course topic.
+ *
+ * @param {string} documentId - Document to re-scan
+ * @param {string} sourceName - Document name, shown as the modal's context line
+ * @param {string} courseId - Course the document belongs to
+ * @param {string} unitId - Unit the document belongs to (its lecture name)
+ */
+async function rescanDocumentTopics(documentId, sourceName, courseId, unitId) {
+    if (!courseId) {
+        showNotification('Could not determine the course for this document.', 'error');
+        return;
+    }
+
+    // Keep the document modal up with a loading state while the scan runs, the
+    // same way "Find Assessment Questions" does.
+    const footer = document.querySelector('.document-modal .modal-footer');
+    if (footer) {
+        footer.innerHTML = `
+            <div style="display: flex; align-items: center; gap: 10px; width: 100%; justify-content: center; padding: 8px 0;">
+                <div class="spinner" style="
+                    width: 20px; height: 20px;
+                    border: 3px solid #e5e7eb;
+                    border-top: 3px solid #2563eb;
+                    border-radius: 50%;
+                    animation: spin 0.8s linear infinite;
+                "></div>
+                <span style="color: #555; font-size: 14px;">Scanning for topics...</span>
+            </div>
+            <style>@keyframes spin { to { transform: rotate(360deg); } }</style>
+        `;
+    }
+
+    try {
+        await runTopicReviewAfterUpload(courseId, documentId, sourceName, unitId, closeDocumentModal);
+    } catch (error) {
+        console.error('Error re-scanning document topics:', error);
+        showNotification(`Error scanning for topics: ${error.message}`, 'error');
+    } finally {
+        closeDocumentModal();
     }
 }
 

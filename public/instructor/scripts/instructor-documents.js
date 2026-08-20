@@ -948,6 +948,15 @@ function showDocumentModal(documentData) {
                     border-top: 1px solid #eee;
                     padding-top: 10px;
                 ">
+                    <button class="rescan-topics-btn" style="
+                        background: #0f766e;
+                        color: white;
+                        border: none;
+                        padding: 8px 16px;
+                        border-radius: 4px;
+                        cursor: pointer;
+                        font-weight: 500;
+                    ">Find Struggle Topics</button>
                     ${(documentData.documentType === 'practice-quiz' || documentData.documentType === 'practice_q_tutorials') ? `
                     <button onclick="extractAssessmentQuestions('${documentData.documentId}', '${(documentData.lectureName || '').replace(/'/g, "\\'")}', '${documentData.courseId || ''}')" style="
                         background: #2563eb;
@@ -986,6 +995,16 @@ function showDocumentModal(documentData) {
         if (event.key !== 'Escape') return;
         event.preventDefault();
         closeDocumentModal();
+    });
+    // Re-runnable topic scan: available on every document view, not just the
+    // one-shot scan that runs right after an upload.
+    modal.querySelector('.rescan-topics-btn')?.addEventListener('click', () => {
+        rescanDocumentTopics(
+            documentData.documentId,
+            documentData.originalName,
+            documentData.courseId,
+            documentData.lectureName
+        );
     });
     modal.querySelector('.close-modal')?.focus();
 }

@@ -115,6 +115,36 @@ function getRenderableUnits(courseStructure, lectures) {
 }
 
 /**
+ * Read which units are open right now so a re-render can put them back.
+ * Adding or deleting a unit reloads the whole course and rebuilds this list;
+ * without this the instructor is dropped back on Unit 1 every time.
+ * @returns {Set<string>} Internal unit names (e.g. "Unit 3") that are expanded
+ */
+function captureExpandedUnitNames() {
+    const expanded = new Set();
+    document.querySelectorAll('#dynamic-units-container .accordion-item[data-unit-name]')
+        .forEach(item => {
+            const content = item.querySelector('.accordion-content');
+            if (content && !content.classList.contains('collapsed')) {
+                expanded.add(item.getAttribute('data-unit-name'));
+            }
+        });
+    return expanded;
+}
+
+/**
+ * Scroll a unit into view by its internal name, if it is on the page.
+ * @param {string} unitName - Internal unit name (e.g. "Unit 3")
+ */
+function scrollUnitIntoView(unitName) {
+    if (!unitName) return;
+    const item = document.querySelector(`.accordion-item[data-unit-name="${unitName}"]`);
+    if (item) {
+        item.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+}
+
+/**
  * Generate units dynamically from onboarding data
  * @param {Object} onboardingData - Onboarding data with course structure
  */
@@ -131,6 +161,15 @@ function generateUnitsFromOnboarding(onboardingData) {
         onboardingNavItem.style.display = 'none';
     }
     
+    // Remember what the instructor had open (and where they were looking) before
+    // this render throws the current list away.
+    const previouslyExpanded = captureExpandedUnitNames();
+    const isRerender = container.querySelector('.accordion-item[data-unit-name]') !== null;
+    const previousScrollY = window.scrollY;
+    // Set by addNewUnit() so the unit that was just created is the one we open.
+    const focusUnitName = window.pendingFocusUnitName || null;
+    window.pendingFocusUnitName = null;
+    
     // Clear existing content
     container.innerHTML = '';
     
@@ -143,14 +182,21 @@ function generateUnitsFromOnboarding(onboardingData) {
     // hides real units whose number is past the count.
     const unitList = getRenderableUnits(courseStructure, lectures);
 
-    // Generate each unit
+    const expandedNames = new Set(previouslyExpanded);
+    if (focusUnitName) {
+        expandedNames.add(focusUnitName);
+    }
+
+    // Generate each unit. On a re-render (add/delete/rename) keep the units the
+    // instructor already had open; only a first render falls back to "Unit 1".
     unitList.forEach((unit, index) => {
+        const isExpanded = isRerender ? expandedNames.has(unit.name) : index === 0;
         const unitElement = createUnitElement(
             unit.name,
             unit.data,
-            index === 0,
+            isExpanded,
             unitList.length > 1
-        ); // First unit is expanded
+        );
         container.appendChild(unitElement);
     });
 
@@ -206,10 +252,25 @@ function generateUnitsFromOnboarding(onboardingData) {
         }
     }, 250);
 
-    // Focus a specific unit if requested via URL (e.g., ?unit=Unit%203)
-    setTimeout(() => {
-        focusUnitFromURL();
-    }, 300);
+    // Focus a specific unit if requested via URL (e.g., ?unit=Unit%203).
+    // Only on the first render - the ?unit= param sticks around in the address
+    // bar, and re-honouring it would drag the page back there after every add or
+    // delete.
+    if (!isRerender) {
+        setTimeout(() => {
+            focusUnitFromURL();
+        }, 300);
+    }
+
+    // Keep the viewport where it was, or move it to the unit that was just added,
+    // instead of snapping back to the top of the list.
+    if (focusUnitName) {
+        // Wait for the document/objective loads above so the new unit is at its
+        // final position before scrolling to it.
+        setTimeout(() => scrollUnitIntoView(focusUnitName), 400);
+    } else if (isRerender) {
+        window.requestAnimationFrame(() => window.scrollTo(window.scrollX, previousScrollY));
+    }
 }
 
 /**
