@@ -87,6 +87,7 @@ describe('renderMarkdown', () => {
         expect(markdown).toContain('## Changes');
         expect(markdown).toContain('## Appendix: Interpreting the JSON Chat Export');
         expect(markdown.indexOf('## Changes')).toBeLessThan(markdown.indexOf('## Appendix'));
+        expect(markdown.match(/Interpreting the JSON Chat Export/g)).toHaveLength(1);
 
         const newest = changeLog.entries[0];
         expect(markdown).toContain(`### ${newest.date} — ${newest.title}`);
@@ -127,6 +128,18 @@ describe('demoteHeadings', () => {
         const demoted = exportChangeLog.demoteHeadings('```\n# not a heading\n```\n# heading\n');
         expect(demoted).toContain('\n# not a heading\n');
         expect(demoted).toContain('## heading');
+    });
+});
+
+describe('formatGuideAppendix', () => {
+    test('removes the standalone title and demotes the remaining headings', () => {
+        const appendix = exportChangeLog.formatGuideAppendix(
+            '# Guide title\n\nIntroduction.\n\n## Section\n\nText.\n'
+        );
+
+        expect(appendix).not.toContain('Guide title');
+        expect(appendix).toContain('Introduction.');
+        expect(appendix).toContain('### Section');
     });
 });
 

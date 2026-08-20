@@ -13,30 +13,30 @@
             "date": "2026-08-03",
             "area": "Teaching mode",
             "title": "New chats start in Tutor mode, and later mode switches are recorded",
-            "summary": "A new chat begins in Tutor mode unless the student has deliberately used the mode toggle before, and a first-time student who finishes the walkthrough is left in Tutor mode rather than being placed straight into Protege mode. Students who pass the assessment are still offered Protege mode, and many of them switch back to Tutor immediately.",
-            "exportImpact": "In the JSON, 'metadata.currentMode' is the mode the session was in at export time, which is not necessarily the mode the assessment chose. The 'mode-result' message records the mode the assessment determined, in 'modeData.determinedMode'. If the student changed it afterwards, a separate 'mode-toggle-result' message records that change. Read the three together before concluding that a student was mis-assigned.",
+            "summary": "A new chat begins in Tutor mode unless the student has deliberately used the mode toggle before, and a first-time student who finishes the walkthrough is left in Tutor mode rather than being placed straight into Protege mode. Students who pass the assessment are still offered Protege mode and can change modes afterwards with the toggle.",
+            "exportImpact": "In the JSON, 'metadata.currentMode' is the mode most recently saved with the session; it is not calculated again when an instructor downloads the file. The 'mode-result' message contains the assessment result shown to the student, while each later 'mode-toggle-result' message records a visible mode change. Read them in message order and use 'metadata.currentMode' as the session's last saved mode.",
             "beforeThisChange": "Older sessions can show a student being placed in Protege mode at the start of their very first chat, before they had any chance to choose.",
-            "references": ["Issue #463", "Issue #458", "commit 6bafdde"]
+            "references": ["Issue #463", "commit 6bafdde"]
         },
         {
             "id": "session-restore-replay-fix",
             "date": "2026-07-31",
             "area": "Reload and session restore",
-            "title": "Reloading a chat no longer replays earlier turns into the conversation",
-            "summary": "How a chat is restored and auto-saved after a browser refresh was reworked between 2026-07-14 and 2026-07-31. A refreshed session could previously rebuild its context in a way that presented one of BiocBot's own earlier replies to the model in the position normally held by student text, and could re-add an assessment question the student had already answered.",
-            "exportImpact": "A session that was refreshed exports the same messages that were on screen: no duplicated assessment question, and no bot turn that treats an earlier bot reply as something the student wrote.",
-            "beforeThisChange": "In exports of sessions refreshed before this fix you may see two consecutive BIOCBOT turns where the second one praises 'you' - for example 'You explained it perfectly' or 'You summarised that explanation perfectly'. That is BiocBot reacting to its own previous message. It is a poorly constructed response, not evidence that a student turn is missing from the export.",
-            "references": ["commit 562bdf2", "commit 95ba39b"]
+            "title": "Reloading no longer re-adds an answered assessment question",
+            "summary": "Session restore was changed so a browser refresh does not re-add the current assessment question after the student has already answered it.",
+            "exportImpact": "A session refreshed after the fix no longer gains a duplicate assessment-question message solely because the page was reloaded.",
+            "beforeThisChange": "An older session that was refreshed during the assessment may contain the same assessment question twice. This fix is separate from Explain-button response wording.",
+            "references": ["commit 562bdf2"]
         },
         {
             "id": "assessment-summary-repair",
             "date": "2026-07-23",
             "area": "Assessment scoring",
-            "title": "The assessment score card now matches the stored answers",
-            "summary": "The summary card shown at the end of the assessment could display the wrong total - for example 1/3 for a student who had actually answered 3 of 3 correctly - even though the stored answers and the stored score were correct. Scoring was moved into a single shared module used by the chat, the stored session and the export, so all three agree. A repair script (scripts/repair-assessment-summaries.js, dry-run by default) can correct summaries that were already stored.",
-            "exportImpact": "The score shown in the 'mode-result' message agrees with the per-question records in 'practiceTests' and 'studentAnswers'.",
-            "beforeThisChange": "If an older export shows a 'mode-result' score card that disagrees with 'practiceTests', the per-question records in 'practiceTests' and 'studentAnswers' are the reliable ones - the student's answers were always stored correctly.",
-            "references": ["Issue #459", "commit 4a6decd"]
+            "title": "Assessment scores and valid answer choices are stored consistently",
+            "summary": "The summary card shown at the end of the assessment could display the wrong total - for example 1/3 for a student who had actually answered 3 of 3 correctly. Some valid answers could also appear as null or N/A when multiple-choice options were stored in different shapes, such as letter-keyed or numeric-keyed option objects. Scoring and answer formatting were moved into one shared module, including explicit handling for zero, false, A-D keys and numeric-keyed option objects. A repair script (scripts/repair-assessment-summaries.js, dry-run by default) can correct repairable summaries that were already stored.",
+            "exportImpact": "The score shown in the 'mode-result' message agrees with the per-question records in 'practiceTests' and 'studentAnswers'. Supported multiple-choice answers are preserved as their normalized answer index and displayed with an A-D label instead of null or N/A.",
+            "beforeThisChange": "If an older export shows a 'mode-result' score card that disagrees with 'practiceTests', or shows null or N/A for a multiple-choice answer, inspect 'studentAnswers.answers' and the question's 'options' before treating it as an unanswered question. Older collection and display code did not handle every supported option shape consistently.",
+            "references": ["Issue #459", "commit 4a6decd", "commit 6194f61"]
         },
         {
             "id": "assessment-saved-immediately",
@@ -54,7 +54,7 @@
             "area": "Explain button",
             "title": "Explain responses are labelled and linked to the message they explain",
             "summary": "When a student clicks Explain, the interface sends BiocBot's preceding reply back to the model as a background request. Clicking the button does not create or save a student turn, and never did. Explain-generated replies are now marked so you can tell them apart from ordinary replies.",
-            "exportImpact": "In the JSON, an Explain reply carries 'triggeredBy': 'explain_button', 'actionStatus': 'success', and 'sourceMessageId' pointing at the bot message the student asked BiocBot to explain. In the TXT transcript it still appears as a BIOCBOT turn with no student turn before it, which is expected for a button-triggered reply.",
+            "exportImpact": "In the JSON, the generated bot message carries 'triggeredBy': 'explain_button' and 'actionStatus': 'success'. It also carries 'sourceMessageId' when the original bot message had an ID. These are message fields, not a top-level 'explainMode' flag. In the TXT transcript the response still appears as a BIOCBOT turn with no student turn before it, which is expected for a button-triggered reply. The fields prove that Explain was clicked; they do not validate the wording of the generated explanation.",
             "beforeThisChange": "Explain replies were indistinguishable from ordinary replies, so a bot turn with no preceding student turn looked like missing data.",
             "references": ["Issue #447", "commit 95ba39b"]
         },
@@ -92,8 +92,8 @@
             "id": "summarize-new-chat",
             "date": "2026-06-26",
             "area": "Summarize button",
-            "title": "Summarize and New chat split long conversations into linked sessions",
-            "summary": "Students can end a chat and carry an automatically generated recap into the next one, and the app does the same when a conversation reaches its message limit.",
+            "title": "Summarize and Start New Chat links two sessions",
+            "summary": "When a student chooses Summarize and Start New Chat, the app ends the current chat and carries an automatically generated recap into the next one. Reaching the message limit or using the ordinary New Chat action does not automatically create this recap.",
             "exportImpact": "The new session opens with a message of type 'user' whose 'isSummarySeed' is true. It is the generated recap, not something the student typed. A session created this way starts with that seed instead of the usual welcome and unit-selection message.",
             "beforeThisChange": "Not applicable - sessions before this date were not bridged by a summary.",
             "references": ["commit 1159af4", "commit 958729e"]

@@ -143,6 +143,18 @@ function demoteHeadings(markdown) {
 }
 
 /**
+ * Prepare the guide for the appendix. The combined document already supplies
+ * the appendix title, so remove the guide's leading H1 before demoting its
+ * remaining headings.
+ * @param {string} markdown - Standalone guide Markdown
+ * @returns {string} Guide body formatted as appendix content
+ */
+function formatGuideAppendix(markdown) {
+    const withoutTitle = markdown.replace(/^\uFEFF?# [^\r\n]*(?:\r?\n+|$)/, '');
+    return demoteHeadings(withoutTitle);
+}
+
+/**
  * Render one entry as Markdown.
  * @param {Object} entry - Change log entry
  * @returns {string} Markdown block
@@ -183,7 +195,7 @@ function renderMarkdown(options = {}) {
         const guide = readGuide();
         if (guide) {
             sections.push('---', '', '## Appendix: Interpreting the JSON Chat Export', '');
-            sections.push(demoteHeadings(guide).trim(), '');
+            sections.push(formatGuideAppendix(guide).trim(), '');
         }
     }
 
@@ -208,5 +220,6 @@ module.exports = {
     GUIDE_PATH,
     // Exported for tests
     demoteHeadings,
+    formatGuideAppendix,
     validateChangeLog
 };

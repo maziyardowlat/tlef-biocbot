@@ -42,7 +42,7 @@ Tells you whose session this is and its scope. From the example:
 | `courseName` / `courseId` | The course |
 | `studentName` / `studentId` | The learner |
 | `unitName` | Which unit they were working in (e.g. `Unit 1`) |
-| `currentMode` | The bot's teaching mode at export time — `tutor` or `protege` |
+| `currentMode` | The bot's most recently saved teaching mode for this session — `tutor` or `protege`; downloading does not recalculate it |
 | `totalMessages` | How many messages are in this file |
 
 ### `messages` — the conversation
@@ -67,7 +67,7 @@ context. The fields worth knowing:
 | `htmlContent` | The rich, formatted version of `content` (e.g. a score card) when one exists |
 | `triggeredBy` | If the message came from a button, which one (e.g. `explain_button`, `summarize_button`) |
 | `actionStatus` | Whether the button-triggered action succeeded; currently logged successful actions use `success` |
-| `sourceMessageId` | On an Explain response, the ID of the bot message the student asked BiocBot to explain |
+| `sourceMessageId` | On an Explain response, the ID of the bot message the student asked BiocBot to explain, when that source message had an ID |
 | `isSummarySeed` | `true` when this user-shaped message is an automatically generated recap carried into a new session |
 
 **`messageType` values you'll see:**
@@ -77,7 +77,10 @@ context. The fields worth knowing:
 - `practice-test-question` — a question the student was asked. Look in `questionData`
   for the options and the selected answer.
 - `mode-result` — the result of the assessment, including the score summary and which
-  mode the bot switched into. `modeData.determinedMode` gives the chosen mode.
+  mode was shown to the student. `modeData.determinedMode` is collected from the
+  session's current mode when the record is saved, so read it with later
+  `mode-toggle-result` messages and `metadata.currentMode` rather than treating it as an
+  immutable copy of the original assessment decision.
 - `mode-toggle-result` — a notice recording a teaching-mode change made after the
   assessment.
 - `unit-selection` — the one-time welcome/unit-selection message in a genuinely new
@@ -115,15 +118,18 @@ example, the student answered `False` to a True/False question whose correct ans
 
 Explain is recorded differently because it produces a visible bot response. The response
 message itself has `triggeredBy: "explain_button"`, `actionStatus: "success"`, and a
-`sourceMessageId` linking it to the original bot message.
+`sourceMessageId` linking it to the original bot message when that source message had an
+ID. These are fields on the generated bot message; there is no top-level `explainMode`
+field.
 
 ---
 
 ## Reading across two exports (sessions)
 
-A student's work is split into **sessions**. When the app hits a message limit or the
-student starts fresh, it opens a new session and carries a **summary** of the previous
-one into the next. You'll see this in a pair of files:
+A student's work is split into **sessions**. When the student chooses **Summarize and
+Start New Chat**, the app opens a new session and carries a **summary** of the previous
+one into the next. Reaching the message limit or using the ordinary New Chat action does
+not automatically create this summary. You'll see a summarized pair in two files:
 
 - The **first** session ends with a `summarize_button` event.
 - The **next** session opens with a student message whose `isSummarySeed` field is
