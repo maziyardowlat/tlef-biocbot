@@ -44,6 +44,58 @@ describe('flashcardService content selection', () => {
         expect(prompt).toContain('"sourceRef": "S1"');
     });
 
+    test('adds the chemistry formatting rules by default, including to a custom template', () => {
+        const prompt = flashcardService.buildPrompt({
+            lectureName: 'Unit 3',
+            cardCount: 10,
+            learningObjectives: [],
+            sourceRecords: [],
+            promptTemplate: 'Make cards for {{lectureName}}.'
+        });
+
+        expect(prompt).toContain('CRITICAL LaTeX FORMATTING');
+        expect(prompt).toContain('CRITICAL SMILES FORMATTING');
+    });
+
+    test('omits the chemistry formatting rules when the unit toggle is off', () => {
+        const prompt = flashcardService.buildPrompt({
+            lectureName: 'Unit 3',
+            cardCount: 10,
+            learningObjectives: [],
+            sourceRecords: [],
+            chemistryNotation: false
+        });
+
+        expect(prompt).not.toContain('CRITICAL LaTeX FORMATTING');
+        expect(prompt).not.toContain('[SMILES]');
+        // The rest of the prompt is unchanged.
+        expect(prompt).toContain('Generate exactly 10 cards');
+    });
+
+    test('states the rules exactly once when the toggle is on', () => {
+        const prompt = flashcardService.buildPrompt({
+            lectureName: 'Unit 3',
+            cardCount: 10,
+            learningObjectives: [],
+            sourceRecords: [],
+            chemistryNotation: true
+        });
+
+        expect(prompt.match(/CRITICAL SMILES FORMATTING/g)).toHaveLength(1);
+    });
+
+    test('requires LaTeX backslashes to be escaped in flashcard JSON', () => {
+        const prompt = flashcardService.buildPrompt({
+            lectureName: 'Unit 3',
+            cardCount: 10,
+            learningObjectives: [],
+            sourceRecords: []
+        });
+
+        expect(prompt).toContain('escape every LaTeX backslash as \\\\');
+        expect(prompt).toContain('"\\\\( H_2O \\\\)"');
+    });
+
     test('uses existing indexed chunks and preserves slide metadata', () => {
         const sources = flashcardService.buildSourceRecordsFromStoredChunks(
             [{

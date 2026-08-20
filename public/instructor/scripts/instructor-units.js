@@ -404,6 +404,10 @@ function createUnitElement(unitName, unitData, isExpanded = false, canDelete = t
                             <option value="15">15</option>
                             <option value="20">20</option>
                         </select>
+                        <label class="flashcard-chemistry-toggle" for="flashcard-chemistry-${unitId}" title="Ask for chemical formulas as typeset math and molecules as drawn 2D structures. Turn this off for units without chemistry.">
+                            <input type="checkbox" id="flashcard-chemistry-${unitId}" checked>
+                            <span>Chemistry notation</span>
+                        </label>
                         <button type="button" class="flashcard-generate-btn" onclick="generateFlashcardDraft('${unitName}', this)">
                             <span aria-hidden="true">🪄</span> Generate Draft
                         </button>

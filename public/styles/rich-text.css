@@ -1,0 +1,40 @@
+/**
+ * Styling for AI-generated rich content (see common/scripts/rich-text.js).
+ *
+ * Covers the drawn molecule canvases and the small adjustments KaTeX needs to
+ * sit comfortably inside flashcards and quiz questions.
+ */
+
+.rich-smiles {
+    display: block;
+    margin: 0.75rem auto;
+    max-width: 100%;
+    height: auto;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+}
+
+.rich-smiles-error {
+    border-color: #fecaca;
+    background: #fef2f2;
+}
+
+/* Long formulas scroll inside the card rather than widening it. */
+.katex-display {
+    margin: 0.6rem 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding-bottom: 2px;
+}
+
+/* KaTeX ships its own font sizing; keep it in step with the surrounding text. */
+.katex {
+    font-size: 1.05em;
+}
+
+/* throwOnError: false renders unparseable math as red source text. Keep it
+   readable instead of letting it inherit a heading-sized font. */
+.katex-error {
+    font-size: 0.95em;
+}

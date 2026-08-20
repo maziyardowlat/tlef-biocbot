@@ -197,7 +197,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 
         // Question text
-        document.getElementById('question-text').textContent = q.question;
+        renderRichQuestionText(document.getElementById('question-text'), q.question);
 
         // Hide all answer areas
         document.getElementById('mc-options').style.display = 'none';
@@ -222,7 +222,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
                 const text = document.createElement('span');
                 text.className = 'option-text';
-                text.textContent = `${key}. ${q.options[key]}`;
+                renderRichQuestionText(text, `${key}. ${q.options[key]}`);
 
                 label.appendChild(radio);
                 label.appendChild(text);
@@ -405,6 +405,26 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
+    /**
+     * Show generated question text, typesetting any formulas and drawing any
+     * molecules it contains.
+     *
+     * Falls back to plain text if rich-text.js did not load, so a missing
+     * script costs the typesetting rather than the question.
+     *
+     * @param {Element} element Element to fill
+     * @param {string} text Text as written by the generator
+     * @returns {void}
+     */
+    function renderRichQuestionText(element, text) {
+        if (!element) return;
+        if (typeof RichText === 'undefined') {
+            element.textContent = String(text || '');
+            return;
+        }
+        RichText.render(element, text);
+    }
+
     function showFeedback(correct, text) {
         const container = document.getElementById('feedback-container');
         const icon = document.getElementById('feedback-icon');
@@ -412,7 +432,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         container.className = 'feedback-container ' + (correct ? 'correct' : 'incorrect');
         icon.textContent = correct ? '\u2705' : '\u274C';
-        textEl.textContent = text;
+        renderRichQuestionText(textEl, text);
         container.style.display = '';
     }
 

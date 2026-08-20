@@ -1849,6 +1849,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!response.ok || !result.success) {
             throw new Error(result.message || 'Failed to save course settings');
         }
+        if (result.prompts?.flashcards) {
+            const flashcardPrompt = document.getElementById('flashcard-prompt');
+            if (flashcardPrompt) flashcardPrompt.value = result.prompts.flashcards;
+        }
         return result;
     }
 
@@ -2270,6 +2274,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!response.ok || !result.success) {
             throw new Error(result.message || 'Failed to save question prompts');
         }
+        if (result.prompts) applyQuestionPromptValues(result.prompts);
         showNotification('Question prompts saved', 'success');
     }, { busyLabel: 'Saving...' });
 

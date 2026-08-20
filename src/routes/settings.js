@@ -633,7 +633,9 @@ router.get('/prompts', async (req, res) => {
             directive: coursePrompts.directive || prompts.DEFAULT_PROMPTS.directive,
             quizHelp: coursePrompts.quizHelp || prompts.DEFAULT_PROMPTS.quizHelp,
             chatSummary: coursePrompts.chatSummary || prompts.DEFAULT_PROMPTS.chatSummary,
-            flashcards: coursePrompts.flashcards || prompts.DEFAULT_PROMPTS.flashcards,
+            flashcards: prompts.appendRichContentFormattingRules(
+                coursePrompts.flashcards || prompts.DEFAULT_PROMPTS.flashcards
+            ),
             flashcardSourceTokenBudget: flashcardService.normalizeSourceTokenBudget(
                 coursePrompts.flashcardSourceTokenBudget
             ),
@@ -743,6 +745,10 @@ router.post('/prompts', async (req, res) => {
             }
         }
 
+        const normalizedFlashcardPrompt = prompts.appendRichContentFormattingRules(
+            flashcards && flashcards.trim() ? flashcards : prompts.DEFAULT_PROMPTS.flashcards
+        );
+
         // Update the course document directly
         await db.collection('courses').updateOne(
             { courseId: courseId },
@@ -755,7 +761,7 @@ router.post('/prompts', async (req, res) => {
                     'prompts.directive': directive,
                     'prompts.quizHelp': quizHelp || prompts.DEFAULT_PROMPTS.quizHelp,
                     'prompts.chatSummary': chatSummary && chatSummary.trim() ? chatSummary : prompts.DEFAULT_PROMPTS.chatSummary,
-                    'prompts.flashcards': flashcards && flashcards.trim() ? flashcards : prompts.DEFAULT_PROMPTS.flashcards,
+                    'prompts.flashcards': normalizedFlashcardPrompt,
                     'prompts.flashcardSourceTokenBudget': flashcardTokenBudget,
                     'prompts.studentIdleTimeout': timeoutVal,
                     'prompts.studentSessionTimeout': sessionTimeoutVal,
@@ -769,7 +775,8 @@ router.post('/prompts', async (req, res) => {
         res.json({
             success: true,
             message: 'Course settings saved successfully',
-            courseId: courseId
+            courseId: courseId,
+            prompts: { flashcards: normalizedFlashcardPrompt }
         });
     } catch (error) {
         console.error('Error saving prompts:', error);
@@ -1543,7 +1550,9 @@ router.get('/question-prompts', async (req, res) => {
         const courseQuestionPrompts = course ? (course.questionPrompts || {}) : {};
         
         const result = {
-            systemPrompt: courseQuestionPrompts.systemPrompt || prompts.DEFAULT_QUESTION_PROMPTS.systemPrompt,
+            systemPrompt: prompts.appendRichContentFormattingRules(
+                courseQuestionPrompts.systemPrompt || prompts.DEFAULT_QUESTION_PROMPTS.systemPrompt
+            ),
             trueFalse: courseQuestionPrompts.trueFalse || prompts.DEFAULT_QUESTION_PROMPTS.trueFalse,
             multipleChoice: courseQuestionPrompts.multipleChoice || prompts.DEFAULT_QUESTION_PROMPTS.multipleChoice,
             shortAnswer: courseQuestionPrompts.shortAnswer || prompts.DEFAULT_QUESTION_PROMPTS.shortAnswer
@@ -1592,12 +1601,14 @@ router.post('/question-prompts', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Invalid prompt format - all prompts must be strings' });
         }
 
+        const normalizedSystemPrompt = prompts.appendRichContentFormattingRules(systemPrompt);
+
         // Update the course document with question prompts
         await db.collection('courses').updateOne(
             { courseId: courseId },
             { 
                 $set: { 
-                    'questionPrompts.systemPrompt': systemPrompt,
+                    'questionPrompts.systemPrompt': normalizedSystemPrompt,
                     'questionPrompts.trueFalse': trueFalse,
                     'questionPrompts.multipleChoice': multipleChoice,
                     'questionPrompts.shortAnswer': shortAnswer,
@@ -1609,7 +1620,13 @@ router.post('/question-prompts', async (req, res) => {
         res.json({
             success: true,
             message: 'Question generation prompts saved successfully',
-            courseId: courseId
+            courseId: courseId,
+            prompts: {
+                systemPrompt: normalizedSystemPrompt,
+                trueFalse,
+                multipleChoice,
+                shortAnswer
+            }
         });
     } catch (error) {
         console.error('Error saving question prompts:', error);

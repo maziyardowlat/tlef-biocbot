@@ -141,7 +141,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         flipped = false;
         const card = cards[currentIndex];
         document.getElementById('card-side-label').textContent = 'Front';
-        document.getElementById('card-content').textContent = card.front;
+        renderCardText(document.getElementById('card-content'), card.front);
         document.getElementById('card-source').style.display = 'none';
         document.getElementById('flip-hint').textContent = 'Press to reveal the answer';
         studyCard.setAttribute('aria-pressed', 'false');
@@ -163,7 +163,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         flipped = true;
         const card = cards[currentIndex];
         document.getElementById('card-side-label').textContent = 'Back';
-        document.getElementById('card-content').textContent = card.back;
+        renderCardText(document.getElementById('card-content'), card.back);
         const source = document.getElementById('card-source');
         source.textContent = `Source: ${sourceLabel(card.source)}`;
         source.style.display = '';
@@ -214,6 +214,26 @@ document.addEventListener('DOMContentLoaded', async () => {
             const other = Math.floor(Math.random() * (index + 1));
             [items[index], items[other]] = [items[other], items[index]];
         }
+    }
+
+    /**
+     * Show one side of a card, typesetting any formulas and drawing any
+     * molecules the generator put in it.
+     *
+     * Falls back to plain text if rich-text.js did not load, so a missing
+     * script costs the typesetting rather than the card.
+     *
+     * @param {Element} element The card body element
+     * @param {string} text Front or back text as written by the generator
+     * @returns {void}
+     */
+    function renderCardText(element, text) {
+        if (!element) return;
+        if (typeof RichText === 'undefined') {
+            element.textContent = String(text || '');
+            return;
+        }
+        RichText.render(element, text);
     }
 
     function escapeFlashcardHtml(value) {

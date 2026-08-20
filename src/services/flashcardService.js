@@ -198,7 +198,16 @@ function replacePromptPlaceholder(template, name, value) {
     return template.split(`{{${name}}}`).join(value);
 }
 
-function buildPrompt({ lectureName, cardCount, learningObjectives, sourceRecords, promptTemplate }) {
+/**
+ * Render the flashcard generation prompt for one unit.
+ *
+ * @param {object} options Prompt inputs
+ * @param {boolean} [options.chemistryNotation=true] Whether to ask for LaTeX
+ *   formulas and SMILES structures. Driven by the "Chemistry notation"
+ *   checkbox beside Generate Draft; off leaves the model writing plain text.
+ * @returns {string} The complete prompt
+ */
+function buildPrompt({ lectureName, cardCount, learningObjectives, sourceRecords, promptTemplate, chemistryNotation = true }) {
     const objectives = Array.isArray(learningObjectives) && learningObjectives.length
         ? learningObjectives.map((objective, index) => `${index + 1}. ${String(objective).trim()}`).join('\n')
         : 'No learning objectives were provided.';
@@ -226,6 +235,12 @@ function buildPrompt({ lectureName, cardCount, learningObjectives, sourceRecords
     if (!includesCourseMaterial) {
         rendered += `\n\nCourse material:\n${sources}`;
     }
+    // Applied here rather than stored in the template so the instructor's
+    // per-unit checkbox decides, and so a course that has replaced the whole
+    // template still gets the rules when the box is ticked.
+    if (chemistryNotation) {
+        rendered = prompts.appendRichContentFormattingRules(rendered);
+    }
 
     return `${rendered}
 
@@ -236,6 +251,7 @@ Non-negotiable generation contract:
 - Every question must be self-contained and understandable without opening the cited source.
 - Never refer vaguely to "the lecture," "the figure," "the image," "the graph," "the table," "the slide," or surrounding material. State the specific biological or chemical subject directly.
 - Do not ask students to interpret an unseen visual. Convert useful visual information into an explicit question about the named structure, variables, trend, or process.
+- In JSON string values, escape every LaTeX backslash as \\\\ (for example, write "\\\\( H_2O \\\\)").
 - Return only a JSON object using this schema:
 {
   "cards": [
@@ -257,7 +273,8 @@ async function generateDeck({
     cardCount,
     generatedBy,
     promptTemplate,
-    sourceTokenBudget
+    sourceTokenBudget,
+    chemistryNotation = true
 }) {
     const requestedCount = Number.isInteger(cardCount) ? cardCount : DEFAULT_CARD_COUNT;
     if (requestedCount < 5 || requestedCount > FlashcardDeck.MAX_CARD_COUNT) {
@@ -296,7 +313,8 @@ async function generateDeck({
         cardCount: requestedCount,
         learningObjectives: lecture.learningObjectives || [],
         sourceRecords,
-        promptTemplate
+        promptTemplate,
+        chemistryNotation
     });
     const response = await llmService.sendMessage(prompt, {
         lane: LANES.BACKEND,
