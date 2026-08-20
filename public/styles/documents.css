@@ -31,11 +31,6 @@
     font-weight: 500;
 }
 
-.status-text.processed {
-    background-color: rgba(40, 167, 69, 0.1);
-    color: var(--success-color);
-}
-
 .status-text.processing {
     background-color: rgba(255, 193, 7, 0.1);
     color: var(--warning-color);
@@ -1381,6 +1376,25 @@
     padding: 0.45rem 0.65rem;
 }
 
+/* Opt-out for the LaTeX/SMILES rules added to the generation prompt. */
+.flashcard-chemistry-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 0;
+    font-size: 0.875rem;
+    color: #475569;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.flashcard-chemistry-toggle input {
+    width: auto;
+    margin: 0;
+    cursor: pointer;
+    accent-color: var(--primary-color);
+}
+
 .flashcard-generate-btn,
 .flashcard-publish-btn,
 .flashcard-unpublish-btn {
@@ -1462,6 +1476,39 @@
 
 .flashcard-editor-row textarea[readonly] {
     background: #f8fafc;
+}
+
+.flashcard-preview-group {
+    margin-top: 0.5rem;
+}
+
+.flashcard-preview-label {
+    display: block;
+    margin-bottom: 0.25rem;
+    color: #64748b;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+}
+
+.flashcard-rendered-preview {
+    min-height: 2.75rem;
+    box-sizing: border-box;
+    padding: 0.75rem;
+    overflow-wrap: anywhere;
+    color: #1e293b;
+    background: #f8fafc;
+    border: 1px dashed #94a3b8;
+    border-radius: 6px;
+    font-size: 1rem;
+    line-height: 1.5;
+}
+
+.flashcard-rendered-preview:empty::before {
+    content: 'Nothing to preview';
+    color: #94a3b8;
+    font-style: italic;
 }
 
 .flashcard-remove-btn {

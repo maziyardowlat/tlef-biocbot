@@ -356,7 +356,7 @@ function createUnitElement(unitName, unitData, isExpanded = false, canDelete = t
                     <div class="content-type-header">
                         <p><strong>Required Materials:</strong> *Lecture Notes and *Practice Questions/Tutorial are mandatory</p>
                     </div>
-                    <div class="file-item placeholder-item">
+                    <div class="file-item placeholder-item" data-status="not-uploaded">
                         <div class="file-info">
                             <h3>*Lecture Notes - ${unitName}</h3>
                             <p>Placeholder for required lecture notes. Please upload content.</p>
@@ -366,7 +366,7 @@ function createUnitElement(unitName, unitData, isExpanded = false, canDelete = t
                             <button class="action-button upload" onclick="openUploadModal('${unitName}', 'lecture-notes')">Upload</button>
                         </div>
                     </div>
-                    <div class="file-item placeholder-item">
+                    <div class="file-item placeholder-item" data-status="not-uploaded">
                         <div class="file-info">
                             <h3>*Practice Questions/Tutorial</h3>
                             <p>Placeholder for required practice questions. Please upload content.</p>
@@ -404,6 +404,10 @@ function createUnitElement(unitName, unitData, isExpanded = false, canDelete = t
                             <option value="15">15</option>
                             <option value="20">20</option>
                         </select>
+                        <label class="flashcard-chemistry-toggle" for="flashcard-chemistry-${unitId}" title="Ask for chemical formulas as typeset math and molecules as drawn 2D structures. Turn this off for units without chemistry.">
+                            <input type="checkbox" id="flashcard-chemistry-${unitId}" checked>
+                            <span>Chemistry notation</span>
+                        </label>
                         <button type="button" class="flashcard-generate-btn" onclick="generateFlashcardDraft('${unitName}', this)">
                             <span aria-hidden="true">🪄</span> Generate Draft
                         </button>
@@ -622,11 +626,9 @@ function addRequiredPlaceholders(container, unitName) {
     
     container.querySelectorAll('.file-item').forEach(item => {
         const title = item.querySelector('h3');
-        const statusText = item.querySelector('.status-text');
         
-        if (title && statusText) {
+        if (title) {
             const titleText = title.textContent;
-            const status = statusText.textContent;
             const isPlaceholder = item.classList.contains('placeholder-item');
             const documentType = item.dataset.documentType || '';
             
@@ -634,14 +636,14 @@ function addRequiredPlaceholders(container, unitName) {
             const isLectureNotes = documentType === 'lecture_notes' || 
                                   documentType === 'lecture-notes' ||
                                   titleText.includes('lecture-notes') ||
-                                  (titleText.includes('Lecture Notes') && !isPlaceholder && status !== 'Not Uploaded');
+                                  (titleText.includes('Lecture Notes') && !isPlaceholder);
             
             // Check for practice questions - look for both document type and title patterns  
             const isPracticeQuestions = documentType === 'practice_q_tutorials' || 
                                       documentType === 'practice-quiz' ||
                                       titleText.includes('practice-quiz') ||
                                       titleText.includes('practice_quiz') ||
-                                      ((titleText.includes('Practice Questions') || titleText.includes('Practice Questions/Tutorial')) && !isPlaceholder && status !== 'Not Uploaded');
+                                      ((titleText.includes('Practice Questions') || titleText.includes('Practice Questions/Tutorial')) && !isPlaceholder);
             
             if (isLectureNotes) {
                 hasLectureNotes = true;
@@ -660,6 +662,7 @@ function addRequiredPlaceholders(container, unitName) {
     if (!hasLectureNotes) {
         const lectureNotesItem = document.createElement('div');
         lectureNotesItem.className = 'file-item placeholder-item';
+        lectureNotesItem.dataset.status = 'not-uploaded';
         lectureNotesItem.innerHTML = `
             <span class="file-icon">📄</span>
             <div class="file-info">
@@ -678,6 +681,7 @@ function addRequiredPlaceholders(container, unitName) {
     if (!hasPracticeQuestions) {
         const practiceQuestionsItem = document.createElement('div');
         practiceQuestionsItem.className = 'file-item placeholder-item';
+        practiceQuestionsItem.dataset.status = 'not-uploaded';
         practiceQuestionsItem.innerHTML = `
             <span class="file-icon">📄</span>
             <div class="file-info">

@@ -439,7 +439,22 @@ describe('assessment question generation orchestration', () => {
         };
         const result = await service.generateAssessmentQuestion('multiple-choice', 'MAT', 'U2', 'OBJ', custom);
         expect(result).toMatchObject({ type: 'multiple-choice' });
-        expect(mockToolkitInstance.sendMessage).toHaveBeenCalledWith('mc U2 MAT', expect.objectContaining({ systemPrompt: 'system for multiple-choice' }));
+        expect(mockToolkitInstance.sendMessage).toHaveBeenCalledWith('mc U2 MAT', expect.objectContaining({
+            systemPrompt: expect.stringContaining('system for multiple-choice')
+        }));
+    });
+
+    test('generateAssessmentQuestion appends the chemistry formatting rules to a custom system prompt', async () => {
+        const service = readyService();
+        mockToolkitInstance.sendMessage.mockResolvedValueOnce({ content: questionJson('multiple-choice') });
+        const custom = {
+            systemPrompt: 'system for {{questionType}}',
+            multipleChoice: 'mc {{unitName}} {{courseMaterial}}',
+        };
+        await service.generateAssessmentQuestion('multiple-choice', 'MAT', 'U2', 'OBJ', custom);
+        const [, options] = mockToolkitInstance.sendMessage.mock.calls[0];
+        expect(options.systemPrompt).toContain('CRITICAL LaTeX FORMATTING');
+        expect(options.systemPrompt).toContain('CRITICAL SMILES FORMATTING');
     });
 
     test('generateAssessmentQuestion throws when the model returns no content', async () => {

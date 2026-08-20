@@ -556,6 +556,10 @@ test.describe('instructor.js focused browser coverage', () => {
     test('uploads pasted content, reviews deduped topics, and saves merged topic entries', async ({ page }) => {
         const captured = await openInstructorDocuments(page);
 
+        const parsedDocument = page.locator('.file-item[data-document-id="doc_lecture"]');
+        await expect(parsedDocument).toHaveAttribute('data-status', 'parsed');
+        await expect(parsedDocument.locator('.status-text')).toHaveText('Uploaded');
+
         await page.locator('.add-content-btn.additional-material').first().click();
         await expect(page.locator('#upload-modal')).toHaveClass(/show/);
 

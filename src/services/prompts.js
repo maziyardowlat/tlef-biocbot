@@ -137,6 +137,46 @@ Requirements:
 4. Do not invent facts that are not in the transcript.
 5. Keep it concise: 120-250 words.`;
 
+/**
+ * Formatting rules for chemistry and math in generated study content.
+ *
+ * The client renders these two notations (see public/common/scripts/rich-text.js):
+ * KaTeX typesets the LaTeX, and smiles-drawer turns each SMILES tag into a
+ * drawn 2D structure. Anything outside them is shown as plain text, so a model
+ * that writes bare "H2O" or a raw SMILES string produces an unreadable card.
+ *
+ * Question generation always carries these rules. Flashcard generation applies
+ * them per unit, from the "Chemistry notation" checkbox beside Generate Draft,
+ * so a unit with no chemistry in it is not pushed toward formulas it does not
+ * need. Either way they are appended rather than woven into the editable
+ * template, so a course that has customised its prompt still gets them.
+ */
+const LATEX_FORMATTING_RULE = `CRITICAL LaTeX FORMATTING: Enclose all mathematical notation and chemical formulas in \\( and \\) for inline math (e.g. \\( x^2 \\) or \\( H_2O \\)). Do NOT use parentheses () or $ as math delimiters. This is the one exception to the plain-text rule.`;
+
+const SMILES_FORMATTING_RULE = `CRITICAL SMILES FORMATTING: To draw a 2D chemical structure, return the SMILES string wrapped exactly in [SMILES] and [/SMILES] tags (e.g. [SMILES]C1=CC=CC=C1[/SMILES] for benzene). Use this only for molecules worth drawing, and never for a formula that inline math can express.`;
+
+const RICH_CONTENT_FORMATTING_RULES = `${LATEX_FORMATTING_RULE}\n\n${SMILES_FORMATTING_RULE}`;
+
+/**
+ * Append the chemistry/math formatting rules to a prompt that lacks them.
+ *
+ * The default prompts already carry the rules, but both the flashcard and the
+ * question prompt can be replaced wholesale by a course, and a replacement that
+ * omits the rules would silently turn every formula back into raw source on the
+ * page. Appending keeps the rules in force without editing anyone's wording.
+ *
+ * @param {string} prompt A rendered prompt, default or course-customised
+ * @returns {string} The prompt, with the rules present exactly once
+ */
+function appendRichContentFormattingRules(prompt) {
+    const text = String(prompt || '');
+    const missingRules = [];
+    if (!text.includes('CRITICAL LaTeX FORMATTING')) missingRules.push(LATEX_FORMATTING_RULE);
+    if (!text.includes('CRITICAL SMILES FORMATTING')) missingRules.push(SMILES_FORMATTING_RULE);
+    if (missingRules.length === 0) return text;
+    return `${text}\n\n${missingRules.join('\n\n')}`;
+}
+
 const FLASHCARD_GENERATION_PROMPT = `Generate {{cardCount}} university-level study flashcards for {{lectureName}}.
 
 Use the learning objectives as the main guide for deciding which concepts are most important. Prefer concepts, processes, relationships, common misconceptions, and definitions that students need to understand. Avoid trivia and duplicate or near-duplicate cards.
@@ -287,7 +327,9 @@ Guidelines:
 - Present information in plain text format only
 - NEVER deviate from the JSON schema provided
 
-Remember: JSON formatting is critical. Your response must be a valid JSON object that exactly matches the schema provided.`,
+${RICH_CONTENT_FORMATTING_RULES}
+
+Remember: JSON formatting is critical. Your response must be a valid JSON object that exactly matches the schema provided. LaTeX backslashes must be escaped as \\\\ inside JSON string values.`,
 
     // True/False question prompt template
     trueFalse: `<learning_objectives>
@@ -445,7 +487,9 @@ Guidelines:
 - Present information in plain text format only
 - NEVER deviate from the JSON schema provided
 
-Remember: JSON formatting is critical. Your response must be a valid JSON object that exactly matches the schema provided.`;
+${RICH_CONTENT_FORMATTING_RULES}
+
+Remember: JSON formatting is critical. Your response must be a valid JSON object that exactly matches the schema provided. LaTeX backslashes must be escaped as \\\\ inside JSON string values.`;
 
 // Dynamic prompt template for question generation
 // Note: Shows structure with dummy/example values
@@ -747,6 +791,8 @@ module.exports = {
     QUIZ_HELP_SYSTEM_PROMPT,
     CHAT_SUMMARY_PROMPT,
     FLASHCARD_GENERATION_PROMPT,
+    RICH_CONTENT_FORMATTING_RULES,
+    appendRichContentFormattingRules,
     DEFAULT_MENTAL_HEALTH_DETECTION_PROMPT,
     createQuestionGenerationSystemPrompt,
     QUESTION_GENERATION_PROMPT_TEMPLATE,

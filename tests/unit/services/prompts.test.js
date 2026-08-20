@@ -153,3 +153,65 @@ describe('prompts exported constants', () => {
         expect(prompts.QUESTION_EXTRACTION_SYSTEM_PROMPT).toContain('strict JSON');
     });
 });
+
+describe('chemistry and math formatting rules', () => {
+    const rules = [
+        'CRITICAL LaTeX FORMATTING',
+        'CRITICAL SMILES FORMATTING',
+        '[SMILES]C1=CC=CC=C1[/SMILES]'
+    ];
+
+    test('the editable flashcard template leaves the rules to the unit toggle', () => {
+        // flashcardService appends them when "Chemistry notation" is ticked, so
+        // an instructor editing this template cannot strand them in the middle.
+        expect(prompts.FLASHCARD_GENERATION_PROMPT).not.toContain('CRITICAL SMILES FORMATTING');
+        expect(prompts.DEFAULT_PROMPTS.flashcards).toBe(prompts.FLASHCARD_GENERATION_PROMPT);
+    });
+
+    test('the question generation system prompt carries both rules', () => {
+        const out = prompts.createQuestionGenerationSystemPrompt('short-answer', '{}');
+        for (const rule of rules) {
+            expect(out).toContain(rule);
+        }
+    });
+
+    test('the editable question prompt defaults carry both rules', () => {
+        for (const rule of rules) {
+            expect(prompts.DEFAULT_QUESTION_PROMPTS.systemPrompt).toContain(rule);
+        }
+    });
+
+    test('the rules name the delimiters the client actually renders', () => {
+        expect(prompts.RICH_CONTENT_FORMATTING_RULES).toContain('\\( H_2O \\)');
+        expect(prompts.RICH_CONTENT_FORMATTING_RULES).toContain('Do NOT use parentheses () or $ as math delimiters');
+    });
+
+    test('appendRichContentFormattingRules adds the rules to a custom prompt', () => {
+        const out = prompts.appendRichContentFormattingRules('Write five questions.');
+        expect(out).toContain('Write five questions.');
+        expect(out).toContain('CRITICAL SMILES FORMATTING');
+    });
+
+    test('appendRichContentFormattingRules never doubles up', () => {
+        const once = prompts.appendRichContentFormattingRules('Write five questions.');
+        expect(prompts.appendRichContentFormattingRules(once)).toBe(once);
+        const questionPrompt = prompts.createQuestionGenerationSystemPrompt('true-false', '{}');
+        expect(prompts.appendRichContentFormattingRules(questionPrompt)).toBe(questionPrompt);
+    });
+
+    test('appendRichContentFormattingRules adds only the missing rule', () => {
+        const smilesOnly = 'Write five questions.\n\nCRITICAL SMILES FORMATTING: existing rule';
+        const withLatex = prompts.appendRichContentFormattingRules(smilesOnly);
+        expect(withLatex).toContain('CRITICAL LaTeX FORMATTING');
+        expect(withLatex.match(/CRITICAL SMILES FORMATTING/g)).toHaveLength(1);
+
+        const latexOnly = 'Write five questions.\n\nCRITICAL LaTeX FORMATTING: existing rule';
+        const withSmiles = prompts.appendRichContentFormattingRules(latexOnly);
+        expect(withSmiles).toContain('CRITICAL SMILES FORMATTING');
+        expect(withSmiles.match(/CRITICAL LaTeX FORMATTING/g)).toHaveLength(1);
+    });
+
+    test('appendRichContentFormattingRules tolerates empty input', () => {
+        expect(prompts.appendRichContentFormattingRules(null)).toContain('CRITICAL LaTeX FORMATTING');
+    });
+});

@@ -117,6 +117,7 @@ function renderInstructorFlashcardSection(unitName) {
             ${deck.isPublished ? `<button type="button" class="flashcard-unpublish-btn" onclick="unpublishFlashcardDeck('${unitName}', this)">Unpublish</button>` : ''}
         </div>
     `;
+    initializeInstructorFlashcardPreviews(editor);
 }
 
 function renderFlashcardEditorRow(card, index, readOnly) {
@@ -130,12 +131,63 @@ function renderFlashcardEditorRow(card, index, readOnly) {
             <label>Front
                 <textarea class="flashcard-front-input" rows="2" maxlength="300" ${readOnly ? 'readonly' : ''}>${flashcardEscapeHtml(card.front)}</textarea>
             </label>
+            <div class="flashcard-preview-group">
+                <span class="flashcard-preview-label">Student preview · Front</span>
+                <div class="flashcard-rendered-preview" data-flashcard-preview="front" aria-label="Rendered preview of card front"></div>
+            </div>
             <label>Back
                 <textarea class="flashcard-back-input" rows="3" maxlength="1200" ${readOnly ? 'readonly' : ''}>${flashcardEscapeHtml(card.back)}</textarea>
             </label>
+            <div class="flashcard-preview-group">
+                <span class="flashcard-preview-label">Student preview · Back</span>
+                <div class="flashcard-rendered-preview" data-flashcard-preview="back" aria-label="Rendered preview of card back"></div>
+            </div>
             <p class="flashcard-source">Source: ${flashcardEscapeHtml(flashcardSourceLabel(card.source))}</p>
         </article>
     `;
+}
+
+/**
+ * Render one editable card side exactly as it will appear to students.
+ *
+ * @param {Element} row Instructor card editor row
+ * @param {'front'|'back'} side Card side to render
+ * @returns {void}
+ */
+function renderInstructorFlashcardPreview(row, side) {
+    const input = row.querySelector(`.flashcard-${side}-input`);
+    const preview = row.querySelector(`[data-flashcard-preview="${side}"]`);
+    if (!input || !preview) return;
+
+    const value = input.value || '';
+    if (typeof RichText === 'undefined') {
+        preview.textContent = value;
+        return;
+    }
+    RichText.render(preview, value);
+}
+
+/**
+ * Initialize and keep live previews in sync with their raw textareas.
+ *
+ * @param {Element} root Editor container or newly inserted row
+ * @returns {void}
+ */
+function initializeInstructorFlashcardPreviews(root) {
+    const rows = root.matches?.('.flashcard-editor-row')
+        ? [root]
+        : Array.from(root.querySelectorAll('.flashcard-editor-row'));
+
+    rows.forEach(row => {
+        renderInstructorFlashcardPreview(row, 'front');
+        renderInstructorFlashcardPreview(row, 'back');
+        row.querySelectorAll('.flashcard-front-input, .flashcard-back-input').forEach(input => {
+            input.addEventListener('input', () => {
+                const side = input.classList.contains('flashcard-front-input') ? 'front' : 'back';
+                renderInstructorFlashcardPreview(row, side);
+            });
+        });
+    });
 }
 
 async function generateFlashcardDraft(unitName, button) {
@@ -146,11 +198,16 @@ async function generateFlashcardDraft(unitName, button) {
 
     try {
         const courseId = await getCurrentCourseId();
-        const count = Number(document.getElementById(`flashcard-count-${flashcardUnitId(unitName)}`)?.value || 10);
+        const unitId = flashcardUnitId(unitName);
+        const count = Number(document.getElementById(`flashcard-count-${unitId}`)?.value || 10);
+        // Ticked by default in the markup; a missing checkbox means an older
+        // rendering of the section, which should keep the notation rules.
+        const chemistryCheckbox = document.getElementById(`flashcard-chemistry-${unitId}`);
+        const chemistryNotation = chemistryCheckbox ? chemistryCheckbox.checked : true;
         const response = await fetch('/api/flashcards/instructor/generate', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ courseId, lectureName: unitName, cardCount: count })
+            body: JSON.stringify({ courseId, lectureName: unitName, cardCount: count, chemistryNotation })
         });
         const result = await response.json();
         if (!response.ok || !result.success) throw new Error(result.message || 'Generation failed');
@@ -215,7 +272,9 @@ function addManualFlashcard(unitName) {
         return;
     }
     editor.insertAdjacentHTML('beforeend', renderFlashcardEditorRow({ front: '', back: '', source: null }, count, false));
-    editor.lastElementChild?.querySelector('.flashcard-front-input')?.focus();
+    const row = editor.lastElementChild;
+    if (row) initializeInstructorFlashcardPreviews(row);
+    row?.querySelector('.flashcard-front-input')?.focus();
 }
 
 async function removeFlashcardEditorRow(button) {

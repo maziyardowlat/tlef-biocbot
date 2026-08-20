@@ -10,6 +10,8 @@
     <link rel="stylesheet" href="../styles/flashcards.css">
     <link rel="stylesheet" href="../styles/student-guided-tour.css">
     <link rel="stylesheet" href="../styles/preview.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.47/dist/katex.min.css">
+    <link rel="stylesheet" href="../styles/rich-text.css">
     <!-- Must load before any page script so no request escapes unmarked -->
     <script src="../common/scripts/preview-session.js"></script>
 </head>
@@ -104,6 +106,12 @@
     <script src="./scripts/student-guided-tour.js"></script>
     <script src="../common/scripts/mobile-layout.js"></script>
     <script src="../common/scripts/idle-timer.js"></script>
+    <!-- Rich text: KaTeX typesets formulas, smiles-drawer draws molecules -->
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.47/dist/katex.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.47/dist/contrib/mhchem.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.47/dist/contrib/auto-render.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/smiles-drawer@2.4.1/dist/smiles-drawer.min.js"></script>
+    <script src="../common/scripts/rich-text.js"></script>
     <script src="./scripts/flashcards.js"></script>
 </body>
 </html>

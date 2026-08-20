@@ -39,21 +39,13 @@ function checkAIGenerationInModal() {
 }
 
 /**
- * Check if course materials are uploaded/processed in onboarding
+ * Check if course materials are available in onboarding
  */
 function checkOnboardingCourseMaterialsAvailable() {
     const lectureStatus = document.getElementById('lecture-status');
     const practiceStatus = document.getElementById('practice-status');
     
-    // Check if status text indicates uploaded/processed
-    // The text is usually 'Not Uploaded', 'Uploading...', 'Uploaded', 'Processed', 'Added'
-    const isAvailable = (status) => {
-        if (!status) return false;
-        const text = status.textContent;
-        return text === 'Uploaded' || text === 'Processed' || text === 'Added';
-    };
-    
-    return isAvailable(lectureStatus) || isAvailable(practiceStatus);
+    return isOnboardingMaterialAvailable(lectureStatus) || isOnboardingMaterialAvailable(practiceStatus);
 }
 
 /**

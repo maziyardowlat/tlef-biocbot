@@ -119,6 +119,9 @@ router.get('/instructor', async (req, res) => {
 router.post('/instructor/generate', async (req, res) => {
     const { courseId, lectureName } = req.body;
     const cardCount = Number(req.body.cardCount || flashcardService.DEFAULT_CARD_COUNT);
+    // Absent means on: the instructor UI always sends the flag, and an older
+    // client should keep the behaviour it had before the checkbox existed.
+    const chemistryNotation = req.body.chemistryNotation !== false;
     if (!courseId || !lectureName) {
         return res.status(400).json({ success: false, message: 'courseId and lectureName are required' });
     }
@@ -150,7 +153,8 @@ router.post('/instructor/generate', async (req, res) => {
             cardCount,
             generatedBy: req.user.userId,
             promptTemplate: course.prompts?.flashcards,
-            sourceTokenBudget: course.prompts?.flashcardSourceTokenBudget
+            sourceTokenBudget: course.prompts?.flashcardSourceTokenBudget,
+            chemistryNotation
         });
         return res.json({
             success: true,

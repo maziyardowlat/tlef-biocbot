@@ -643,6 +643,9 @@ class LLMService {
             if (customPrompts && customPrompts.systemPrompt) {
                 // Replace placeholder in custom system prompt
                 systemPrompt = customPrompts.systemPrompt.replace(/\{\{questionType\}\}/g, questionType);
+                // A custom prompt that predates the chemistry/math rules would
+                // otherwise emit raw formulas the quiz page cannot typeset.
+                systemPrompt = prompts.appendRichContentFormattingRules(systemPrompt);
             } else {
                 systemPrompt = prompts.createQuestionGenerationSystemPrompt(
                     questionType,

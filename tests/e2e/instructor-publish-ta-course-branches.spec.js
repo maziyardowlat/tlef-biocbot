@@ -387,7 +387,7 @@ test.describe('instructor publish, TA, course, and polling branches', () => {
     test('renders no action buttons when content has no document id', async ({ page }) => {
         await openInstructorDocuments(page);
 
-        const buttonCount = await page.evaluate(() => {
+        const result = await page.evaluate(() => {
             const instructorWindow = /** @type {InstructorWindow} */ (window);
             const accordion = document.createElement('div');
             accordion.className = 'accordion-item';
@@ -396,11 +396,19 @@ test.describe('instructor publish, TA, course, and polling branches', () => {
             document.body.appendChild(accordion);
 
             instructorWindow.addContentToWeek('Harness Unit', 'Orphan material', 'No id available', null, 'processed', 'additional');
-            return accordion.querySelectorAll('.action-button').length;
+            const item = /** @type {HTMLElement|null} */ (accordion.querySelector('.file-item'));
+            return {
+                buttonCount: accordion.querySelectorAll('.action-button').length,
+                statusText: item?.querySelector('.status-text')?.textContent,
+                dataStatus: item?.dataset.status,
+            };
         });
 
-        expect(buttonCount).toBe(0);
-        await expect(page.locator('.accordion-item[data-unit-name="Harness Unit"] .status-text')).toHaveText('Processed');
+        expect(result).toEqual({
+            buttonCount: 0,
+            statusText: 'Uploaded',
+            dataStatus: 'processed',
+        });
     });
 
     test('parses fallback filenames when content disposition is absent or malformed', async ({ page }) => {
@@ -472,6 +480,7 @@ test.describe('instructor publish, TA, course, and polling branches', () => {
                 isPlaceholder: item.classList.contains('placeholder-item'),
                 documentId: item.dataset.documentId,
                 documentType: item.dataset.documentType,
+                dataStatus: item.dataset.status,
                 actionCount: item.querySelectorAll('.action-button').length,
                 status: item.querySelector('.status-text')?.textContent,
             };
@@ -481,8 +490,9 @@ test.describe('instructor publish, TA, course, and polling branches', () => {
             isPlaceholder: false,
             documentId: 'doc-practice',
             documentType: 'practice_q_tutorials',
+            dataStatus: 'processed',
             actionCount: 3,
-            status: 'Processed',
+            status: 'Uploaded',
         });
     });
 

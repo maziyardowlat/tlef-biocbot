@@ -139,6 +139,8 @@ describe('course tutoring prompt settings', () => {
         const db = memoryDb({ courses: [{ courseId: 'C1', prompts: { base: 'custom', studentIdleTimeout: 90, studentSessionTimeout: 3600 }, isAdditiveRetrieval: true }] });
         res = await request(app({ db })).get('/prompts?courseId=C1');
         expect(res.body.prompts).toMatchObject({ base: 'custom', studentIdleTimeout: 90, studentSessionTimeout: 3600, additiveRetrieval: true });
+        expect(res.body.prompts.flashcards).toContain('CRITICAL LaTeX FORMATTING');
+        expect(res.body.prompts.flashcards).toContain('CRITICAL SMILES FORMATTING');
     });
 
     test('POST requires course ownership and valid prompt/timeout formats', async () => {
@@ -161,13 +163,16 @@ describe('course tutoring prompt settings', () => {
             prompts: {
                 base: 'base',
                 chatSummary: 'summary',
-                flashcards: 'Focus on {{learningObjectives}}.',
+                flashcards: expect.stringContaining('Focus on {{learningObjectives}}.'),
                 flashcardSourceTokenBudget: 24000,
                 studentIdleTimeout: 300,
                 studentSessionTimeout: 2700
             },
             isAdditiveRetrieval: true, additionalMaterialSecondarySearch: true,
         });
+        const saved = await db.collection('courses').findOne({ courseId: 'C1' });
+        expect(saved.prompts.flashcards).toContain('CRITICAL LaTeX FORMATTING');
+        expect(saved.prompts.flashcards).toContain('CRITICAL SMILES FORMATTING');
         res = await request(app({ db, user: instructor })).post('/prompts/reset').send({ courseId: 'C1' });
         expect(res.status).toBe(200);
         expect(await db.collection('courses').findOne({ courseId: 'C1' })).toMatchObject({ isAdditiveRetrieval: true, additionalMaterialSecondarySearch: false });
@@ -188,7 +193,14 @@ describe('system-admin question and mental-health prompts', () => {
         expect((await request(app({ db, user: admin })).post('/question-prompts').send({ ...body, trueFalse: 2 })).status).toBe(400);
         expect((await request(app({ db, user: admin })).post('/question-prompts').send(body)).status).toBe(200);
         const read = await request(app({ db, user: admin })).get('/question-prompts?courseId=C1');
-        expect(read.body.prompts).toEqual({ systemPrompt: 'system', trueFalse: 'tf', multipleChoice: 'mc', shortAnswer: 'sa' });
+        expect(read.body.prompts).toMatchObject({
+            systemPrompt: expect.stringContaining('system'),
+            trueFalse: 'tf',
+            multipleChoice: 'mc',
+            shortAnswer: 'sa'
+        });
+        expect(read.body.prompts.systemPrompt).toContain('CRITICAL LaTeX FORMATTING');
+        expect(read.body.prompts.systemPrompt).toContain('CRITICAL SMILES FORMATTING');
         expect((await request(app({ db, user: admin })).post('/question-prompts/reset').send({ courseId: 'C1' })).status).toBe(200);
         expect((await db.collection('courses').findOne({ courseId: 'C1' })).questionPrompts).toBeUndefined();
     });
