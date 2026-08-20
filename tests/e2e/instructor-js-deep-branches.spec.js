@@ -248,15 +248,19 @@ test.describe('instructor.js deep branch coverage', () => {
             const aiButton = document.createElement('button');
             aiButton.id = 'generate-ai-unit1';
             document.body.appendChild(aiButton);
-            const lectureItem = Array.from(document.querySelectorAll('.file-item'))
-                .find(item => item.querySelector('h3')?.textContent?.includes('Lecture Notes'));
+            const lectureItem = /** @type {HTMLElement|undefined} */ (Array.from(document.querySelectorAll('.file-item'))
+                .find(item => item.querySelector('h3')?.textContent?.includes('Lecture Notes')));
             const lectureStatus = lectureItem?.querySelector('.status-text');
             if (lectureItem && lectureStatus) {
                 lectureItem.classList.remove('placeholder-item');
                 lectureItem.dataset.documentType = 'lecture_notes';
-                lectureStatus.textContent = 'Processed';
+                lectureItem.dataset.status = 'processed';
+                // Deliberately contradictory display text proves the AI gate
+                // reads the machine status instead of scraping the badge.
+                lectureStatus.textContent = 'Not Uploaded';
             }
             instructorWindow.checkAIGenerationAvailability('Unit 1');
+            const materialsAvailable = instructorWindow.checkCourseMaterialsAvailable('Unit 1');
 
             const content = /** @type {HTMLElement} */ (document.querySelector('.accordion-content'));
             content.classList.add('collapsed');
@@ -270,6 +274,7 @@ test.describe('instructor.js deep branch coverage', () => {
             return {
                 aiDisabled: aiButton.disabled,
                 aiTitle: aiButton.title,
+                materialsAvailable,
                 expanded: !content.classList.contains('collapsed'),
                 actions: section.querySelectorAll('.add-content-section, .save-objectives').length,
                 addMaterialActions: Array.from(section.querySelectorAll('.add-content-btn'))
@@ -335,6 +340,7 @@ test.describe('instructor.js deep branch coverage', () => {
         expect(noCourseResult.title).toMatch(/No Course|Instructor JS Deep Branches/);
         expect(result.aiDisabled).toBe(false);
         expect(result.aiTitle).toContain('Generate questions');
+        expect(result.materialsAvailable).toBe(true);
         expect(result.expanded).toBe(true);
         expect(result.actions).toBeGreaterThan(0);
         expect(result.addMaterialActions).toEqual([

@@ -31,11 +31,6 @@
     font-weight: 500;
 }
 
-.status-text.processed {
-    background-color: rgba(40, 167, 69, 0.1);
-    color: var(--success-color);
-}
-
 .status-text.processing {
     background-color: rgba(255, 193, 7, 0.1);
     color: var(--warning-color);

@@ -36,8 +36,8 @@ test.describe('onboarding save and upload modal branches', () => {
         await page.locator('#substep-questions button.btn-primary', { hasText: 'Complete Unit 1 & Continue' }).click();
         await expect(page.getByText('Please upload required materials (Lecture Notes and Practice Questions) before continuing.')).toBeVisible();
 
-        await page.locator('#lecture-status').evaluate(element => { element.textContent = 'Uploaded'; });
-        await page.locator('#practice-status').evaluate(element => { element.textContent = 'Uploaded'; });
+        await page.locator('#lecture-status').evaluate(element => { /** @type {HTMLElement} */ (element).dataset.status = 'uploaded'; });
+        await page.locator('#practice-status').evaluate(element => { /** @type {HTMLElement} */ (element).dataset.status = 'uploaded'; });
         await page.locator('#substep-questions button.btn-primary', { hasText: 'Complete Unit 1 & Continue' }).click();
         await expect(page.getByText('Please add at least one assessment question before continuing.')).toBeVisible();
     });

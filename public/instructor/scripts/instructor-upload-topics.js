@@ -696,7 +696,7 @@ function extractFilenameFromDisposition(contentDisposition) {
  * @param {string} fileName - The file name to display
  * @param {string} description - The file description
  * @param {string} documentId - The document ID from the database
- * @param {string} status - The status to display ('uploaded' or 'processed')
+ * @param {string} status - Machine-readable upload status ('uploaded' or 'processed')
  * @param {string} contentType - The content type ('lecture-notes', 'practice-quiz', etc.)
  */
 function addContentToWeek(week, fileName, description, documentId, status = 'uploaded', contentType = null) {
@@ -711,6 +711,7 @@ function addContentToWeek(week, fileName, description, documentId, status = 'upl
     // Find existing file item to replace or create new one
     const courseMaterialsContent = weekAccordion.querySelector('.course-materials-section .section-content');
     let targetFileItem = null;
+    const materialStatus = status === 'processed' ? 'processed' : 'uploaded';
     
     // Check if we're replacing an existing placeholder
     const existingItems = courseMaterialsContent.querySelectorAll('.file-item');
@@ -734,6 +735,7 @@ function addContentToWeek(week, fileName, description, documentId, status = 'upl
         
         // Remove placeholder class and add document type
         targetFileItem.classList.remove('placeholder-item');
+        targetFileItem.dataset.status = materialStatus;
         if (contentType) {
             targetFileItem.dataset.documentType = contentType === 'lecture-notes' ? 'lecture_notes' : 
                                                 contentType === 'practice-quiz' ? 'practice_q_tutorials' : contentType;
@@ -749,8 +751,8 @@ function addContentToWeek(week, fileName, description, documentId, status = 'upl
             targetFileItem.querySelector('.file-info').insertBefore(typeBadge, targetFileItem.querySelector('.status-text'));
         }
         typeBadge.textContent = getDocumentTypeLabel(contentType);
-        targetFileItem.querySelector('.status-text').textContent = status === 'processed' ? 'Processed' : 'Uploaded';
-        targetFileItem.querySelector('.status-text').className = `status-text ${status}`;
+        targetFileItem.querySelector('.status-text').textContent = 'Uploaded';
+        targetFileItem.querySelector('.status-text').className = 'status-text uploaded';
         
         // Set document ID for proper deletion
         if (documentId) {
@@ -766,6 +768,7 @@ function addContentToWeek(week, fileName, description, documentId, status = 'upl
         // Create new file item
         const fileItem = document.createElement('div');
         fileItem.className = 'file-item';
+        fileItem.dataset.status = materialStatus;
         
         // Set document ID and type if available
         if (documentId) {
@@ -782,7 +785,7 @@ function addContentToWeek(week, fileName, description, documentId, status = 'upl
                 <h3>${fileName}</h3>
                 <p>${description}</p>
                 <span class="document-type-badge">${getDocumentTypeLabel(contentType)}</span>
-                <span class="status-text ${status}">${status === 'processed' ? 'Processed' : 'Uploaded'}</span>
+                <span class="status-text uploaded">Uploaded</span>
             </div>
             <div class="file-actions">
                 ${buildDocumentActionButtons(documentId)}

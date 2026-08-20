@@ -126,18 +126,6 @@ function documentsCssHarness() {
                                             </div>
                                         </div>
 
-                                        <div class="file-item" data-document-id="doc-processed" data-document-type="practice_q_tutorials">
-                                            <span class="file-icon">Text</span>
-                                            <div class="file-info">
-                                                <h3>practice-questions.txt</h3>
-                                                <p>Processed and ready for student use.</p>
-                                                <span class="status-text processed">Processed</span>
-                                            </div>
-                                            <div class="file-actions">
-                                                <button class="action-button view" type="button">View</button>
-                                            </div>
-                                        </div>
-
                                         <div class="file-item additional-material-item" data-document-id="doc-failed" data-document-type="additional">
                                             <span class="file-icon">File</span>
                                             <div class="file-info">
@@ -408,7 +396,6 @@ test.describe('documents.css harness coverage', () => {
         await expect(page.locator('.file-item').first()).toHaveCSS('display', 'flex');
         await expect(page.locator('.file-info.uploaded')).toHaveCSS('color', 'rgb(40, 167, 69)');
         await expect(page.locator('.status-text.uploaded')).toHaveCSS('color', 'rgb(40, 167, 69)');
-        await expect(page.locator('.status-text.processed')).toHaveCSS('background-color', 'rgba(40, 167, 69, 0.1)');
         await expect(page.locator('.status-text.failed')).toHaveCSS('color', 'rgb(220, 53, 69)');
         await expect(page.locator('.additional-material-item')).toHaveCSS('border-left-color', 'rgb(23, 162, 184)');
         await expect(page.locator('.action-button.download')).toHaveCSS('background-color', 'rgb(40, 167, 69)');

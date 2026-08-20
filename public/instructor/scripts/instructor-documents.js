@@ -4,6 +4,16 @@
 
 let documentModalTrigger = null;
 
+/**
+ * Read the machine-readable material status stored on a file item.
+ * Display text is intentionally not used for application logic.
+ * @param {HTMLElement} item - Material file item
+ * @returns {string} Normalized material status
+ */
+function getMaterialStatus(item) {
+    return (item?.dataset?.status || '').trim().toLowerCase();
+}
+
 function getDocumentTypeLabel(documentType) {
     switch (documentType) {
         case 'lecture-notes':
@@ -160,6 +170,7 @@ function createDocumentItem(doc) {
     const documentItem = document.createElement('div');
     documentItem.className = 'file-item';
     documentItem.dataset.documentId = doc.documentId;
+    documentItem.dataset.status = String(doc.status || '').trim().toLowerCase();
     
     // Add the document type to the dataset for robust placeholder checking
     // Map document types to consistent format for placeholder detection
@@ -177,19 +188,27 @@ function createDocumentItem(doc) {
     const fileIcon = doc.contentType === 'text' ? '📝' : '📄';
     
     // Map status values to display text consistently
+    // Issue #497 intentionally collapses legacy parsed/processed states into
+    // Uploaded. Issue #456 must source any future lifecycle from persisted
+    // processing metadata instead of inferring it from this display label.
     let statusText;
-    switch (doc.status) {
+    let statusClass = '';
+    switch (documentItem.dataset.status) {
         case 'uploaded':
-            statusText = 'Uploaded';
-            break;
         case 'parsed':
-            statusText = 'Processed';
+        case 'processed':
+            statusText = 'Uploaded';
+            statusClass = 'uploaded';
             break;
         case 'parsing':
+        case 'processing':
             statusText = 'Processing';
+            statusClass = 'processing';
             break;
         case 'error':
+        case 'failed':
             statusText = 'Error';
+            statusClass = 'failed';
             break;
         default:
             statusText = doc.status || 'Unknown';
@@ -206,7 +225,7 @@ function createDocumentItem(doc) {
             <h3>${doc.filename || doc.originalName}</h3>
             ${doc.metadata?.description ? `<p>${doc.metadata.description}</p>` : ''}
             <span class="document-type-badge">${documentTypeLabel}</span>
-            <span class="status-text">${statusText}</span>
+            <span class="status-text${statusClass ? ` ${statusClass}` : ''}">${statusText}</span>
         </div>
         <div class="file-actions">
             ${buildDocumentActionButtons(doc.documentId)}
@@ -679,11 +698,10 @@ async function confirmCourseMaterials(week) {
     // Debug: Log all file items to see what we're working with
     fileItems.forEach((item, index) => {
         const title = item.querySelector('.file-info h3');
-        const statusText = item.querySelector('.status-text');
         const documentType = item.dataset.documentType;
         console.log(`🔍 [CONFIRM_MATERIALS] File item ${index + 1}:`, {
             title: title ? title.textContent : 'No title',
-            status: statusText ? statusText.textContent : 'No status',
+            status: getMaterialStatus(item) || 'No status',
             documentType: documentType || 'No document type',
             isPlaceholder: item.classList.contains('placeholder-item')
         });
@@ -695,12 +713,11 @@ async function confirmCourseMaterials(week) {
     
     fileItems.forEach((item, index) => {
         const title = item.querySelector('.file-info h3');
-        const statusText = item.querySelector('.status-text');
         const documentType = item.dataset.documentType;
         
-        if (title && statusText) {
+        if (title) {
             const titleText = title.textContent;
-            const status = statusText.textContent;
+            const status = getMaterialStatus(item);
             
             console.log(`🔍 [CONFIRM_MATERIALS] Item ${index + 1}: "${titleText}" - Status: "${status}" - Type: "${documentType}"`);
             console.log(`🔍 [CONFIRM_MATERIALS] Debug - documentType === 'lecture_notes': ${documentType === 'lecture_notes'}, documentType === 'practice_q_tutorials': ${documentType === 'practice_q_tutorials'}`);
@@ -710,7 +727,7 @@ async function confirmCourseMaterials(week) {
             const isLectureNotesType = documentType === 'lecture_notes' || 
                                      documentType === 'lecture-notes' ||
                                      titleText.includes('Lecture Notes');
-            const isLectureNotesStatus = status === 'Processed' || status === 'Uploaded' || status === 'uploaded' || status === 'parsed' || status === 'Processing';
+            const isLectureNotesStatus = ['uploaded', 'parsed', 'processed', 'parsing', 'processing'].includes(status);
             console.log(`🔍 [CONFIRM_MATERIALS] Lecture Notes check - Type match: ${isLectureNotesType}, Status match: ${isLectureNotesStatus}`);
             
             if (isLectureNotesType && isLectureNotesStatus) {
@@ -724,7 +741,7 @@ async function confirmCourseMaterials(week) {
                                           documentType === 'practice-quiz' ||
                                           titleText.includes('Practice Questions') || 
                                           titleText.includes('Practice Questions/Tutorial');
-            const isPracticeQuestionsStatus = status === 'Processed' || status === 'Uploaded' || status === 'uploaded' || status === 'parsed' || status === 'Processing';
+            const isPracticeQuestionsStatus = ['uploaded', 'parsed', 'processed', 'parsing', 'processing'].includes(status);
             console.log(`🔍 [CONFIRM_MATERIALS] Practice Questions check - Type match: ${isPracticeQuestionsType}, Status match: ${isPracticeQuestionsStatus}`);
             
             if (isPracticeQuestionsType && isPracticeQuestionsStatus) {
@@ -805,8 +822,8 @@ function checkLectureNotesUploaded(week) {
     return Array.from(unit.querySelectorAll('.file-item:not(.placeholder-item)')).some(item => {
         const documentType = item.dataset.documentType || '';
         const isLectureNotes = documentType === 'lecture_notes' || documentType === 'lecture-notes';
-        const status = item.querySelector('.status-text')?.textContent?.trim();
-        return isLectureNotes && status === 'Processed';
+        const status = getMaterialStatus(item);
+        return isLectureNotes && (status === 'parsed' || status === 'processed');
     });
 }
 
@@ -852,10 +869,12 @@ function updateFileStatus(contentType, unitName, status, fileName) {
             const isCorrectUnit = itemTitle.textContent.includes(unitName);
             
             if ((isLectureNotes || isPracticeQuestions) && isCorrectUnit) {
+                const normalizedStatus = status === 'uploaded' ? 'uploaded' : 'not-uploaded';
+                item.dataset.status = normalizedStatus;
                 const statusText = item.querySelector('.status-text');
                 if (statusText) {
-                    statusText.textContent = status === 'uploaded' ? 'Uploaded' : 'Not Uploaded';
-                    statusText.className = status === 'uploaded' ? 'status-text uploaded' : 'status-text';
+                    statusText.textContent = normalizedStatus === 'uploaded' ? 'Uploaded' : 'Not Uploaded';
+                    statusText.className = normalizedStatus === 'uploaded' ? 'status-text uploaded' : 'status-text';
                 }
                 
                 // Update the file info
@@ -1050,14 +1069,10 @@ function checkCourseMaterialsAvailable(week) {
     console.log(`🔍 [MATERIALS_CHECK] Found ${fileItems.length} file items in ${week}`);
     
     for (const item of fileItems) {
-        const status = item.querySelector('.status-text');
-        if (status) {
-            const statusText = status.textContent;
-            // Consider both 'Processed' and 'Uploaded' as valid statuses
-            if (statusText === 'Processed' || statusText === 'Uploaded' || statusText === 'uploaded') {
-                console.log(`🔍 [MATERIALS_CHECK] Found valid material (${statusText}) in ${week}`);
-                return true;
-            }
+        const status = getMaterialStatus(item);
+        if (status === 'parsed' || status === 'processed' || status === 'uploaded') {
+            console.log(`🔍 [MATERIALS_CHECK] Found valid material (${status}) in ${week}`);
+            return true;
         }
     }
 

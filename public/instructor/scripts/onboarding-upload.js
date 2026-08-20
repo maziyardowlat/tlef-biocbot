@@ -220,6 +220,7 @@ function repopulateMaterialStatuses(documents) {
     const lectureStatus = document.getElementById('lecture-status');
     if (lectureStatus && typeCounts['lecture-notes']) {
         lectureStatus.dataset.uploadCount = String(typeCounts['lecture-notes']);
+        lectureStatus.dataset.status = 'uploaded';
         lectureStatus.textContent = `${typeCounts['lecture-notes']} Uploaded`;
         lectureStatus.classList.remove('not-uploaded');
         lectureStatus.classList.add('uploaded');
@@ -227,6 +228,7 @@ function repopulateMaterialStatuses(documents) {
     const practiceStatus = document.getElementById('practice-status');
     if (practiceStatus && typeCounts['practice-quiz']) {
         practiceStatus.dataset.uploadCount = String(typeCounts['practice-quiz']);
+        practiceStatus.dataset.status = 'uploaded';
         practiceStatus.textContent = `${typeCounts['practice-quiz']} Uploaded`;
         practiceStatus.classList.remove('not-uploaded');
         practiceStatus.classList.add('uploaded');
@@ -478,6 +480,7 @@ async function handleUpload() {
             const previousCount = Number(statusBadge.dataset.uploadCount || 0);
             const uploadCount = previousCount + 1;
             statusBadge.dataset.uploadCount = String(uploadCount);
+            statusBadge.dataset.status = currentContentType === 'additional' ? 'added' : 'uploaded';
             statusBadge.textContent = currentContentType === 'additional'
                 ? `${uploadCount} Added`
                 : `${uploadCount} Uploaded`;

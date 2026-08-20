@@ -600,8 +600,8 @@ test.describe('instructor onboarding focused script coverage', () => {
         await expect.poll(() => captured.questionSaves.length).toBe(1);
         await expect.poll(() => captured.thresholdSaves.length).toBe(1);
 
-        await page.locator('#lecture-status').evaluate(element => { element.textContent = 'Uploaded'; });
-        await page.locator('#practice-status').evaluate(element => { element.textContent = 'Processed'; });
+        await page.locator('#lecture-status').evaluate(element => { /** @type {HTMLElement} */ (element).dataset.status = 'uploaded'; });
+        await page.locator('#practice-status').evaluate(element => { /** @type {HTMLElement} */ (element).dataset.status = 'processed'; });
         await page.locator('#substep-questions button.btn-primary', { hasText: 'Complete Unit 1 & Continue' }).click();
 
         await expect.poll(() => captured.onboardingUpdates.length).toBe(1);

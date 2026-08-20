@@ -4,6 +4,16 @@
  */
 
 /**
+ * Determine whether an onboarding material badge represents saved content.
+ * @param {HTMLElement|null} statusBadge - Material status badge
+ * @returns {boolean} Whether material is available
+ */
+function isOnboardingMaterialAvailable(statusBadge) {
+    const status = (statusBadge?.dataset?.status || '').trim().toLowerCase();
+    return status === 'uploaded' || status === 'parsed' || status === 'processed' || status === 'added';
+}
+
+/**
  * Check if onboarding is already complete for this instructor
  */
 async function checkOnboardingStatus() {
@@ -493,8 +503,8 @@ async function nextSubstep(substepName) {
     if (substepName === 'questions') {
         const lectureStatus = document.getElementById('lecture-status');
         const practiceStatus = document.getElementById('practice-status');
-        const lectureUploaded = lectureStatus && !/not uploaded/i.test(lectureStatus.textContent || '');
-        const practiceUploaded = practiceStatus && !/not uploaded/i.test(practiceStatus.textContent || '');
+        const lectureUploaded = isOnboardingMaterialAvailable(lectureStatus);
+        const practiceUploaded = isOnboardingMaterialAvailable(practiceStatus);
 
         if (!lectureUploaded || !practiceUploaded) {
             showNotification('Please upload required materials (Lecture Notes and Practice Questions) before continuing.', 'error');
@@ -549,7 +559,7 @@ async function saveOnboardingData() {
         
         // Get lecture notes status and content
         const lectureStatus = document.getElementById('lecture-status');
-        if (lectureStatus.textContent !== 'Not Uploaded') {
+        if (isOnboardingMaterialAvailable(lectureStatus)) {
             unitFiles['Unit 1'] = [{
                 name: 'Lecture Notes - Unit 1',
                 type: 'lecture-notes',
@@ -560,7 +570,7 @@ async function saveOnboardingData() {
         
         // Get practice questions status and content
         const practiceStatus = document.getElementById('practice-status');
-        if (practiceStatus.textContent !== 'Not Uploaded') {
+        if (isOnboardingMaterialAvailable(practiceStatus)) {
             if (!unitFiles['Unit 1']) {
                 unitFiles['Unit 1'] = [];
             }
@@ -641,7 +651,7 @@ async function completeUnit1Setup() {
     const lectureStatus = document.getElementById('lecture-status');
     const practiceStatus = document.getElementById('practice-status');
     
-    if (lectureStatus.textContent === 'Not Uploaded' || practiceStatus.textContent === 'Not Uploaded') {
+    if (!isOnboardingMaterialAvailable(lectureStatus) || !isOnboardingMaterialAvailable(practiceStatus)) {
         showNotification('Please upload required materials (Lecture Notes and Practice Questions) before continuing.', 'error');
         onboardingState.isSubmitting = false;
         return;
