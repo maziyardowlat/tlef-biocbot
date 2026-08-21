@@ -1,4 +1,5 @@
 const express = require('express');
+const multer = require('multer');
 
 const CourseModel = require('../models/Course');
 const { hasSystemAdminAccess } = require('../services/authorization');
@@ -11,6 +12,22 @@ const {
 const { resolveCourseAi, sendLlmKeyError } = require('./llmKeyMiddleware');
 const { createImportProgressStream } = require('./lmsImportProgress');
 const { createLmsImportDiagnostics } = require('../services/lmsImportDiagnostics');
+
+const MAX_SUBMISSION_FEEDBACK_PDF_BYTES = 10 * 1024 * 1024;
+
+const submissionFeedbackUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: MAX_SUBMISSION_FEEDBACK_PDF_BYTES, files: 1, fields: 4 },
+    fileFilter: (req, file, callback) => {
+        if (file.mimetype === 'application/pdf') callback(null, true);
+        else callback(new Error('Submission feedback must be uploaded as application/pdf'), false);
+    }
+});
+
+function isSubmissionFeedbackTestRouteEnabled(env = process.env) {
+    return env.NODE_ENV !== 'production'
+        || String(env.CANVAS_FEEDBACK_TEST_ROUTE_ENABLED || '').toLowerCase() === 'true';
+}
 
 function normalizeCanvasFile(file = {}) {
     const mimeType = file.mimeType || '';
@@ -53,11 +70,42 @@ function getCanvasFileSource(course = {}) {
         || (course.lmsSync?.provider === 'canvas' ? course.lmsSync : null);
 }
 
+function getCanvasFeedbackSource(course = {}) {
+    return course.lmsGradeSources?.canvas || getCanvasFileSource(course);
+}
+
+function normalizeCanvasFeedbackAssignment(item = {}) {
+    const raw = item.raw || {};
+    const now = Date.now();
+    const unlockAt = raw.unlock_at || null;
+    const lockAt = raw.lock_at || null;
+    const published = raw.published === true || raw.workflow_state === 'published';
+    const unlocked = !unlockAt || new Date(unlockAt).getTime() <= now;
+    const unlockedBeforeClose = !lockAt || new Date(lockAt).getTime() > now;
+
+    return {
+        id: String(item.id ?? ''),
+        name: item.name || `Canvas assignment ${item.id ?? ''}`,
+        dueAt: item.dueAt || null,
+        maxScore: item.maxScore ?? null,
+        published,
+        unlockAt,
+        lockAt,
+        postManually: raw.post_manually === true,
+        submissionTypes: Array.isArray(raw.submission_types) ? raw.submission_types : [],
+        active: published && unlocked && unlockedBeforeClose,
+        supported: !raw.anonymous_grading
+            && !raw.moderated_grading
+            && raw.group_category_id == null
+    };
+}
+
 function createCanvasLmsRouter(
     integration,
     {
         ingestFile = ingestFileBuffer,
-        resolveAi = resolveCourseAi
+        resolveAi = resolveCourseAi,
+        env = process.env
     } = {}
 ) {
     const router = express.Router();
@@ -163,6 +211,156 @@ function createCanvasLmsRouter(
             next(error);
         }
     });
+
+    if (isSubmissionFeedbackTestRouteEnabled(env)) {
+        router.get(
+            '/courses/:biocbotCourseId/assignments',
+            requireCanvasAuth,
+            async (req, res, next) => {
+                try {
+                    const course = await requireManagedCourse(req, res, req.params.biocbotCourseId);
+                    if (!course) return;
+                    const canvasSource = getCanvasFeedbackSource(course);
+                    if (!canvasSource?.courseId) {
+                        return res.status(400).json({
+                            success: false,
+                            message: 'Link this BiocBot course to a Canvas grade source first'
+                        });
+                    }
+
+                    const assignments = await canvas.getGradeItems(req.canvasApi, canvasSource.courseId, {
+                        orderBy: 'due_at'
+                    });
+                    return res.json({
+                        success: true,
+                        data: {
+                            course: {
+                                id: String(canvasSource.courseId),
+                                name: canvasSource.name || '',
+                                code: canvasSource.code || ''
+                            },
+                            assignments: assignments.map(normalizeCanvasFeedbackAssignment)
+                        }
+                    });
+                } catch (error) {
+                    return next(error);
+                }
+            }
+        );
+
+        router.post(
+            '/courses/:biocbotCourseId/assignments/:canvasAssignmentId/submission-feedback-test',
+            requireCanvasAuth,
+            submissionFeedbackUpload.single('pdf'),
+            async (req, res, next) => {
+                try {
+                    const db = req.app.locals.db;
+                    const course = await requireManagedCourse(req, res, req.params.biocbotCourseId);
+                    if (!course) return;
+
+                    const canvasSource = getCanvasFeedbackSource(course);
+                    if (!canvasSource?.courseId) {
+                        return res.status(400).json({
+                            success: false,
+                            message: 'Link this BiocBot course to a Canvas grade source first'
+                        });
+                    }
+
+                    const studentId = String(req.body.studentId || '').trim();
+                    const attempt = Number(req.body.attempt);
+                    const canvasAssignmentId = String(req.params.canvasAssignmentId || '').trim();
+                    if (!studentId || !canvasAssignmentId || !Number.isSafeInteger(attempt) || attempt < 1 || !req.file) {
+                        return res.status(400).json({
+                            success: false,
+                            message: 'studentId, a positive attempt, and one PDF file are required'
+                        });
+                    }
+
+                    if (!await CourseModel.userHasCourseAccess(db, course.courseId, studentId, 'student')) {
+                        return res.status(400).json({
+                            success: false,
+                            message: 'The selected BiocBot student is not enrolled in this course'
+                        });
+                    }
+
+                    const student = await db.collection('users').findOne({
+                        userId: studentId,
+                        isActive: { $ne: false },
+                        isPreview: { $ne: true }
+                    });
+                    const puid = String(student?.puid || '').trim();
+                    if (!puid) {
+                        return res.status(400).json({
+                            success: false,
+                            message: 'The selected BiocBot student does not have a PUID for Canvas matching'
+                        });
+                    }
+
+                    const canvasCourseId = String(canvasSource.courseId);
+                    const feedbackId = String(req.body.feedbackId || `feedback-test-${Date.now()}`).trim();
+                    const report = await canvas.matchCourseRoster(
+                        req.canvasApi,
+                        canvasCourseId,
+                        [{ appUserId: studentId, key: puid }]
+                    );
+                    const batch = canvas.resolveSubmissionFeedbackWrites(
+                        report,
+                        canvasAssignmentId,
+                        [{
+                            feedbackId,
+                            key: puid,
+                            attempt,
+                            filename: req.file.originalname,
+                            data: req.file.buffer,
+                            ...(req.body.textComment !== undefined
+                                ? { textComment: String(req.body.textComment) }
+                                : {})
+                        }],
+                        { maxBytesPerFile: MAX_SUBMISSION_FEEDBACK_PDF_BYTES }
+                    );
+
+                    if (batch.unresolved.length) {
+                        return res.status(409).json({
+                            success: false,
+                            message: 'The selected student could not be matched safely to the Canvas roster',
+                            data: { unresolved: batch.unresolved }
+                        });
+                    }
+
+                    const options = {
+                        courseId: canvasCourseId,
+                        gradeItemId: canvasAssignmentId,
+                        batch
+                    };
+                    const preflight = await canvas.preflightSubmissionFeedbackExport(req.canvasApi, options);
+                    const exported = await canvas.postSubmissionFeedbackPdfs(req.canvasApi, {
+                        ...options,
+                        preflight,
+                        concurrency: 1
+                    });
+                    const result = exported.results[0];
+
+                    return res.status(result?.status === 'attached' ? 201 : 502).json({
+                        success: result?.status === 'attached',
+                        message: result?.status === 'attached'
+                            ? 'Test feedback PDF attached to the Canvas submission'
+                            : 'Canvas did not confirm that the test feedback PDF was attached',
+                        data: {
+                            preflight: {
+                                assignmentName: preflight.assignmentName,
+                                postManually: preflight.postManually,
+                                fileCount: preflight.fileCount,
+                                totalBytes: preflight.totalBytes
+                            },
+                            result
+                        }
+                    });
+                } catch (error) {
+                    return next(error);
+                }
+            }
+        );
+    }
 
     router.post('/courses/:biocbotCourseId/import-file', requireCanvasAuth, async (req, res, next) => {
         let progress = null;
@@ -311,7 +509,11 @@ function createCanvasLmsRouter(
 
 module.exports = {
     createCanvasLmsRouter,
+    getCanvasFeedbackSource,
     getCanvasFileSource,
+    isSubmissionFeedbackTestRouteEnabled,
+    MAX_SUBMISSION_FEEDBACK_PDF_BYTES,
+    normalizeCanvasFeedbackAssignment,
     normalizeCanvasFile,
     requireManagedCourse
 };

@@ -85,6 +85,44 @@
                     <div id="lms-unmatched-body"></div>
                 </details>
 
+                <details class="canvas-feedback-test-panel" id="canvas-feedback-test-panel" hidden>
+                    <summary>Test Canvas feedback PDF upload</summary>
+                    <p class="canvas-feedback-test-help">
+                        Development-only tool. This performs a real write to the linked Canvas assignment for one student.
+                    </p>
+                    <form id="canvas-feedback-test-form" enctype="multipart/form-data">
+                        <div class="canvas-feedback-test-grid">
+                            <label>
+                                Student
+                                <select id="canvas-feedback-student" name="studentId" required></select>
+                            </label>
+                            <label>
+                                Canvas assignment
+                                <select id="canvas-feedback-assignment" name="assignmentId" required>
+                                    <option value="">Loading assignments…</option>
+                                </select>
+                            </label>
+                            <label>
+                                Submission attempt
+                                <input id="canvas-feedback-attempt" name="attempt" type="number" min="1" step="1" value="1" required>
+                            </label>
+                            <label>
+                                Feedback PDF
+                                <input id="canvas-feedback-pdf" name="pdf" type="file" accept="application/pdf,.pdf" required>
+                            </label>
+                            <label class="canvas-feedback-comment-field">
+                                Comment accompanying the PDF (optional)
+                                <input id="canvas-feedback-comment" name="textComment" type="text" value="Generated feedback is attached.">
+                            </label>
+                        </div>
+                        <p id="canvas-feedback-visibility-note" class="canvas-feedback-visibility-note"></p>
+                        <div class="canvas-feedback-test-actions">
+                            <button id="send-canvas-feedback-test" class="btn-small btn-primary" type="submit">Send test PDF to Canvas</button>
+                            <span id="canvas-feedback-test-status" role="status" aria-live="polite"></span>
+                        </div>
+                    </form>
+                </details>
+
                 <div id="students-container" class="students-grid"></div>
             </div>
 

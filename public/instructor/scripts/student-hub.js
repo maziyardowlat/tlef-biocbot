@@ -14,6 +14,8 @@ let currentGradeCourseId = null;
 let currentGradeSources = [];
 let currentGradeView = null;
 let currentRosterMatch = null;
+let currentCanvasFeedbackAssignments = [];
+let canvasFeedbackAssignmentsKey = null;
 // LMS grades keyed by BiocBot user id so a student card can find its own row.
 let gradesByLocalUserId = new Map();
 const dirtyEnrollment = new Map(); // studentId -> boolean (enrolled)
@@ -70,6 +72,8 @@ function initializeStudentHub() {
     document.getElementById('connect-lms-grade-provider')?.addEventListener('click', connectLmsGradeProvider);
     document.getElementById('match-lms-students')?.addEventListener('click', matchLmsStudents);
     document.getElementById('import-lms-grades')?.addEventListener('click', importLmsGrades);
+    document.getElementById('canvas-feedback-test-form')?.addEventListener('submit', sendCanvasFeedbackTestPdf);
+    document.getElementById('canvas-feedback-assignment')?.addEventListener('change', updateCanvasFeedbackVisibilityNote);
 }
 
 function addKeyboardPickerActivation(selectElement) {
@@ -106,6 +110,187 @@ async function readLmsJson(response) {
             `LMS endpoint returned HTTP ${response.status} with a non-JSON response. ` +
             'Check the staging LMS startup diagnostics to confirm its routes were mounted.'
         );
+    }
+}
+
+function populateCanvasFeedbackStudents() {
+    const select = document.getElementById('canvas-feedback-student');
+    if (!select) return;
+    const previous = select.value;
+    const localById = new Map(currentStudents.map(student => [String(student.userId), student]));
+    const matched = (currentGradeView?.students || [])
+        .map(match => ({ match, local: localById.get(String(match.localUserId)) }))
+        .filter(({ local }) => local && !local.isTA)
+        .sort((a, b) => String(a.local.displayName || a.local.username || a.local.userId)
+            .localeCompare(String(b.local.displayName || b.local.username || b.local.userId)));
+
+    select.replaceChildren();
+    if (!matched.length) {
+        appendOption(select, '', 'Sync the Canvas roster first', { disabled: true, selected: true });
+        select.disabled = true;
+        return;
+    }
+
+    select.disabled = false;
+    appendOption(select, '', 'Choose a matched student', { selected: !previous });
+    for (const { match, local } of matched) {
+        const label = local.displayName || local.username || local.userId;
+        appendOption(select, String(match.localUserId), label, {
+            selected: String(match.localUserId) === previous
+        });
+    }
+}
+
+function updateCanvasFeedbackVisibilityNote() {
+    const assignmentId = document.getElementById('canvas-feedback-assignment')?.value;
+    const note = document.getElementById('canvas-feedback-visibility-note');
+    const assignment = currentCanvasFeedbackAssignments.find(item => item.id === assignmentId);
+    if (!note) return;
+    if (!assignment) {
+        note.textContent = '';
+        note.dataset.visibility = '';
+        return;
+    }
+    if (assignment.postManually) {
+        note.textContent = 'Canvas is using a manual posting policy. The attachment remains hidden until grades are posted.';
+        note.dataset.visibility = 'manual';
+    } else {
+        note.textContent = 'Canvas is using automatic posting. The student may see the PDF immediately after you send it.';
+        note.dataset.visibility = 'automatic';
+    }
+}
+
+async function loadCanvasFeedbackAssignments() {
+    const panel = document.getElementById('canvas-feedback-test-panel');
+    const select = document.getElementById('canvas-feedback-assignment');
+    const status = document.getElementById('canvas-feedback-test-status');
+    if (!panel || !select || !currentGradeCourseId) return;
+
+    const provider = currentGradeView?.provider;
+    const source = currentGradeView?.source;
+    if (provider !== 'canvas' || !source?.courseId) {
+        panel.hidden = true;
+        canvasFeedbackAssignmentsKey = null;
+        currentCanvasFeedbackAssignments = [];
+        return;
+    }
+
+    panel.hidden = false;
+    populateCanvasFeedbackStudents();
+    const key = `${currentGradeCourseId}:${source.courseId}`;
+    if (canvasFeedbackAssignmentsKey === key && currentCanvasFeedbackAssignments.length) return;
+
+    canvasFeedbackAssignmentsKey = key;
+    select.disabled = true;
+    select.replaceChildren();
+    appendOption(select, '', 'Loading assignments…', { selected: true });
+    if (status) status.textContent = 'Reading assignments from Canvas…';
+
+    try {
+        const response = await authenticatedFetch(
+            `/api/lms/canvas/courses/${encodeURIComponent(currentGradeCourseId)}/assignments`
+        );
+        const result = await readLmsJson(response);
+        if (!response.ok || !result.success) {
+            if (reauthorizeCanvas('canvas', response)) return;
+            if (response.status === 404) {
+                panel.hidden = true;
+                return;
+            }
+            throw new Error(result.message || `HTTP ${response.status}`);
+        }
+
+        currentCanvasFeedbackAssignments = result.data.assignments || [];
+        select.replaceChildren();
+        appendOption(select, '', 'Choose an active assignment', { selected: true });
+        for (const assignment of currentCanvasFeedbackAssignments) {
+            const unavailable = !assignment.active || !assignment.supported;
+            const suffix = !assignment.supported
+                ? ' — unsupported grading mode'
+                : (!assignment.active ? ' — not active' : '');
+            appendOption(select, assignment.id, `${assignment.name}${suffix}`, { disabled: unavailable });
+        }
+        select.disabled = !currentCanvasFeedbackAssignments.some(item => item.active && item.supported);
+        if (status) {
+            const available = currentCanvasFeedbackAssignments.filter(item => item.active && item.supported).length;
+            status.textContent = available
+                ? `${available} active Canvas assignment${available === 1 ? '' : 's'} available.`
+                : 'No active supported Canvas assignment is available.';
+        }
+        updateCanvasFeedbackVisibilityNote();
+    } catch (error) {
+        canvasFeedbackAssignmentsKey = null;
+        currentCanvasFeedbackAssignments = [];
+        select.disabled = true;
+        select.replaceChildren();
+        appendOption(select, '', 'Could not load assignments', { disabled: true, selected: true });
+        if (status) status.textContent = `Could not load Canvas assignments: ${error.message}`;
+    }
+}
+
+async function sendCanvasFeedbackTestPdf(event) {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const studentId = document.getElementById('canvas-feedback-student')?.value;
+    const assignmentId = document.getElementById('canvas-feedback-assignment')?.value;
+    const attempt = document.getElementById('canvas-feedback-attempt')?.value;
+    const file = document.getElementById('canvas-feedback-pdf')?.files?.[0];
+    const textComment = document.getElementById('canvas-feedback-comment')?.value;
+    const button = document.getElementById('send-canvas-feedback-test');
+    const status = document.getElementById('canvas-feedback-test-status');
+    const assignment = currentCanvasFeedbackAssignments.find(item => item.id === assignmentId);
+
+    if (!form.reportValidity() || !studentId || !assignmentId || !file) return;
+    if (!assignment?.active || !assignment.supported) {
+        if (status) status.textContent = 'Choose an active supported Canvas assignment.';
+        return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+        if (status) status.textContent = 'The test PDF must be 10 MB or smaller.';
+        return;
+    }
+
+    const visibility = assignment.postManually
+        ? 'Canvas will keep it hidden until grades are posted.'
+        : 'Canvas may show it to the student immediately.';
+    if (!confirm(`Send ${file.name} to this student's ${assignment.name} submission? ${visibility}`)) return;
+
+    const payload = new FormData();
+    payload.append('studentId', studentId);
+    payload.append('attempt', attempt);
+    if (textComment) payload.append('textComment', textComment);
+    payload.append('pdf', file, file.name);
+
+    button.disabled = true;
+    button.textContent = 'Sending…';
+    if (status) status.textContent = 'Verifying the submission and uploading the PDF…';
+    try {
+        const response = await authenticatedFetch(
+            `/api/lms/canvas/courses/${encodeURIComponent(currentGradeCourseId)}`
+                + `/assignments/${encodeURIComponent(assignmentId)}/submission-feedback-test`,
+            { method: 'POST', body: payload }
+        );
+        const result = await readLmsJson(response);
+        if (!response.ok || !result.success) {
+            if (reauthorizeCanvas('canvas', response)) return;
+            throw new Error(result.data?.result?.message || result.message || `HTTP ${response.status}`);
+        }
+        const fileId = result.data?.result?.fileId;
+        if (status) {
+            status.textContent = `Attached successfully${fileId ? ` as Canvas file ${fileId}` : ''}.`;
+        }
+        showNotification('Test feedback PDF attached in Canvas.', 'success');
+        form.reset();
+        document.getElementById('canvas-feedback-attempt').value = '1';
+        document.getElementById('canvas-feedback-comment').value = 'Generated feedback is attached.';
+        updateCanvasFeedbackVisibilityNote();
+    } catch (error) {
+        console.error('Canvas feedback PDF test failed:', error);
+        if (status) status.textContent = `Upload failed: ${error.message}`;
+        showNotification('Could not attach the test feedback PDF.', 'error');
+    } finally {
+        button.disabled = false;
+        button.textContent = 'Send test PDF to Canvas';
     }
 }
 
@@ -260,6 +445,7 @@ function applyLmsGradeView(view) {
     }
 
     if (currentGradeCourseId) renderStudents(currentGradeCourseId);
+    loadCanvasFeedbackAssignments();
 }
 
 /** The LMS grade block shown inside one student card. */

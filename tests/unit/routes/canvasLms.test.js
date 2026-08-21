@@ -5,7 +5,18 @@ const { createCanvasLmsRouter } = require('../../../src/routes/canvasLms');
 
 const instructor = { userId: 'inst-1', role: 'instructor' };
 
-function canvasHarness({ client, getCourses, getSections, getFiles, downloadFile } = {}) {
+function canvasHarness({
+    client,
+    getCourses,
+    getSections,
+    getFiles,
+    downloadFile,
+    getGradeItems,
+    matchCourseRoster,
+    resolveSubmissionFeedbackWrites,
+    preflightSubmissionFeedbackExport,
+    postSubmissionFeedbackPdfs
+} = {}) {
     const authRouter = express.Router();
     authRouter.get('/login', (req, res) => res.json({ returnTo: req.query.returnTo || null }));
     authRouter.post('/logout', (req, res) => res.status(204).end());
@@ -20,7 +31,12 @@ function canvasHarness({ client, getCourses, getSections, getFiles, downloadFile
         getCourses: getCourses || jest.fn(async () => []),
         getCourseSections: getSections || jest.fn(async () => []),
         getCourseFiles: getFiles || jest.fn(async () => []),
-        downloadFile: downloadFile || jest.fn()
+        downloadFile: downloadFile || jest.fn(),
+        getGradeItems: getGradeItems || jest.fn(async () => []),
+        matchCourseRoster: matchCourseRoster || jest.fn(),
+        resolveSubmissionFeedbackWrites: resolveSubmissionFeedbackWrites || jest.fn(),
+        preflightSubmissionFeedbackExport: preflightSubmissionFeedbackExport || jest.fn(),
+        postSubmissionFeedbackPdfs: postSubmissionFeedbackPdfs || jest.fn()
     };
     return {
         api,
@@ -126,6 +142,166 @@ describe('Canvas LMS routes', () => {
             courseId: 'BIOC-1',
             lmsSync: { provider: 'canvas', courseId: '10', name: 'BIOC 301', code: 'BIOC301' }
         });
+    });
+
+    test('sends one uploaded feedback PDF to a linked Canvas submission in test mode', async () => {
+        const report = {
+            courseId: '10',
+            matched: [{ key: 'puid-student-1', appUserId: 'student-1', lmsUserId: '900' }],
+            appOnly: [],
+            rosterOnly: [],
+            ambiguous: [],
+            coverage: { total: 1, integrationId: 1, sisId: 0, email: 0, loginId: 0 }
+        };
+        const batch = {
+            courseId: '10',
+            gradeItemId: '20',
+            maxBytesPerFile: 10 * 1024 * 1024,
+            writes: [{ feedbackId: 'feedback-1', userId: '900' }],
+            unresolved: []
+        };
+        const preflight = {
+            courseId: '10',
+            gradeItemId: '20',
+            assignmentName: 'Lab 1',
+            postManually: true,
+            fileCount: 1,
+            totalBytes: 17,
+            batchFingerprint: 'fingerprint'
+        };
+        const matchCourseRoster = jest.fn(async () => report);
+        const resolveSubmissionFeedbackWrites = jest.fn(() => batch);
+        const preflightSubmissionFeedbackExport = jest.fn(async () => preflight);
+        const postSubmissionFeedbackPdfs = jest.fn(async () => ({
+            courseId: '10',
+            gradeItemId: '20',
+            postManually: true,
+            results: [{
+                feedbackId: 'feedback-1',
+                userId: '900',
+                attempt: 1,
+                status: 'attached',
+                fileId: '700',
+                filename: 'lab-1-feedback.pdf'
+            }]
+        }));
+        const harness = canvasHarness({
+            matchCourseRoster,
+            resolveSubmissionFeedbackWrites,
+            preflightSubmissionFeedbackExport,
+            postSubmissionFeedbackPdfs
+        });
+        const db = memoryDb({
+            courses: [course({
+                lmsSync: { provider: 'canvas', courseId: '10' },
+                studentEnrollment: { 'student-1': { enrolled: true } }
+            })],
+            users: [{ userId: 'student-1', role: 'student', puid: 'puid-student-1', isActive: true }]
+        });
+        const app = makeRouteApp(createCanvasLmsRouter(harness.integration), { db, user: instructor });
+        const pdf = Buffer.from('%PDF-1.7\nfeedback');
+
+        const res = await request(app)
+            .post('/courses/BIOC-1/assignments/20/submission-feedback-test')
+            .field('studentId', 'student-1')
+            .field('attempt', '1')
+            .field('feedbackId', 'feedback-1')
+            .field('textComment', 'Generated feedback is attached.')
+            .attach('pdf', pdf, { filename: 'lab-1-feedback.pdf', contentType: 'application/pdf' })
+            .expect(201);
+
+        expect(res.body).toMatchObject({
+            success: true,
+            data: {
+                preflight: { assignmentName: 'Lab 1', postManually: true },
+                result: { status: 'attached', fileId: '700' }
+            }
+        });
+        expect(matchCourseRoster).toHaveBeenCalledWith(
+            harness.canvasClient,
+            '10',
+            [{ appUserId: 'student-1', key: 'puid-student-1' }]
+        );
+        expect(resolveSubmissionFeedbackWrites).toHaveBeenCalledWith(
+            report,
+            '20',
+            [expect.objectContaining({
+                feedbackId: 'feedback-1',
+                key: 'puid-student-1',
+                attempt: 1,
+                filename: 'lab-1-feedback.pdf',
+                data: expect.any(Buffer),
+                textComment: 'Generated feedback is attached.'
+            })],
+            { maxBytesPerFile: 10 * 1024 * 1024 }
+        );
+        expect(postSubmissionFeedbackPdfs).toHaveBeenCalledWith(
+            harness.canvasClient,
+            expect.objectContaining({
+                courseId: '10',
+                gradeItemId: '20',
+                batch,
+                preflight,
+                concurrency: 1
+            })
+        );
+    });
+
+    test('lists feedback assignments from the Canvas grade source with active-state details', async () => {
+        const getGradeItems = jest.fn(async () => [{
+            id: '44',
+            name: 'BiocBot Feedback PDF Test',
+            dueAt: null,
+            maxScore: 10,
+            raw: {
+                published: true,
+                workflow_state: 'published',
+                post_manually: true,
+                submission_types: ['online_text_entry'],
+                unlock_at: null,
+                lock_at: null,
+                group_category_id: null
+            }
+        }]);
+        const harness = canvasHarness({ getGradeItems });
+        const db = memoryDb({
+            courses: [course({
+                lmsSync: { provider: 'canvas', courseId: '2', name: 'Old file source' },
+                lmsGradeSources: {
+                    canvas: { courseId: '3', name: 'BIOC 302', code: 'BIOC302-LOCAL' }
+                }
+            })]
+        });
+        const app = makeRouteApp(createCanvasLmsRouter(harness.integration), { db, user: instructor });
+
+        const res = await request(app)
+            .get('/courses/BIOC-1/assignments')
+            .expect(200);
+
+        expect(getGradeItems).toHaveBeenCalledWith(harness.canvasClient, '3', { orderBy: 'due_at' });
+        expect(res.body.data).toMatchObject({
+            course: { id: '3', code: 'BIOC302-LOCAL' },
+            assignments: [{
+                id: '44',
+                name: 'BiocBot Feedback PDF Test',
+                active: true,
+                supported: true,
+                postManually: true,
+                submissionTypes: ['online_text_entry']
+            }]
+        });
+    });
+
+    test('does not expose the feedback test endpoint in production unless explicitly enabled', async () => {
+        const harness = canvasHarness();
+        const router = createCanvasLmsRouter(harness.integration, {
+            env: { NODE_ENV: 'production', CANVAS_FEEDBACK_TEST_ROUTE_ENABLED: '' }
+        });
+        const app = makeRouteApp(router, { db: memoryDb(), user: instructor });
+
+        await request(app)
+            .post('/courses/BIOC-1/assignments/20/submission-feedback-test')
+            .expect(404);
     });
 
     test('imports a linked Canvas file through the reusable BiocBot ingestion service', async () => {
