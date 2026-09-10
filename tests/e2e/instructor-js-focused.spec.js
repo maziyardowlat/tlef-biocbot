@@ -653,6 +653,12 @@ test.describe('instructor.js focused browser coverage', () => {
         await expect.poll(() => captured.confirmedMaterials.length).toBe(1);
         await expect.poll(() => captured.publishBodies.length).toBeGreaterThan(0);
         await expect.poll(() => captured.thresholdBodies.length).toBe(1);
+        expect(captured.thresholdBodies[0]).toMatchObject({
+            courseId: COURSE_ID,
+            lectureName: 'Unit 1',
+            passThreshold: 1,
+            instructorId: INSTRUCTOR_ID,
+        });
         await expect.poll(() => captured.renamedUnits.length).toBe(1);
         await expect(page.locator('.folder-name').first()).toHaveText('1. Energy Flow');
         await expect(page.locator('#published-units-summary')).toContainText('Currently, 2 of the 2 Units are Published.');
