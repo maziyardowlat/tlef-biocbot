@@ -541,6 +541,61 @@ describe('POST /:courseId/units — add a unit', () => {
     });
 });
 
+describe('PATCH /:courseId/units/:unitName/order', () => {
+    const orderedCourse = {
+        courseId: 'C1',
+        instructorId: 'i1',
+        lectures: [{ name: 'Unit 1' }, { name: 'Unit 2' }, { name: 'Unit 10' }],
+        courseStructure: { totalUnits: 3 },
+    };
+
+    test('requires a valid direction and the signed-in instructor', async () => {
+        let res = await request(app({ db: memoryDb({ courses: [orderedCourse] }), user: instructor }))
+            .patch('/C1/units/Unit 10/order').send({ instructorId: 'i1', direction: 'sideways' });
+        expect(res.status).toBe(400);
+
+        res = await request(app({ db: memoryDb({ courses: [orderedCourse] }), user: student }))
+            .patch('/C1/units/Unit 10/order').send({ instructorId: 's1', direction: 'up' });
+        expect(res.status).toBe(403);
+    });
+
+    test('moves a unit one slot while preserving its stable name and data', async () => {
+        const unitTen = { name: 'Unit 10', displayName: 'Genetics', documents: [{ documentId: 'doc-10' }] };
+        const db = memoryDb({ courses: [{ ...orderedCourse, lectures: [
+            { name: 'Unit 1' }, { name: 'Unit 2' }, unitTen,
+        ] }] });
+
+        const res = await request(app({ db, user: instructor }))
+            .patch('/C1/units/Unit 10/order').send({ instructorId: 'i1', direction: 'up' });
+
+        expect(res.status).toBe(200);
+        expect(res.body.data).toEqual({
+            unitName: 'Unit 10',
+            position: 2,
+            orderedUnitNames: ['Unit 1', 'Unit 10', 'Unit 2'],
+        });
+        const saved = await db.collection('courses').findOne({ courseId: 'C1' });
+        expect(saved.lectures.map(unit => unit.name)).toEqual(['Unit 1', 'Unit 10', 'Unit 2']);
+        expect(saved.lectures[1]).toMatchObject({
+            name: 'Unit 10', displayName: 'Genetics', documents: [{ documentId: 'doc-10' }],
+        });
+        expect(saved.courseStructure.totalUnits).toBe(3);
+    });
+
+    test('rejects missing units and moves beyond the course boundaries', async () => {
+        const db = memoryDb({ courses: [orderedCourse] });
+        let res = await request(app({ db, user: instructor }))
+            .patch('/C1/units/Ghost/order').send({ instructorId: 'i1', direction: 'up' });
+        expect(res.status).toBe(404);
+
+        res = await request(app({ db, user: instructor }))
+            .patch('/C1/units/Unit 1/order').send({ instructorId: 'i1', direction: 'up' });
+        expect(res.status).toBe(409);
+        const saved = await db.collection('courses').findOne({ courseId: 'C1' });
+        expect(saved.lectures.map(unit => unit.name)).toEqual(['Unit 1', 'Unit 2', 'Unit 10']);
+    });
+});
+
 describe('DELETE /:courseId/units/:unitName', () => {
     test('400 when instructorId is absent from body and query', async () => {
         expect((await request(app({ db: memoryDb({}), user: instructor })).delete('/C1/units/Unit 1')).status).toBe(400);

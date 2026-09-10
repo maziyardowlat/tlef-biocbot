@@ -80,20 +80,9 @@ function focusUnitFromURL() {
 }
 
 /**
- * Pull the leading number out of a unit name ("Unit 10" -> 10) so units sort
- * numerically instead of lexically (which would put "Unit 10" before "Unit 2").
- * @param {string} name - Unit name
- * @returns {number} The unit number, or Number.MAX_SAFE_INTEGER when there isn't one
- */
-function getUnitNumber(name) {
-    const match = /\d+/.exec(name || '');
-    return match ? parseInt(match[0], 10) : Number.MAX_SAFE_INTEGER;
-}
-
-/**
- * Build the ordered list of units to render. Prefers the course's actual
- * lectures so the page shows exactly what exists in the database; falls back to
- * the 1..totalUnits numbering only when a course has no lectures yet.
+ * Build the ordered list of units to render. The lectures array order is the
+ * instructor-controlled display order saved by the API. Falls back to the
+ * 1..totalUnits numbering only when a course has no lectures yet.
  * @param {Object} courseStructure - Course structure (may carry totalUnits)
  * @param {Array} lectures - The course's lectures/units
  * @returns {Array<{name: string, data: Object|null}>} Units in display order
@@ -102,7 +91,6 @@ function getRenderableUnits(courseStructure, lectures) {
     if (Array.isArray(lectures) && lectures.length > 0) {
         return lectures
             .filter(lecture => lecture && lecture.name)
-            .sort((a, b) => getUnitNumber(a.name) - getUnitNumber(b.name) || a.name.localeCompare(b.name))
             .map(lecture => ({ name: lecture.name, data: lecture }));
     }
 
@@ -195,7 +183,9 @@ function generateUnitsFromOnboarding(onboardingData) {
             unit.name,
             unit.data,
             isExpanded,
-            unitList.length > 1
+            unitList.length > 1,
+            index,
+            unitList.length
         );
         container.appendChild(unitElement);
     });
@@ -279,9 +269,11 @@ function generateUnitsFromOnboarding(onboardingData) {
  * @param {Object} unitData - Existing unit data from database
  * @param {boolean} isExpanded - Whether the unit should be expanded by default
  * @param {boolean} canDelete - Whether deleting this unit would leave another unit
+ * @param {number} unitIndex - Zero-based position in the course
+ * @param {number} unitCount - Number of units in the course
  * @returns {HTMLElement} The unit element
  */
-function createUnitElement(unitName, unitData, isExpanded = false, canDelete = true) {
+function createUnitElement(unitName, unitData, isExpanded = false, canDelete = true, unitIndex = 0, unitCount = 1) {
     const unitDiv = document.createElement('div');
     unitDiv.className = 'accordion-item';
     unitDiv.setAttribute('data-unit-name', unitName);
@@ -307,6 +299,18 @@ function createUnitElement(unitName, unitData, isExpanded = false, canDelete = t
                 </div>
             </div>
             <div class="header-actions">
+                <div class="unit-order-controls" role="group" aria-label="Change position of ${unitName}">
+                    <button class="unit-move-btn" type="button"
+                            onclick="event.stopPropagation(); moveUnit('${unitName}', 'up')"
+                            title="Move ${formattedName} up"
+                            aria-label="Move ${unitName} up"
+                            ${unitIndex === 0 ? 'disabled' : ''}>↑</button>
+                    <button class="unit-move-btn" type="button"
+                            onclick="event.stopPropagation(); moveUnit('${unitName}', 'down')"
+                            title="Move ${formattedName} down"
+                            aria-label="Move ${unitName} down"
+                            ${unitIndex === unitCount - 1 ? 'disabled' : ''}>↓</button>
+                </div>
                 <div class="publish-toggle">
                     <label class="toggle-switch">
                         <input type="checkbox" id="publish-${unitId}" aria-label="Publish ${unitName} to students" onchange="togglePublish('${unitName}', this.checked)">

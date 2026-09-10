@@ -90,6 +90,29 @@ async function installUnitStateRoutes(page) {
             return;
         }
 
+        const orderMatch = pathname.match(/^\/api\/courses\/[^/]+\/units\/([^/]+)\/order$/);
+        if (orderMatch && method === 'PATCH') {
+            const unitName = decodeURIComponent(orderMatch[1]);
+            const { direction } = request.postDataJSON();
+            const currentIndex = course.lectures.findIndex((lecture) => lecture.name === unitName);
+            const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+            [course.lectures[currentIndex], course.lectures[targetIndex]] = [
+                course.lectures[targetIndex], course.lectures[currentIndex],
+            ];
+            await route.fulfill({
+                json: {
+                    success: true,
+                    message: `${unitName} moved ${direction}`,
+                    data: {
+                        unitName,
+                        position: targetIndex + 1,
+                        orderedUnitNames: course.lectures.map((lecture) => lecture.name),
+                    },
+                },
+            });
+            return;
+        }
+
         const deleteMatch = pathname.match(/^\/api\/courses\/[^/]+\/units\/([^/]+)$/);
         if (deleteMatch && method === 'DELETE') {
             const unitName = decodeURIComponent(deleteMatch[1]);
@@ -188,5 +211,23 @@ test.describe('instructor unit expansion state across add and delete', () => {
 
         await expectExpanded(page, 'Unit 3');
         await expectCollapsed(page, 'Unit 1');
+    });
+
+    test('moves units between slots and preserves the saved order after re-rendering', async ({ page }) => {
+        const course = await openDocumentsPage(page);
+        const unitItems = page.locator('#dynamic-units-container .accordion-item[data-unit-name]');
+
+        await expect(unitItems.first().getByRole('button', { name: 'Move Unit 1 up' })).toBeDisabled();
+        await expect(unitItems.last().getByRole('button', { name: 'Move Unit 3 down' })).toBeDisabled();
+
+        await page.locator('.accordion-item[data-unit-name="Unit 3"]')
+            .getByRole('button', { name: 'Move Unit 3 up' })
+            .click();
+
+        await expect.poll(async () => unitItems.evaluateAll((items) =>
+            items.map((item) => item.getAttribute('data-unit-name'))
+        )).toEqual(['Unit 1', 'Unit 3', 'Unit 2']);
+        expect(course.lectures.map((lecture) => lecture.name)).toEqual(['Unit 1', 'Unit 3', 'Unit 2']);
+        await expectExpanded(page, 'Unit 3');
     });
 });
