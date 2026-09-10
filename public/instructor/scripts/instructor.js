@@ -179,6 +179,42 @@ async function addNewUnit() {
     }
 }
 
+/**
+ * Move a unit one slot up or down in the course.
+ * @param {string} unitName - Stable internal unit name
+ * @param {'up'|'down'} direction - Direction to move the unit
+ */
+async function moveUnit(unitName, direction) {
+    const moveButtons = document.querySelectorAll('.unit-move-btn');
+    moveButtons.forEach(button => { button.disabled = true; });
+
+    try {
+        const courseId = await getCurrentCourseId();
+        const instructorId = getCurrentInstructorId();
+        const response = await fetch(
+            `/api/courses/${courseId}/units/${encodeURIComponent(unitName)}/order`,
+            {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ instructorId, direction })
+            }
+        );
+
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+            throw new Error(result.message || 'Failed to move unit');
+        }
+
+        window.pendingFocusUnitName = unitName;
+        showNotification(result.message, 'success');
+        await loadSpecificCourse(courseId);
+    } catch (error) {
+        console.error('Error moving unit:', error);
+        showNotification('Failed to move unit: ' + error.message, 'error');
+        moveButtons.forEach(button => { button.disabled = false; });
+    }
+}
+
 // Delete Unit Modal Logic
 let unitToDelete = null;
 
@@ -265,6 +301,7 @@ async function confirmDeleteUnit() {
 
 // Make functions globally available
 window.addNewUnit = addNewUnit;
+window.moveUnit = moveUnit;
 window.openDeleteUnitModal = openDeleteUnitModal;
 window.closeDeleteUnitModal = closeDeleteUnitModal;
 window.confirmDeleteUnit = confirmDeleteUnit;

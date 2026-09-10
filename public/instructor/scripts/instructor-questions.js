@@ -354,11 +354,20 @@ function setupThresholdInputListeners() {
         // Add change event listener
         input.addEventListener('change', function(event) {
             const threshold = parseInt(this.value);
-            // Extract the exact lecture name from the ID (e.g., "Unit-1" -> "Unit 1")
-            const lectureName = this.id.replace('pass-threshold-', '').replace(/-/g, ' ');
-            
+
             // Update the display first
             handleThresholdInputChange(event);
+
+            // IDs are normalized to lowercase for DOM use, so rebuilding the
+            // lecture name from the ID turns "Unit 1" into "unit 1" and fails
+            // MongoDB's case-sensitive lecture lookup. Read the stable name
+            // stored on the enclosing unit instead.
+            const unitItem = this.closest('.accordion-item[data-unit-name]');
+            const lectureName = unitItem?.getAttribute('data-unit-name');
+            if (!lectureName) {
+                console.warn('Cannot save pass threshold: unit name is missing');
+                return;
+            }
             
             // Save the threshold to MongoDB
             savePassThreshold(lectureName, threshold);

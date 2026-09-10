@@ -3981,6 +3981,95 @@ router.post('/:courseId/units', async (req, res) => {
 });
 
 /**
+ * PATCH /api/courses/:courseId/units/:unitName/order
+ * Move a unit one slot up or down without changing its stable internal name.
+ */
+router.patch('/:courseId/units/:unitName/order', async (req, res) => {
+    try {
+        const { courseId, unitName } = req.params;
+        const { instructorId, direction } = req.body || {};
+
+        if (!instructorId || !['up', 'down'].includes(direction)) {
+            return res.status(400).json({
+                success: false,
+                message: 'instructorId and a direction of "up" or "down" are required'
+            });
+        }
+
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({
+                success: false,
+                message: 'Database connection not available'
+            });
+        }
+
+        const user = req.user;
+        if (!user) {
+            return res.status(401).json({ success: false, message: 'Authentication required' });
+        }
+
+        if (user.role !== 'instructor' || instructorId !== user.userId) {
+            return res.status(403).json({
+                success: false,
+                message: 'You do not have permission to modify this course'
+            });
+        }
+
+        const hasAccess = await CourseModel.userHasCourseAccess(db, courseId, user.userId, 'instructor');
+        if (!hasAccess) {
+            return res.status(403).json({
+                success: false,
+                message: 'You do not have permission to modify this course'
+            });
+        }
+
+        const collection = db.collection('courses');
+        const course = await collection.findOne({ courseId });
+        if (!course) {
+            return res.status(404).json({ success: false, message: 'Course not found' });
+        }
+
+        const lectures = Array.isArray(course.lectures) ? [...course.lectures] : [];
+        const currentIndex = lectures.findIndex(lecture => lecture?.name === unitName);
+        if (currentIndex === -1) {
+            return res.status(404).json({ success: false, message: 'Unit not found' });
+        }
+
+        const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1;
+        if (targetIndex < 0 || targetIndex >= lectures.length) {
+            return res.status(409).json({
+                success: false,
+                message: `${unitName} is already at the ${direction === 'up' ? 'top' : 'bottom'}`
+            });
+        }
+
+        [lectures[currentIndex], lectures[targetIndex]] = [lectures[targetIndex], lectures[currentIndex]];
+        const now = new Date();
+        await collection.updateOne(
+            { courseId },
+            { $set: { lectures, updatedAt: now } }
+        );
+
+        return res.json({
+            success: true,
+            message: `${unitName} moved to position ${targetIndex + 1}`,
+            data: {
+                unitName,
+                position: targetIndex + 1,
+                orderedUnitNames: lectures.map(lecture => lecture.name)
+            }
+        });
+    } catch (error) {
+        console.error('Error reordering unit:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Internal server error while reordering unit'
+        });
+    }
+});
+
+/**
  * DELETE /api/courses/:courseId/units/:unitName
  * Delete a unit and all its documents
  */
