@@ -117,4 +117,43 @@
     } else {
         page.querySelectorAll('.bb-reveal').forEach(function (el) { el.classList.add('bb-revealed'); });
     }
+
+    // ── Gallery lightbox ────────────────────────────────────────────────
+    var lightbox = document.getElementById('bb-lightbox');
+    var lightboxImg = document.getElementById('bb-lightbox-img');
+    var lightboxClose = document.getElementById('bb-lightbox-close');
+    var lastTrigger = null;
+
+    function openLightbox(trigger) {
+        var img = trigger.querySelector('img');
+        if (!img || !lightbox || !lightboxImg) return;
+        lastTrigger = trigger;
+        lightboxImg.src = img.src;
+        lightboxImg.alt = img.alt;
+        lightbox.hidden = false;
+        document.body.style.overflow = 'hidden';
+        lightboxClose.focus();
+    }
+
+    function closeLightbox() {
+        if (!lightbox || lightbox.hidden) return;
+        lightbox.hidden = true;
+        lightboxImg.src = '';
+        document.body.style.overflow = '';
+        if (lastTrigger) lastTrigger.focus();
+    }
+
+    page.querySelectorAll('.js-lightbox-trigger').forEach(function (trigger) {
+        trigger.addEventListener('click', function () { openLightbox(trigger); });
+    });
+
+    if (lightboxClose) lightboxClose.addEventListener('click', closeLightbox);
+    if (lightbox) {
+        lightbox.addEventListener('click', function (e) {
+            if (e.target === lightbox) closeLightbox();
+        });
+    }
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && lightbox && !lightbox.hidden) closeLightbox();
+    });
 })();

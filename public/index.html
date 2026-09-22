@@ -27,6 +27,9 @@
     <symbol id="bb-icon-arrow" viewBox="0 0 24 24">
       <path d="M7 17 17 7M9 7h8v8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
     </symbol>
+    <symbol id="bb-icon-close" viewBox="0 0 24 24">
+      <path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+    </symbol>
   </svg>
 
   <header class="bb-header">
@@ -294,18 +297,28 @@
       <h2 class="bb-h2" style="margin-bottom:34px">What it looks like</h2>
       <div class="bb-gallery-grid">
         <figure>
-          <div class="bb-gallery-slot"><span>Tutor-mode screenshot coming soon</span></div>
+          <button type="button" class="bb-gallery-slot js-lightbox-trigger">
+            <img src="/assets/images/screenshot-tutor-mode.png" alt="BiocBot chat in tutor mode, guiding a student through a course unit"></button>
           <figcaption><strong>Tutor mode</strong>Guided walkthrough of a unit</figcaption>
         </figure>
         <figure>
-          <div class="bb-gallery-slot"><span>Protégé-mode screenshot coming soon</span></div>
+          <button type="button" class="bb-gallery-slot js-lightbox-trigger">
+            <img src="/assets/images/screenshot-protege-mode.png" alt="BiocBot chat in protégé mode, with the student explaining a concept back"></button>
           <figcaption><strong>Protégé mode</strong>Explaining a concept back to the bot</figcaption>
         </figure>
         <figure>
-          <div class="bb-gallery-slot"><span>Instructor / units screenshot coming soon</span></div>
+          <button type="button" class="bb-gallery-slot js-lightbox-trigger">
+            <img src="/assets/images/screenshot-instructor.png" alt="Instructor course upload view, showing units and learning objectives"></button>
           <figcaption><strong>Instructor view</strong>Course units and questions</figcaption>
         </figure>
       </div>
+    </div>
+
+    <div class="bb-lightbox" id="bb-lightbox" role="dialog" aria-modal="true" aria-label="Screenshot preview" hidden>
+      <button type="button" class="bb-lightbox-close" id="bb-lightbox-close" aria-label="Close preview">
+        <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><use href="#bb-icon-close"></use></svg>
+      </button>
+      <img id="bb-lightbox-img" src="" alt="">
     </div>
   </section>
 
