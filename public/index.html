@@ -18,21 +18,8 @@
 <body>
 <div id="bb-page">
 
-  <!-- Shared mascot glyph, referenced everywhere via <use> -->
+  <!-- Shared icon glyphs, referenced everywhere via <use> -->
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
-    <symbol id="bb-mascot" viewBox="0 0 120 100">
-      <circle cx="14" cy="58" r="13" fill="none" stroke="currentColor" stroke-width="3.5"/>
-      <circle cx="106" cy="58" r="13" fill="none" stroke="currentColor" stroke-width="3.5"/>
-      <path d="M60,32 C46,30 30,22 24,6 C42,8 56,18 60,32 Z" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linejoin="round"/>
-      <path d="M60,32 C74,30 90,22 96,6 C78,8 64,18 60,32 Z" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linejoin="round"/>
-      <line x1="60" y1="30" x2="35" y2="13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-      <line x1="60" y1="30" x2="85" y2="13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-      <line x1="60" y1="42" x2="60" y2="30" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/>
-      <rect x="28" y="42" width="64" height="50" rx="10" fill="none" stroke="currentColor" stroke-width="3.5"/>
-      <circle cx="50" cy="68" r="7" fill="none" stroke="currentColor" stroke-width="3.5"/>
-      <circle cx="70" cy="68" r="7" fill="none" stroke="currentColor" stroke-width="3.5"/>
-      <rect x="48" y="84" width="24" height="5" rx="2.5" fill="none" stroke="currentColor" stroke-width="3.5"/>
-    </symbol>
     <symbol id="bb-icon-lock" viewBox="0 0 24 24">
       <rect x="4" y="11" width="16" height="10" rx="1" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
       <path d="M8 11V7a4 4 0 0 1 8 0v4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
@@ -44,7 +31,7 @@
 
   <header class="bb-header">
     <a href="#top" class="bb-brand">
-      <svg aria-hidden="true"><use href="#bb-mascot"></use></svg>
+      <img src="/assets/images/biocbot-mascot.png" alt="" aria-hidden="true" class="bb-brand-mascot">
       <span class="bb-brand-word">BiocBot</span>
     </a>
     <nav class="bb-nav" aria-label="Page sections">
@@ -69,7 +56,7 @@
           <a href="/Shibboleth.sso/Login" class="bb-btn bb-btn--inverted">
             <svg width="17" height="17" aria-hidden="true"><use href="#bb-icon-lock"></use></svg>Login with CWL</a>
           <a href="#modes" class="bb-btn bb-btn--ghost-on-steel">See how it works</a>
-          <a href="/login" class="bb-signin-alt bb-signin-alt--on-steel">or sign in with your username</a>
+          <a href="/login" class="bb-signin-alt bb-signin-alt--on-steel js-local-login-link" hidden>or sign in with your username</a>
         </div>
       </div>
       <div class="bb-chat-panel">
@@ -83,11 +70,9 @@
         <div class="bb-chat-body">
           <div class="bb-chat-row">
             <div class="bb-mascot-hero" id="bb-hero-mascot">
-              <svg viewBox="0 0 120 100" aria-hidden="true">
-                <use href="#bb-mascot"></use>
-                <rect class="bb-eyelid" x="43" y="61" width="14" height="14" fill="#263b50"/>
-                <rect class="bb-eyelid" x="63" y="61" width="14" height="14" fill="#263b50"/>
-              </svg>
+              <img src="/assets/images/biocbot-mascot-light.png" alt="BiocBot" class="bb-mascot-img">
+              <span class="bb-eyelid" style="left:34%;top:57%;width:12%;height:15%"></span>
+              <span class="bb-eyelid" style="left:54%;top:57%;width:12%;height:15%"></span>
             </div>
             <div class="bb-bubble-wrap">
               <span class="bb-bubble-tail" aria-hidden="true"></span>
@@ -122,7 +107,7 @@
           <h3>BiocBot walks you through it</h3>
           <p>Hints before answers, reasoning you can follow line by line, and questions pitched at where you actually are in the unit rather than where the syllabus says you should be.</p>
           <div class="bb-mode-demo">
-            <svg class="bb-mode-demo-mascot" aria-hidden="true"><use href="#bb-mascot"></use></svg>
+            <img src="/assets/images/biocbot-mascot.png" alt="" aria-hidden="true" class="bb-mode-demo-mascot">
             <div class="bb-mode-demo-bubble-wrap">
               <span class="bb-mode-demo-tail" aria-hidden="true"></span>
               <div class="bb-mode-demo-bubble"><p>Before we get to the rate law, what does PFK-1 do to fructose-6-phosphate?</p></div>
@@ -134,7 +119,7 @@
           <h3>You do the explaining</h3>
           <p>BiocBot plays the student who hasn't got it yet. It asks the simple questions, pushes back when an answer is vague, and stops exactly where your explanation runs out.</p>
           <div class="bb-mode-demo">
-            <svg class="bb-mode-demo-mascot" aria-hidden="true"><use href="#bb-mascot"></use></svg>
+            <img src="/assets/images/biocbot-mascot-light.png" alt="" aria-hidden="true" class="bb-mode-demo-mascot">
             <div class="bb-mode-demo-bubble-wrap">
               <span class="bb-mode-demo-tail" aria-hidden="true"></span>
               <div class="bb-mode-demo-bubble"><p>Wait, you said high ATP slows glycolysis. Isn't ATP what the cell wants?</p></div>
@@ -362,7 +347,7 @@
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:10px">
         <a href="/Shibboleth.sso/Login" class="bb-btn bb-btn--cta">
           <svg width="18" height="18" aria-hidden="true"><use href="#bb-icon-lock"></use></svg>Login with CWL</a>
-        <a href="/login" class="bb-signin-alt bb-signin-alt--on-steel">or sign in with your username</a>
+        <a href="/login" class="bb-signin-alt bb-signin-alt--on-steel js-local-login-link" hidden>or sign in with your username</a>
       </div>
     </div>
   </section>

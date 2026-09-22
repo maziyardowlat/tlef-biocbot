@@ -6,6 +6,24 @@
 
     var reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+    // ── Local-login visibility (admin-controlled) ──────────────────────
+    // Links start hidden in the markup; only reveal them once the admin
+    // setting confirms local login is actually enabled. On any failure or
+    // ambiguity, stay hidden rather than risk pointing people at a sign-in
+    // path the admin turned off (mirrors login.js's own fail-safe default).
+    fetch('/api/auth/methods')
+        .then(function (r) { return r.json(); })
+        .then(function (result) {
+            var methods = result && result.methods;
+            if (!methods) return;
+            var allowLocalLogin = methods.local !== false && methods.allowLocalLogin !== false;
+            if (!allowLocalLogin) return;
+            page.querySelectorAll('.js-local-login-link').forEach(function (el) {
+                el.hidden = false;
+            });
+        })
+        .catch(function () { /* stay hidden */ });
+
     // ── Hero mode toggle + line cycling ────────────────────────────────
     var LINES = {
         tutor: [

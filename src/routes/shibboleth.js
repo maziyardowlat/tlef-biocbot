@@ -22,17 +22,25 @@ router.use(express.urlencoded({ extended: false }));
 router.get('/Shibboleth.sso/Login', (req, res, next) => {
     console.log('[SHIBBOLETH DEBUG] Initiating Shibboleth login at /Shibboleth.sso/Login');
 
-    // Check for Shibboleth strategy before attempting to use it
+    // passport.authenticate() doesn't throw for an unregistered strategy — it
+    // calls next(err), which skips straight to Express's default error
+    // handler (a raw stack trace) since this app registers no error-handling
+    // middleware. A try/catch around the call below can never catch that.
+    // Check the strategy is actually registered first, so a missing/invalid
+    // SAML config sends the user to the same friendly "try username and
+    // password" message as a real CWL failure, instead of a stack trace.
+    if (!passport._strategy('ubcshib')) {
+        console.error('❌ UBC Shibboleth strategy not registered (missing/invalid SAML env vars)');
+        return res.redirect('/login?error=ubcshib_failed');
+    }
+
     try {
         passport.authenticate('ubcshib', {
             failureRedirect: '/login?error=ubcshib_failed'
         })(req, res, next);
     } catch (error) {
-        console.error('❌ UBC Shibboleth strategy not registered:', error.message);
-        return res.status(503).json({
-            success: false,
-            error: 'UBC Shibboleth authentication is not available or misconfigured.'
-        });
+        console.error('❌ UBC Shibboleth strategy error:', error.message);
+        return res.redirect('/login?error=ubcshib_failed');
     }
 });
 
