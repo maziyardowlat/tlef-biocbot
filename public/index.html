@@ -3,105 +3,386 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BiocBot - AI Study Assistant</title>
-    
+    <title>BiocBot - AI Study Assistant for UBC Courses</title>
+
     <!-- Favicon - UBC Logo -->
-    <link rel="icon" type="image/jpeg" href="assets/images/UBC.jpg">
-    <link rel="icon" type="image/x-icon" href="assets/images/favicon.ico">
-    <link rel="icon" type="image/png" sizes="32x32" href="assets/images/favicon-32x32.png">
-    <link rel="icon" type="image/png" sizes="16x16" href="assets/images/favicon-16x16.png">
-    <link rel="apple-touch-icon" sizes="180x180" href="assets/images/apple-touch-icon.png">
-    <link rel="manifest" href="assets/images/site.webmanifest">
-    
-    <link rel="stylesheet" href="styles/style.css">
-    <link rel="stylesheet" href="styles/login.css">
+    <link rel="icon" type="image/jpeg" href="/assets/images/UBC.jpg">
+    <link rel="icon" type="image/x-icon" href="/assets/images/favicon.ico">
+    <link rel="icon" type="image/png" sizes="32x32" href="/assets/images/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/assets/images/favicon-16x16.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/assets/images/apple-touch-icon.png">
+    <link rel="manifest" href="/assets/images/site.webmanifest">
+
+    <link rel="stylesheet" href="/styles/homepage.css">
 </head>
 <body>
-    <div class="login-container">
-        <div class="login-card">
-            <div class="logo">
-                <h1>BiocBot</h1>
-                <p>AI-powered Study Assistant</p>
-            </div>
-            
-            <!-- Login Form -->
-            <div id="login-form" class="login-form auth-methods-pending">
-                <h2>Sign In</h2>
-                <form id="auth-form">
-                    <div class="form-group">
-                        <label for="username">Username or Email</label>
-                        <input type="text" id="username" name="username" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="password">Password</label>
-                        <input type="password" id="password" name="password" required>
-                    </div>
-                    <button type="submit" class="btn-primary" id="login-btn">Sign In</button>
-                </form>
-                
-                <!-- Divider for alternative login methods -->
-                <div class="login-divider" id="login-divider" style="display: none;">
-                    <span>or</span>
-                </div>
-                
-                <!-- CWL/SAML Login Button -->
-                <button type="button" class="btn-cwl" id="cwl-login-btn" style="display: none;">
-                    <span class="cwl-icon">🔐</span>
-                    Sign in with CWL
-                </button>
-                
-                <div class="form-footer">
-                    <p>Don't have an account? <a href="#" id="show-register">Create one</a></p>
-                </div>
-            </div>
-            
-            <!-- Registration Form -->
-            <div id="register-form" class="login-form" style="display: none;">
-                <h2>Create Account</h2>
-                <form id="register-form-element">
-                    <div class="form-group">
-                        <label for="reg-username">Username</label>
-                        <input type="text" id="reg-username" name="username" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="reg-email">Email (Not optional)</label>
-                        <input type="email" id="reg-email" name="email" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="reg-password">Password</label>
-                        <input type="password" id="reg-password" name="password" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="reg-role">Role</label>
-                        <select id="reg-role" name="role" required>
-                            <option value="">Select your role...</option>
-                            <option value="instructor">Instructor</option>
-                            <option value="student">Student</option>
-                            <option value="ta">Teaching Assistant</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="reg-display-name">Display Name (optional)</label>
-                        <input type="text" id="reg-display-name" name="displayName">
-                    </div>
-                    <button type="submit" class="btn-primary" id="register-btn">Create Account</button>
-                </form>
-                
-                <div class="form-footer">
-                    <p>Already have an account? <a href="#" id="show-login">Sign in</a></p>
-                </div>
-            </div>
-            
-            <!-- Error/Success Messages -->
-            <div id="message-container" class="message-container" style="display: none;">
-                <div id="message" class="message" role="alert"></div>
-            </div>
-            
-            <div class="login-footer">
-                <p>University of British Columbia</p>
-            </div>
+<div id="bb-page">
+
+  <!-- Shared mascot glyph, referenced everywhere via <use> -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="bb-mascot" viewBox="0 0 120 100">
+      <circle cx="14" cy="58" r="13" fill="none" stroke="currentColor" stroke-width="3.5"/>
+      <circle cx="106" cy="58" r="13" fill="none" stroke="currentColor" stroke-width="3.5"/>
+      <path d="M60,32 C46,30 30,22 24,6 C42,8 56,18 60,32 Z" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linejoin="round"/>
+      <path d="M60,32 C74,30 90,22 96,6 C78,8 64,18 60,32 Z" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linejoin="round"/>
+      <line x1="60" y1="30" x2="35" y2="13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      <line x1="60" y1="30" x2="85" y2="13" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      <line x1="60" y1="42" x2="60" y2="30" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/>
+      <rect x="28" y="42" width="64" height="50" rx="10" fill="none" stroke="currentColor" stroke-width="3.5"/>
+      <circle cx="50" cy="68" r="7" fill="none" stroke="currentColor" stroke-width="3.5"/>
+      <circle cx="70" cy="68" r="7" fill="none" stroke="currentColor" stroke-width="3.5"/>
+      <rect x="48" y="84" width="24" height="5" rx="2.5" fill="none" stroke="currentColor" stroke-width="3.5"/>
+    </symbol>
+    <symbol id="bb-icon-lock" viewBox="0 0 24 24">
+      <rect x="4" y="11" width="16" height="10" rx="1" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+    </symbol>
+    <symbol id="bb-icon-arrow" viewBox="0 0 24 24">
+      <path d="M7 17 17 7M9 7h8v8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+    </symbol>
+  </svg>
+
+  <header class="bb-header">
+    <a href="#top" class="bb-brand">
+      <svg aria-hidden="true"><use href="#bb-mascot"></use></svg>
+      <span class="bb-brand-word">BiocBot</span>
+    </a>
+    <nav class="bb-nav" aria-label="Page sections">
+      <a href="#modes" data-navlink="modes">Modes</a>
+      <a href="#features" data-navlink="features">Features</a>
+      <a href="#course" data-navlink="course">Overview</a>
+      <a href="#research" data-navlink="research">Research</a>
+      <a href="#team" data-navlink="team">Team</a>
+    </nav>
+    <a href="/Shibboleth.sso/Login" class="bb-btn bb-btn--primary-on-ground">
+      <svg width="15" height="15" aria-hidden="true"><use href="#bb-icon-lock"></use></svg>Login with CWL</a>
+  </header>
+
+  <section id="top" class="bb-hero">
+    <div class="bb-blueprint-grid" aria-hidden="true"></div>
+    <div class="bb-hero-grid">
+      <div>
+        <span class="bb-hero-eyebrow">University of British Columbia</span>
+        <h1>You learn it<br>by teaching it</h1>
+        <p class="bb-hero-body">BiocBot is a free study tool for UBC courses. It can walk you through the material, or sit on the other side of the table and let you do the explaining while it asks the questions.</p>
+        <div class="bb-hero-actions">
+          <a href="/Shibboleth.sso/Login" class="bb-btn bb-btn--inverted">
+            <svg width="17" height="17" aria-hidden="true"><use href="#bb-icon-lock"></use></svg>Login with CWL</a>
+          <a href="#modes" class="bb-btn bb-btn--ghost-on-steel">See how it works</a>
+          <a href="/login" class="bb-signin-alt bb-signin-alt--on-steel">or sign in with your username</a>
         </div>
+      </div>
+      <div class="bb-chat-panel">
+        <div class="bb-chat-panel-header">
+          <span class="bb-chat-unit-label">BIOC 202 · Unit 4 · Glycolysis</span>
+          <div class="bb-seg" role="group" aria-label="Chat mode preview">
+            <button type="button" data-mode-btn="tutor" aria-pressed="true">Tutor</button>
+            <button type="button" data-mode-btn="protege" aria-pressed="false">Protégé</button>
+          </div>
+        </div>
+        <div class="bb-chat-body">
+          <div class="bb-chat-row">
+            <div class="bb-mascot-hero" id="bb-hero-mascot">
+              <svg viewBox="0 0 120 100" aria-hidden="true">
+                <use href="#bb-mascot"></use>
+                <rect class="bb-eyelid" x="43" y="61" width="14" height="14" fill="#263b50"/>
+                <rect class="bb-eyelid" x="63" y="61" width="14" height="14" fill="#263b50"/>
+              </svg>
+            </div>
+            <div class="bb-bubble-wrap">
+              <span class="bb-bubble-tail" aria-hidden="true"></span>
+              <div class="bb-bubble">
+                <p id="bb-bot-line">Before we get to the rate law, what does PFK-1 do to fructose-6-phosphate?</p>
+              </div>
+            </div>
+          </div>
+          <span class="bb-mode-note" id="bb-mode-note">Tutor mode: BiocBot asks the questions and walks you through the unit.</span>
+          <div class="bb-input-row">
+            <input type="text" placeholder="Type your answer..." aria-label="Message BiocBot">
+            <button type="button" class="bb-send-disabled" disabled title="Sign in with your CWL to start a session">Send</button>
+          </div>
+          <span class="bb-preview-note">Preview only. Sign in with your CWL to send.</span>
+        </div>
+      </div>
     </div>
-    <script src="common/scripts/login.js"></script>
+  </section>
+
+  <section class="bb-statement">
+    <p>Most study tools hand you the answer. <strong>BiocBot asks you to explain it back.</strong> Explaining a topic out loud is how you find out whether you are ready for the exam, and it is the hardest thing to practise on your own.</p>
+  </section>
+
+  <section id="modes" class="bb-reveal">
+    <div class="bb-wrap" style="padding-top:var(--bb-pad-y-section);padding-bottom:var(--bb-pad-y-section)">
+      <span class="bb-kicker">01 · Dual modes</span>
+      <h2 class="bb-h2">Being taught, and doing the teaching</h2>
+      <p class="bb-lede" style="max-width:58ch">In tutor mode BiocBot walks you through the unit. In protégé mode it plays the student and you do the explaining. Teaching a topic back is one of the most reliable ways to find out what you have not learned yet, and you can do it here at two in the morning without booking anyone else's time.</p>
+      <div class="bb-modes-grid">
+        <div class="bb-mode-card bb-mode-card--outline">
+          <span class="bb-mode-kicker">Tutor mode</span>
+          <h3>BiocBot walks you through it</h3>
+          <p>Hints before answers, reasoning you can follow line by line, and questions pitched at where you actually are in the unit rather than where the syllabus says you should be.</p>
+          <div class="bb-mode-demo">
+            <svg class="bb-mode-demo-mascot" aria-hidden="true"><use href="#bb-mascot"></use></svg>
+            <div class="bb-mode-demo-bubble-wrap">
+              <span class="bb-mode-demo-tail" aria-hidden="true"></span>
+              <div class="bb-mode-demo-bubble"><p>Before we get to the rate law, what does PFK-1 do to fructose-6-phosphate?</p></div>
+            </div>
+          </div>
+        </div>
+        <div class="bb-mode-card bb-mode-card--filled">
+          <span class="bb-mode-kicker">Protégé mode</span>
+          <h3>You do the explaining</h3>
+          <p>BiocBot plays the student who hasn't got it yet. It asks the simple questions, pushes back when an answer is vague, and stops exactly where your explanation runs out.</p>
+          <div class="bb-mode-demo">
+            <svg class="bb-mode-demo-mascot" aria-hidden="true"><use href="#bb-mascot"></use></svg>
+            <div class="bb-mode-demo-bubble-wrap">
+              <span class="bb-mode-demo-tail" aria-hidden="true"></span>
+              <div class="bb-mode-demo-bubble"><p>Wait, you said high ATP slows glycolysis. Isn't ATP what the cell wants?</p></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="features" class="bb-features bb-reveal">
+    <div class="bb-wrap">
+      <span class="bb-kicker">02 · What it does</span>
+      <h2 class="bb-h2">Features</h2>
+      <p class="bb-lede bb-lede--nowrap" style="font-size:var(--bb-text-lede-tight)">Everything BiocBot says comes out of your own course material. Hover a card to read the detail.</p>
+
+      <h3 class="bb-group-heading">For students</h3>
+      <div class="bb-flip-grid">
+        <button type="button" class="bb-flip-card" data-flip="s1">
+          <div class="bb-flip-face bb-flip-face--front bb-flip-face--light">
+            <span class="bb-flip-num">01</span>
+            <h3>Dual modes</h3>
+            <span class="bb-flip-tap">Hover to flip</span>
+          </div>
+          <div class="bb-flip-face bb-flip-face--back bb-flip-face--light">
+            <p>Switch between tutor and protégé whenever you like. The same material, from both sides of the desk.</p>
+          </div>
+        </button>
+        <button type="button" class="bb-flip-card" data-flip="s2">
+          <div class="bb-flip-face bb-flip-face--front bb-flip-face--light">
+            <span class="bb-flip-num">02</span>
+            <h3>Real course content only</h3>
+            <span class="bb-flip-tap">Hover to flip</span>
+          </div>
+          <div class="bb-flip-face bb-flip-face--back bb-flip-face--light">
+            <p>BiocBot answers from the material your instructor uploaded, not the open internet, so it will not invent content that was never taught.</p>
+          </div>
+        </button>
+        <button type="button" class="bb-flip-card" data-flip="s3">
+          <div class="bb-flip-face bb-flip-face--front bb-flip-face--light">
+            <span class="bb-flip-num">03</span>
+            <h3>Flag anything</h3>
+            <span class="bb-flip-tap">Hover to flip</span>
+          </div>
+          <div class="bb-flip-face bb-flip-face--back bb-flip-face--light">
+            <p>Flag a question or a reply that looks off. Your instructor and the TAs see the flag and can follow up.</p>
+          </div>
+        </button>
+        <button type="button" class="bb-flip-card" data-flip="s4">
+          <div class="bb-flip-face bb-flip-face--front bb-flip-face--light">
+            <span class="bb-flip-num">04</span>
+            <h3>See where you stand</h3>
+            <span class="bb-flip-tap">Hover to flip</span>
+          </div>
+          <div class="bb-flip-face bb-flip-face--back bb-flip-face--light">
+            <p>Follow how well you have understood each learning objective instead of waiting for a midterm to tell you.</p>
+          </div>
+        </button>
+      </div>
+
+      <h3 class="bb-group-heading bb-group-heading--second">For instructors</h3>
+      <div class="bb-flip-grid">
+        <button type="button" class="bb-flip-card" data-flip="i1">
+          <div class="bb-flip-face bb-flip-face--front bb-flip-face--steel">
+            <span class="bb-flip-num">01</span>
+            <h3>Load your own material</h3>
+            <span class="bb-flip-tap">Hover to flip</span>
+          </div>
+          <div class="bb-flip-face bb-flip-face--back bb-flip-face--steel">
+            <p>Slides, notes and readings go in directly, and BiocBot splits them into units automatically.</p>
+          </div>
+        </button>
+        <button type="button" class="bb-flip-card" data-flip="i2">
+          <div class="bb-flip-face bb-flip-face--front bb-flip-face--steel">
+            <span class="bb-flip-num">02</span>
+            <h3>Release on your schedule</h3>
+            <span class="bb-flip-tap">Hover to flip</span>
+          </div>
+          <div class="bb-flip-face bb-flip-face--back bb-flip-face--steel">
+            <p>Students only see a module once you publish it, so practice follows your course timeline.</p>
+          </div>
+        </button>
+        <button type="button" class="bb-flip-card" data-flip="i3">
+          <div class="bb-flip-face bb-flip-face--front bb-flip-face--steel">
+            <span class="bb-flip-num">03</span>
+            <h3>See the class picture</h3>
+            <span class="bb-flip-tap">Hover to flip</span>
+          </div>
+          <div class="bb-flip-face bb-flip-face--back bb-flip-face--steel">
+            <p>Watch which objectives are landing and which are not, across the whole class rather than one student at a time.</p>
+          </div>
+        </button>
+        <button type="button" class="bb-flip-card" data-flip="i4">
+          <div class="bb-flip-face bb-flip-face--front bb-flip-face--steel">
+            <span class="bb-flip-num">04</span>
+            <h3>Read what students flag</h3>
+            <span class="bb-flip-tap">Hover to flip</span>
+          </div>
+          <div class="bb-flip-face bb-flip-face--back bb-flip-face--steel">
+            <p>Flagged questions and replies come to you and your TAs, so you can correct the material or address it in class.</p>
+          </div>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <section id="course" class="bb-overview bb-reveal">
+    <div class="bb-wrap">
+      <span class="bb-kicker">03 · Overview</span>
+      <h2 class="bb-h2">Overview</h2>
+      <p class="bb-lede">Instructors put their own content in, and students join the classes they are taking. Every BiocBot answer comes from that real course material, so you are not left wondering where it came from the way you are with a general AI tool. Do still check it against your notes.</p>
+      <div class="bb-step-grid">
+        <div class="bb-step-card">
+          <span class="bb-step-num">01</span>
+          <h3>The instructor loads the content</h3>
+          <p>Slides, notes and readings go in directly. BiocBot draws on those, so its answers stay inside what the course has actually covered.</p>
+        </div>
+        <div class="bb-step-card">
+          <span class="bb-step-num">02</span>
+          <h3>You join your classes</h3>
+          <p>Pick the courses you are taking and enter the join code your instructor shares with the class.</p>
+        </div>
+        <div class="bb-step-card">
+          <span class="bb-step-num">03</span>
+          <h3>A module is released</h3>
+          <p>The second your instructor posts the module slides for students to access, you can start practicing and reviewing them.</p>
+        </div>
+        <div class="bb-step-card">
+          <span class="bb-step-num">04</span>
+          <h3>Work through the unit</h3>
+          <p>Each unit comes with its own set of questions. Answer them with BiocBot tutoring you, or take the other side and explain them yourself.</p>
+        </div>
+      </div>
+      <div class="bb-callout-grid">
+        <div class="bb-callout bb-callout--steel">
+          <span class="bb-callout-kicker">The toggle</span>
+          <p>The toggle sits right in the chat box, next to where you type. Flip it mid-session and BiocBot changes sides with you, so you are never stuck in one mode for a whole study session.</p>
+        </div>
+        <div class="bb-callout bb-callout--outline">
+          <span class="bb-callout-kicker">Keeping track</span>
+          <p>BiocBot was built so that students and instructors can both see how well a particular learning objective or content theme has been understood, rather than guessing at it from a midterm.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="research" class="bb-research bb-reveal">
+    <div class="bb-wrap">
+      <span class="bb-kicker">04 · Research</span>
+      <div class="bb-research-grid">
+        <div>
+          <h2>The study buddy program</h2>
+          <p>A study buddy pilot at UBC paired around 1,300 students across several classes, so everyone took a turn tutoring and a turn being tutored. Students who took part finished with grade averages 1.5% above those who did not, and in some classes the gap was as wide as 5.5%.</p>
+          <p>Even so, about half the students in every class never got to join. Their work shifts clashed with the meeting times, or the commute made it impossible, or they had family to look after. BiocBot exists so that studying this way no longer depends on two people being free in the same room at the same time.</p>
+          <a href="https://www.biorxiv.org/content/10.1101/2025.05.20.655056v1.full" target="_blank" rel="noopener" class="bb-btn bb-btn--research">Read the study buddy paper
+            <svg width="16" height="16" aria-hidden="true"><use href="#bb-icon-arrow"></use></svg></a>
+          <p class="bb-citation">Jones et al., 2025. "Study buddy learning is associated with academic success in undergraduate science courses." bioRxiv 2025.05.20.655056.</p>
+        </div>
+        <div class="bb-stat-grid">
+          <div class="bb-stat-card"><span class="bb-stat-num">1,300</span><span class="bb-stat-label">students paired in the pilot</span></div>
+          <div class="bb-stat-card"><span class="bb-stat-num">+1.5%</span><span class="bb-stat-label">average final grade gain</span></div>
+          <div class="bb-stat-card"><span class="bb-stat-num">+5.5%</span><span class="bb-stat-label">in the strongest classes</span></div>
+          <div class="bb-stat-card"><span class="bb-stat-num">~50%</span><span class="bb-stat-label">could not join, mostly scheduling</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="gallery" class="bb-gallery bb-reveal">
+    <div class="bb-wrap">
+      <span class="bb-kicker">05 · Inside the app</span>
+      <h2 class="bb-h2" style="margin-bottom:34px">What it looks like</h2>
+      <div class="bb-gallery-grid">
+        <figure>
+          <div class="bb-gallery-slot"><span>Tutor-mode screenshot coming soon</span></div>
+          <figcaption><strong>Tutor mode</strong>Guided walkthrough of a unit</figcaption>
+        </figure>
+        <figure>
+          <div class="bb-gallery-slot"><span>Protégé-mode screenshot coming soon</span></div>
+          <figcaption><strong>Protégé mode</strong>Explaining a concept back to the bot</figcaption>
+        </figure>
+        <figure>
+          <div class="bb-gallery-slot"><span>Instructor / units screenshot coming soon</span></div>
+          <figcaption><strong>Instructor view</strong>Course units and questions</figcaption>
+        </figure>
+      </div>
+    </div>
+  </section>
+
+  <section id="team" class="bb-team bb-reveal">
+    <div class="bb-wrap">
+      <span class="bb-kicker">06 · Team</span>
+      <h2 class="bb-h2" style="margin-bottom:36px">Meet the BiocBot team</h2>
+      <div class="bb-person-grid">
+        <div class="bb-person-card"><h3>Eden Fussner-Dupas</h3><p class="bb-person-role">Assistant Professor of Teaching</p><p class="bb-person-dept">Biochemistry &amp; Molecular Biology, Medicine</p></div>
+        <div class="bb-person-card"><h3>James Enns</h3><p class="bb-person-role">Professor</p><p class="bb-person-dept">Psychology, Arts</p></div>
+        <div class="bb-person-card"><h3>Warren Williams</h3><p class="bb-person-role">Associate Professor</p><p class="bb-person-dept">Biochemistry &amp; Molecular Biology, Medicine</p></div>
+        <div class="bb-person-card"><h3>Patrice Belleville</h3><p class="bb-person-role">Associate Head / Associate Professor of Teaching</p><p class="bb-person-dept">Computer Science, Science</p></div>
+        <div class="bb-person-card"><h3>Bowen Hui</h3><p class="bb-person-role">Associate Professor of Teaching</p><p class="bb-person-dept">Computer Science, Mathematics, Physics &amp; Statistics, Science</p></div>
+        <div class="bb-person-card"><h3>Veronica Dudarev</h3><p class="bb-person-role">Research Associate</p><p class="bb-person-dept">Psychology, Arts</p></div>
+        <div class="bb-person-card"><h3>Al Rohet Hossain</h3><p class="bb-person-role">Graduate Student</p><p class="bb-person-dept">Biochemistry &amp; Molecular Biology</p></div>
+        <div class="bb-person-card"><h3>Achol Jones</h3><p class="bb-person-role">Undergraduate Student</p><p class="bb-person-dept">Neuroscience</p></div>
+        <div class="bb-person-card"><h3>Daniel DeHeer-Amissah</h3><p class="bb-person-role">Undergraduate Student</p><p class="bb-person-dept">Kinesiology</p></div>
+        <div class="bb-person-card"><h3>Gabrielle Reznik</h3><p class="bb-person-role">Undergraduate Student</p><p class="bb-person-dept">Microbiology &amp; Immunology</p></div>
+      </div>
+      <h2 class="bb-h2-sub">The Incubator team</h2>
+      <p class="bb-team-sub-lede">Learning Technology Innovation Centre, UBC.</p>
+      <div class="bb-person-grid">
+        <div class="bb-person-card"><h3>Rich Tape</h3><p class="bb-person-role">LT Incubator Lead</p></div>
+        <div class="bb-person-card"><h3>Maziyar Dowlatabadibazaz</h3><p class="bb-person-role">Programmer Analyst</p></div>
+        <div class="bb-person-card"><h3>Sabrina Yuan</h3><p class="bb-person-role">Student Developer</p></div>
+        <div class="bb-person-card"><h3>Justin Tang</h3><p class="bb-person-role">Student Developer</p></div>
+        <div class="bb-person-card"><h3>Jayoung Lee</h3></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="bb-cta bb-reveal">
+    <div class="bb-blueprint-grid" aria-hidden="true"></div>
+    <div class="bb-wrap bb-cta-inner">
+      <div>
+        <h2>Start with this week's unit</h2>
+        <p>Sign in with your UBC Campus-Wide Login.</p>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:10px">
+        <a href="/Shibboleth.sso/Login" class="bb-btn bb-btn--cta">
+          <svg width="18" height="18" aria-hidden="true"><use href="#bb-icon-lock"></use></svg>Login with CWL</a>
+        <a href="/login" class="bb-signin-alt bb-signin-alt--on-steel">or sign in with your username</a>
+      </div>
+    </div>
+  </section>
+
+  <footer class="bb-footer">
+    <div class="bb-footer-grid">
+      <div class="bb-footer-ack">
+        <span class="bb-footer-label">Land acknowledgement</span>
+        <p>UBC is located on the ancestral and unceded territory of the hən̓q̓əmin̓əm̓ speaking xʷməθkʷəy̓əm (Musqueam) peoples. These lands have long been a place of learning for Musqueam, with cultural and traditional knowledge passed down from generation to generation for thousands of years.</p>
+      </div>
+      <div class="bb-footer-funding">
+        <span class="bb-footer-label">Funding</span>
+        <p>We gratefully acknowledge the financial support for this project provided by UBC Vancouver students via the Teaching and Learning Enhancement Fund.</p>
+        <span class="bb-footer-org">BiocBot · University of British Columbia</span>
+        <span class="bb-footer-depts">Departments of Biochemistry &amp; Molecular Biology, Psychology and Computer Science, with the Learning Technology Innovation Centre</span>
+      </div>
+    </div>
+  </footer>
+
+</div>
+<script src="/common/scripts/homepage.js"></script>
 </body>
 </html>
