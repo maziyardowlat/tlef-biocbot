@@ -1,5 +1,9 @@
 const mockAuthenticate = jest.fn(() => (req, _res, next) => next());
-jest.mock('passport', () => ({ authenticate: (...args) => mockAuthenticate(...args) }));
+const mockStrategy = jest.fn(() => true); // truthy = strategy registered, matching a configured SAML setup
+jest.mock('passport', () => ({
+    authenticate: (...args) => mockAuthenticate(...args),
+    _strategy: (...args) => mockStrategy(...args),
+}));
 
 const { makeRouteApp, request } = require('../helpers/route-app');
 const router = require('../../../src/routes/shibboleth');
@@ -19,11 +23,22 @@ describe('Shibboleth routes with mocked Passport', () => {
         expect(mockAuthenticate).toHaveBeenCalledWith('ubcshib', { failureRedirect: '/login?error=ubcshib_failed' });
     });
 
-    test('login returns 503 when strategy lookup throws synchronously', async () => {
+    test('login redirects to a friendly error when the strategy is not registered', async () => {
+        // passport.authenticate() calls next(err) rather than throwing for an
+        // unregistered strategy, so this is checked proactively before ever
+        // calling authenticate() — see the comment in shibboleth.js.
+        mockStrategy.mockReturnValueOnce(false);
+        const res = await request(app({})).get('/Shibboleth.sso/Login');
+        expect(res.status).toBe(302);
+        expect(res.headers.location).toBe('/login?error=ubcshib_failed');
+        expect(mockAuthenticate).not.toHaveBeenCalled();
+    });
+
+    test('login redirects to a friendly error when strategy invocation throws synchronously', async () => {
         mockAuthenticate.mockImplementationOnce(() => { throw new Error('strategy missing'); });
         const res = await request(app({})).get('/Shibboleth.sso/Login');
-        expect(res.status).toBe(503);
-        expect(res.body.error).toMatch(/not available or misconfigured/);
+        expect(res.status).toBe(302);
+        expect(res.headers.location).toBe('/login?error=ubcshib_failed');
     });
 
     test.each([

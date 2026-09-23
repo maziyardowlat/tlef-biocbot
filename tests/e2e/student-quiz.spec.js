@@ -30,7 +30,7 @@ test.afterAll(async () => {
 });
 
 async function loginAsStudent(page) {
-    await page.goto('/');
+    await page.goto('/login');
     await page.locator('#auth-form input#username').fill(studentUser.username);
     await page.locator('#auth-form input#password').fill(studentPassword);
     await page.locator('#auth-form button#login-btn').click();

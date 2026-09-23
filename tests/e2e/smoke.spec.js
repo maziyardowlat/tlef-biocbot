@@ -3,7 +3,7 @@ const { test, expect } = require('./fixtures/monocart');
 
 test.describe('smoke', () => {
     test('login page renders', async ({ page }) => {
-        await page.goto('/');
+        await page.goto('/login');
 
         await expect(page).toHaveTitle('BiocBot - AI Study Assistant');
         await expect(page.locator('.login-card .logo h1')).toHaveText('BiocBot');

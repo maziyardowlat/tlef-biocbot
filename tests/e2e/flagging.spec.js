@@ -405,7 +405,7 @@ async function loginAPI(baseURL, role, password) {
 }
 
 async function loginViaUI(page, role, password) {
-    await page.goto('/');
+    await page.goto('/login');
     await page.locator('#auth-form input#username').fill(TEST_USERS[role].username);
     await page.locator('#auth-form input#password').fill(password);
     await page.locator('#auth-form button#login-btn').click();

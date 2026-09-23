@@ -431,7 +431,7 @@ async function seedDocumentInCourse(courseId = COURSE_ID) {
 }
 
 async function loginViaUI(page) {
-    await page.goto('/');
+    await page.goto('/login');
     await page.locator('#auth-form input#username').fill(user.username);
     await page.locator('#auth-form input#password').fill(password);
     await page.locator('#auth-form button#login-btn').click();
@@ -455,7 +455,7 @@ test.describe('TA authentication and course access', () => {
     });
 
     test('TA can sign in via the UI and lands on /ta', async ({ page }) => {
-        await page.goto('/');
+        await page.goto('/login');
         await page.locator('#auth-form input#username').fill(user.username);
         await page.locator('#auth-form input#password').fill(password);
         await page.locator('#auth-form button#login-btn').click();

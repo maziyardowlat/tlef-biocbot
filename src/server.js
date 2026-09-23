@@ -339,14 +339,14 @@ app.use(session({
 
 
 
-// Home page route - redirect to login
+// Home page - public marketing page
 app.get('/', (req, res) => {
-    res.redirect('/login');
+    res.sendFile(path.join(__dirname, '../public/index.html'));
 });
 
 // Login page
 app.get('/login', (req, res) => {
-    res.sendFile(path.join(__dirname, '../public/index.html'));
+    res.sendFile(path.join(__dirname, '../public/login.html'));
 });
 
 // Quick Qdrant test endpoint

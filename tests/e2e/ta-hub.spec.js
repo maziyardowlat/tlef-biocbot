@@ -124,7 +124,7 @@ async function seedTAHubCourses(courses) {
 }
 
 async function loginAsInstructor(page) {
-    await page.goto('/');
+    await page.goto('/login');
     await page.locator('#auth-form input#username').fill(instructorUser.username);
     await page.locator('#auth-form input#password').fill(credentials.instructor);
     await page.locator('#auth-form button#login-btn').click();

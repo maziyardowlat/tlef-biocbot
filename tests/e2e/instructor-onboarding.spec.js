@@ -148,7 +148,7 @@ async function seedCourseFor(username, overrides = {}) {
 }
 
 async function loginViaUI(page) {
-    await page.goto('/');
+    await page.goto('/login');
     await page.locator('#auth-form input#username').fill(user.username);
     await page.locator('#auth-form input#password').fill(password);
     await page.locator('#auth-form button#login-btn').click();
