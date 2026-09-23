@@ -43,7 +43,7 @@ async function readQuizSettings() {
 // ----------------------------------------------------------------------------
 test.describe('Instructor settings UI — Quiz Practice section', () => {
     async function loginAsInstructor(page) {
-        await page.goto('/');
+        await page.goto('/login');
         await page.locator('#auth-form input#username').fill(instructorUser.username);
         await page.locator('#auth-form input#password').fill(instructorPassword);
         await page.locator('#auth-form button#login-btn').click();

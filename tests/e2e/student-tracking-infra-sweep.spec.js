@@ -648,11 +648,10 @@ test.describe('QuizAttempt model — no-attempts fallback via /api/quiz/history'
 // server.js — pages and endpoints not hit by other specs (legacy redirects, /test-qdrant)
 // ---------------------------------------------------------------------------
 test.describe('server.js — pages and legacy endpoints', () => {
-    test('GET / redirects to /login', async ({ baseURL }) => {
+    test('GET / serves the public homepage', async ({ baseURL }) => {
         const ctx = await request.newContext({ baseURL });
-        const res = await ctx.get('/', { maxRedirects: 0, failOnStatusCode: false });
-        expect([301, 302]).toContain(res.status());
-        expect(res.headers().location).toBe('/login');
+        const res = await ctx.get('/', { failOnStatusCode: false });
+        expect(res.ok()).toBeTruthy();
         await ctx.dispose();
     });
 

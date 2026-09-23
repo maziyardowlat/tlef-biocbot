@@ -53,7 +53,7 @@ test.afterAll(async () => {
 });
 
 async function loginAsStudent(page) {
-    await page.goto('/');
+    await page.goto('/login');
     await page.locator('#auth-form input#username').fill(TEST_USERS.student.username);
     await page.locator('#auth-form input#password').fill(studentPassword);
     await page.locator('#auth-form button#login-btn').click();
@@ -2383,7 +2383,7 @@ test.describe('Login page redirect for authenticated users', () => {
     test('a logged-in student visiting / is redirected to their landing page', async ({ browser }) => {
         const ctx = await browser.newContext({ storageState: storageStatePath('student') });
         const page = await ctx.newPage();
-        await page.goto('/');
+        await page.goto('/login');
         // redirectIfAuthenticated sends a logged-in user to their role-specific
         // landing page. Final URL must NOT be the login page.
         await page.waitForLoadState('networkidle');

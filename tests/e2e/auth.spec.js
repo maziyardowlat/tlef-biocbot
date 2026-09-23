@@ -7,7 +7,7 @@ const credentials = loadCredentials();
 test.describe('local login', () => {
     for (const [role, user] of Object.entries(TEST_USERS)) {
         test(`${role} can sign in via the UI`, async ({ page }) => {
-            await page.goto('/');
+            await page.goto('/login');
 
             await page.locator('#auth-form input#username').fill(user.username);
             await page.locator('#auth-form input#password').fill(credentials[role]);
@@ -22,7 +22,7 @@ test.describe('local login', () => {
     }
 
     test('invalid credentials show an error message', async ({ page }) => {
-        await page.goto('/');
+        await page.goto('/login');
 
         await page.locator('#auth-form input#username').fill('e2e_does_not_exist');
         await page.locator('#auth-form input#password').fill('wrong-password');

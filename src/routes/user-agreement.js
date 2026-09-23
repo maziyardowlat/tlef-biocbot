@@ -8,9 +8,6 @@ const { getUserAgreement, createOrUpdateUserAgreement } = require('../models/Use
  */
 router.get('/status', async (req, res) => {
     try {
-        console.log('🔍 [AGREEMENT] Status check - req.app.locals:', req.app.locals);
-        console.log('🔍 [AGREEMENT] Status check - db:', req.app.locals.db);
-        
         if (!req.user) {
             return res.status(401).json({ success: false, message: 'Authentication required' });
         }
@@ -52,28 +49,20 @@ router.get('/status', async (req, res) => {
  */
 router.post('/agree', async (req, res) => {
     try {
-        console.log('📝 [AGREEMENT] Processing agreement request');
-        console.log('📝 [AGREEMENT] User:', req.user);
-        console.log('📝 [AGREEMENT] Body:', req.body);
-        console.log('📝 [AGREEMENT] req.app.locals:', req.app.locals);
-        console.log('📝 [AGREEMENT] db:', req.app.locals.db);
-        
         if (!req.user) {
             return res.status(401).json({ success: false, message: 'Authentication required' });
         }
         const { userId, role } = req.user;
         const { agreementVersion = '1.0' } = req.body || {};
         const db = req.app.locals.db;
-        
+
         if (!db) {
             return res.status(503).json({
                 success: false,
                 message: 'Database connection not available'
             });
         }
-        
-        console.log('📝 [AGREEMENT] User ID:', userId, 'Role:', role);
-        
+
         // Get client IP and user agent
         const ipAddress = req.ip || req.connection.remoteAddress;
         const userAgent = req.get('User-Agent');
