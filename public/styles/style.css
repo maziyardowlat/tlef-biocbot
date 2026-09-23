@@ -328,6 +328,142 @@ textarea {
     color: #ffffff;
 }
 
+/* Account menu: collapsed sidebar account row + popup card.
+   Scoped under .account-block/.account-row so it layers on top of the
+   generic .user-info/.user-avatar/.user-name/.user-role rules above
+   without altering them — those are still used as-is by pages (e.g.
+   student/*) that haven't adopted this collapsed pattern. */
+.account-block {
+    position: relative;
+    margin-top: auto;
+    padding-top: 20px;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.account-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.account-row:hover,
+.account-row[aria-expanded="true"] {
+    background-color: rgba(0, 0, 0, 0.18);
+}
+
+.account-row:focus-visible {
+    outline: 2px solid var(--light-text);
+    outline-offset: 2px;
+}
+
+.account-row .user-avatar {
+    flex: 0 0 auto;
+    margin-right: 0;
+}
+
+.account-row-text {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    flex: 1;
+    min-width: 0;
+}
+
+.account-row-text .user-name {
+    margin-top: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.account-row-text .user-role {
+    margin-top: 0;
+}
+
+.account-chevron {
+    flex: 0 0 auto;
+    color: rgba(255, 255, 255, 0.6);
+    transition: transform 0.15s ease;
+}
+
+.account-row[aria-expanded="true"] .account-chevron {
+    transform: rotate(180deg);
+}
+
+.account-menu {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: calc(100% + 6px);
+    background: #ffffff;
+    color: var(--text-color);
+    border-radius: 8px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+    padding: 6px;
+    z-index: 20;
+}
+
+.account-menu[hidden] {
+    display: none;
+}
+
+.account-menu-email {
+    padding: 8px 10px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+    margin-bottom: 4px;
+    word-break: break-all;
+}
+
+.account-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 10px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-color);
+    text-decoration: none;
+    font-size: 14px;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.account-menu-item:hover {
+    background-color: rgba(0, 0, 0, 0.06);
+}
+
+.account-menu-item:focus-visible {
+    outline: 2px solid var(--primary-color);
+    outline-offset: -2px;
+}
+
+.account-menu-icon {
+    flex: 0 0 auto;
+    color: var(--text-secondary);
+}
+
+.account-menu-divider {
+    height: 1px;
+    background: rgba(0, 0, 0, 0.08);
+    margin: 4px 6px;
+}
+
 .switch-role {
     margin-top: 15px;
     padding-top: 15px;
@@ -513,7 +649,8 @@ header.sidebar {
         justify-content: space-around;
     }
 
-    .user-info {
+    .user-info,
+    .account-block {
         display: none;
     }
 
@@ -588,6 +725,7 @@ header.sidebar {
     /* Collapsed State */
     .mobile-collapsed .sidebar .main-nav,
     .mobile-collapsed .sidebar .user-info,
+    .mobile-collapsed .sidebar .account-block,
     .mobile-collapsed header:not(.sidebar),
     .mobile-collapsed .history-header,
     .mobile-collapsed .flagged-header {
