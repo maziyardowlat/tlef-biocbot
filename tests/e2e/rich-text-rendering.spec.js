@@ -238,7 +238,7 @@ test.describe('quiz chemistry rendering', () => {
     });
 
     test('renders formulas and structures in the question, options, and feedback', async ({ page }) => {
-        await page.goto('/');
+        await page.goto('/login');
         await page.locator('#auth-form input#username').fill(studentUser.username);
         await page.locator('#auth-form input#password').fill(studentPassword);
         await page.locator('#auth-form button#login-btn').click();
