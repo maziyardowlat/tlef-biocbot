@@ -276,6 +276,29 @@ describe('LMS roster sync routes', () => {
         expect(isDropCandidate(undefined, context)).toBe(false);
     });
 
+    test('tells the browser to reconnect only when a Canvas 401 left no stored tokens behind', async () => {
+        const harness = integrationHarness();
+        const tokens = { current: null };
+        harness.integration.canvas.config = {
+            getUserKey: (req) => req.user.userId,
+            tokenStore: { get: jest.fn(async () => tokens.current) }
+        };
+        const matchRoster = jest.fn(async () => {
+            throw Object.assign(new Error('Canvas API request to /api/v1/courses/10/users returned 401'), { statusCode: 401 });
+        });
+        const db = memoryDb({ courses: [course()] });
+        const app = makeRouteApp(createLmsRosterSyncRouter(harness.integration, { matchRoster }), { db, user: instructor });
+        const error = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+        const expired = await request(app).post('/courses/BIOC-1/sync').send({ provider: 'canvas' }).expect(401);
+        expect(expired.body).toMatchObject({ connected: false, code: 'CANVAS_NOT_CONNECTED' });
+
+        tokens.current = { accessToken: 'still-valid' };
+        const refused = await request(app).post('/courses/BIOC-1/sync').send({ provider: 'canvas' }).expect(403);
+        expect(refused.body).toMatchObject({ code: 'CANVAS_ACCESS_DENIED' });
+        error.mockRestore();
+    });
+
     test('never offers prune for an empty or low-integration-coverage roster', () => {
         expect(buildPruneSafety({ total: 0, integrationId: 0 })).toMatchObject({ allowed: false, reason: 'empty-roster' });
         expect(buildPruneSafety({ total: 10, integrationId: 7 })).toMatchObject({

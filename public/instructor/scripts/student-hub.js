@@ -325,7 +325,7 @@ async function readLmsJson(response) {
     } catch (error) {
         throw new Error(
             `LMS endpoint returned HTTP ${response.status} with a non-JSON response. ` +
-            'Check the staging LMS startup diagnostics to confirm its routes were mounted.'
+            'Check the server\'s LMS startup diagnostics to confirm its routes were mounted.'
         );
     }
 }
@@ -640,9 +640,11 @@ async function dropUnmatchedLmsStudents() {
 
 /**
  * Fills the course picker from the provider's own course list and preselects
- * whichever course grades currently come from.
+ * whichever course grades currently come from. Only an `interactive` call —
+ * one the instructor started with a click — may send them off to Canvas to
+ * connect; a page load just offers the Connect button.
  */
-async function loadGradeCourseOptions(courseId, provider) {
+async function loadGradeCourseOptions(courseId, provider, { interactive = false } = {}) {
     const select = document.getElementById('lms-grade-course');
     const note = document.getElementById('lms-grades-source-note');
     const connectButton = document.getElementById('connect-lms-grade-provider');
@@ -664,7 +666,14 @@ async function loadGradeCourseOptions(courseId, provider) {
         );
         const result = await readLmsJson(response);
         if (!response.ok || !result.success) {
-            if (reauthorizeCanvas(provider, response)) return;
+            if (isCanvasNotConnected(provider, response, result)) {
+                if (interactive) {
+                    reauthorizeCanvas(provider, response, result);
+                } else {
+                    showUnlinkedGradeCourse(provider, `Connect ${providerLabel(provider)} to see or change the course grades come from.`);
+                }
+                return;
+            }
             throw new Error(result.message || `HTTP ${response.status}`);
         }
 
@@ -697,7 +706,7 @@ async function loadGradeCourseOptions(courseId, provider) {
     updateLinkCourseButton();
 }
 
-function showUnlinkedGradeCourse(provider) {
+function showUnlinkedGradeCourse(provider, noteText) {
     const select = document.getElementById('lms-grade-course');
     const note = document.getElementById('lms-grades-source-note');
     const connectButton = document.getElementById('connect-lms-grade-provider');
@@ -710,7 +719,7 @@ function showUnlinkedGradeCourse(provider) {
     select.disabled = true;
     if (note) {
         note.textContent = provider
-            ? `Connect ${providerLabel(provider)} when you are ready to choose a grade source.`
+            ? (noteText || `Connect ${providerLabel(provider)} when you are ready to choose a grade source.`)
             : '';
     }
     if (connectButton) {
@@ -728,7 +737,7 @@ async function connectLmsGradeProvider() {
 
     button.disabled = true;
     button.textContent = `Connecting ${providerLabel(provider)}…`;
-    await loadGradeCourseOptions(currentGradeCourseId, provider);
+    await loadGradeCourseOptions(currentGradeCourseId, provider, { interactive: true });
     button.disabled = false;
     button.textContent = `Connect ${providerLabel(provider)}`;
 }
@@ -759,7 +768,7 @@ async function linkLmsGradeCourse() {
         );
         const result = await readLmsJson(response);
         if (!response.ok || !result.success) {
-            if (reauthorizeCanvas(provider, response)) return;
+            if (reauthorizeCanvas(provider, response, result)) return;
             throw new Error(result.message || `HTTP ${response.status}`);
         }
 
@@ -837,12 +846,22 @@ async function loadLmsGrades(courseId, provider = '') {
 }
 
 /**
- * Canvas access can lapse while the page is open. Bouncing through its OAuth
- * flow and back is the only way to recover, so it is handled here rather than
+ * Whether the server said BiocBot holds no usable Canvas connection for this
+ * instructor. Canvas refusing a request (403, CANVAS_ACCESS_DENIED) is not
+ * this: connecting again cannot fix a permission, and a redirect would loop.
+ */
+function isCanvasNotConnected(provider, response, result) {
+    return provider === 'canvas' && response.status === 401 && result?.connected === false;
+}
+
+/**
+ * Canvas access can lapse while the page is open. When an action the
+ * instructor started finds it gone, bouncing through Canvas's OAuth flow and
+ * back is the only way to recover, so it is handled here rather than
  * surfacing a bare 401 the instructor cannot act on.
  */
-function reauthorizeCanvas(provider, response) {
-    if (response.status !== 401 || provider !== 'canvas') return false;
+function reauthorizeCanvas(provider, response, result) {
+    if (!isCanvasNotConnected(provider, response, result)) return false;
     const returnTo = `${window.location.pathname}${window.location.search}`;
     window.location.assign(`/api/lms/canvas/auth/login?returnTo=${encodeURIComponent(returnTo)}`);
     return true;
@@ -871,7 +890,7 @@ async function matchLmsStudents() {
         );
         const result = await readLmsJson(response);
         if (!response.ok || !result.success) {
-            if (reauthorizeCanvas(provider, response)) return;
+            if (reauthorizeCanvas(provider, response, result)) return;
             throw new Error(result.message || result.error || `HTTP ${response.status}`);
         }
 
@@ -916,7 +935,7 @@ async function importLmsGrades() {
         );
         const result = await readLmsJson(response);
         if (!response.ok || !result.success) {
-            if (reauthorizeCanvas(provider, response)) return;
+            if (reauthorizeCanvas(provider, response, result)) return;
             throw new Error(result.message || result.error || `HTTP ${response.status}`);
         }
         applyLmsGradeView(result.data);

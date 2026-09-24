@@ -31,13 +31,61 @@ const CANVAS_ENV_KEYS = Object.freeze([
     'CANVAS_REDIRECT_URI'
 ]);
 
+// Canvas names each developer-key scope after one API route, e.g.
+// url:GET|/api/v1/courses/:course_id/users.
+const CANVAS_SCOPE_PATTERN = /^url:(GET|POST|PUT|PATCH|DELETE)\|\/api\/v1\/\S+$/;
+
+/**
+ * The Canvas scopes BiocBot asks for when an instructor connects, from
+ * CANVAS_SCOPES (separated by spaces, commas, or newlines). Empty means no
+ * `scope` parameter is sent, which only works while the developer key does not
+ * enforce scopes.
+ */
+function parseCanvasScopes(value = '') {
+    const scopes = String(value).split(/[\s,]+/).filter(Boolean);
+    return {
+        scopes: [...new Set(scopes)],
+        invalid: scopes.filter((scope) => !CANVAS_SCOPE_PATTERN.test(scope))
+    };
+}
+
 function getCanvasConfigurationStatus(env = process.env) {
     const configured = CANVAS_ENV_KEYS.filter((key) => Boolean(String(env[key] || '').trim()));
     const missing = CANVAS_ENV_KEYS.filter((key) => !String(env[key] || '').trim());
+    // A malformed scope makes Canvas refuse every connection with
+    // invalid_scope, so it disables Canvas as surely as a missing key does.
+    const { scopes, invalid } = parseCanvasScopes(env.CANVAS_SCOPES);
     return {
-        enabled: configured.length === CANVAS_ENV_KEYS.length,
-        partial: configured.length > 0 && missing.length > 0,
-        missing
+        enabled: configured.length === CANVAS_ENV_KEYS.length && invalid.length === 0,
+        partial: configured.length > 0 && (missing.length > 0 || invalid.length > 0),
+        missing,
+        invalidScopes: invalid,
+        scopes
+    };
+}
+
+/**
+ * Canvas fixes a token's scopes when it is issued, and refreshing keeps them.
+ * A token issued before CANVAS_SCOPES changed — or before BiocBot asked for any
+ * scopes — therefore fails every request its old scopes do not cover while
+ * still looking connected. Stamping each stored token with the scope set it
+ * was requested under makes such a token read as "not connected", so the
+ * instructor is asked to connect again instead of meeting a wall of 401s.
+ */
+function withCanvasScopeStamp(tokenStore, scopes) {
+    const stamp = [...new Set(scopes)].sort().join(' ');
+    return {
+        async get(userKey) {
+            const tokens = await tokenStore.get(userKey);
+            if (!tokens) return tokens;
+            return (tokens.scopeStamp ?? '') === stamp ? tokens : null;
+        },
+        set(userKey, tokens) {
+            return tokenStore.set(userKey, { ...tokens, scopeStamp: stamp });
+        },
+        delete(userKey) {
+            return tokenStore.delete(userKey);
+        }
     };
 }
 
@@ -60,6 +108,8 @@ function getProviderDiagnostic(status, mounted) {
         enabled: Boolean(mounted),
         environment,
         missing: status.missing,
+        // Key names only, like `missing` — never the configured values.
+        invalid: status.invalidScopes?.length ? ['CANVAS_SCOPES'] : [],
         reason
     };
 }
@@ -126,11 +176,17 @@ function createLmsIntegration(db) {
         ? {
             api: canvas,
             config: canvas.loadConfigFromEnv({
-                tokenStore: createMongoTokenStore(() => db, {
-                    collectionName: env.CANVAS_TOKEN_COLLECTION_NAME || 'lms_canvas_tokens'
-                }),
+                tokenStore: withCanvasScopeStamp(
+                    createMongoTokenStore(() => db, {
+                        collectionName: env.CANVAS_TOKEN_COLLECTION_NAME || 'lms_canvas_tokens'
+                    }),
+                    canvasStatus.scopes
+                ),
                 getUserKey: getBiocBotUserKey,
-                basePath: '/api/lms/canvas/auth'
+                basePath: '/api/lms/canvas/auth',
+                // Toolkit 1.3.0+ sends these as one space-delimited scope param
+                // and omits it when the list is empty.
+                scopes: canvasStatus.scopes
             })
         }
         : null;
@@ -198,5 +254,7 @@ module.exports = {
     getCanvasConfigurationStatus,
     getLmsDiagnostics,
     getMoodleConfigurationStatus,
-    loadLmsToolkit
+    loadLmsToolkit,
+    parseCanvasScopes,
+    withCanvasScopeStamp
 };

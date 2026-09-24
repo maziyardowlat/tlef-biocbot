@@ -7,6 +7,7 @@ const {
     requireManagedCourseMiddleware,
     requireSelectedProviderAuth
 } = require('./lmsGrades');
+const { lmsErrorResponse } = require('../services/lmsErrors');
 
 const DEFAULT_PRUNE_MIN_INTEGRATION_COVERAGE = 0.8;
 
@@ -285,17 +286,20 @@ function createLmsRosterSyncRouter(integration, dependencies = {}) {
         }
     );
 
-    router.use((error, req, res, next) => {
+    router.use(async (error, req, res, next) => {
         if (res.headersSent) return next(error);
         console.error('LMS roster sync route error:', error);
-        const status = error.statusCode && error.statusCode >= 400 && error.statusCode < 600
-            ? error.statusCode
-            : 502;
-        return res.status(status).json({
-            success: false,
-            provider: req.lmsGradeProvider || null,
-            message: error.message || 'LMS roster sync failed'
-        });
+        try {
+            const { status, body } = await lmsErrorResponse(error, {
+                provider: req.lmsGradeProvider || null,
+                config: req.lmsGradeIntegration?.config,
+                req,
+                fallbackMessage: 'LMS roster sync failed'
+            });
+            return res.status(status).json(body);
+        } catch (responseError) {
+            return next(responseError);
+        }
     });
 
     return router;
