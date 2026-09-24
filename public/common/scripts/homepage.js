@@ -121,15 +121,34 @@
     // ── Gallery lightbox ────────────────────────────────────────────────
     var lightbox = document.getElementById('bb-lightbox');
     var lightboxImg = document.getElementById('bb-lightbox-img');
+    var lightboxTitle = document.getElementById('bb-lightbox-title');
     var lightboxClose = document.getElementById('bb-lightbox-close');
+    var lightboxPrev = document.getElementById('bb-lightbox-prev');
+    var lightboxNext = document.getElementById('bb-lightbox-next');
+    var galleryTriggers = Array.prototype.slice.call(page.querySelectorAll('.js-lightbox-trigger'));
     var lastTrigger = null;
+    var currentIndex = 0;
 
-    function openLightbox(trigger) {
-        var img = trigger.querySelector('img');
-        if (!img || !lightbox || !lightboxImg) return;
-        lastTrigger = trigger;
+    function titleFor(trigger) {
+        var strong = trigger.parentElement && trigger.parentElement.querySelector('figcaption strong');
+        return strong ? strong.textContent : '';
+    }
+
+    function showIndex(index) {
+        var trigger = galleryTriggers[index];
+        var img = trigger && trigger.querySelector('img');
+        if (!img || !lightboxImg) return;
+        currentIndex = index;
         lightboxImg.src = img.src;
         lightboxImg.alt = img.alt;
+        if (lightboxTitle) lightboxTitle.textContent = titleFor(trigger);
+    }
+
+    function openLightbox(trigger) {
+        var index = galleryTriggers.indexOf(trigger);
+        if (index === -1 || !lightbox) return;
+        lastTrigger = trigger;
+        showIndex(index);
         lightbox.hidden = false;
         document.body.style.overflow = 'hidden';
         lightboxClose.focus();
@@ -143,17 +162,28 @@
         if (lastTrigger) lastTrigger.focus();
     }
 
-    page.querySelectorAll('.js-lightbox-trigger').forEach(function (trigger) {
+    function stepLightbox(delta) {
+        if (!lightbox || lightbox.hidden || !galleryTriggers.length) return;
+        var next = (currentIndex + delta + galleryTriggers.length) % galleryTriggers.length;
+        showIndex(next);
+    }
+
+    galleryTriggers.forEach(function (trigger) {
         trigger.addEventListener('click', function () { openLightbox(trigger); });
     });
 
     if (lightboxClose) lightboxClose.addEventListener('click', closeLightbox);
+    if (lightboxPrev) lightboxPrev.addEventListener('click', function () { stepLightbox(-1); });
+    if (lightboxNext) lightboxNext.addEventListener('click', function () { stepLightbox(1); });
     if (lightbox) {
         lightbox.addEventListener('click', function (e) {
             if (e.target === lightbox) closeLightbox();
         });
     }
     document.addEventListener('keydown', function (e) {
-        if (e.key === 'Escape' && lightbox && !lightbox.hidden) closeLightbox();
+        if (!lightbox || lightbox.hidden) return;
+        if (e.key === 'Escape') closeLightbox();
+        else if (e.key === 'ArrowLeft') stepLightbox(-1);
+        else if (e.key === 'ArrowRight') stepLightbox(1);
     });
 })();

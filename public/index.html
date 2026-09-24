@@ -5,8 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>BiocBot - AI Study Assistant for UBC Courses</title>
 
-    <!-- Favicon - UBC Logo -->
-    <link rel="icon" type="image/jpeg" href="/assets/images/UBC.jpg">
+    <!-- Favicon - BiocBot mascot -->
     <link rel="icon" type="image/x-icon" href="/assets/images/favicon.ico">
     <link rel="icon" type="image/png" sizes="32x32" href="/assets/images/favicon-32x32.png">
     <link rel="icon" type="image/png" sizes="16x16" href="/assets/images/favicon-16x16.png">
@@ -95,7 +94,7 @@
     </div>
   </section>
 
-  <section class="bb-statement">
+  <section class="bb-statement bb-reveal">
     <p>Most study tools hand you the answer. <strong>BiocBot asks you to explain it back.</strong> Explaining a topic out loud is how you find out whether you are ready for the exam, and it is the hardest thing to practise on your own.</p>
   </section>
 
@@ -318,7 +317,16 @@
       <button type="button" class="bb-lightbox-close" id="bb-lightbox-close" aria-label="Close preview">
         <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><use href="#bb-icon-close"></use></svg>
       </button>
-      <img id="bb-lightbox-img" src="" alt="">
+      <button type="button" class="bb-lightbox-arrow bb-lightbox-prev" id="bb-lightbox-prev" aria-label="Previous screenshot">
+        <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <button type="button" class="bb-lightbox-arrow bb-lightbox-next" id="bb-lightbox-next" aria-label="Next screenshot">
+        <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 18 15 12 9 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <figure class="bb-lightbox-figure">
+        <figcaption id="bb-lightbox-title" class="bb-lightbox-title"></figcaption>
+        <img id="bb-lightbox-img" src="" alt="">
+      </figure>
     </div>
   </section>
 
@@ -345,7 +353,7 @@
         <div class="bb-person-card"><h3>Maziyar Dowlatabadibazaz</h3><p class="bb-person-role">Programmer Analyst</p></div>
         <div class="bb-person-card"><h3>Sabrina Yuan</h3><p class="bb-person-role">Student Developer</p></div>
         <div class="bb-person-card"><h3>Justin Tang</h3><p class="bb-person-role">Student Developer</p></div>
-        <div class="bb-person-card"><h3>Jayoung Lee</h3></div>
+        <div class="bb-person-card"><h3>Jayoung Lee</h3><p class="bb-person-role">LTIC HR</p></div>
       </div>
     </div>
   </section>
