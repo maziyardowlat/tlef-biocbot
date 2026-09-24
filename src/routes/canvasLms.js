@@ -12,8 +12,10 @@ const { resolveCourseAi, sendLlmKeyError } = require('./llmKeyMiddleware');
 const { createImportProgressStream } = require('./lmsImportProgress');
 const { createLmsImportDiagnostics } = require('../services/lmsImportDiagnostics');
 const { lmsErrorResponse } = require('../services/lmsErrors');
+const { revokeCanvasGrant } = require('../services/lmsIntegration');
 
 const DEFAULT_RETURN_PATH = '/instructor';
+const CANVAS_REVOKE_WAIT_MS = 5000;
 
 /**
  * What an instructor is told when the Canvas connection does not complete,
@@ -52,9 +54,17 @@ function escapeHtml(value) {
     return String(value ?? '').replace(/[&<>"']/g, (character) => entities[character]);
 }
 
-/** A same-site path, or the instructor home — never somewhere off-site. */
+/**
+ * A path on this site: one leading slash, then no backslash, whitespace, or
+ * control character anywhere. Browsers drop tabs and newlines from URLs and
+ * read a backslash as a slash, so "/\t/evil.example" would otherwise leave.
+ */
+function isLocalReturnPath(value) {
+    return typeof value === 'string' && /^\/(?![/\\])[^\\\s\x00-\x1f\x7f]*$/.test(value);
+}
+
 function localReturnPath(value) {
-    return typeof value === 'string' && /^\/(?![/\\])/.test(value) ? value : DEFAULT_RETURN_PATH;
+    return isLocalReturnPath(value) ? value : DEFAULT_RETURN_PATH;
 }
 
 function renderCanvasConnectError(res, reason, returnTo) {
@@ -162,12 +172,36 @@ function createCanvasLmsRouter(
     router.use(express.json());
     router.use('/auth', (req, res, next) => {
         const returnTo = req.query?.returnTo;
-        if (returnTo && (!returnTo.startsWith('/') || returnTo.startsWith('//'))) {
+        if (returnTo !== undefined && !isLocalReturnPath(returnTo)) {
             return res.status(400).send('Canvas OAuth returnTo must be a local application path.');
         }
         next();
     });
     router.get('/auth/callback', handleCanvasCallbackErrors);
+    // Replaces the toolkit's /logout, which looks tokens up through the scope
+    // stamp — so a token issued under an older scope list would be neither
+    // revoked nor deleted — and revokes with a stored access token that has
+    // usually expired.
+    router.post('/auth/logout', async (req, res, next) => {
+        try {
+            const userKey = await config.getUserKey(req);
+            const tokens = await (config.tokenStore.peek || config.tokenStore.get)(userKey);
+            if (tokens) {
+                // Forget the grant locally first; revoking it in Canvas is best
+                // effort and must not keep the instructor waiting for long.
+                await config.tokenStore.delete(userKey);
+                await Promise.race([
+                    revokeCanvasGrant(canvas, config, tokens),
+                    new Promise((resolve) => { setTimeout(resolve, CANVAS_REVOKE_WAIT_MS).unref?.(); })
+                ]).catch((error) => {
+                    console.warn('Could not revoke the Canvas grant on disconnect:', error.message);
+                });
+            }
+            res.status(204).end();
+        } catch (error) {
+            next(error);
+        }
+    });
     router.use('/auth', canvas.createAuthRouter(config));
 
     router.get('/status', requireCanvasAuth, (req, res) => {

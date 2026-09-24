@@ -59,9 +59,11 @@ async function lmsErrorResponse(error, { provider, config, req, fallbackMessage 
                 success: false,
                 provider,
                 code: 'CANVAS_ACCESS_DENIED',
-                message: 'Canvas refused this request. Your Canvas role may not allow it in this course, '
-                    + 'or BiocBot’s Canvas permissions have changed. Try reconnecting Canvas; if it keeps '
-                    + 'happening, contact BiocBot support.'
+                message: 'Canvas refused this request. Your Canvas role may not allow it in this course: '
+                    + 'for example, you do not teach the linked Canvas course, or BiocBot is connected to a '
+                    + 'different Canvas account. To switch accounts, use Disconnect in the Canvas import on the '
+                    + 'Course Upload page, sign out of Canvas, then connect again. If it still happens with the '
+                    + 'account that teaches the course, contact BiocBot support.'
             }
         };
     }

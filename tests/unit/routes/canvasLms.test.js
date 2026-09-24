@@ -28,7 +28,9 @@ function canvasHarness({ client, getCourses, getSections, getFiles, downloadFile
         getCourses: getCourses || jest.fn(async () => []),
         getCourseSections: getSections || jest.fn(async () => []),
         getCourseFiles: getFiles || jest.fn(async () => []),
-        downloadFile: downloadFile || jest.fn()
+        downloadFile: downloadFile || jest.fn(),
+        refreshTokens: jest.fn(async () => ({ accessToken: 'fresh-access-token' })),
+        revokeToken: jest.fn(async () => {})
     };
     return {
         api,
@@ -38,7 +40,10 @@ function canvasHarness({ client, getCourses, getSections, getFiles, downloadFile
             config: {
                 canvasDomain: 'http://canvas.test',
                 getUserKey: jest.fn((req) => req.user.userId),
-                tokenStore: { get: jest.fn(async () => ({ accessToken: 'canvas-access-token' })) }
+                tokenStore: {
+                    get: jest.fn(async () => ({ accessToken: 'canvas-access-token' })),
+                    delete: jest.fn(async () => {})
+                }
             }
         }
     };
@@ -367,14 +372,55 @@ describe('Canvas LMS routes', () => {
             .expect(400);
     });
 
-    test('exposes the toolkit logout endpoint for explicit Canvas disconnect', async () => {
+    test('rejects return paths a browser would read as another site', async () => {
         const harness = canvasHarness();
-        const app = makeRouteApp(createCanvasLmsRouter(harness.integration), {
-            db: memoryDb(),
-            user: instructor
-        });
+        const app = makeRouteApp(createCanvasLmsRouter(harness.integration), { db: memoryDb(), user: instructor });
+
+        for (const returnTo of ['/%09/evil.example', '/%0A/evil.example', '/%5Cevil.example']) {
+            await request(app).get(`/auth/login?returnTo=${returnTo}`).expect(400);
+        }
+        // Repeated params arrive as an array, not a string.
+        await request(app).get('/auth/login?returnTo=/a&returnTo=/b').expect(400);
+        await request(app).get('/auth/login?returnTo=%2Finstructor%2Fstudent-hub%3FcourseId%3DBIOC-1').expect(200);
+    });
+
+    test('disconnect revokes the Canvas grant — refreshing first — and deletes it, whatever scopes it was issued under', async () => {
+        const harness = canvasHarness();
+        const stale = { accessToken: 'expired-access', refreshToken: 'refresh-1', scopeStamp: 'old' };
+        harness.integration.config.tokenStore.get = jest.fn(async () => null);
+        harness.integration.config.tokenStore.peek = jest.fn(async () => stale);
+        const app = makeRouteApp(createCanvasLmsRouter(harness.integration), { db: memoryDb(), user: instructor });
 
         await request(app).post('/auth/logout').expect(204);
+
+        expect(harness.api.refreshTokens).toHaveBeenCalledWith(harness.integration.config, 'refresh-1');
+        expect(harness.api.revokeToken).toHaveBeenCalledWith(harness.integration.config, 'fresh-access-token');
+        expect(harness.integration.config.tokenStore.delete).toHaveBeenCalledWith('inst-1');
+    });
+
+    test('disconnect still forgets the grant when Canvas will not revoke it', async () => {
+        const harness = canvasHarness();
+        harness.api.refreshTokens.mockRejectedValue(new Error('invalid_grant'));
+        harness.api.revokeToken.mockRejectedValue(new Error('Canvas token revoke failed with status 401'));
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        const app = makeRouteApp(createCanvasLmsRouter(harness.integration), { db: memoryDb(), user: instructor });
+
+        await request(app).post('/auth/logout').expect(204);
+        warn.mockRestore();
+
+        expect(harness.api.revokeToken).toHaveBeenCalledWith(harness.integration.config, 'canvas-access-token');
+        expect(harness.integration.config.tokenStore.delete).toHaveBeenCalledWith('inst-1');
+    });
+
+    test('disconnect with nothing stored is a no-op', async () => {
+        const harness = canvasHarness();
+        harness.integration.config.tokenStore.get = jest.fn(async () => null);
+        const app = makeRouteApp(createCanvasLmsRouter(harness.integration), { db: memoryDb(), user: instructor });
+
+        await request(app).post('/auth/logout').expect(204);
+
+        expect(harness.api.revokeToken).not.toHaveBeenCalled();
+        expect(harness.integration.config.tokenStore.delete).not.toHaveBeenCalled();
     });
 
     describe('OAuth callback errors', () => {
@@ -422,12 +468,15 @@ describe('Canvas LMS routes', () => {
             expect(res.text).toContain('href="/instructor/student-hub?courseId=BIOC-1"');
         });
 
-        test('never links back off-site, whatever the session holds', async () => {
-            const res = await request(callbackApp({ canvasOAuthState: 'state-1', canvasOAuthReturnTo: '//evil.example' }))
-                .get('/auth/callback?state=state-1&error=access_denied')
-                .expect(400);
-            expect(res.text).toContain('href="/instructor"');
-        });
+        test.each(['//evil.example', '/\t/evil.example', '/\n/evil.example', '/\\evil.example'])(
+            'never links back off-site, whatever the session holds (%j)',
+            async (returnTo) => {
+                const res = await request(callbackApp({ canvasOAuthState: 'state-1', canvasOAuthReturnTo: returnTo }))
+                    .get('/auth/callback?state=state-1&error=access_denied')
+                    .expect(400);
+                expect(res.text).toContain('href="/instructor"');
+            }
+        );
     });
 
     describe('Canvas refusals after the connection check', () => {

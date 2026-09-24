@@ -65,23 +65,56 @@ function getCanvasConfigurationStatus(env = process.env) {
 }
 
 /**
+ * Ends a stored Canvas grant — the access token and the refresh token behind
+ * it. Access tokens last an hour, so the stored one is usually expired;
+ * refreshing first gives Canvas a live token to revoke the grant with.
+ */
+async function revokeCanvasGrant(canvas, config, tokens) {
+    let accessToken = tokens.accessToken;
+    try {
+        accessToken = (await canvas.refreshTokens(config, tokens.refreshToken)).accessToken;
+    } catch {
+        // Fall back to the stored token; it may still be live.
+    }
+    await canvas.revokeToken(config, accessToken);
+}
+
+/**
  * Canvas fixes a token's scopes when it is issued, and refreshing keeps them.
  * A token issued before CANVAS_SCOPES changed — or before BiocBot asked for any
  * scopes — therefore fails every request its old scopes do not cover while
  * still looking connected. Stamping each stored token with the scope set it
  * was requested under makes such a token read as "not connected", so the
  * instructor is asked to connect again instead of meeting a wall of 401s.
+ *
+ * A stale token is still a live Canvas grant, so it is revoked (best effort)
+ * when a reconnect replaces it, and `peek` lets Disconnect find it.
  */
-function withCanvasScopeStamp(tokenStore, scopes) {
+function withCanvasScopeStamp(tokenStore, scopes, { revokeStaleGrant } = {}) {
     const stamp = [...new Set(scopes)].sort().join(' ');
+    const isCurrent = (tokens) => (tokens.scopeStamp ?? '') === stamp;
     return {
         async get(userKey) {
             const tokens = await tokenStore.get(userKey);
             if (!tokens) return tokens;
-            return (tokens.scopeStamp ?? '') === stamp ? tokens : null;
+            return isCurrent(tokens) ? tokens : null;
         },
-        set(userKey, tokens) {
-            return tokenStore.set(userKey, { ...tokens, scopeStamp: stamp });
+        /** The stored tokens whatever their stamp — for disconnecting only. */
+        peek(userKey) {
+            return tokenStore.get(userKey);
+        },
+        async set(userKey, tokens) {
+            // Refreshes only ever follow a get() that returned current tokens,
+            // so a stale row here means a reconnect is replacing it.
+            const previous = revokeStaleGrant ? await tokenStore.get(userKey).catch(() => null) : null;
+            await tokenStore.set(userKey, { ...tokens, scopeStamp: stamp });
+            // Saved first and not awaited: revoking is best effort, and a slow
+            // Canvas must not hold up — or lose — the grant just issued.
+            if (previous && !isCurrent(previous)) {
+                revokeStaleGrant(previous).catch((error) => {
+                    console.warn('Could not revoke a replaced Canvas grant:', error.message);
+                });
+            }
         },
         delete(userKey) {
             return tokenStore.delete(userKey);
@@ -172,24 +205,24 @@ function createLmsIntegration(db) {
 
     const { canvas, createMongoTokenStore, moodle } = toolkit;
 
-    const canvasIntegration = canvasStatus.enabled
-        ? {
-            api: canvas,
-            config: canvas.loadConfigFromEnv({
-                tokenStore: withCanvasScopeStamp(
-                    createMongoTokenStore(() => db, {
-                        collectionName: env.CANVAS_TOKEN_COLLECTION_NAME || 'lms_canvas_tokens'
-                    }),
-                    canvasStatus.scopes
-                ),
-                getUserKey: getBiocBotUserKey,
-                basePath: '/api/lms/canvas/auth',
-                // Toolkit 1.3.0+ sends these as one space-delimited scope param
-                // and omits it when the list is empty.
-                scopes: canvasStatus.scopes
-            })
-        }
-        : null;
+    let canvasConfig = null;
+    if (canvasStatus.enabled) {
+        canvasConfig = canvas.loadConfigFromEnv({
+            tokenStore: withCanvasScopeStamp(
+                createMongoTokenStore(() => db, {
+                    collectionName: env.CANVAS_TOKEN_COLLECTION_NAME || 'lms_canvas_tokens'
+                }),
+                canvasStatus.scopes,
+                { revokeStaleGrant: (tokens) => revokeCanvasGrant(canvas, canvasConfig, tokens) }
+            ),
+            getUserKey: getBiocBotUserKey,
+            basePath: '/api/lms/canvas/auth',
+            // Toolkit 1.3.0+ sends these as one space-delimited scope param
+            // and omits it when the list is empty.
+            scopes: canvasStatus.scopes
+        });
+    }
+    const canvasIntegration = canvasConfig ? { api: canvas, config: canvasConfig } : null;
 
     const moodleIntegration = moodleStatus.enabled
         ? {
@@ -256,5 +289,6 @@ module.exports = {
     getMoodleConfigurationStatus,
     loadLmsToolkit,
     parseCanvasScopes,
+    revokeCanvasGrant,
     withCanvasScopeStamp
 };

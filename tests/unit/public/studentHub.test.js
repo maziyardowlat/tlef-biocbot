@@ -196,6 +196,15 @@ describe('Student Hub Canvas connection handling', () => {
     });
 });
 
+describe('Student Hub LMS responses', () => {
+    test('explains a proxy timeout instead of blaming the deployment', async () => {
+        const harness = loadStudentHub();
+        const response = { status: 504, text: async () => '<html>Gateway Time-out</html>' };
+
+        await expect(harness.context.readLmsJson(response)).rejects.toThrow('may still be finishing');
+    });
+});
+
 describe('Student Hub roster sync results', () => {
     const match = {
         provider: 'canvas',

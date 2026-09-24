@@ -323,6 +323,14 @@ async function readLmsJson(response) {
     try {
         return JSON.parse(text);
     } catch (error) {
+        // A reverse proxy that gives up on a request answers with its own HTML
+        // page, and BiocBot may still finish the work behind it.
+        if (response.status === 502 || response.status === 504) {
+            throw new Error(
+                `BiocBot did not answer (HTTP ${response.status}). If this was a long import or sync, it may `
+                + 'still be finishing — wait a minute and reload the page before trying again.'
+            );
+        }
         throw new Error(
             `LMS endpoint returned HTTP ${response.status} with a non-JSON response. ` +
             'Check the server\'s LMS startup diagnostics to confirm its routes were mounted.'

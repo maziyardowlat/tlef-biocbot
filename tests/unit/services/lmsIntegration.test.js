@@ -6,6 +6,7 @@ const {
     getCanvasConfigurationStatus,
     getLmsDiagnostics,
     parseCanvasScopes,
+    revokeCanvasGrant,
     withCanvasScopeStamp
 } = require('../../../src/services/lmsIntegration');
 
@@ -95,12 +96,20 @@ describe('lmsIntegration configuration', () => {
         });
     });
 
-    test('passes CANVAS_SCOPES to the toolkit and stamps stored tokens with them', () => {
-        jest.isolateModules(() => {
+    test('passes CANVAS_SCOPES to the toolkit and stamps stored tokens with them', async () => {
+        await jest.isolateModulesAsync(async () => {
             const loadConfigFromEnv = jest.fn((overrides) => overrides);
+            // A row from before CANVAS_SCOPES, which a reconnect must revoke.
+            const rawStore = {
+                get: jest.fn(async () => ({ accessToken: 'old', refreshToken: 'r-old' })),
+                set: jest.fn(async () => {}),
+                delete: jest.fn()
+            };
+            const refreshTokens = jest.fn(async () => ({ accessToken: 'old-refreshed' }));
+            const revokeToken = jest.fn(async () => {});
             jest.doMock('@ubc/ubc-genai-toolkit-lms-integration', () => ({
-                canvas: { loadConfigFromEnv },
-                createMongoTokenStore: () => ({ get: jest.fn(), set: jest.fn(), delete: jest.fn() }),
+                canvas: { loadConfigFromEnv, refreshTokens, revokeToken },
+                createMongoTokenStore: () => rawStore,
                 moodle: { loadConfigFromEnv: jest.fn() }
             }), { virtual: true });
             const service = require('../../../src/services/lmsIntegration');
@@ -115,7 +124,14 @@ describe('lmsIntegration configuration', () => {
                     basePath: '/api/lms/canvas/auth',
                     scopes: ['url:GET|/api/v1/courses', 'url:GET|/api/v1/courses/:course_id/users']
                 }));
-                expect(integration.canvas.config.tokenStore.get).toEqual(expect.any(Function));
+                await integration.canvas.config.tokenStore.set('user-1', { accessToken: 'a' });
+                expect(rawStore.set).toHaveBeenCalledWith('user-1', {
+                    accessToken: 'a',
+                    scopeStamp: 'url:GET|/api/v1/courses url:GET|/api/v1/courses/:course_id/users'
+                });
+                await new Promise((resolve) => { setTimeout(resolve, 0); });
+                expect(refreshTokens).toHaveBeenCalledWith(integration.canvas.config, 'r-old');
+                expect(revokeToken).toHaveBeenCalledWith(integration.canvas.config, 'old-refreshed');
             } finally {
                 for (const key of Object.keys(process.env)) if (!(key in previous)) delete process.env[key];
                 Object.assign(process.env, previous);
@@ -146,8 +162,51 @@ describe('lmsIntegration configuration', () => {
         // With no scopes configured, tokens stored before stamping still work.
         expect(await withCanvasScopeStamp(store, []).get('user-2')).toMatchObject({ accessToken: 'old' });
 
+        // Disconnect can still find a stale token.
+        expect(await scoped.peek('user-2')).toMatchObject({ accessToken: 'old' });
+
         await scoped.delete('user-1');
         expect(store.delete).toHaveBeenCalledWith('user-1');
+    });
+
+    test('revokes the grant a reconnect replaces only when it was issued under other scopes', async () => {
+        const rows = new Map([
+            ['stale', { accessToken: 'old', refreshToken: 'r-old' }],
+            ['current', { accessToken: 'cur', refreshToken: 'r-cur', scopeStamp: 'url:GET|/api/v1/courses' }]
+        ]);
+        const store = {
+            get: jest.fn(async (key) => rows.get(key) ?? null),
+            set: jest.fn(async (key, tokens) => { rows.set(key, tokens); }),
+            delete: jest.fn()
+        };
+        const revokeStaleGrant = jest.fn(async () => {});
+        const scoped = withCanvasScopeStamp(store, ['url:GET|/api/v1/courses'], { revokeStaleGrant });
+
+        await scoped.set('stale', { accessToken: 'new', refreshToken: 'r-new' });
+        // A refresh of current tokens must never revoke the grant it refreshes.
+        await scoped.set('current', { accessToken: 'cur-2', refreshToken: 'r-cur' });
+        await scoped.set('nobody', { accessToken: 'first', refreshToken: 'r' });
+
+        expect(revokeStaleGrant).toHaveBeenCalledTimes(1);
+        expect(revokeStaleGrant).toHaveBeenCalledWith({ accessToken: 'old', refreshToken: 'r-old' });
+        // The new grant is saved before the old one is revoked.
+        expect(store.set.mock.invocationCallOrder[0]).toBeLessThan(revokeStaleGrant.mock.invocationCallOrder[0]);
+        expect(rows.get('stale')).toMatchObject({ accessToken: 'new', scopeStamp: 'url:GET|/api/v1/courses' });
+    });
+
+    test('revokes a grant with a freshly refreshed token, falling back to the stored one', async () => {
+        const config = { clientId: 'x' };
+        const canvas = {
+            refreshTokens: jest.fn(async () => ({ accessToken: 'fresh' })),
+            revokeToken: jest.fn(async () => {})
+        };
+        await revokeCanvasGrant(canvas, config, { accessToken: 'stored', refreshToken: 'r' });
+        expect(canvas.refreshTokens).toHaveBeenCalledWith(config, 'r');
+        expect(canvas.revokeToken).toHaveBeenCalledWith(config, 'fresh');
+
+        canvas.refreshTokens.mockRejectedValueOnce(new Error('invalid_grant'));
+        await revokeCanvasGrant(canvas, config, { accessToken: 'stored', refreshToken: 'r' });
+        expect(canvas.revokeToken).toHaveBeenLastCalledWith(config, 'stored');
     });
 
     test('uses BiocBot userId as the token-store key', () => {

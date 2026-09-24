@@ -254,10 +254,14 @@ function disabledLmsProviderHandler(provider) {
     return (req, res) => {
         const diagnostic = getLmsDiagnostics(lmsIntegration).providers[provider];
         const status = diagnostic.environment === 'absent' ? 404 : 503;
+        const problems = [
+            diagnostic.missing.length ? `missing: ${diagnostic.missing.join(', ')}` : null,
+            diagnostic.invalid?.length ? `invalid: ${diagnostic.invalid.join(', ')}` : null
+        ].filter(Boolean);
         const message = diagnostic.reason === 'toolkit_unavailable'
             ? `${provider} is configured, but the LMS integration package is unavailable in this deployment`
             : diagnostic.reason === 'environment_partial'
-                ? `${provider} configuration is incomplete; missing: ${diagnostic.missing.join(', ')}`
+                ? `${provider} configuration is incomplete; ${problems.join('; ')}`
                 : `${provider} is not configured for this deployment`;
 
         console.warn('[LMS] Request reached a disabled provider route:', JSON.stringify({
@@ -266,7 +270,8 @@ function disabledLmsProviderHandler(provider) {
             provider,
             status,
             reason: diagnostic.reason,
-            missing: diagnostic.missing
+            missing: diagnostic.missing,
+            invalid: diagnostic.invalid
         }));
         res.status(status).json({
             success: false,
