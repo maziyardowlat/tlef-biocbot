@@ -97,6 +97,7 @@ async function initAuth() {
             updateUserDisplay();
             adjustNavigationForRole();
             setupLogoutHandler();
+            setupAccountMenu();
             // Notify listeners that auth/user state is ready
             try {
                 document.dispatchEvent(new CustomEvent('auth:ready', { detail: currentUser }));
@@ -405,6 +406,57 @@ function updateUserDisplay() {
     if (settingsLink && currentUser.role === 'ta') {
         settingsLink.href = '/ta/settings';
     }
+
+    // Account menu popup: signed-in email shown as a non-interactive header
+    const emailElement = document.getElementById('account-menu-email');
+    if (emailElement) {
+        emailElement.textContent = currentUser.email || '';
+    }
+}
+
+/**
+ * Wire up the collapsed sidebar account row: opens/closes the popup menu
+ * (Settings / Log out) on click, closes on outside click or Escape, and
+ * moves focus predictably so keyboard users land in the menu on open and
+ * back on the trigger on close. Menu items are plain focusable links in
+ * DOM order, so Tab/Shift+Tab already move between them natively.
+ */
+function setupAccountMenu() {
+    const trigger = document.getElementById('account-menu-trigger');
+    const menu = document.getElementById('account-menu');
+    if (!trigger || !menu) return;
+
+    const firstItem = () => menu.querySelector('.account-menu-item');
+
+    const openMenu = () => {
+        menu.hidden = false;
+        trigger.setAttribute('aria-expanded', 'true');
+        const item = firstItem();
+        if (item) item.focus();
+    };
+
+    const closeMenu = (returnFocus) => {
+        if (menu.hidden) return;
+        menu.hidden = true;
+        trigger.setAttribute('aria-expanded', 'false');
+        if (returnFocus) trigger.focus();
+    };
+
+    trigger.addEventListener('click', () => {
+        if (menu.hidden) openMenu();
+        else closeMenu(false);
+    });
+
+    document.addEventListener('click', (e) => {
+        if (menu.hidden) return;
+        if (trigger.contains(e.target) || menu.contains(e.target)) return;
+        closeMenu(false);
+    });
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== 'Escape' || menu.hidden) return;
+        closeMenu(true);
+    });
 }
 
 /**
