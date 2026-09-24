@@ -447,11 +447,8 @@ function gradeLabel(value) {
 }
 
 const MATCH_STRATEGY_LABELS = {
-    integration: 'Canvas integration ID',
-    sis: 'student number',
-    email: 'email',
-    username: 'username',
-    'email-local-part': 'email name'
+    integration: 'PUID (Canvas integration ID)',
+    email: 'email'
 };
 
 function providerLabel(provider) {
@@ -533,6 +530,10 @@ function renderUnmatchedPanel(match) {
     const noBiocBotAccount = lms.filter((entry) => entry.reason === 'no-biocbot-account');
     const identityConflicts = lms.filter((entry) => entry.reason !== 'no-biocbot-account');
     const local = match?.unmatchedBiocBotStudents || [];
+    const dropCandidates = match?.dropCandidates || [];
+    const dropCandidateIds = new Set(dropCandidates.map((entry) => String(entry.localUserId)));
+    const accessDisabled = local.filter((entry) => entry.accessDisabled);
+    const notOnRoster = local.filter((entry) => !entry.accessDisabled && !dropCandidateIds.has(String(entry.localUserId)));
     if (!lms.length && !local.length) {
         panel.hidden = true;
         return;
@@ -547,7 +548,7 @@ function renderUnmatchedPanel(match) {
     const coveragePercent = coverage.total
         ? Math.round(((coverage.integrationId || 0) / coverage.total) * 100)
         : 0;
-    const canDrop = match.prune?.allowed && match.syncToken && local.length > 0;
+    const canDrop = match.prune?.allowed && match.syncToken && dropCandidates.length > 0;
     body.innerHTML = `
         ${match.provider === 'canvas' ? `
             <p class="lms-roster-coverage"><strong>Canvas integration_id coverage:</strong> ${coveragePercent}% (${coverage.integrationId || 0}/${coverage.total || 0})</p>
@@ -566,14 +567,14 @@ function renderUnmatchedPanel(match) {
             <ul>${list(identityConflicts, (entry) => `${escapeHTML(entry.name)}${entry.email ? ` &lt;${escapeHTML(entry.email)}&gt;` : ''}`)}</ul>
             </section>
         ` : ''}
-        ${local.length ? `
+        ${dropCandidates.length ? `
             <section class="lms-unmatched-group">
-            <p><strong>In BiocBot, not in ${escapeHTML(provider)} (${local.length})</strong></p>
-            <p>These are soft-drop candidates. Disabling access keeps their account and history intact.</p>
-            <ul>${list(local, (entry) => `${escapeHTML(entry.displayName)}${entry.email ? ` &lt;${escapeHTML(entry.email)}&gt;` : ' (no email on file)'}`)}</ul>
+            <p><strong>Left the ${escapeHTML(provider)} course (${dropCandidates.length})</strong></p>
+            <p>An earlier sync put these students on this course from ${escapeHTML(provider)}, and ${escapeHTML(provider)} confirms they are no longer enrolled in it, in any section. Disabling access keeps their account and history intact.</p>
+            <ul>${list(dropCandidates, (entry) => `${escapeHTML(entry.displayName)}${entry.email ? ` &lt;${escapeHTML(entry.email)}&gt;` : ' (no email on file)'}`)}</ul>
             ${canDrop ? `
                 <button id="drop-unmatched-lms-students" class="btn-small btn-danger" type="button">
-                    Disable access for ${local.length} student${local.length === 1 ? '' : 's'}
+                    Disable access for ${dropCandidates.length} student${dropCandidates.length === 1 ? '' : 's'}
                 </button>
             ` : `
                 <p class="lms-prune-disabled">Drop action unavailable: ${match.provider !== 'canvas'
@@ -586,6 +587,20 @@ function renderUnmatchedPanel(match) {
             `}
             </section>
         ` : ''}
+        ${notOnRoster.length ? `
+            <section class="lms-unmatched-group">
+            <p><strong>In BiocBot, not on the synced ${escapeHTML(provider)} roster (${notOnRoster.length})</strong></p>
+            <p>Nothing shows these students left the ${escapeHTML(provider)} course. They may have joined with a course code, have no PUID or email that matches a ${escapeHTML(provider)} student, or be in a section your ${escapeHTML(provider)} account cannot see. Syncing does not change their access.</p>
+            <ul>${list(notOnRoster, (entry) => `${escapeHTML(entry.displayName)}${entry.email ? ` &lt;${escapeHTML(entry.email)}&gt;` : ' (no email on file)'}`)}</ul>
+            </section>
+        ` : ''}
+        ${accessDisabled.length ? `
+            <section class="lms-unmatched-group">
+            <p><strong>Access already disabled (${accessDisabled.length})</strong></p>
+            <p>These students are not on the synced ${escapeHTML(provider)} roster, and their BiocBot access for this course is already off.</p>
+            <ul>${list(accessDisabled, (entry) => `${escapeHTML(entry.displayName)}${entry.email ? ` &lt;${escapeHTML(entry.email)}&gt;` : ' (no email on file)'}`)}</ul>
+            </section>
+        ` : ''}
     `;
     document.getElementById('drop-unmatched-lms-students')?.addEventListener('click', dropUnmatchedLmsStudents);
 }
@@ -594,7 +609,8 @@ async function dropUnmatchedLmsStudents() {
     const match = currentRosterMatch;
     const button = document.getElementById('drop-unmatched-lms-students');
     if (!match?.syncToken || !currentGradeCourseId || !button) return;
-    if (!confirm(`Disable course access for ${match.unmatchedBiocBotStudents.length} students who are not in Canvas? Their accounts and history will be kept.`)) return;
+    const count = match.dropCandidates?.length || 0;
+    if (!confirm(`Disable course access for ${count} student${count === 1 ? '' : 's'} who left the Canvas course? Their accounts and history will be kept.`)) return;
 
     button.disabled = true;
     button.textContent = 'Disabling access…';
@@ -1318,11 +1334,9 @@ window.saveEnrollment = async function(courseId, studentId) {
 };
 
 function escapeHTML(str) {
-    if (!str) return '';
-    return String(str).replace(/[&<>"]+/g, function(s) {
-        const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
-        return map[s] || s;
-    });
+    if (str === null || str === undefined) return '';
+    const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+    return String(str).replace(/[&<>"']/g, (character) => map[character]);
 }
 
 function shortenId(value) {

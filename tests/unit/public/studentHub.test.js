@@ -43,6 +43,9 @@ function loadStudentHub(initialGradeResult, availableCoursesResult) {
     elements['lms-grades-status'] = { textContent: '' };
     elements['lms-grades-source-note'] = { textContent: '' };
     elements['students-container'] = { innerHTML: '' };
+    elements['lms-unmatched-panel'] = { hidden: true };
+    elements['lms-unmatched-summary'] = { textContent: '' };
+    elements['lms-unmatched-body'] = { innerHTML: '' };
 
     const responses = [initialGradeResult, availableCoursesResult].filter(Boolean);
     const authenticatedFetch = jest.fn(async () => {
@@ -137,5 +140,82 @@ describe('Student Hub LMS grade loading', () => {
         expect(harness.authenticatedFetch.mock.calls[1][0])
             .toBe('/api/lms/grades/courses/BIOC-302/available-courses?provider=canvas');
         expect(harness.elements['lms-grade-course'].value).toBe('42');
+    });
+});
+
+describe('Student Hub roster sync results', () => {
+    const match = {
+        provider: 'canvas',
+        syncToken: 'sync-1',
+        prune: { allowed: true },
+        coverage: { total: 40, integrationId: 40 },
+        unmatchedLmsStudents: [],
+        unmatchedBiocBotStudents: [
+            { localUserId: 'user-left', displayName: 'Alan Left', email: 'alan@student.ubc.ca' },
+            { localUserId: 'user-code', displayName: 'Grace Code', email: '' }
+        ],
+        dropCandidates: [
+            { localUserId: 'user-left', displayName: 'Alan Left', email: 'alan@student.ubc.ca' }
+        ]
+    };
+
+    test('offers to disable only the students who left the Canvas course', () => {
+        const harness = loadStudentHub();
+
+        harness.context.renderUnmatchedPanel(match);
+
+        const html = harness.elements['lms-unmatched-body'].innerHTML;
+        expect(harness.elements['lms-unmatched-panel'].hidden).toBe(false);
+        expect(html).toContain('Left the Canvas course (1)');
+        expect(html).toContain('Disable access for 1 student');
+        expect(html).toContain('In BiocBot, not on the synced Canvas roster (1)');
+        const [leftSection, notOnRosterSection] = html.split('not on the synced Canvas roster');
+        expect(leftSection).toContain('Alan Left');
+        expect(leftSection).not.toContain('Grace Code');
+        expect(notOnRosterSection).toContain('Grace Code');
+    });
+
+    test('lists students whose access is already off separately instead of as unexplained', () => {
+        const harness = loadStudentHub();
+
+        harness.context.renderUnmatchedPanel({
+            ...match,
+            dropCandidates: [],
+            unmatchedBiocBotStudents: [
+                { localUserId: 'user-left', displayName: 'Alan Left', email: '', accessDisabled: true },
+                { localUserId: 'user-code', displayName: 'Grace Code', email: '' }
+            ]
+        });
+
+        const html = harness.elements['lms-unmatched-body'].innerHTML;
+        const [notOnRosterSection, disabledSection] = html.split('Access already disabled (1)');
+        expect(disabledSection).toContain('Alan Left');
+        expect(notOnRosterSection).toContain('not on the synced Canvas roster (1)');
+        expect(notOnRosterSection).not.toContain('Alan Left');
+    });
+
+    test('escapes runs of markup characters in names', () => {
+        const harness = loadStudentHub();
+
+        harness.context.renderUnmatchedPanel({
+            ...match,
+            unmatchedBiocBotStudents: [{ localUserId: 'x', displayName: '<<img src=x onerror=alert(1)//', email: 'a"><b>@ubc.ca' }],
+            dropCandidates: []
+        });
+
+        const html = harness.elements['lms-unmatched-body'].innerHTML;
+        expect(html).not.toContain('<img');
+        expect(html).not.toContain('"><b>');
+        expect(html).toContain('&lt;&lt;img src=x onerror=alert(1)//');
+    });
+
+    test('shows no drop button when nobody left the Canvas course', () => {
+        const harness = loadStudentHub();
+
+        harness.context.renderUnmatchedPanel({ ...match, dropCandidates: [] });
+
+        const html = harness.elements['lms-unmatched-body'].innerHTML;
+        expect(html).not.toContain('Disable access');
+        expect(html).toContain('In BiocBot, not on the synced Canvas roster (2)');
     });
 });
