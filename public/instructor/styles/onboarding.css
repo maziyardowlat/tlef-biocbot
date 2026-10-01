@@ -1654,3 +1654,27 @@ fieldset.radio-group-fieldset {
     margin: 0;
     padding: 0;
 }
+
+/* Optional Canvas class list choice (course setup). */
+#canvas-class-list-section[hidden] {
+    display: none;
+}
+
+.optional-label {
+    font-size: 0.85rem;
+    font-weight: 400;
+    color: #6b7280;
+}
+
+.canvas-class-list-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.canvas-class-list-option input[type="checkbox"] {
+    width: auto;
+    margin-top: 3px;
+}

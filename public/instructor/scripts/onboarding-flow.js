@@ -692,11 +692,22 @@ async function completeUnit1Setup() {
         
         // Show success message and redirect
         console.log('Step 4: Onboarding save process complete. Redirecting...');
-        showNotification('Unit 1 setup completed successfully! Redirecting to course upload...', 'success');
-        
+        // An instructor who asked for the Canvas class list during course
+        // setup goes on to choose the Canvas course; everyone else to upload.
+        const courseId = encodeURIComponent(onboardingState.createdCourseId);
+        const nextPage = onboardingState.useCanvasClassList
+            ? `/instructor/student-hub?courseId=${courseId}#class-list-panel`
+            : `/instructor/index.html?courseId=${courseId}`;
+        showNotification(
+            onboardingState.useCanvasClassList
+                ? 'Unit 1 setup completed successfully! Next, choose your Canvas course for the class list...'
+                : 'Unit 1 setup completed successfully! Redirecting to course upload...',
+            'success'
+        );
+
         // Wait a moment for the notification to be seen, then redirect with course ID
         setTimeout(() => {
-            window.location.href = `/instructor/index.html?courseId=${onboardingState.createdCourseId}`;
+            window.location.href = nextPage;
         }, 1500);
         
     } catch (error) {

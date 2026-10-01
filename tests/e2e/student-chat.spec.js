@@ -1162,8 +1162,9 @@ test.describe('GET /api/courses/available/all — student view', () => {
         await resetStudentChatData({ instructorId });
     });
 
-    test('returns active courses only, with isEnrolled flag set correctly', async ({ request: api }) => {
-        // Drop enrollment from the OTHER course so we can verify both branches.
+    test('returns only the active courses the student is enrolled in', async ({ request: api }) => {
+        // Drop enrollment from the OTHER course: an active course the student
+        // is not in must not be listed (they join it with its code instead).
         await withDb(async (db) => {
             await db.collection('courses').updateOne(
                 { courseId: STU_OTHER_COURSE_ID },
@@ -1176,16 +1177,13 @@ test.describe('GET /api/courses/available/all — student view', () => {
         const body = await res.json();
         const ids = body.data.map((c) => c.courseId);
 
-        // Active courses present; inactive & deleted absent.
         expect(ids).toContain(STU_COURSE_ID);
-        expect(ids).toContain(STU_OTHER_COURSE_ID);
+        expect(ids).not.toContain(STU_OTHER_COURSE_ID);
         expect(ids).not.toContain(STU_INACTIVE_COURSE_ID);
         expect(ids).not.toContain(STU_DELETED_COURSE_ID);
 
         const main = body.data.find((c) => c.courseId === STU_COURSE_ID);
-        const other = body.data.find((c) => c.courseId === STU_OTHER_COURSE_ID);
         expect(main.isEnrolled).toBe(true);
-        expect(other.isEnrolled).toBe(false);
     });
 
     test('does NOT include instructor-only fields in the student view', async ({ request: api }) => {

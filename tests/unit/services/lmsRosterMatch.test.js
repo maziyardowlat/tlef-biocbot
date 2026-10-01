@@ -254,6 +254,64 @@ describe('LMS roster matching', () => {
     });
 });
 
+describe('matching for a Canvas class list', () => {
+    function runClassListMatch(db, entries) {
+        return matchCourseRoster({
+            db,
+            course,
+            provider: 'canvas',
+            roster: { externalCourseId: '77', entries },
+            matchedBy: 'inst-1',
+            enrollFromRoster: true
+        });
+    }
+
+    test('also matches students who use BiocBot only for other courses', async () => {
+        const db = memoryDb({
+            users: [localUser({ userId: 'elsewhere', puid: 'PUID-1', preferences: { courseId: 'CHEM-1' } })]
+        });
+        const summary = await runClassListMatch(db, [rosterEntry({ integrationId: 'puid-1', email: 'other@example.com' })]);
+
+        expect(summary.matchedCount).toBe(1);
+        expect(summary.rosterEntries).toEqual([{
+            externalUserId: '900',
+            name: 'Ada Lovelace',
+            email: 'other@example.com',
+            integrationId: 'puid-1',
+            localUserId: 'elsewhere'
+        }]);
+        const mapping = await db.collection('lms_identity_mappings').findOne({ externalUserId: '900' });
+        expect(mapping).toMatchObject({ localUserId: 'elsewhere', matchedBy: 'integration' });
+    });
+
+    test('never reports an account outside the course as missing from the roster', async () => {
+        const db = memoryDb({
+            users: [
+                // Same email as the roster row, but a different PUID: not this student.
+                localUser({ userId: 'lookalike', puid: 'PUID-9', preferences: { courseId: 'CHEM-1' } }),
+                // Only instructors, TAs, and students are on the course; never other roles.
+                localUser({ userId: 'ta-1', role: 'ta', puid: 'PUID-1', preferences: {} })
+            ]
+        });
+        const summary = await runClassListMatch(db, [rosterEntry({ integrationId: 'PUID-1' })]);
+
+        expect(summary.matchedCount).toBe(0);
+        expect(summary.unmatchedBiocBotStudents).toEqual([]);
+        expect(summary.unmatchedLmsStudents).toEqual([expect.objectContaining({ reason: 'no-biocbot-account' })]);
+        expect(summary.rosterEntries[0].localUserId).toBeNull();
+    });
+
+    test('a sync without a class list neither looks outside the course nor returns roster rows', async () => {
+        const db = memoryDb({
+            users: [localUser({ userId: 'elsewhere', puid: 'PUID-1', preferences: { courseId: 'CHEM-1' } })]
+        });
+        const summary = await runMatch(db, [rosterEntry({ integrationId: 'PUID-1' })]);
+
+        expect(summary.matchedCount).toBe(0);
+        expect(summary.rosterEntries).toBeUndefined();
+    });
+});
+
 describe('LMS roster readers', () => {
     test('asks Canvas per student whether any student enrollment in the course remains', async () => {
         const client = {

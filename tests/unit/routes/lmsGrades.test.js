@@ -126,6 +126,28 @@ describe('LMS grades routes', () => {
         expect(await db.collection('lms_grade_snapshots').find({}).toArray()).toEqual([]);
     });
 
+    test('will not move grades to another Canvas course while the class list comes from this one', async () => {
+        const harness = integrationHarness({
+            canvasCourses: [{ id: 10, name: 'BIOC 301' }, { id: 11, name: 'BIOC 401', code: 'BIOC401' }]
+        });
+        const db = memoryDb({
+            courses: [course({
+                rosterSource: 'canvas',
+                canvasEnrollment: { enabled: true, externalCourseId: '10', name: 'BIOC 301' }
+            })]
+        });
+        const app = makeRouteApp(createLmsGradesRouter(harness.integration), { db, user: instructor });
+
+        const res = await request(app)
+            .put('/courses/BIOC-1/source')
+            .send({ provider: 'canvas', externalCourseId: '11' })
+            .expect(409);
+
+        expect(res.body.code).toBe('CANVAS_CLASS_LIST_LINKED');
+        const stored = await db.collection('courses').findOne({ courseId: 'BIOC-1' });
+        expect(stored.lmsGradeSources.canvas.courseId).toBe('10');
+    });
+
     test('refuses to pin a course the connected account cannot read', async () => {
         const harness = integrationHarness({ canvasCourses: [{ id: 10, name: 'BIOC 301' }] });
         const db = memoryDb({ courses: [course()] });

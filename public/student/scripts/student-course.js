@@ -209,8 +209,10 @@ async function loadAvailableCourses() {
         console.log('Course names in dropdown:', courses.map(c => c.courseName));
 
         if (courses.length === 0) {
-            console.log('No courses available');
-            showNoCoursesMessage();
+            // The list only holds courses the student is in, so an empty one
+            // means "not in a course yet", not "BiocBot has no courses".
+            console.log('Student is not enrolled in any course yet');
+            showJoinCourseByCode();
             return;
         }
 
@@ -288,6 +290,8 @@ function showCourseSelection(courses) {
         const courseSelectionDiv = document.createElement('div');
         courseSelectionDiv.innerHTML = courseSelectionHTML;
         courseSelectionDiv.id = 'course-selection-wrapper';
+        courseSelectionDiv.querySelector('.course-selection-container')
+            ?.appendChild(buildJoinByCodeForm('Joining another course? Enter the course code from your instructor.'));
 
         courseSelectionHost.appendChild(courseSelectionDiv);
     }
@@ -347,6 +351,191 @@ function showCourseSelection(courses) {
             }
         });
     }
+}
+
+/**
+ * Build the "join with a code" form. Students only see courses they are in, so
+ * a course code is how they reach any other course: the code alone finds it.
+ * @param {string} labelText - Prompt shown above the field
+ * @returns {HTMLFormElement} The form
+ */
+function buildJoinByCodeForm(labelText) {
+    const form = document.createElement('form');
+    form.id = 'join-course-code-form';
+    form.className = 'join-course-code-form';
+    form.noValidate = true;
+    form.innerHTML = `
+        <label for="join-course-code-input">${labelText}</label>
+        <div class="join-course-code-row">
+            <input id="join-course-code-input" name="code" type="text" autocomplete="off"
+                   autocapitalize="characters" spellcheck="false" maxlength="20"
+                   aria-describedby="join-course-code-status">
+            <button type="submit" class="join-course-code-button">Join course</button>
+        </div>
+        <p id="join-course-code-status" class="join-course-code-status" role="status" aria-live="polite"></p>
+        <div id="join-course-code-choices" class="join-course-code-choices" hidden></div>
+    `;
+    form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        joinCourseByCode(form);
+    });
+    return form;
+}
+
+/**
+ * Open a course the student just joined and put the selector away.
+ * @param {string} courseId - Joined course
+ */
+async function enterJoinedCourse(courseId) {
+    await loadCourseData(courseId, true);
+    const courseSelectionWrapper = document.getElementById('course-selection-wrapper');
+    if (courseSelectionWrapper) {
+        courseSelectionWrapper.style.display = 'none';
+    }
+}
+
+/**
+ * Read a JSON reply, tolerating an empty or non-JSON body.
+ * @param {Response} response - Fetch response
+ * @returns {Promise<Object>} Parsed body, or {}
+ */
+async function readJoinResponse(response) {
+    try {
+        return await response.json();
+    } catch (error) {
+        return {};
+    }
+}
+
+/**
+ * Join the course a code belongs to, from the join form.
+ * @param {HTMLFormElement} form - The join form
+ */
+async function joinCourseByCode(form) {
+    const input = form.querySelector('#join-course-code-input');
+    const status = form.querySelector('#join-course-code-status');
+    const button = form.querySelector('button[type="submit"]');
+    const code = (input.value || '').trim();
+
+    if (!code) {
+        status.textContent = 'Enter the course code from your instructor.';
+        input.focus();
+        return;
+    }
+
+    button.disabled = true;
+    status.textContent = 'Joining…';
+    try {
+        const response = await fetch('/api/courses/join-by-code', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ code })
+        });
+        const result = await readJoinResponse(response);
+
+        if (response.ok && result.success && result.data) {
+            status.textContent = `Joined ${result.data.courseName}.`;
+            await enterJoinedCourse(result.data.courseId);
+            return;
+        }
+        if (response.status === 409 && result.code === 'COURSE_CODE_AMBIGUOUS' && result.data) {
+            status.textContent = result.message;
+            showJoinCodeChoices(form, code, result.data.courses || []);
+            return;
+        }
+        status.textContent = result.message || 'Could not join that course. Check the code and try again.';
+    } catch (error) {
+        console.error('Error joining course by code:', error);
+        status.textContent = 'Could not join right now. Please try again.';
+    } finally {
+        button.disabled = false;
+    }
+}
+
+/**
+ * When two courses share a code, let the student pick theirs.
+ * @param {HTMLFormElement} form - The join form
+ * @param {string} code - The code the student entered
+ * @param {Array<{courseId: string, courseName: string}>} courses - Courses using that code
+ */
+function showJoinCodeChoices(form, code, courses) {
+    const container = form.querySelector('#join-course-code-choices');
+    const status = form.querySelector('#join-course-code-status');
+    container.innerHTML = '';
+
+    courses.forEach((course) => {
+        const choice = document.createElement('button');
+        choice.type = 'button';
+        choice.className = 'join-course-code-choice';
+        choice.textContent = course.courseName;
+        choice.addEventListener('click', async () => {
+            try {
+                const response = await fetch(`/api/courses/${encodeURIComponent(course.courseId)}/join`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ code })
+                });
+                const result = await readJoinResponse(response);
+                if (response.ok && result.success) {
+                    await enterJoinedCourse(course.courseId);
+                    return;
+                }
+                status.textContent = result.message || 'Could not join that course.';
+            } catch (error) {
+                console.error('Error joining course:', error);
+                status.textContent = 'Could not join right now. Please try again.';
+            }
+        });
+        container.appendChild(choice);
+    });
+    container.hidden = courses.length === 0;
+}
+
+/**
+ * Shown to a student who is not in any course yet: courses that take their
+ * class list from Canvas appear on their own, and any other course is joined
+ * with its code.
+ */
+function showJoinCourseByCode() {
+    const courseNameElement = document.querySelector('.course-name');
+    if (courseNameElement) {
+        courseNameElement.textContent = 'Join a Course';
+    }
+    const userRoleElement = document.querySelector('.user-role');
+    if (userRoleElement) {
+        userRoleElement.textContent = 'Student';
+    }
+
+    const chatMessages = document.getElementById('chat-messages');
+    let courseSelectionHost = document.getElementById('course-selection-host');
+    if (!courseSelectionHost && chatMessages?.parentElement) {
+        courseSelectionHost = document.createElement('div');
+        courseSelectionHost.id = 'course-selection-host';
+        courseSelectionHost.className = 'course-selection-host';
+        chatMessages.parentElement.insertBefore(courseSelectionHost, chatMessages);
+    }
+    if (chatMessages) {
+        chatMessages.innerHTML = '';
+    }
+    if (!courseSelectionHost) {
+        showNoCoursesMessage();
+        return;
+    }
+
+    const wrapper = document.createElement('div');
+    wrapper.id = 'course-selection-wrapper';
+    wrapper.innerHTML = `
+        <div class="course-selection-container" style="margin: 20px 0; padding: 15px; background-color: #f8f9fa; border-radius: 8px; border-left: 4px solid var(--primary-color);">
+            <h3 style="margin: 0 0 10px 0; color: #333;">Join your course</h3>
+            <p style="margin: 0 0 15px 0; color: #555;">You're not in a BiocBot course yet. If your course uses Canvas, it will show up here automatically once you're on the Canvas class list. Otherwise, enter the course code your instructor gave you.</p>
+        </div>
+    `;
+    wrapper.querySelector('.course-selection-container')
+        .appendChild(buildJoinByCodeForm('Course code'));
+    courseSelectionHost.innerHTML = '';
+    courseSelectionHost.appendChild(wrapper);
 }
 
 /**

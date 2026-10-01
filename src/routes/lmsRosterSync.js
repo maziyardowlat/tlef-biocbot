@@ -1,146 +1,41 @@
-const crypto = require('crypto');
 const express = require('express');
 
-const { getGradeSource } = require('../services/lmsGradeImport');
+const CourseModel = require('../models/Course');
+const { getGradeSource, setGradeSource } = require('../services/lmsGradeImport');
 const { confirmLeftCanvasCourse, syncCourseRoster } = require('../services/lmsRosterMatch');
+const { canvasEnrollmentOf, clearRosterEntries } = require('../services/lmsRosterEnrollment');
+const {
+    DEFAULT_PRUNE_MIN_INTEGRATION_COVERAGE,
+    buildPruneSafety,
+    describeCanvasEnrollment,
+    effectiveRosterSource,
+    isDropCandidate,
+    persistCanvasSync,
+    pruneCoverageThreshold,
+    recordClassListSyncStatus,
+    rosterExternalCourseId,
+    runCanvasRosterSync
+} = require('../services/canvasRosterSync');
 const {
     requireManagedCourseMiddleware,
     requireSelectedProviderAuth
 } = require('./lmsGrades');
 const { lmsErrorResponse } = require('../services/lmsErrors');
 
-const DEFAULT_PRUNE_MIN_INTEGRATION_COVERAGE = 0.8;
-
-function pruneCoverageThreshold(env = process.env) {
-    const configured = Number(env.LMS_ROSTER_PRUNE_MIN_INTEGRATION_COVERAGE);
-    return Number.isFinite(configured) && configured >= 0 && configured <= 1
-        ? configured
-        : DEFAULT_PRUNE_MIN_INTEGRATION_COVERAGE;
-}
-
-function effectiveRosterSource(course = {}) {
-    if (course.rosterSource) return course.rosterSource;
-    // Legacy academic-linked courses predate rosterSource. Treating them as
-    // manual would let Canvas claim them before the migration field is written.
-    if (Array.isArray(course.academicSync?.sectionIds) && course.academicSync.sectionIds.length) {
-        return 'academicSync';
-    }
-    return 'manual';
-}
-
-function buildPruneSafety(coverage = {}, provider = 'canvas', env = process.env) {
-    const total = Number(coverage.total) || 0;
-    const integrationId = Number(coverage.integrationId) || 0;
-    const integrationIdRatio = total ? integrationId / total : 0;
-    const threshold = pruneCoverageThreshold(env);
-    const allowed = provider === 'canvas' && total > 0 && integrationIdRatio >= threshold;
-
-    return {
-        allowed,
-        threshold,
-        integrationIdRatio,
-        reason: allowed
-            ? null
-            : (total === 0
-                ? 'empty-roster'
-                : (provider !== 'canvas' ? 'provider-not-supported' : 'insufficient-integration-id-coverage'))
-    };
-}
-
-async function claimCanvasRosterOwnership(db, course) {
-    const result = await db.collection('courses').updateOne(
-        { courseId: course.courseId },
-        { $set: { rosterSource: 'canvas', updatedAt: new Date() } }
-    );
-    return result.matchedCount > 0;
-}
-
-/**
- * Whether a BiocBot student might have left the linked Canvas course, judged
- * from this sync alone. Only students this Canvas course put on the roster
- * qualify — never someone who joined with a course code, came from Academic
- * Sync, or was never matched — and only when their Canvas user id is gone
- * from the roster the sync read. That read is filtered to the reader's
- * sections, so a student who passes still has to be confirmed with Canvas
- * (confirmLeftCanvasCourse) before being offered for soft-drop.
- */
-function isDropCandidate(enrollment, { externalCourseId, rosterExternalUserIds }) {
-    if (!enrollment || enrollment.source !== 'canvas' || enrollment.enrolled === false) return false;
-    if (String(enrollment.externalCourseId || '') !== String(externalCourseId)) return false;
-    return Boolean(enrollment.externalUserId) && !rosterExternalUserIds.has(String(enrollment.externalUserId));
-}
-
-async function persistCanvasSync({ db, course, externalCourseId, report, confirmLeft = async () => new Set(), syncedBy }) {
-    const mappings = await db.collection('lms_identity_mappings').find({
-        courseId: course.courseId,
-        provider: 'canvas',
-        externalCourseId: String(externalCourseId)
-    }).toArray();
-    const freshCourse = await db.collection('courses').findOne({ courseId: course.courseId });
-    const existingEnrollment = freshCourse?.studentEnrollment || {};
-    const now = new Date();
-    const syncToken = crypto.randomUUID();
-    const prune = buildPruneSafety(report.coverage, 'canvas');
-    // Anyone the roster read returned is still on the course, whether or not
-    // BiocBot could match them.
-    const rosterExternalUserIds = new Set([
-        ...mappings.map((mapping) => String(mapping.externalUserId)),
-        ...(report.unmatchedLmsStudents || []).map((student) => String(student.externalUserId))
-    ]);
-    const enrollmentOf = (student) => existingEnrollment[String(student.localUserId)];
-    const unmatchedBiocBotStudents = (report.unmatchedBiocBotStudents || []).map((student) => ({
-        ...student,
-        accessDisabled: enrollmentOf(student)?.enrolled === false
-    }));
-    const absent = unmatchedBiocBotStudents.filter((student) => isDropCandidate(
-        enrollmentOf(student),
-        { externalCourseId, rosterExternalUserIds }
-    ));
-    const confirmedLeft = absent.length
-        ? await confirmLeft(absent.map((student) => String(enrollmentOf(student).externalUserId)))
-        : new Set();
-    const dropCandidates = absent.filter((student) => confirmedLeft.has(String(enrollmentOf(student).externalUserId)));
-    const set = {
-        rosterSource: 'canvas',
-        lmsRosterSync: {
-            provider: 'canvas',
-            externalCourseId: String(externalCourseId),
-            lastSyncAt: now,
-            syncedBy: String(syncedBy),
-            syncToken,
-            coverage: report.coverage,
-            prune,
-            dropCandidateIds: dropCandidates.map((student) => String(student.localUserId))
-        },
-        updatedAt: now
-    };
-
-    for (const mapping of mappings) {
-        const localUserId = String(mapping.localUserId);
-        set[`studentEnrollment.${localUserId}`] = {
-            ...(existingEnrollment[localUserId] || {}),
-            enrolled: true,
-            source: 'canvas',
-            externalUserId: String(mapping.externalUserId),
-            externalCourseId: String(externalCourseId),
-            syncedAt: now,
-            updatedAt: now
-        };
-        delete set[`studentEnrollment.${localUserId}`].droppedAt;
-    }
-
-    await db.collection('courses').updateOne(
-        { courseId: course.courseId, rosterSource: 'canvas' },
-        { $set: set }
-    );
-
-    return { syncToken, prune, dropCandidates, unmatchedBiocBotStudents };
+function rosterSyncBusy(res, error) {
+    return res.status(409).json({ success: false, code: error.code, message: error.message });
 }
 
 function createLmsRosterSyncRouter(integration, dependencies = {}) {
     const router = express.Router();
     const matchRoster = dependencies.matchRoster || syncCourseRoster;
     const confirmLeft = dependencies.confirmLeft || confirmLeftCanvasCourse;
+    const saveGradeSource = dependencies.saveGradeSource || setGradeSource;
+    // A stored token is not proof the account teaches a course, so the class
+    // list only links courses Canvas lists the instructor as teaching.
+    const listTeacherCourses = dependencies.listTeacherCourses
+        || ((req) => req.lmsGradeIntegration.api.getCourses(req.canvasApi, { enrollment_type: 'teacher' }));
+    const canvasConfigured = () => Boolean(integration.canvas);
 
     router.use(express.json());
 
@@ -160,8 +55,9 @@ function createLmsRosterSyncRouter(integration, dependencies = {}) {
                         message: 'Enrollment roster sync currently requires Canvas integration_id coverage'
                     });
                 }
-                const source = getGradeSource(course, provider);
-                if (!source) {
+                const enrollment = canvasEnrollmentOf(course);
+                const externalCourseId = rosterExternalCourseId(course, enrollment);
+                if (!externalCourseId) {
                     return res.status(400).json({
                         success: false,
                         provider,
@@ -169,35 +65,232 @@ function createLmsRosterSyncRouter(integration, dependencies = {}) {
                     });
                 }
 
-                if (!await claimCanvasRosterOwnership(req.app.locals.db, course)) {
+                const report = await runCanvasRosterSync({
+                    db: req.app.locals.db,
+                    course,
+                    client: req.canvasApi,
+                    syncedBy: req.user.userId,
+                    enrollment,
+                    externalCourseId,
+                    matchRoster,
+                    confirmLeft
+                });
+                if (!report) {
                     return res.status(404).json({
                         success: false,
                         provider,
                         message: 'Course not found while claiming Canvas roster ownership'
                     });
                 }
-
-                const report = await matchRoster({
-                    db: req.app.locals.db,
-                    course: { ...course, rosterSource: 'canvas' },
-                    provider,
-                    client: req.canvasApi,
-                    externalCourseId: source.courseId,
-                    matchedBy: req.user.userId
-                });
-                const safety = await persistCanvasSync({
-                    db: req.app.locals.db,
-                    course,
-                    externalCourseId: source.courseId,
-                    report,
-                    confirmLeft: (externalUserIds) => confirmLeft(req.canvasApi, source.courseId, externalUserIds),
-                    syncedBy: req.user.userId
-                });
+                if (enrollment) {
+                    await recordClassListSyncStatus(req.app.locals.db, course.courseId, { trigger: 'manual' });
+                }
 
                 return res.json({
                     success: true,
                     message: 'Canvas roster synced',
-                    data: { ...report, rosterSource: 'canvas', ...safety }
+                    data: report
+                });
+            } catch (error) {
+                if (error.code === 'ROSTER_SYNC_IN_PROGRESS') return rosterSyncBusy(res, error);
+                return next(error);
+            }
+        }
+    );
+
+    router.get(
+        '/courses/:courseId/class-list',
+        requireManagedCourseMiddleware,
+        async (req, res, next) => {
+            try {
+                return res.json({
+                    success: true,
+                    data: await describeCanvasEnrollment(req.app.locals.db, req.lmsGradeCourse, {
+                        canvasConfigured: canvasConfigured()
+                    })
+                });
+            } catch (error) {
+                return next(error);
+            }
+        }
+    );
+
+    /**
+     * Turns the class list on (or points it at another Canvas course): reads
+     * the roster first and saves the setting only once that read succeeds, so
+     * a Canvas failure leaves the course as it was. The same Canvas course
+     * becomes the grade source, keeping enrollment and grades on one course.
+     */
+    router.put(
+        '/courses/:courseId/class-list',
+        requireManagedCourseMiddleware,
+        requireSelectedProviderAuth(integration),
+        async (req, res, next) => {
+            try {
+                const db = req.app.locals.db;
+                const course = req.lmsGradeCourse;
+                const provider = req.lmsGradeProvider;
+                if (provider !== 'canvas') {
+                    return res.status(400).json({
+                        success: false,
+                        provider,
+                        code: 'ROSTER_PROVIDER_NOT_SUPPORTED',
+                        message: 'Class lists can only come from Canvas'
+                    });
+                }
+                const externalCourseId = String(req.body.externalCourseId || '').trim();
+                if (!externalCourseId) {
+                    return res.status(400).json({ success: false, provider, message: 'externalCourseId is required' });
+                }
+
+                const teacherCourses = await listTeacherCourses(req);
+                const externalCourse = teacherCourses.find((candidate) => String(candidate.id) === externalCourseId);
+                if (!externalCourse) {
+                    return res.status(403).json({
+                        success: false,
+                        provider,
+                        code: 'CANVAS_COURSE_NOT_TAUGHT',
+                        message: 'Your Canvas account is not a teacher in that Canvas course'
+                    });
+                }
+
+                const previous = canvasEnrollmentOf(course);
+                const now = new Date();
+                const settings = {
+                    enabled: true,
+                    externalCourseId,
+                    name: externalCourse.name || '',
+                    code: externalCourse.code || '',
+                    allowCodeJoin: previous ? previous.allowCodeJoin : true,
+                    enabledBy: String(req.user.userId),
+                    enabledAt: previous?.externalCourseId === externalCourseId && previous.enabledAt
+                        ? previous.enabledAt
+                        : now
+                };
+
+                const report = await runCanvasRosterSync({
+                    db,
+                    course,
+                    client: req.canvasApi,
+                    syncedBy: req.user.userId,
+                    enrollment: canvasEnrollmentOf({ canvasEnrollment: settings }),
+                    externalCourseId,
+                    matchRoster,
+                    confirmLeft
+                });
+                if (!report) {
+                    return res.status(404).json({ success: false, provider, message: 'BiocBot course not found' });
+                }
+
+                const gradeSource = getGradeSource(course, 'canvas');
+                if (!gradeSource || gradeSource.inherited || gradeSource.courseId !== externalCourseId) {
+                    await saveGradeSource({
+                        db,
+                        course,
+                        provider: 'canvas',
+                        externalCourse,
+                        linkedBy: req.user.userId
+                    });
+                }
+                await db.collection('courses').updateOne(
+                    { courseId: course.courseId },
+                    {
+                        $set: {
+                            canvasEnrollment: {
+                                ...settings,
+                                syncStatus: {
+                                    lastAttemptAt: now,
+                                    lastSuccessAt: now,
+                                    lastTrigger: 'link',
+                                    lastError: null
+                                }
+                            },
+                            updatedAt: now
+                        }
+                    }
+                );
+
+                const fresh = await CourseModel.getCourseById(db, course.courseId);
+                return res.json({
+                    success: true,
+                    message: 'Canvas class list linked',
+                    data: {
+                        sync: report,
+                        classList: await describeCanvasEnrollment(db, fresh, { canvasConfigured: canvasConfigured() })
+                    }
+                });
+            } catch (error) {
+                if (error.code === 'ROSTER_SYNC_IN_PROGRESS') return rosterSyncBusy(res, error);
+                return next(error);
+            }
+        }
+    );
+
+    /** Turns the course-code fallback on or off while the class list is on. */
+    router.patch(
+        '/courses/:courseId/class-list',
+        requireManagedCourseMiddleware,
+        async (req, res, next) => {
+            try {
+                if (typeof req.body.allowCodeJoin !== 'boolean') {
+                    return res.status(400).json({ success: false, message: 'allowCodeJoin must be true or false' });
+                }
+                const db = req.app.locals.db;
+                const courseId = req.lmsGradeCourse.courseId;
+                const update = await db.collection('courses').updateOne(
+                    { courseId, 'canvasEnrollment.enabled': true },
+                    { $set: { 'canvasEnrollment.allowCodeJoin': req.body.allowCodeJoin, updatedAt: new Date() } }
+                );
+                if (!update.matchedCount) {
+                    return res.status(409).json({
+                        success: false,
+                        code: 'CLASS_LIST_OFF',
+                        message: 'The course code can only be turned off while the Canvas class list is on'
+                    });
+                }
+                const fresh = await CourseModel.getCourseById(db, courseId);
+                return res.json({
+                    success: true,
+                    message: req.body.allowCodeJoin ? 'Course code turned on' : 'Course code turned off',
+                    data: await describeCanvasEnrollment(db, fresh, { canvasConfigured: canvasConfigured() })
+                });
+            } catch (error) {
+                return next(error);
+            }
+        }
+    );
+
+    /**
+     * Turns the class list off. Students already in the course keep their
+     * access; new students go back to joining with the course code.
+     */
+    router.delete(
+        '/courses/:courseId/class-list',
+        requireManagedCourseMiddleware,
+        async (req, res, next) => {
+            try {
+                const db = req.app.locals.db;
+                const courseId = req.lmsGradeCourse.courseId;
+                const now = new Date();
+                const update = await db.collection('courses').updateOne(
+                    { courseId, 'canvasEnrollment.enabled': true },
+                    {
+                        $set: {
+                            'canvasEnrollment.enabled': false,
+                            'canvasEnrollment.disabledAt': now,
+                            'canvasEnrollment.disabledBy': String(req.user.userId),
+                            rosterSource: 'manual',
+                            updatedAt: now
+                        }
+                    }
+                );
+                if (update.matchedCount) await clearRosterEntries(db, courseId);
+
+                const fresh = await CourseModel.getCourseById(db, courseId);
+                return res.json({
+                    success: true,
+                    message: 'Canvas class list turned off. Students already in the course keep their access.',
+                    data: await describeCanvasEnrollment(db, fresh, { canvasConfigured: canvasConfigured() })
                 });
             } catch (error) {
                 return next(error);

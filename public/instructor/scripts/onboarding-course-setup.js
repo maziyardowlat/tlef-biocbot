@@ -486,11 +486,51 @@ function initOnboardingPlatformSelector() {
     refreshOnboardingPlatformHelp();
 }
 
+// Whether this deployment can read Canvas class lists; decides if the
+// optional Canvas Class List section is offered at all.
+let onboardingCanvasConfigured = false;
+
+/**
+ * Offer the optional Canvas Class List choice only where Canvas is set up, and
+ * only while creating a new course. Joining an existing course leaves its
+ * class list to that course's instructors.
+ */
+function updateCanvasClassListVisibility() {
+    const section = document.getElementById('canvas-class-list-section');
+    if (!section) return;
+    const courseSelect = document.getElementById('course-select');
+    const createMode = !courseSelect || isCreateModeSelection(courseSelect.value);
+    section.hidden = !(onboardingCanvasConfigured && createMode);
+    if (section.hidden) {
+        const checkbox = document.getElementById('use-canvas-class-list');
+        if (checkbox) checkbox.checked = false;
+    }
+}
+
+async function initCanvasClassListOption() {
+    if (!document.getElementById('canvas-class-list-section')) return;
+    try {
+        const response = await fetch('/api/lms/configuration', { credentials: 'include' });
+        if (!response.ok) return;
+        const result = await response.json();
+        onboardingCanvasConfigured = Boolean(result?.data?.providers?.canvas?.enabled);
+    } catch (error) {
+        console.warn('Could not check whether Canvas is configured:', error);
+        onboardingCanvasConfigured = false;
+    }
+    updateCanvasClassListVisibility();
+}
+
+function initOnboardingCourseSetupExtras() {
+    initOnboardingPlatformSelector();
+    initCanvasClassListOption();
+}
+
 if (typeof document !== 'undefined') {
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initOnboardingPlatformSelector);
+        document.addEventListener('DOMContentLoaded', initOnboardingCourseSetupExtras);
     } else {
-        initOnboardingPlatformSelector();
+        initOnboardingCourseSetupExtras();
     }
 }
 
@@ -516,6 +556,7 @@ function handleCourseSelection(event) {
     joinCourseSection.style.display = createMode ? 'none' : 'block';
     continueBtn.style.display = createMode ? 'inline-block' : 'none';
     joinCourseBtn.style.display = createMode ? 'none' : 'inline-block';
+    updateCanvasClassListVisibility();
 
     if (createMode) {
         onboardingState.existingCourseId = null;
@@ -723,6 +764,13 @@ async function handleCourseSetup(event) {
         lecturesPerWeek: lecturesPerWeek,
         totalUnits: weeks * lecturesPerWeek // Calculate total units
     };
+    // Remembered for the end of onboarding, which then opens the Student Hub's
+    // class list panel instead of Course Upload.
+    const canvasClassListSection = document.getElementById('canvas-class-list-section');
+    onboardingState.useCanvasClassList = Boolean(
+        canvasClassListSection && !canvasClassListSection.hidden
+        && document.getElementById('use-canvas-class-list')?.checked
+    );
     
 
     

@@ -55,6 +55,7 @@ const LlmRegistry = require('./services/llmRegistry');
 const AuthService = require('./services/authService');
 const { isAcademicApiEnabled } = require('./services/academicApi');
 const { createLmsIntegration, ensureLmsIndexes, getLmsDiagnostics } = require('./services/lmsIntegration');
+const { startClassListScheduler } = require('./services/classListScheduler');
 const createAuthMiddleware = require('./middleware/auth');
 const { crossSiteGuard, parseTrustProxy } = require('./middleware/crossSiteGuard');
 const initializePassport = require('./config/passport');
@@ -753,6 +754,9 @@ async function startServer() {
         setupProtectedRoutes();
         setupAPIRoutes();
         app.locals.startupComplete = true;
+
+        // Keeps Canvas class lists current; does nothing without Canvas.
+        startClassListScheduler({ db: app.locals.db, integration: lmsIntegration });
 
         // Start the Express server
         app.listen(port, () => {

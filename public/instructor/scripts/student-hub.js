@@ -291,6 +291,19 @@ function initializeStudentHub() {
     document.getElementById('connect-lms-grade-provider')?.addEventListener('click', connectLmsGradeProvider);
     document.getElementById('match-lms-students')?.addEventListener('click', matchLmsStudents);
     document.getElementById('import-lms-grades')?.addEventListener('click', importLmsGrades);
+
+    const classListCourse = document.getElementById('class-list-course');
+    if (classListCourse) {
+        addKeyboardPickerActivation(classListCourse);
+        classListCourse.addEventListener('change', updateClassListEnableButton);
+    }
+    document.getElementById('class-list-choose')?.addEventListener('click', () => loadClassListCourseOptions({ interactive: true }));
+    document.getElementById('class-list-enable')?.addEventListener('click', enableClassList);
+    document.getElementById('class-list-change')?.addEventListener('click', startClassListCourseChange);
+    document.getElementById('class-list-cancel-change')?.addEventListener('click', cancelClassListCourseChange);
+    document.getElementById('class-list-sync')?.addEventListener('click', syncClassList);
+    document.getElementById('class-list-disable')?.addEventListener('click', disableClassList);
+    document.getElementById('class-list-allow-code')?.addEventListener('change', updateClassListCodeJoin);
 }
 
 function addKeyboardPickerActivation(selectElement) {
@@ -437,6 +450,9 @@ async function loadStudents(courseId) {
         currentStudents = [...currentTAs, ...uniqueStudents];
         
         renderStudents(courseId);
+        // The class list decides whether the grade course can still be
+        // changed on its own, so it loads before the grade bar.
+        await loadClassList(courseId);
         await loadLmsGrades(courseId);
         await loadChatSurveyResponses(courseId);
     } catch (err) {
@@ -564,7 +580,11 @@ function renderUnmatchedPanel(match) {
         ${noBiocBotAccount.length ? `
             <section class="lms-unmatched-group">
             <p><strong>In ${escapeHTML(provider)}, not in BiocBot (${noBiocBotAccount.length})</strong></p>
-            <p>These students have not signed in to BiocBot yet. No action is needed; their account is created on first CWL login.</p>
+            <p>${match.classListEnabled
+                ? 'These students have not signed in to BiocBot yet. They are added to this course automatically the first time they sign in.'
+                : (match.provider === 'canvas'
+                    ? 'These students are not in this BiocBot course yet. They can join with the course code, or turn on the Canvas class list above to add them automatically.'
+                    : 'These students are not in this BiocBot course yet. They can join with the course code.')}</p>
             <ul>${list(noBiocBotAccount, (entry) => `${escapeHTML(entry.name)}${entry.email ? ` &lt;${escapeHTML(entry.email)}&gt;` : ' (no email visible to BiocBot)'}`)}</ul>
             </section>
         ` : ''}
@@ -646,6 +666,327 @@ async function dropUnmatchedLmsStudents() {
     }
 }
 
+/* ------------------------------------------------------------------------
+ * Canvas class list: students on the linked Canvas course's roster get into
+ * this course without a code. Linking it is always an explicit click here.
+ * ---------------------------------------------------------------------- */
+
+let currentClassList = null;
+let classListChanging = false;
+
+function canvasCourseLabel(course) {
+    if (!course) return 'the Canvas course';
+    return course.code && course.name ? `${course.code} — ${course.name}` : (course.name || course.code || course.id);
+}
+
+function classListLocksGradeCourse(provider) {
+    return provider === 'canvas' && Boolean(currentClassList?.enabled);
+}
+
+async function loadClassList(courseId) {
+    const panel = document.getElementById('class-list-panel');
+    if (!panel) return;
+    try {
+        const response = await authenticatedFetch(`/api/lms/roster/courses/${encodeURIComponent(courseId)}/class-list`);
+        const result = await readLmsJson(response);
+        if (!response.ok || !result.success) throw new Error(result.message || `HTTP ${response.status}`);
+        currentClassList = result.data;
+    } catch (error) {
+        console.error('Error loading the Canvas class list:', error);
+        currentClassList = null;
+    }
+    renderClassList();
+}
+
+function renderClassList() {
+    const panel = document.getElementById('class-list-panel');
+    const data = currentClassList;
+    if (!panel) return;
+    // Deployments without Canvas see nothing new.
+    if (!data || !data.canvasConfigured) {
+        panel.hidden = true;
+        return;
+    }
+    panel.hidden = false;
+
+    const state = document.getElementById('class-list-state');
+    const summary = document.getElementById('class-list-summary');
+    const warning = document.getElementById('class-list-warning');
+    const setup = document.getElementById('class-list-setup');
+    const controls = document.getElementById('class-list-controls');
+    const cancel = document.getElementById('class-list-cancel-change');
+    const pending = document.getElementById('class-list-pending');
+
+    state.textContent = data.enabled ? 'On' : 'Off';
+    state.dataset.state = data.enabled ? 'on' : 'off';
+
+    if (data.enabled) {
+        const lastSynced = data.syncStatus?.lastSuccessAt || data.lastSyncAt;
+        summary.textContent = `Students on the Canvas class list for ${canvasCourseLabel(data.canvasCourse)} get into this course `
+            + 'automatically, without a course code. '
+            + (lastSynced ? `Last synced ${formatDateTime(lastSynced)}. ` : '')
+            + 'BiocBot checks Canvas again every few hours.';
+        const error = data.syncStatus?.lastError;
+        warning.hidden = !error;
+        warning.textContent = error
+            ? `The last automatic sync failed (${formatDateTime(error.at)}): ${error.message}`
+            : '';
+        document.getElementById('class-list-allow-code').checked = data.allowCodeJoin !== false;
+        setup.hidden = !classListChanging;
+        controls.hidden = classListChanging;
+        cancel.hidden = !classListChanging;
+    } else {
+        const suggested = data.suggestedCanvasCourse;
+        summary.textContent = suggested
+            ? `Let students on the Canvas class list for ${canvasCourseLabel(suggested)} into this course without a course code. `
+                + `This course already uses that Canvas course for ${suggested.inherited ? 'file imports' : 'grades'}.`
+            : 'Let students on a Canvas course\'s class list into this course without a course code. '
+                + 'The course code keeps working for everyone else.';
+        warning.hidden = true;
+        setup.hidden = false;
+        controls.hidden = true;
+        cancel.hidden = true;
+        classListChanging = false;
+        offerSuggestedClassListCourse(suggested);
+    }
+
+    // Onboarding sends instructors who asked for a class list straight here.
+    if (window.location.hash === '#class-list-panel' && panel.dataset.revealed !== 'true') {
+        panel.dataset.revealed = 'true';
+        panel.scrollIntoView({ block: 'start' });
+        document.getElementById('class-list-heading')?.focus({ preventScroll: true });
+    }
+
+    const pendingStudents = data.enabled ? (data.pending || []) : [];
+    pending.hidden = pendingStudents.length === 0;
+    document.getElementById('class-list-pending-summary').textContent =
+        `${pendingStudents.length} student${pendingStudents.length === 1 ? '' : 's'} on the Canvas class list `
+        + `${pendingStudents.length === 1 ? "hasn't" : "haven't"} signed in to BiocBot yet`;
+    document.getElementById('class-list-pending-list').innerHTML = pendingStudents
+        .map((student) => `<li>${escapeHTML(student.name || 'Unnamed student')}${student.email ? ` &lt;${escapeHTML(student.email)}&gt;` : ''}</li>`)
+        .join('');
+}
+
+/**
+ * Before Canvas is connected, the picker can still offer the course already
+ * linked for files or grades, so linking it is one click.
+ */
+function offerSuggestedClassListCourse(suggested) {
+    const select = document.getElementById('class-list-course');
+    if (!select || select.dataset.loaded === 'true') {
+        updateClassListEnableButton();
+        return;
+    }
+    select.replaceChildren();
+    if (suggested) {
+        appendOption(select, suggested.id, canvasCourseLabel(suggested), { selected: true });
+        select.disabled = false;
+    } else {
+        appendOption(select, '', 'Choose a Canvas course first');
+        select.disabled = true;
+    }
+    updateClassListEnableButton();
+}
+
+function updateClassListEnableButton() {
+    const select = document.getElementById('class-list-course');
+    const button = document.getElementById('class-list-enable');
+    if (button) button.disabled = !select?.value;
+}
+
+/**
+ * Lists the Canvas courses the instructor teaches. Reached only from a click,
+ * because it may send the instructor through Canvas sign-in first.
+ */
+async function loadClassListCourseOptions({ interactive = false } = {}) {
+    const select = document.getElementById('class-list-course');
+    const button = document.getElementById('class-list-choose');
+    if (!select || !currentGradeCourseId) return;
+
+    button.disabled = true;
+    try {
+        const response = await authenticatedFetch(
+            `/api/lms/grades/courses/${encodeURIComponent(currentGradeCourseId)}/available-courses?provider=canvas`
+        );
+        const result = await readLmsJson(response);
+        if (!response.ok || !result.success) {
+            if (interactive && reauthorizeCanvas('canvas', response, result)) return;
+            throw new Error(result.message || `HTTP ${response.status}`);
+        }
+
+        const selectedId = select.value || currentClassList?.canvasCourse?.id || currentClassList?.suggestedCanvasCourse?.id || '';
+        const courses = result.data.courses || [];
+        select.replaceChildren();
+        appendOption(select, '', courses.length ? 'Select a Canvas course…' : 'You don\'t teach any Canvas courses');
+        for (const course of courses) {
+            appendOption(select, course.id, canvasCourseLabel(course), { selected: course.id === String(selectedId) });
+        }
+        select.disabled = courses.length === 0;
+        select.dataset.loaded = 'true';
+    } catch (error) {
+        console.error('Error listing Canvas courses for the class list:', error);
+        showNotification(`Could not list your Canvas courses: ${error.message}`, 'error');
+    } finally {
+        button.disabled = false;
+        updateClassListEnableButton();
+    }
+}
+
+async function enableClassList() {
+    const select = document.getElementById('class-list-course');
+    const button = document.getElementById('class-list-enable');
+    const externalCourseId = select?.value;
+    if (!externalCourseId || !currentGradeCourseId || !button) return;
+
+    button.disabled = true;
+    button.textContent = 'Reading the Canvas class list…';
+    try {
+        const response = await authenticatedFetch(
+            `/api/lms/roster/courses/${encodeURIComponent(currentGradeCourseId)}/class-list`,
+            {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ provider: 'canvas', externalCourseId })
+            }
+        );
+        const result = await readLmsJson(response);
+        if (!response.ok || !result.success) {
+            if (reauthorizeCanvas('canvas', response, result)) return;
+            throw new Error(result.message || `HTTP ${response.status}`);
+        }
+
+        classListChanging = false;
+        currentClassList = result.data.classList;
+        const sync = result.data.sync || {};
+        await loadStudents(currentGradeCourseId);
+        renderUnmatchedPanel(sync);
+        showNotification(classListSyncMessage('Class list is on', sync, currentClassList), 'success');
+    } catch (error) {
+        console.error('Error turning on the Canvas class list:', error);
+        showNotification(`Could not use that Canvas course for the class list: ${error.message}`, 'error');
+    } finally {
+        button.textContent = 'Use for class list';
+        updateClassListEnableButton();
+    }
+}
+
+function classListSyncMessage(prefix, sync, classList) {
+    const added = Number(sync.addedCount) || 0;
+    const waiting = Number(classList?.pendingCount) || 0;
+    const parts = [`${added} student${added === 1 ? '' : 's'} added`];
+    if (waiting) parts.push(`${waiting} not signed in yet`);
+    return `${prefix}: ${parts.join(', ')}.`;
+}
+
+async function syncClassList() {
+    const button = document.getElementById('class-list-sync');
+    if (!currentGradeCourseId || !button) return;
+
+    button.disabled = true;
+    button.textContent = 'Syncing…';
+    try {
+        const response = await authenticatedFetch(
+            `/api/lms/roster/courses/${encodeURIComponent(currentGradeCourseId)}/sync`,
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ provider: 'canvas' })
+            }
+        );
+        const result = await readLmsJson(response);
+        if (!response.ok || !result.success) {
+            if (reauthorizeCanvas('canvas', response, result)) return;
+            throw new Error(result.message || `HTTP ${response.status}`);
+        }
+
+        await loadStudents(currentGradeCourseId);
+        renderUnmatchedPanel(result.data);
+        showNotification(classListSyncMessage('Class list synced', result.data, currentClassList), 'success');
+    } catch (error) {
+        console.error('Error syncing the Canvas class list:', error);
+        showNotification(`Could not sync the class list: ${error.message}`, 'error');
+    } finally {
+        button.disabled = false;
+        button.textContent = 'Sync now';
+    }
+}
+
+async function updateClassListCodeJoin(event) {
+    const checkbox = event.target;
+    const allowCodeJoin = checkbox.checked;
+    if (!currentGradeCourseId) return;
+
+    checkbox.disabled = true;
+    try {
+        const response = await authenticatedFetch(
+            `/api/lms/roster/courses/${encodeURIComponent(currentGradeCourseId)}/class-list`,
+            {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ allowCodeJoin })
+            }
+        );
+        const result = await readLmsJson(response);
+        if (!response.ok || !result.success) throw new Error(result.message || `HTTP ${response.status}`);
+        currentClassList = result.data;
+        showNotification(
+            allowCodeJoin
+                ? 'Students who aren\'t on the Canvas class list can join with the course code.'
+                : 'The course code is off. Only students on the Canvas class list can join.',
+            'success'
+        );
+    } catch (error) {
+        console.error('Error changing the course code setting:', error);
+        checkbox.checked = !allowCodeJoin;
+        showNotification(`Could not change the course code setting: ${error.message}`, 'error');
+    } finally {
+        checkbox.disabled = false;
+        renderClassList();
+    }
+}
+
+function startClassListCourseChange() {
+    classListChanging = true;
+    renderClassList();
+    loadClassListCourseOptions({ interactive: true });
+}
+
+function cancelClassListCourseChange() {
+    classListChanging = false;
+    renderClassList();
+}
+
+async function disableClassList() {
+    if (!currentGradeCourseId) return;
+    const confirmed = window.confirm(
+        'Turn off the Canvas class list? Students already in this course keep their access. '
+        + 'New students will need the course code to join.'
+    );
+    if (!confirmed) return;
+
+    const button = document.getElementById('class-list-disable');
+    if (button) button.disabled = true;
+    try {
+        const response = await authenticatedFetch(
+            `/api/lms/roster/courses/${encodeURIComponent(currentGradeCourseId)}/class-list`,
+            { method: 'DELETE' }
+        );
+        const result = await readLmsJson(response);
+        if (!response.ok || !result.success) throw new Error(result.message || `HTTP ${response.status}`);
+        currentClassList = result.data;
+        const select = document.getElementById('class-list-course');
+        if (select) delete select.dataset.loaded;
+        renderClassList();
+        await loadLmsGrades(currentGradeCourseId);
+        showNotification(result.message, 'success');
+    } catch (error) {
+        console.error('Error turning off the Canvas class list:', error);
+        showNotification(`Could not turn off the class list: ${error.message}`, 'error');
+    } finally {
+        if (button) button.disabled = false;
+    }
+}
+
 /**
  * Fills the course picker from the provider's own course list and preselects
  * whichever course grades currently come from. Only an `interactive` call —
@@ -703,6 +1044,15 @@ async function loadGradeCourseOptions(courseId, provider, { interactive = false 
                     ? `Using ${current.code || current.name || current.courseId}, inherited from the course linked for file import. Pick a different one to override it.`
                     : `Grades come from ${current.code || current.name || current.courseId}.`);
         }
+        // Grades and the class list share one Canvas course; it changes in
+        // the class list panel so the two never drift apart.
+        if (classListLocksGradeCourse(provider)) {
+            select.disabled = true;
+            if (note) {
+                note.textContent = `Grades come from ${canvasCourseLabel(currentClassList.canvasCourse)}, the same Canvas course as the class list. `
+                    + 'To switch courses, use “Change Canvas course” in the class list panel.';
+            }
+        }
         if (connectButton) connectButton.hidden = true;
     } catch (error) {
         console.error('Error loading LMS grade courses:', error);
@@ -753,7 +1103,8 @@ async function connectLmsGradeProvider() {
 function updateLinkCourseButton() {
     const select = document.getElementById('lms-grade-course');
     const button = document.getElementById('link-lms-grade-course');
-    if (button) button.disabled = !select?.value;
+    const provider = document.getElementById('lms-grade-provider')?.value;
+    if (button) button.disabled = !select?.value || classListLocksGradeCourse(provider);
 }
 
 async function linkLmsGradeCourse() {

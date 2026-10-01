@@ -717,3 +717,132 @@ body.pseudonym-modal-open {
     color: #5f666d;
     font-size: 0.82rem;
 }
+
+/* Canvas class list: who gets into the course without a code. */
+.class-list-panel {
+    margin: 12px 0 14px;
+    padding: 12px 14px;
+    border: 1px solid #c7d7ee;
+    border-radius: 8px;
+    background: #f5f9ff;
+}
+
+.class-list-panel[hidden],
+.class-list-row[hidden],
+.class-list-warning[hidden],
+.class-list-pending[hidden] {
+    display: none;
+}
+
+.class-list-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.class-list-header h3 {
+    margin: 0;
+    font-size: 1rem;
+}
+
+.class-list-state {
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: #e5e7eb;
+    color: #374151;
+    font-size: 0.78rem;
+    font-weight: 700;
+}
+
+.class-list-state[data-state="on"] {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.class-list-summary {
+    margin: 8px 0;
+    color: #374151;
+    font-size: 0.9rem;
+}
+
+.class-list-warning {
+    margin: 8px 0;
+    padding: 8px 10px;
+    border: 1px solid #f5c2c7;
+    border-radius: 6px;
+    background: #fff5f5;
+    color: #842029;
+    font-size: 0.88rem;
+}
+
+.class-list-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+#class-list-setup {
+    justify-content: flex-start;
+}
+
+#class-list-setup label {
+    font-weight: 600;
+}
+
+#class-list-setup select {
+    width: auto;
+    min-width: 220px;
+    max-width: 100%;
+}
+
+.class-list-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1 1 320px;
+    font-size: 0.9rem;
+}
+
+/* Shared form styles stretch inputs; a checkbox keeps its natural size. */
+.class-list-toggle input[type="checkbox"] {
+    flex: none;
+    width: auto;
+    margin: 0;
+}
+
+.class-list-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.class-list-pending {
+    margin-top: 10px;
+    font-size: 0.88rem;
+}
+
+.class-list-pending summary {
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.class-list-pending p {
+    margin: 6px 0;
+    color: #4b5563;
+}
+
+.class-list-pending ul {
+    margin: 4px 0 0;
+    padding-left: 20px;
+    line-height: 1.5;
+}
+
+@media (max-width: 640px) {
+    #class-list-setup select,
+    #class-list-setup button,
+    .class-list-actions button {
+        width: 100%;
+    }
+}

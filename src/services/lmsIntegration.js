@@ -277,6 +277,21 @@ async function ensureLmsIndexes(db) {
         { courseId: 1, provider: 1, externalCourseId: 1, localUserId: 1 },
         { name: 'unique_lms_local_identity', unique: true }
     );
+
+    // Saved Canvas class lists: one row per roster student, looked up by PUID
+    // or email when a student signs in.
+    await db.collection('lms_roster_entries').createIndex(
+        { courseId: 1, provider: 1, externalCourseId: 1, externalUserId: 1 },
+        { name: 'unique_lms_roster_entry', unique: true }
+    );
+    await db.collection('lms_roster_entries').createIndex(
+        { provider: 1, integrationIdKey: 1, localUserId: 1 },
+        { name: 'lms_roster_entry_by_integration_id' }
+    );
+    await db.collection('lms_roster_entries').createIndex(
+        { provider: 1, emailKey: 1, localUserId: 1 },
+        { name: 'lms_roster_entry_by_email' }
+    );
 }
 
 module.exports = {

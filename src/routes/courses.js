@@ -37,6 +37,7 @@ const qdrantMaintenance = require('../services/qdrantMaintenance');
 const { LANES } = require('../services/llmLanes');
 const { resolveCourseAi } = require('./llmKeyMiddleware');
 const { getAcademicApiClient, isAcademicApiEnabled } = require('../services/academicApi');
+const { enrollStudentFromSavedRosters } = require('../services/lmsRosterEnrollment');
 
 // Middleware to parse JSON bodies
 router.use(express.json());
@@ -2636,7 +2637,23 @@ router.get('/available/all', async (req, res) => {
         }
         
         const user = req.user;
-        
+        const isPreview = previewSession.isPreviewRequest(req);
+
+        // A student on a saved Canvas class list is enrolled the first time
+        // they reach the course selector, so the course is waiting for them
+        // without a code. It never blocks the list: a failure here only means
+        // they get in on a later load, or with the course code.
+        if (user && user.role === 'student' && !isPreview) {
+            try {
+                const added = await enrollStudentFromSavedRosters(db, user);
+                if (added.length) {
+                    console.log(`Enrolled student ${user.userId} from Canvas class lists: ${added.join(', ')}`);
+                }
+            } catch (error) {
+                console.warn(`Could not apply Canvas class lists for student ${user.userId}:`, error.message);
+            }
+        }
+
         // Query database for all non-deleted courses, then filter by role below
         const collection = db.collection('courses');
         const courses = await collection.find({ status: { $ne: 'deleted' } }).toArray();
@@ -2716,13 +2733,17 @@ router.get('/available/all', async (req, res) => {
             };
         }));
 
-        // With the academic API on, students only get courses they're enrolled in
-        // (enrolment comes from the roster sync), so the selector never offers a
-        // course they can't enter. With it off (the default), there's no roster to
-        // enrol them, so we fall back to the pre-feature behavior: list all active
-        // courses and let them join with a course code.
+        // Students only get courses they are enrolled in — from a class list,
+        // Academic Sync, or an earlier code join — so the selector never shows
+        // them every course on BiocBot. Joining another course takes its code,
+        // which finds the course on its own (POST /join-by-code).
+        //
+        // "View as Student" keeps its previous list: with the academic API off
+        // it offers every course the previewer teaches, because picking one
+        // re-points the preview grant.
         const academicEnabled = await isAcademicApiEnabled(db);
-        const responseCourses = (user && user.role === 'student' && academicEnabled)
+        const enrolledOnly = user && user.role === 'student' && (academicEnabled || !isPreview);
+        const responseCourses = enrolledOnly
             ? transformedCourses.filter(course => course.isEnrolled)
             : transformedCourses;
 
@@ -2857,6 +2878,125 @@ router.get('/:courseId/instructor-join-status', async (req, res) => {
             success: false,
             message: 'Internal server error while checking instructor join status'
         });
+    }
+});
+
+// A code typed into /join-by-code is tried against every course at once, so
+// repeated misses from one student are slowed down. Kept per server process;
+// it only has to make guessing codes impractical, not count exactly.
+const JOIN_BY_CODE_MAX_FAILURES = 10;
+const JOIN_BY_CODE_WINDOW_MS = 15 * 60 * 1000;
+const joinByCodeFailures = new Map();
+
+function joinByCodeFailureWindow(userId, now) {
+    const entry = joinByCodeFailures.get(userId);
+    return entry && now - entry.firstAt <= JOIN_BY_CODE_WINDOW_MS ? entry : null;
+}
+
+function recordJoinByCodeFailure(userId, now) {
+    const entry = joinByCodeFailureWindow(userId, now);
+    if (entry) {
+        entry.count += 1;
+        return;
+    }
+    if (joinByCodeFailures.size > 1000) {
+        for (const [key, value] of joinByCodeFailures) {
+            if (now - value.firstAt > JOIN_BY_CODE_WINDOW_MS) joinByCodeFailures.delete(key);
+        }
+    }
+    joinByCodeFailures.set(userId, { count: 1, firstAt: now });
+}
+
+function escapeRegExp(text) {
+    return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * POST /api/courses/join-by-code
+ * Join a course with its student code alone. Students no longer see courses
+ * they are not in, so the code is what finds the course.
+ */
+router.post('/join-by-code', async (req, res) => {
+    try {
+        const user = req.user;
+        if (!user) {
+            return res.status(401).json({ success: false, message: 'Authentication required' });
+        }
+        if (user.role !== 'student') {
+            return res.status(403).json({ success: false, message: 'Only students can join a course with a student code' });
+        }
+
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({ success: false, message: 'Database connection not available' });
+        }
+
+        const code = normalizeCourseCode(req.body && req.body.code);
+        if (!code) {
+            return res.status(400).json({ success: false, message: 'Enter the course code from your instructor' });
+        }
+
+        const userKey = String(user.userId);
+        const now = Date.now();
+        const failures = joinByCodeFailureWindow(userKey, now);
+        if (failures && failures.count >= JOIN_BY_CODE_MAX_FAILURES) {
+            return res.status(429).json({
+                success: false,
+                message: 'Too many incorrect course codes. Wait a few minutes, then try again.'
+            });
+        }
+
+        const matches = await db.collection('courses').find({
+            status: { $ne: 'deleted' },
+            courseCode: { $regex: `^${escapeRegExp(code)}$`, $options: 'i' }
+        }).toArray();
+
+        if (matches.length === 0) {
+            recordJoinByCodeFailure(userKey, now);
+            return res.status(404).json({
+                success: false,
+                message: 'No course matches that code. Check the code with your instructor.'
+            });
+        }
+
+        // Codes are random, so two courses sharing one is rare; the student
+        // picks theirs and joins it through POST /:courseId/join.
+        if (matches.length > 1) {
+            return res.status(409).json({
+                success: false,
+                code: 'COURSE_CODE_AMBIGUOUS',
+                message: 'More than one course uses this code. Choose your course.',
+                data: {
+                    courses: matches.map((course) => ({
+                        courseId: course.courseId,
+                        courseName: course.courseName || course.courseId
+                    }))
+                }
+            });
+        }
+
+        const course = matches[0];
+        const canBypassCourseCodes = await userCanBypassCourseCodes(db, user);
+        const result = await CourseModel.joinCourse(db, course.courseId, user.userId, code, {
+            skipCodeValidation: canBypassCourseCodes
+        });
+        if (!result.success) {
+            return res.status(403).json({ success: false, message: result.error || 'Failed to join course' });
+        }
+
+        console.log(`Student ${user.userId} joined course ${course.courseId} by code`);
+        return res.json({
+            success: true,
+            message: 'Successfully joined course',
+            data: {
+                courseId: course.courseId,
+                courseName: course.courseName || course.courseId,
+                enrolled: true
+            }
+        });
+    } catch (error) {
+        console.error('Error joining course by code:', error);
+        return res.status(500).json({ success: false, message: 'Internal server error while joining course' });
     }
 });
 

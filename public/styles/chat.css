@@ -2705,3 +2705,69 @@ input:checked+.toggle-slider:before {
 .feedback-icon {
     font-size: 1.1rem;
 }
+
+/* Join a course with its code (student course selector). */
+.join-course-code-form {
+    margin-top: 15px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border-color);
+}
+
+.join-course-code-form label {
+    display: block;
+    margin-bottom: 6px;
+    color: #555;
+    font-size: 14px;
+}
+
+.join-course-code-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.join-course-code-row input {
+    flex: 1 1 160px;
+    min-width: 0;
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.join-course-code-button,
+.join-course-code-choice {
+    padding: 8px 14px;
+    border: none;
+    border-radius: 4px;
+    background-color: var(--primary-color);
+    color: var(--light-text);
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.join-course-code-button:hover,
+.join-course-code-choice:hover {
+    background-color: var(--accent-color);
+}
+
+.join-course-code-button:disabled {
+    opacity: 0.6;
+    cursor: wait;
+}
+
+.join-course-code-status {
+    margin: 8px 0 0;
+    min-height: 1.2em;
+    color: #555;
+    font-size: 13px;
+}
+
+.join-course-code-choices {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+}

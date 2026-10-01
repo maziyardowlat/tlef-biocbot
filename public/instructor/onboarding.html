@@ -178,6 +178,19 @@
                             <div id="academic-sections-list" class="academic-sections-list" hidden></div>
                         </div>
 
+                        <!-- Only on deployments with Canvas, and only for a new
+                             course. Unticked, setup behaves exactly as before. -->
+                        <div id="canvas-class-list-section" class="form-section" hidden>
+                            <h2>Canvas Class List <span class="optional-label">(optional)</span></h2>
+                            <div class="form-group">
+                                <label class="canvas-class-list-option" for="use-canvas-class-list">
+                                    <input type="checkbox" id="use-canvas-class-list" name="useCanvasClassList">
+                                    <span>Add students from my Canvas course's class list, so they don't need a course code</span>
+                                </label>
+                                <small>After Unit 1 setup, you'll go to the Student Hub to choose the Canvas course. Students can still join with the course code.</small>
+                            </div>
+                        </div>
+
                         <div id="course-api-key-section" class="form-section">
                             <!-- Step 1: choose the AI platform. Instructors pick a
                                  platform label only; models are admin settings. -->

@@ -80,6 +80,43 @@
                     <select id="student-course-select"></select>
                 </div>
 
+                <!-- Canvas class list: students on a linked Canvas course's roster
+                     get into this course without a code. Stays hidden on
+                     deployments without Canvas. -->
+                <section class="class-list-panel" id="class-list-panel" aria-labelledby="class-list-heading" hidden>
+                    <div class="class-list-header">
+                        <h3 id="class-list-heading" tabindex="-1">Class list from Canvas</h3>
+                        <span id="class-list-state" class="class-list-state" data-state="off">Off</span>
+                    </div>
+                    <p id="class-list-summary" class="class-list-summary"></p>
+                    <p id="class-list-warning" class="class-list-warning" hidden></p>
+                    <div id="class-list-setup" class="class-list-row">
+                        <label for="class-list-course">Canvas course:</label>
+                        <select id="class-list-course" disabled>
+                            <option value="">Connect Canvas to choose a course</option>
+                        </select>
+                        <button id="class-list-choose" class="btn-small btn-secondary" type="button">Choose a Canvas course</button>
+                        <button id="class-list-enable" class="btn-small btn-primary" type="button" disabled>Use for class list</button>
+                        <button id="class-list-cancel-change" class="btn-small btn-secondary" type="button" hidden>Cancel</button>
+                    </div>
+                    <div id="class-list-controls" class="class-list-row" hidden>
+                        <label class="class-list-toggle" for="class-list-allow-code">
+                            <input type="checkbox" id="class-list-allow-code">
+                            Students who aren't on the Canvas class list can still join with the course code
+                        </label>
+                        <div class="class-list-actions">
+                            <button id="class-list-sync" class="btn-small btn-secondary" type="button">Sync now</button>
+                            <button id="class-list-change" class="btn-small btn-secondary" type="button">Change Canvas course</button>
+                            <button id="class-list-disable" class="btn-small btn-secondary" type="button">Turn off</button>
+                        </div>
+                    </div>
+                    <details id="class-list-pending" class="class-list-pending" hidden>
+                        <summary id="class-list-pending-summary"></summary>
+                        <p>They're added to this course the first time they sign in to BiocBot with CWL.</p>
+                        <ul id="class-list-pending-list"></ul>
+                    </details>
+                </section>
+
                 <!-- LMS grades control strip. Grades themselves render on each
                      student card below, so this stays a thin toolbar. -->
                 <div class="lms-grades-bar" id="lms-grades-bar">

@@ -66,13 +66,69 @@ function externalUserId(entry) {
     return String(entry.id ?? entry.externalUserId);
 }
 
+const CANDIDATE_PROJECTION = Object.freeze({
+    _id: 0,
+    userId: 1,
+    username: 1,
+    email: 1,
+    displayName: 1,
+    puid: 1
+});
+
+function toCandidate(user, inCourse) {
+    return {
+        localUserId: String(user.userId),
+        username: user.username || '',
+        email: user.email || '',
+        puid: user.puid || '',
+        displayName: user.displayName || user.username || String(user.userId),
+        inCourse
+    };
+}
+
+/**
+ * Student accounts outside the course that hold a PUID or email on the roster.
+ * Canvas and CWL can disagree on PUID case, so each one is queried as written,
+ * upper-cased, and lower-cased; matching itself compares them folded.
+ */
+async function listRosterAccounts(db, entries) {
+    const puids = new Set();
+    const emails = new Set();
+    for (const entry of entries) {
+        const integrationId = String(entry.integrationId ?? '').trim();
+        if (integrationId) {
+            puids.add(integrationId);
+            puids.add(integrationId.toUpperCase());
+            puids.add(integrationId.toLowerCase());
+        }
+        const email = normalizeEmail(entry.email);
+        if (email) emails.add(email);
+    }
+    if (!puids.size && !emails.size) return [];
+
+    return db.collection('users').find({
+        role: 'student',
+        isActive: { $ne: false },
+        isPreview: { $ne: true },
+        $or: [
+            ...(puids.size ? [{ puid: { $in: [...puids] } }] : []),
+            ...(emails.size ? [{ email: { $in: [...emails] } }] : [])
+        ]
+    }).project(CANDIDATE_PROJECTION).toArray();
+}
+
 /**
  * The BiocBot accounts eligible to be matched: everyone whose active course is
  * this one, plus anyone carried on the course's enrollment overrides. This
  * mirrors the set the Student Hub lists, so the two views cannot disagree about
  * who exists.
+ *
+ * When the course takes its class list from the roster (`rosterEntries`
+ * given), student accounts that hold a roster PUID or email are added too, so
+ * the sync can enroll students who already use BiocBot for another course.
+ * Each candidate says whether it was already in the course.
  */
-async function listLocalCandidates(db, course) {
+async function listLocalCandidates(db, course, { rosterEntries = null } = {}) {
     const enrollmentIds = Object.keys(course.studentEnrollment || {});
     const users = await db.collection('users').find({
         isActive: { $ne: false },
@@ -81,22 +137,18 @@ async function listLocalCandidates(db, course) {
             { role: 'student', 'preferences.courseId': course.courseId },
             ...(enrollmentIds.length ? [{ userId: { $in: enrollmentIds } }] : [])
         ]
-    }).project({
-        _id: 0,
-        userId: 1,
-        username: 1,
-        email: 1,
-        displayName: 1,
-        puid: 1
-    }).toArray();
+    }).project(CANDIDATE_PROJECTION).toArray();
 
-    return users.map((user) => ({
-        localUserId: String(user.userId),
-        username: user.username || '',
-        email: user.email || '',
-        puid: user.puid || '',
-        displayName: user.displayName || user.username || String(user.userId)
-    }));
+    const candidates = users.map((user) => toCandidate(user, true));
+    if (!rosterEntries) return candidates;
+
+    const known = new Set(candidates.map((candidate) => candidate.localUserId));
+    for (const user of await listRosterAccounts(db, rosterEntries)) {
+        if (known.has(String(user.userId))) continue;
+        known.add(String(user.userId));
+        candidates.push(toCandidate(user, false));
+    }
+    return candidates;
 }
 
 /** Builds one lookup table per matching strategy over the BiocBot accounts. */
@@ -165,22 +217,28 @@ function matchRosterEntries(entries, indexes) {
  * Reconciles the LMS roster with BiocBot accounts and rewrites this course's
  * identity mappings to the result. Returns a report of who matched, how, and
  * who did not — the unmatched lists are the actionable part for an instructor.
+ *
+ * With `enrollFromRoster`, accounts outside the course are matched too (see
+ * listLocalCandidates), and the report carries `rosterEntries`: every roster
+ * row with the account it matched, for the caller to save. It is internal —
+ * strip it before sending the report to a browser.
  */
-async function matchCourseRoster({ db, course, provider, roster, matchedBy }) {
+async function matchCourseRoster({ db, course, provider, roster, matchedBy, enrollFromRoster = false }) {
     if (!SUPPORTED_PROVIDERS.includes(provider)) {
         throw new Error(`Unsupported LMS provider: ${provider}`);
     }
 
     const externalCourseId = String(roster.externalCourseId);
-    const localUsers = await listLocalCandidates(db, course);
+    const localUsers = await listLocalCandidates(db, course, enrollFromRoster ? { rosterEntries: roster.entries } : {});
     const indexes = indexLocalCandidates(localUsers);
     const now = new Date();
 
     const matched = [];
     const unmatchedLmsStudents = [];
     const claimedLocalUserIds = new Set();
+    const matches = matchRosterEntries(roster.entries, indexes);
 
-    matchRosterEntries(roster.entries, indexes).forEach((match, index) => {
+    matches.forEach((match, index) => {
         const entry = roster.entries[index];
         if (!match?.localUser) {
             unmatchedLmsStudents.push({
@@ -249,18 +307,38 @@ async function matchCourseRoster({ db, course, provider, roster, matchedBy }) {
             matched.filter((match) => match.matchedBy === strategy.id).length
         ])),
         unmatchedLmsStudents,
+        // Accounts pulled in only because they hold a roster key were never on
+        // the course, so failing to match one says nothing about the course.
         unmatchedBiocBotStudents: localUsers
-            .filter((user) => !claimedLocalUserIds.has(user.localUserId))
+            .filter((user) => user.inCourse !== false && !claimedLocalUserIds.has(user.localUserId))
             .map((user) => ({
                 localUserId: user.localUserId,
                 displayName: user.displayName,
                 email: user.email
+            })),
+        ...(enrollFromRoster ? {
+            rosterEntries: roster.entries.map((entry, index) => ({
+                externalUserId: externalUserId(entry),
+                name: entry.name,
+                email: entry.email,
+                integrationId: entry.integrationId,
+                localUserId: matches[index]?.localUser?.localUserId || null
             }))
+        } : {})
     };
 }
 
 /** Fetches the roster and reconciles it in one step. */
-async function syncCourseRoster({ db, course, provider, client, externalCourseId, matchedBy, toolkit: injectedToolkit }) {
+async function syncCourseRoster({
+    db,
+    course,
+    provider,
+    client,
+    externalCourseId,
+    matchedBy,
+    enrollFromRoster = false,
+    toolkit: injectedToolkit
+}) {
     if (!SUPPORTED_PROVIDERS.includes(provider)) {
         throw new Error(`Unsupported LMS provider: ${provider}`);
     }
@@ -281,7 +359,8 @@ async function syncCourseRoster({ db, course, provider, client, externalCourseId
         course,
         provider,
         roster: { externalCourseId, entries },
-        matchedBy
+        matchedBy,
+        enrollFromRoster
     });
     return { ...report, coverage };
 }

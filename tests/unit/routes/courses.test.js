@@ -189,15 +189,70 @@ describe('available and joinable course lists', () => {
         expect(res.body.data[0]).toMatchObject({ courseId: 'C1', isEnrolled: true, status: 'active' });
     });
 
-    test('with the academic API off, a student can browse active courses they are not enrolled in', async () => {
+    test('with the academic API off, a student still only sees courses they are enrolled in', async () => {
         const db = memoryDb({ courses: [ // no global setting → gate off (default)
             { courseId: 'C1', courseName: 'Bio', status: 'active', studentEnrollment: { s1: { enrolled: true } } },
             { courseId: 'C2', courseName: 'Chem', status: 'active' },
+            { courseId: 'C3', courseName: 'Blocked', status: 'active', studentEnrollment: { s1: { enrolled: false } } },
         ] });
         const res = await request(app({ db, user: student })).get('/available/all');
         expect(res.status).toBe(200);
-        expect(res.body.data.map(course => course.courseId)).toEqual(['C1', 'C2']);
-        expect(res.body.data.find(course => course.courseId === 'C2')).toMatchObject({ isEnrolled: false });
+        expect(res.body.data.map(course => course.courseId)).toEqual(['C1']);
+    });
+
+    test('"View as Student" still lists every course the previewer teaches, enrolled or not', async () => {
+        const express = require('express');
+        const db = memoryDb({ courses: [
+            { courseId: 'C1', courseName: 'Bio', status: 'active', instructorId: 'i1' },
+            { courseId: 'C2', courseName: 'Chem', status: 'active', instructorId: 'i1' },
+            { courseId: 'C3', courseName: 'Not theirs', status: 'active', instructorId: 'i2' },
+        ] });
+        const previewApp = express();
+        previewApp.use(express.json());
+        previewApp.locals.db = db;
+        const { buildPreviewUserId } = require('../../../src/services/previewSession');
+        previewApp.use((req, res, next) => {
+            req.user = { userId: buildPreviewUserId('i1', 'C1'), role: 'student' };
+            req.realUser = instructor;
+            req.preview = { active: true, courseId: 'C1' };
+            next();
+        });
+        previewApp.use('/', coursesRouter);
+
+        const res = await request(previewApp).get('/available/all');
+        expect(res.status).toBe(200);
+        expect(res.body.data.map(course => course.courseId).sort()).toEqual(['C1', 'C2']);
+    });
+
+    test('a student on a saved Canvas class list is enrolled when they open the course selector', async () => {
+        const db = memoryDb({
+            users: [{ userId: 's1', role: 'student', puid: 'PUID-S1', email: 's1@student.ubc.ca' }],
+            courses: [
+                {
+                    courseId: 'CANVAS-1', courseName: 'Bio Canvas', status: 'active', rosterSource: 'canvas',
+                    canvasEnrollment: { enabled: true, externalCourseId: '10', allowCodeJoin: true },
+                    studentEnrollment: {}
+                },
+                { courseId: 'CODE-ONLY', courseName: 'Chem', status: 'active' },
+            ],
+            lms_roster_entries: [{
+                courseId: 'CANVAS-1', provider: 'canvas', externalCourseId: '10', externalUserId: '501',
+                name: 'Student One', email: 's1@student.ubc.ca', emailKey: 's1@student.ubc.ca',
+                integrationIdKey: 'puid-s1', localUserId: null, syncedAt: new Date()
+            }]
+        });
+        const user = { ...student, puid: 'PUID-S1', email: 's1@student.ubc.ca' };
+
+        const res = await request(app({ db, user })).get('/available/all');
+
+        expect(res.status).toBe(200);
+        expect(res.body.data.map(course => course.courseId)).toEqual(['CANVAS-1']);
+        const stored = await db.collection('courses').findOne({ courseId: 'CANVAS-1' });
+        expect(stored.studentEnrollment.s1).toMatchObject({
+            enrolled: true, source: 'canvas', externalUserId: '501', externalCourseId: '10'
+        });
+        const entry = await db.collection('lms_roster_entries').findOne({ externalUserId: '501' });
+        expect(entry.localUserId).toBe('s1');
     });
 
     test('with the academic API on, a student only sees courses they are enrolled in', async () => {
@@ -262,6 +317,99 @@ describe('canonical course status updates', () => {
     });
 });
 
+describe('joining a course with its code alone', () => {
+    test('finds the course from the code, case-insensitively, and enrolls the student', async () => {
+        const db = memoryDb({ courses: [
+            { courseId: 'C1', courseName: 'Bio', courseCode: 'ABC123', status: 'active' },
+            { courseId: 'C2', courseName: 'Chem', courseCode: 'XYZ789', status: 'active' },
+        ] });
+        const res = await request(app({ db, user: student })).post('/join-by-code').send({ code: ' xyz789 ' });
+        expect(res.status).toBe(200);
+        expect(res.body.data).toEqual({ courseId: 'C2', courseName: 'Chem', enrolled: true });
+        expect((await db.collection('courses').findOne({ courseId: 'C2' })).studentEnrollment.s1.enrolled).toBe(true);
+        expect((await db.collection('courses').findOne({ courseId: 'C1' })).studentEnrollment).toBeUndefined();
+    });
+
+    test('rejects a missing code, an unknown code, and non-students', async () => {
+        const db = memoryDb({ courses: [{ courseId: 'C1', courseCode: 'ABC123' }] });
+        const codeless = { userId: 's-codeless', role: 'student' };
+        expect((await request(app({ db, user: codeless })).post('/join-by-code').send({})).status).toBe(400);
+        const unknown = await request(app({ db, user: codeless })).post('/join-by-code').send({ code: 'NOPE99' });
+        expect(unknown.status).toBe(404);
+        expect((await request(app({ db, user: ta })).post('/join-by-code').send({ code: 'ABC123' })).status).toBe(403);
+        expect((await request(app({ db })).post('/join-by-code').send({ code: 'ABC123' })).status).toBe(401);
+    });
+
+    test('never matches a code that is only part of another course code, or a deleted course', async () => {
+        const db = memoryDb({ courses: [
+            { courseId: 'C1', courseCode: 'ABC123' },
+            { courseId: 'GONE', courseCode: 'DEL456', status: 'deleted' },
+        ] });
+        const user = { userId: 's-partial', role: 'student' };
+        expect((await request(app({ db, user })).post('/join-by-code').send({ code: 'ABC' })).status).toBe(404);
+        expect((await request(app({ db, user })).post('/join-by-code').send({ code: 'A.C123' })).status).toBe(404);
+        expect((await request(app({ db, user })).post('/join-by-code').send({ code: 'DEL456' })).status).toBe(404);
+    });
+
+    test('asks the student to choose when two courses share a code', async () => {
+        const db = memoryDb({ courses: [
+            { courseId: 'C1', courseName: 'Bio 101', courseCode: 'SAME11' },
+            { courseId: 'C2', courseName: 'Bio 102', courseCode: 'same11' },
+        ] });
+        const res = await request(app({ db, user: student })).post('/join-by-code').send({ code: 'SAME11' });
+        expect(res.status).toBe(409);
+        expect(res.body.code).toBe('COURSE_CODE_AMBIGUOUS');
+        expect(res.body.data.courses).toEqual([
+            { courseId: 'C1', courseName: 'Bio 101' },
+            { courseId: 'C2', courseName: 'Bio 102' },
+        ]);
+    });
+
+    test('keeps the course rules: revoked access, inactive course, and a turned-off code', async () => {
+        const db = memoryDb({ courses: [
+            { courseId: 'C1', courseCode: 'REV111', studentEnrollment: { s1: { enrolled: false } } },
+            { courseId: 'C2', courseCode: 'OFF222', status: 'inactive' },
+            { courseId: 'C3', courseCode: 'CAN333', rosterSource: 'canvas',
+                canvasEnrollment: { enabled: true, externalCourseId: '10', allowCodeJoin: false } },
+        ] });
+        const revoked = await request(app({ db, user: student })).post('/join-by-code').send({ code: 'REV111' });
+        expect(revoked.status).toBe(403);
+        expect(revoked.body.message).toBe('Access revoked by instructor');
+        const inactive = await request(app({ db, user: student })).post('/join-by-code').send({ code: 'OFF222' });
+        expect(inactive.status).toBe(403);
+        const codeOff = await request(app({ db, user: student })).post('/join-by-code').send({ code: 'CAN333' });
+        expect(codeOff.status).toBe(403);
+        expect(codeOff.body.message).toMatch(/course code is turned off/);
+    });
+
+    test('re-entering the code of a course the student is in keeps their enrollment as it was', async () => {
+        const fromCanvas = { enrolled: true, source: 'canvas', externalUserId: '701', externalCourseId: '10' };
+        const db = memoryDb({ courses: [
+            { courseId: 'C1', courseName: 'Bio', courseCode: 'ABC123', rosterSource: 'canvas',
+                canvasEnrollment: { enabled: true, externalCourseId: '10', allowCodeJoin: false },
+                studentEnrollment: { s1: fromCanvas } },
+        ] });
+
+        const res = await request(app({ db, user: student })).post('/join-by-code').send({ code: 'ABC123' });
+
+        expect(res.status).toBe(200);
+        expect((await db.collection('courses').findOne({ courseId: 'C1' })).studentEnrollment.s1).toEqual(fromCanvas);
+    });
+
+    test('slows a student down after repeated wrong codes', async () => {
+        const db = memoryDb({ courses: [{ courseId: 'C1', courseCode: 'ABC123' }] });
+        const guesser = { userId: 's-guesser', role: 'student' };
+        for (let attempt = 0; attempt < 10; attempt += 1) {
+            expect((await request(app({ db, user: guesser })).post('/join-by-code').send({ code: `BAD${attempt}` })).status).toBe(404);
+        }
+        const blocked = await request(app({ db, user: guesser })).post('/join-by-code').send({ code: 'ABC123' });
+        expect(blocked.status).toBe(429);
+        // Another student is unaffected.
+        const other = await request(app({ db, user: { userId: 's-other', role: 'student' } })).post('/join-by-code').send({ code: 'ABC123' });
+        expect(other.status).toBe(200);
+    });
+});
+
 describe('joining courses', () => {
     test('student join requires a code and rejects an invalid code', async () => {
         const db = memoryDb({ courses: [{ courseId: 'C1', courseCode: 'ABC123' }] });
@@ -282,6 +430,44 @@ describe('joining courses', () => {
         const res = await request(app({ db, user: student })).post('/C1/join').send({ code: 'ABC123' });
         expect(res.status).toBe(403);
         expect(res.body.message).toBe('Access revoked by instructor');
+    });
+
+    test('a Canvas class-list course with its code left on still accepts the code', async () => {
+        const db = memoryDb({ courses: [{
+            courseId: 'C1', courseCode: 'ABC123', rosterSource: 'canvas',
+            canvasEnrollment: { enabled: true, externalCourseId: '10' }
+        }] });
+        const res = await request(app({ db, user: student })).post('/C1/join').send({ code: 'ABC123' });
+        expect(res.status).toBe(200);
+    });
+
+    test('a student cannot join with the code once the instructor turns it off for a class-list course', async () => {
+        const db = memoryDb({ courses: [{
+            courseId: 'C1', courseCode: 'ABC123', rosterSource: 'canvas',
+            canvasEnrollment: { enabled: true, externalCourseId: '10', allowCodeJoin: false }
+        }] });
+        const res = await request(app({ db, user: student })).post('/C1/join').send({ code: 'ABC123' });
+        expect(res.status).toBe(403);
+        expect(res.body.message).toMatch(/course code is turned off/);
+        expect((await db.collection('courses').findOne({ courseId: 'C1' })).studentEnrollment).toBeUndefined();
+    });
+
+    test('turning the code off only counts while the class list is on', async () => {
+        const db = memoryDb({ courses: [{
+            courseId: 'C1', courseCode: 'ABC123',
+            canvasEnrollment: { enabled: false, externalCourseId: '10', allowCodeJoin: false }
+        }] });
+        const res = await request(app({ db, user: student })).post('/C1/join').send({ code: 'ABC123' });
+        expect(res.status).toBe(200);
+    });
+
+    test('a TA can still join a class-list course with the code turned off', async () => {
+        const db = memoryDb({ courses: [{
+            courseId: 'C1', courseName: 'Bio', courseCode: 'TA1234', tas: [], status: 'active',
+            canvasEnrollment: { enabled: true, externalCourseId: '10', allowCodeJoin: false }
+        }] });
+        const res = await request(app({ db, user: ta })).post('/C1/join').send({ code: 'TA1234' });
+        expect(res.status).toBe(200);
     });
 
     test('TA join requires a code when not assigned or invited', async () => {

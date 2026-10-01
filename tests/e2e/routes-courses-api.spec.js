@@ -563,9 +563,12 @@ test.describe('available + joinable', () => {
             }
         });
 
-        test('student only sees active courses (inactive ones are filtered out)', async ({ baseURL }) => {
+        test('student only sees active courses they are enrolled in', async ({ baseURL }) => {
             await seedCourse({ courseId: COURSE_A, instructorId });
+            await seedCourse({ courseId: COURSE_B, instructorId });
             await seedCourse({ courseId: COURSE_INACTIVE, instructorId, status: 'inactive' });
+            await setStudentEnrollment(COURSE_A, studentId, true);
+            await setStudentEnrollment(COURSE_INACTIVE, studentId, true);
             const api = await request.newContext({
                 baseURL,
                 storageState: storageStatePath('student'),
@@ -576,6 +579,8 @@ test.describe('available + joinable', () => {
                 const body = await res.json();
                 const ids = body.data.map((c) => c.courseId);
                 expect(ids).toContain(COURSE_A);
+                // Active but not joined: reached with its course code instead.
+                expect(ids).not.toContain(COURSE_B);
                 expect(ids).not.toContain(COURSE_INACTIVE);
             } finally {
                 await api.dispose();

@@ -11,6 +11,7 @@ const {
     setGradeSource
 } = require('../services/lmsGradeImport');
 const { syncCourseRoster } = require('../services/lmsRosterMatch');
+const { canvasEnrollmentOf } = require('../services/lmsRosterEnrollment');
 const { lmsErrorResponse } = require('../services/lmsErrors');
 
 async function requireManagedCourse(req, res) {
@@ -137,6 +138,19 @@ function createLmsGradesRouter(integration, dependencies = {}) {
                 const externalCourseId = String(req.body.externalCourseId || '').trim();
                 if (!externalCourseId) {
                     return res.status(400).json({ success: false, message: 'externalCourseId is required' });
+                }
+
+                // With a Canvas class list on, enrollment and grades share one
+                // Canvas course; switching only the grades would split them.
+                const classList = req.lmsGradeProvider === 'canvas' ? canvasEnrollmentOf(req.lmsGradeCourse) : null;
+                if (classList && classList.externalCourseId !== externalCourseId) {
+                    return res.status(409).json({
+                        success: false,
+                        provider: req.lmsGradeProvider,
+                        code: 'CANVAS_CLASS_LIST_LINKED',
+                        message: `This course's class list comes from ${classList.name || 'another Canvas course'}. `
+                            + 'Change the Canvas course in the class list panel, so enrollment and grades stay on the same course.'
+                    });
                 }
 
                 // A stored token is not proof the account may read this course's

@@ -1997,6 +1997,20 @@ async function getStudentEnrollment(db, courseId, studentId) {
 }
 
 /**
+ * Whether the instructor has turned the student course code off. Only possible
+ * while the course takes its class list from Canvas; every other course keeps
+ * accepting its code.
+ * @param {Object} course - Course document
+ * @returns {boolean}
+ */
+function isStudentCodeJoinBlocked(course) {
+    return !!(course
+        && course.canvasEnrollment
+        && course.canvasEnrollment.enabled === true
+        && course.canvasEnrollment.allowCodeJoin === false);
+}
+
+/**
  * Join a course using a student course code
  * @param {Object} db - MongoDB database instance
  * @param {string} courseId - Course identifier
@@ -2039,9 +2053,25 @@ async function joinCourse(db, courseId, studentId, code, options = {}) {
         return { success: false, error: 'Access revoked by instructor' };
     }
 
+    const alreadyEnrolled = !!(currentEnrollment && currentEnrollment.enrolled === true);
+    if (!skipCodeValidation && !alreadyEnrolled && isStudentCodeJoinBlocked(course)) {
+        return {
+            success: false,
+            error: 'This course adds students from its Canvas class list, and its course code is turned off. '
+                + 'If you just registered in Canvas, the course will appear within a few hours; otherwise, contact your instructor.'
+        };
+    }
+
     // Verify code (case-insensitive)
     if (!skipCodeValidation && normalizeCode(course.courseCode) !== normalizeCode(code)) {
         return { success: false, error: 'Invalid course code' };
+    }
+
+    // Joining again changes nothing. Rewriting the record would also strip
+    // what a Canvas class list recorded about the student, taking them out of
+    // its drop checks.
+    if (alreadyEnrolled) {
+        return { success: true, enrolled: true, alreadyEnrolled: true, message: 'Already enrolled in this course' };
     }
 
     // Enroll the student
@@ -2466,6 +2496,7 @@ module.exports = {
     updateStudentEnrollment,
     getStudentEnrollment,
     joinCourse,
+    isStudentCodeJoinBlocked,
     joinCourseAsInstructor,
     updateUnitDisplayName,
     getApprovedStruggleTopics,

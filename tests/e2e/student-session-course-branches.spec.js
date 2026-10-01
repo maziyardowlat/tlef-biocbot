@@ -81,8 +81,10 @@ function courseDoc(overrides = {}) {
  * @param {Object} [options.enrollmentResponse]
  * @param {Object} [options.flagResponse]
  * @param {Object} [options.joinResponse]
+ * @param {Object} [options.joinByCodeResponse]
  * @returns {Promise<{
  *   calls: string[],
+ *   requestBodies: Record<string, any>,
  *   alerts: string[],
  *   prompts: string[],
  *   setAvailableCourses: (value: Object) => void,
@@ -91,10 +93,12 @@ function courseDoc(overrides = {}) {
  *   setEnrollmentResponse: (value: Object) => void,
  *   setFlagResponse: (value: Object) => void,
  *   setJoinResponse: (value: Object) => void,
+ *   setJoinByCodeResponse: (value: Object) => void,
  * }>}
  */
 async function openStudentWithMocks(page, options = {}) {
     const calls = /** @type {string[]} */ ([]);
+    const requestBodies = /** @type {Record<string, any>} */ ({});
     const alerts = /** @type {string[]} */ ([]);
     const prompts = /** @type {string[]} */ ([]);
     let availableCourses = options.availableCourses || {
@@ -118,13 +122,18 @@ async function openStudentWithMocks(page, options = {}) {
     let enrollmentResponse = options.enrollmentResponse || { status: 200, body: { success: true, data: { enrolled: true, status: 'active' } } };
     let flagResponse = options.flagResponse || { status: 500, body: { success: false } };
     let joinResponse = options.joinResponse || { status: 200, body: { success: true } };
+    let joinByCodeResponse = options.joinByCodeResponse || { status: 404, body: { success: false, message: 'No course matches that code.' } };
     const seedSelectedCourse = options.seedSelectedCourse !== false;
     const seedCourseName = options.seedCourseName !== false;
     const seededChat = chatData();
 
     await page.route('**/api/**', async (route) => {
-        calls.push(new URL(route.request().url()).pathname + new URL(route.request().url()).search);
-        await fulfillApi(route, { availableCourses, authResponse, courseResponse, enrollmentResponse, flagResponse, joinResponse });
+        const url = new URL(route.request().url());
+        calls.push(url.pathname + url.search);
+        if (route.request().method() === 'POST') {
+            requestBodies[url.pathname] = route.request().postDataJSON();
+        }
+        await fulfillApi(route, { availableCourses, authResponse, courseResponse, enrollmentResponse, flagResponse, joinResponse, joinByCodeResponse });
     });
 
     await page.exposeFunction('__recordStudentSessionAlert', (message) => {
@@ -175,8 +184,12 @@ async function openStudentWithMocks(page, options = {}) {
 
     return {
         calls,
+        requestBodies,
         alerts,
         prompts,
+        setJoinByCodeResponse(value) {
+            joinByCodeResponse = value;
+        },
         setAvailableCourses(value) {
             availableCourses = value;
         },
@@ -200,12 +213,22 @@ async function openStudentWithMocks(page, options = {}) {
 
 /**
  * @param {Route} route
- * @param {{ availableCourses: Object, authResponse: Object, courseResponse: Object, enrollmentResponse: Object, flagResponse: Object, joinResponse: Object }} state
+ * @param {{ availableCourses: Object, authResponse: Object, courseResponse: Object, enrollmentResponse: Object, flagResponse: Object, joinResponse: Object, joinByCodeResponse: Object }} state
  */
 async function fulfillApi(route, state) {
     const request = route.request();
     const url = new URL(request.url());
     const pathname = url.pathname;
+
+    if (pathname === '/api/courses/join-by-code') {
+        const joinByCode = /** @type {any} */ (state.joinByCodeResponse);
+        await route.fulfill({
+            status: Number(joinByCode.status || 200),
+            contentType: 'application/json',
+            body: JSON.stringify(joinByCode.body || joinByCode),
+        });
+        return;
+    }
 
     if (pathname === '/api/auth/me') {
         if (state.authResponse.abort) {
@@ -535,7 +558,10 @@ test('loadAvailableCourses renders no-courses and fetch-error empty states', asy
         const w = /** @type {any} */ (window);
         return w.loadAvailableCourses();
     });
-    await expect(page.locator('#chat-messages')).toContainText('No Courses Available');
+    // The list only holds the student's own courses, so an empty one offers
+    // the course-code form rather than saying BiocBot has no courses.
+    await expect(page.locator('#course-selection-host')).toContainText('Join your course');
+    await expect(page.locator('#join-course-code-input')).toBeVisible();
 
     harness.setAvailableCourses({ status: 500, body: { success: false, message: 'Nope' } });
     await page.evaluate(() => {
@@ -928,4 +954,84 @@ test('current course id follows preferences, storage, course list, and error fal
         const w = /** @type {any} */ (window);
         return w.getCurrentCourseId();
     })).toBeNull();
+});
+
+test('a student in no course joins one with its code alone', async ({ page }) => {
+    const harness = await openStudentWithMocks(page, {
+        seedSelectedCourse: false,
+        availableCourses: { success: true, data: [] },
+    });
+
+    const input = page.locator('#join-course-code-input');
+    await expect(page.locator('#course-selection-host')).toContainText('Join your course');
+    await expect(input).toBeVisible();
+
+    // An empty submit asks for the code without calling the server.
+    await page.locator('#join-course-code-form button[type="submit"]').click();
+    await expect(page.locator('#join-course-code-status')).toHaveText('Enter the course code from your instructor.');
+    expect(harness.calls.some((call) => call.startsWith('/api/courses/join-by-code'))).toBe(false);
+
+    await input.fill('WRONG1');
+    await page.locator('#join-course-code-form button[type="submit"]').click();
+    await expect(page.locator('#join-course-code-status')).toHaveText('No course matches that code.');
+
+    harness.setJoinByCodeResponse({
+        status: 200,
+        body: { success: true, data: { courseId: COURSE_ID, courseName: COURSE_NAME, enrolled: true } },
+    });
+    await input.fill('k7m2qx');
+    await page.locator('#join-course-code-form button[type="submit"]').click();
+
+    await expect(page.locator('#course-selection-wrapper')).toBeHidden();
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('selectedCourseId'))).toBe(COURSE_ID);
+    expect(harness.requestBodies['/api/courses/join-by-code']).toEqual({ code: 'k7m2qx' });
+});
+
+test('a code two courses share lets the student pick theirs', async ({ page }) => {
+    const harness = await openStudentWithMocks(page, {
+        seedSelectedCourse: false,
+        availableCourses: { success: true, data: [] },
+        joinByCodeResponse: {
+            status: 409,
+            body: {
+                success: false,
+                code: 'COURSE_CODE_AMBIGUOUS',
+                message: 'More than one course uses this code. Choose your course.',
+                data: {
+                    courses: [
+                        { courseId: COURSE_ID, courseName: COURSE_NAME },
+                        { courseId: SECOND_COURSE_ID, courseName: 'Second Course' },
+                    ],
+                },
+            },
+        },
+    });
+
+    await page.locator('#join-course-code-input').fill('SAME11');
+    await page.locator('#join-course-code-form button[type="submit"]').click();
+
+    const choices = page.locator('#join-course-code-choices button');
+    await expect(choices).toHaveText([COURSE_NAME, 'Second Course']);
+    await choices.filter({ hasText: 'Second Course' }).click();
+
+    await expect(page.locator('#course-selection-wrapper')).toBeHidden();
+    await expect.poll(() => page.evaluate(() => localStorage.getItem('selectedCourseId'))).toBe(SECOND_COURSE_ID);
+    expect(harness.requestBodies[`/api/courses/${SECOND_COURSE_ID}/join`]).toEqual({ code: 'SAME11' });
+});
+
+test('the course list keeps a code box for joining another course', async ({ page }) => {
+    await openStudentWithMocks(page, {
+        seedSelectedCourse: false,
+        availableCourses: {
+            success: true,
+            data: [
+                { courseId: COURSE_ID, courseName: COURSE_NAME, isEnrolled: true },
+                { courseId: SECOND_COURSE_ID, courseName: 'Second Course', isEnrolled: true },
+            ],
+        },
+    });
+
+    await expect(page.locator('#course-select')).toBeVisible();
+    await expect(page.locator('#course-selection-wrapper #join-course-code-form')).toBeVisible();
+    await expect(page.locator('label[for="join-course-code-input"]')).toHaveText('Joining another course? Enter the course code from your instructor.');
 });
