@@ -1,6 +1,6 @@
 # A11y remediation prompts — round 2
 
-These prompts replace the now-stale first-round list. Do not start them during the audit-only pass. Run in the order shown unless a task says it is independent.
+These prompts replace the now-stale first-round list. Do not start them during the audit-only pass. Run in the order shown unless a task says it is independen
 
 Change here just to make a PR. Check now.
 
