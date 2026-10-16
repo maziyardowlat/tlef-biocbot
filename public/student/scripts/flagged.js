@@ -49,7 +49,6 @@ document.addEventListener('DOMContentLoaded', async function() {
             }
         }
     } catch (e) { console.warn('Enrollment check failed, proceeding:', e); }
-    await initAuth();
     const statusSelect = document.getElementById('status-filter');
     if (statusSelect) {
         statusSelect.addEventListener('keydown', event => {
