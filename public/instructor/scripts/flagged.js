@@ -225,10 +225,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     console.log('🔧 [DOM] empty-state element:', document.getElementById('empty-state'));
     
     initializeEventListeners();
-    
-    // Initialize authentication first
-    await initAuth();
-    
+
     // Wait for authentication to be ready before loading courses
     await waitForAuth();
     
@@ -386,7 +383,7 @@ function setupTANavigationHandlers() {
     if (taMyCoursesLink) {
         taMyCoursesLink.addEventListener('click', (e) => {
             e.preventDefault();
-            
+
             // Check permissions first
             checkTAPermissionsAndNavigate('courses', '/instructor/documents');
         });

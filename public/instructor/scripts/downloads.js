@@ -167,10 +167,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     
     // Set up event listeners
     setupEventListeners();
-    
-    // Initialize authentication
-    await initAuth();
-    
+
     // Wait for authentication to be ready
     await waitForAuth();
 
