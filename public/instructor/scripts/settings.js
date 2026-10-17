@@ -272,11 +272,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     function initDirtyTracking() {
         document.querySelectorAll('.settings-section').forEach(section => {
-            const note = section.querySelector('.settings-dirty-note');
-            if (!note) return;
+            const notes = section.querySelectorAll('.settings-dirty-note');
+            if (!notes.length) return;
             const markDirty = (event) => {
                 if (event.target.closest('.settings-section-actions')) return;
-                note.hidden = false;
+                notes.forEach(note => { note.hidden = false; });
             };
             section.addEventListener('input', markDirty);
             section.addEventListener('change', markDirty);
@@ -287,36 +287,43 @@ document.addEventListener('DOMContentLoaded', async () => {
         const section = elementInSection && elementInSection.closest
             ? elementInSection.closest('.settings-section')
             : null;
-        const note = section ? section.querySelector('.settings-dirty-note') : null;
-        if (note) note.hidden = true;
+        if (!section) return;
+        section.querySelectorAll('.settings-dirty-note').forEach(note => { note.hidden = true; });
     }
 
     function markSectionDirty(sectionId) {
-        const note = document.querySelector(`#${sectionId} .settings-dirty-note`);
-        if (note) note.hidden = false;
+        document.querySelectorAll(`#${sectionId} .settings-dirty-note`).forEach(note => { note.hidden = false; });
     }
 
     // Shared wiring for section save/reset buttons: confirm (optional), busy
     // state, error notification, and clearing the section's dirty note.
-    function wireSectionButton(buttonId, handler, { confirmMessage, busyLabel } = {}) {
-        const btn = document.getElementById(buttonId);
-        if (!btn) return;
-        btn.addEventListener('click', async () => {
+    // buttonIds may be a single id or an array (e.g. a section's top and
+    // bottom Save buttons) so every duplicate shares one code path.
+    function wireSectionButton(buttonIds, handler, { confirmMessage, busyLabel } = {}) {
+        const ids = Array.isArray(buttonIds) ? buttonIds : [buttonIds];
+        const buttons = ids.map(id => document.getElementById(id)).filter(Boolean);
+        if (!buttons.length) return;
+        const onClick = async (clickedBtn) => {
             if (confirmMessage && !confirm(confirmMessage)) return;
-            const originalLabel = btn.textContent;
-            btn.disabled = true;
-            if (busyLabel) btn.textContent = busyLabel;
+            const originalLabels = buttons.map(btn => btn.textContent);
+            buttons.forEach(btn => {
+                btn.disabled = true;
+                if (busyLabel) btn.textContent = busyLabel;
+            });
             try {
                 await handler();
-                clearDirty(btn);
+                clearDirty(clickedBtn);
             } catch (error) {
-                console.error(`Error handling ${buttonId}:`, error);
+                console.error(`Error handling ${ids[0]}:`, error);
                 showNotification(error.message || 'Something went wrong', 'error');
             } finally {
-                btn.disabled = false;
-                btn.textContent = originalLabel;
+                buttons.forEach((btn, i) => {
+                    btn.disabled = false;
+                    btn.textContent = originalLabels[i];
+                });
             }
-        });
+        };
+        buttons.forEach(btn => btn.addEventListener('click', () => onClick(btn)));
     }
 
     function addKeyboardPickerActivation(selectElement) {
@@ -2198,7 +2205,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }, { busyLabel: 'Testing...' });
 
     // Course basics
-    wireSectionButton('save-course-basics', async () => {
+    wireSectionButton(['save-course-basics', 'save-course-basics-top'], async () => {
         const courseId = await getCurrentCourseId();
         const yearLevelSelect = document.getElementById('course-year-level-select');
         if (!courseId || !yearLevelSelect) {
@@ -2222,7 +2229,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Student chat combines settings owned by several backend documents:
     // Top-K in ai-settings, retrieval behavior in prompts, source downloads in
     // quiz settings, and usefulness prompts in chat-survey settings.
-    wireSectionButton('save-student-chat', async () => {
+    wireSectionButton(['save-student-chat', 'save-student-chat-top'], async () => {
         await saveAiSettingsToServer();
         await savePromptsConfigToServer();
         await saveQuizConfigToServer();
@@ -2251,7 +2258,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // Course prompts
-    wireSectionButton('save-prompts', async () => {
+    wireSectionButton(['save-prompts', 'save-prompts-top'], async () => {
         await savePromptsConfigToServer();
         showNotification('Prompts saved', 'success');
     }, { busyLabel: 'Saving...' });
@@ -2274,7 +2281,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // Quiz practice
-    wireSectionButton('save-quiz-settings', async () => {
+    wireSectionButton(['save-quiz-settings', 'save-quiz-settings-top'], async () => {
         await saveQuizConfigToServer();
         showNotification('Quiz settings saved', 'success');
     }, { busyLabel: 'Saving...' });
@@ -2293,7 +2300,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // Privacy & sessions
-    wireSectionButton('save-privacy-settings', async () => {
+    wireSectionButton(['save-privacy-settings', 'save-privacy-settings-top'], async () => {
         await saveAnonymizeStudentsToServer();
         await savePromptsConfigToServer();
         showNotification('Privacy settings saved', 'success');
@@ -2315,7 +2322,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // Super course: per-course bucket membership
-    wireSectionButton('save-course-superchats', async () => {
+    wireSectionButton(['save-course-superchats', 'save-course-superchats-top'], async () => {
         await saveAiSettingsToServer();
         newlyCreatedSuperchatIds.clear();
         refreshCourseSuperchatChecklist();
@@ -2334,7 +2341,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // Super course: shared bucket settings
-    wireSectionButton('save-superchat-bucket', async () => {
+    wireSectionButton(['save-superchat-bucket', 'save-superchat-bucket-top'], async () => {
         await saveSuperchatBucketToServer();
         // Refresh the select label and checklist (name/course count may have changed).
         await loadSuperchatList(selectedSuperchatId);
@@ -2362,15 +2369,15 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // Admin: platform & models
-    wireSectionButton('save-llm-settings', async () => {
+    wireSectionButton(['save-llm-settings', 'save-llm-settings-top'], async () => {
         await savePlatformModelSettings('openai');
     }, { busyLabel: 'Saving...' });
 
-    wireSectionButton('save-sandbox-llm-settings', async () => {
+    wireSectionButton(['save-sandbox-llm-settings', 'save-sandbox-llm-settings-top'], async () => {
         await savePlatformModelSettings('ubc-llm-sandbox');
     }, { busyLabel: 'Saving...' });
 
-    wireSectionButton('save-proxy-llm-settings', async () => {
+    wireSectionButton(['save-proxy-llm-settings', 'save-proxy-llm-settings-top'], async () => {
         await savePlatformModelSettings('ubc-llm-proxy');
     }, { busyLabel: 'Saving...' });
 
@@ -2387,7 +2394,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }, { busyLabel: 'Cancelling...' });
 
     // Admin: login restrictions
-    wireSectionButton('save-access-settings', async () => {
+    wireSectionButton(['save-access-settings', 'save-access-settings-top'], async () => {
         const allowLocalLogin = document.getElementById('allow-local-login-toggle')?.checked;
         const response = await fetch('/api/settings/global', {
             method: 'POST',
@@ -2402,7 +2409,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }, { busyLabel: 'Saving...' });
 
     // Admin: academic API integration gate
-    wireSectionButton('save-academic-api-settings', async () => {
+    wireSectionButton(['save-academic-api-settings', 'save-academic-api-settings-top'], async () => {
         const academicApiEnabled = document.getElementById('academic-api-enabled-toggle')?.checked;
         const response = await fetch('/api/settings/global', {
             method: 'POST',
@@ -2417,7 +2424,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     }, { busyLabel: 'Saving...' });
 
     // Admin: question generation prompts
-    wireSectionButton('save-question-prompts', async () => {
+    wireSectionButton(['save-question-prompts', 'save-question-prompts-top'], async () => {
         const courseId = await getCurrentCourseId();
         const systemPrompt = document.getElementById('question-system-prompt')?.value;
         const trueFalse = document.getElementById('question-true-false-prompt')?.value;
@@ -2460,7 +2467,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     // Admin: mental health detection prompt
-    wireSectionButton('save-mh-prompt', async () => {
+    wireSectionButton(['save-mh-prompt', 'save-mh-prompt-top'], async () => {
         const courseId = await getCurrentCourseId();
         const prompt = document.getElementById('mental-health-detection-prompt')?.value;
         if (!prompt) {
