@@ -1307,6 +1307,11 @@
     cursor: help;
 }
 
+.info-icon .icon-inline {
+    width: 16px;
+    height: 16px;
+}
+
 /* ===========================
    EDITABLE APPROVED TOPICS
    =========================== */
