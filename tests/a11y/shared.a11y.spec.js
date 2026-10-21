@@ -6,7 +6,7 @@ const { expectNoA11yViolations } = require('./axe-helper');
 /**
  * Navigate to an expected application page and prove the response and stable page
  * identity are valid before axe scans the DOM. This prevents an Express error page
- * or unrelated redirect from satisfying the accessibility assertion.
+ * or unrelated redirect from satisfying the access
  *
  * @param {import('@playwright/test').Page} page
  * @param {string} path
