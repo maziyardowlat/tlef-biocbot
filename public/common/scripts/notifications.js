@@ -49,36 +49,4 @@
     }
 
     window.showNotification = showNotification;
-
-    // Modal-scoped errors: a toast in the corner reads as part of the dimmed,
-    // blurred backdrop behind an open modal, so it's easy to miss while the
-    // user's focus is on the modal itself. These render an error banner
-    // inside the modal instead, right where the user is already looking.
-    function resolveModalElement(modalOrId) {
-        return typeof modalOrId === 'string' ? document.getElementById(modalOrId) : modalOrId;
-    }
-
-    function showModalError(modalOrId, message) {
-        const modal = resolveModalElement(modalOrId);
-        if (!modal) return;
-        let banner = modal.querySelector('.modal-error-banner');
-        if (!banner) {
-            banner = document.createElement('div');
-            banner.className = 'modal-error-banner';
-            banner.setAttribute('role', 'alert');
-            const body = modal.querySelector('.modal-body') || modal.querySelector('.modal-content') || modal;
-            body.insertBefore(banner, body.firstChild);
-        }
-        banner.textContent = message;
-        banner.hidden = false;
-    }
-
-    function clearModalError(modalOrId) {
-        const modal = resolveModalElement(modalOrId);
-        const banner = modal && modal.querySelector('.modal-error-banner');
-        if (banner) banner.hidden = true;
-    }
-
-    window.showModalError = showModalError;
-    window.clearModalError = clearModalError;
 })();

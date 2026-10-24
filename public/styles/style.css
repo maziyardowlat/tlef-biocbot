@@ -546,19 +546,6 @@ header.sidebar {
     75% { transform: translateX(4px); }
 }
 
-/* Modal-scoped error banner: rendered inside the modal body itself so a
-   failure (e.g. a failed upload) is visible without closing the modal. */
-.modal-error-banner {
-    margin: 0 0 16px;
-    padding: 12px 14px;
-    border: 1px solid var(--danger-color);
-    border-radius: 6px;
-    background-color: #f8d7da;
-    color: #721c24;
-    font-size: 14px;
-    line-height: 1.4;
-}
-
 /* Notifications */
 .notification-container {
     position: fixed;
