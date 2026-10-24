@@ -251,6 +251,7 @@ function closeUploadModal() {
 function resetModal() {
     uploadedFile = null;
     pendingTopicReviewData = null;
+    clearModalError('upload-modal');
 
     // Reset file input and info
     const fileInput = document.getElementById('file-input');
@@ -482,14 +483,16 @@ async function handleUpload() {
     const materialNameInput = document.getElementById('material-name').value.trim();
     const uploadBtn = document.getElementById('upload-btn');
     
+    clearModalError('upload-modal');
+
     // Check if at least one input method is provided
     if (!uploadedFile && !textInput) {
-        showNotification('Please provide content via file upload or direct text input', 'error');
+        showModalError('upload-modal', 'Please provide content via file upload or direct text input');
         return;
     }
 
     if (!uploadedFile && textInput && !materialNameInput) {
-        showNotification('Please enter a material name for pasted content', 'error');
+        showModalError('upload-modal', 'Please enter a material name for pasted content');
         return;
     }
     
@@ -639,7 +642,7 @@ async function handleUpload() {
 
     } catch (error) {
         console.error('Error uploading content:', error);
-        showNotification(`Error uploading content: ${error.message}`, 'error');
+        showModalError('upload-modal', `Error uploading content: ${error.message}`);
 
         // Hide loading indicator and show upload section on error
         if (loadingIndicator) loadingIndicator.style.display = 'none';
