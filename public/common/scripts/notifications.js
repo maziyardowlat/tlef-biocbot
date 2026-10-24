@@ -7,11 +7,23 @@
     }
 
     function ensureNotificationContainer() {
+        // Open modals (public/common/scripts/modal-a11y.js) run through a native
+        // <dialog>.showModal(), which renders in the browser's top layer - a
+        // layer that paints above every normal element regardless of z-index,
+        // by spec. A toast left in <body> is therefore stuck underneath an open
+        // modal no matter how high its z-index goes. Parenting the container
+        // inside the active dialog instead puts it in that same top layer, so
+        // it stays fully visible without the user needing to close the modal.
+        const activeDialog = document.querySelector('dialog[open]');
+        const parent = activeDialog || document.body;
+
         let container = document.querySelector('.notification-container');
         if (!container) {
             container = document.createElement('div');
             container.className = 'notification-container';
-            document.body.appendChild(container);
+            parent.appendChild(container);
+        } else if (container.parentElement !== parent) {
+            parent.appendChild(container);
         }
         // Announce notifications to assistive technology without stealing focus.
         container.setAttribute('role', 'status');
