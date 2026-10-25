@@ -191,7 +191,9 @@ test.describe('Student Hub UI', () => {
 
         const activeCard = studentCard(page, HUB_ACTIVE_STUDENT.displayName);
         await expect(activeCard).toBeVisible();
-        await expect(activeCard.locator('input[type="checkbox"]')).toBeVisible();
+        // The real checkbox is visually hidden behind the .toggle-switch/
+        // .toggle-slider pill, so check the visible toggle control instead.
+        await expect(activeCard.locator('.enroll-toggle .toggle-switch')).toBeVisible();
         await expect(activeCard).not.toContainText('Struggle Topics');
         await expect(activeCard).not.toContainText('Oxidative phosphorylation');
         await expect(activeCard.locator('.download-struggle-btn')).toHaveCount(0);
@@ -269,7 +271,13 @@ test.describe('Student Hub UI', () => {
         await expect(checkbox).toBeChecked();
         await expect(saveButton).toBeDisabled();
 
-        await checkbox.uncheck();
+        // The real checkbox is zero-size and visually hidden behind the
+        // .toggle-switch/.toggle-slider pill (same pattern used for every
+        // other toggle in the app) - click the visible slider instead, same
+        // as a real user would. The outer <label> wraps the single checkbox,
+        // so the click still toggles it via native label/input association.
+        await activeCard.locator('.enroll-toggle .toggle-slider').click();
+        await expect(checkbox).not.toBeChecked();
         await expect(saveButton).toBeEnabled();
         await saveButton.click();
 

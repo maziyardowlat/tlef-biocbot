@@ -1221,8 +1221,11 @@ function renderStudents(courseId) {
                 </div>
                 <div class="student-actions">
                     <label class="enroll-toggle">
-                        <input type="checkbox" ${enrolled ? 'checked' : ''} 
-                               onchange="toggleEnrollment('${courseId}','${s.userId}', this.checked)">
+                        <span class="toggle-switch">
+                            <input type="checkbox" ${enrolled ? 'checked' : ''}
+                                   onchange="toggleEnrollment('${courseId}','${s.userId}', this.checked)">
+                            <span class="toggle-slider"></span>
+                        </span>
                         <span>Enrolled</span>
                     </label>
                     <button class="btn-small btn-secondary" id="save-${s.userId}" disabled
