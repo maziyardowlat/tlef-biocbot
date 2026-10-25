@@ -572,6 +572,12 @@ header.sidebar {
     animation: slide-in 0.3s ease-out;
     position: relative;
     padding-right: 30px;
+    /* Flex items default to min-width:auto, so a long word with no break
+       opportunities (e.g. a raw JSON error body with no spaces) forces this
+       wider than the container instead of wrapping. */
+    min-width: 0;
+    overflow-wrap: break-word;
+    word-break: break-word;
 }
 
 .notification.success {
