@@ -1,7 +1,5 @@
 /**
  * Unit tests for src/models/QuizAttempt.js against the in-memory Mongo double.
- * getAttemptStats exercises the aggregate() support added to memory-db.js
- * ($match -> $group with $sum, $cond, $push).
  */
 const { memoryDb } = require('../helpers/memory-db');
 const QuizAttempt = require('../../../src/models/QuizAttempt');

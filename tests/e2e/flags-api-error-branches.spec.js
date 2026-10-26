@@ -439,8 +439,8 @@ test.describe('PUT /api/flags/:flagId/status non-resolved branches', () => {
 
 // ---------------------------------------------------------------------------
 // GET /api/flags/stats/:courseId — call with no flags for the course.
-// Exercises the "empty stats" path through getFlagStatistics (model L255 loop
-// over empty stats array).
+// Exercises the "empty stats" path through getFlagStatistics (no flags to
+// count).
 // ---------------------------------------------------------------------------
 test.describe('GET /api/flags/stats/:courseId edge cases', () => {
     test('returns all-zero counts when the course has no flags', async ({ baseURL }) => {

@@ -131,11 +131,13 @@ describeWithToolkit('student Super Course chat sessions through the encrypted wr
 
         const [stored] = rawDb.stored(STUDENT_SESSIONS);
         expectEnvelope(stored);
+        // The title is derived from the first question, so it is encrypted too.
+        expect(stored.title).toMatchObject({ __ubc_enc: 1, kid: 'student-chat-2026-01' });
+        expect(JSON.stringify(stored)).not.toContain('My Super Course chat');
         expect(stored).toMatchObject({
             sessionId: 'sess-1',
             studentId: 's1',
             superchatId: 'sc1',
-            title: 'My Super Course chat',
             messageCount: 2,
             duration: '45s',
             savedAt: '2026-08-26T10:00:00.000Z',
@@ -247,11 +249,12 @@ describeWithToolkit('instructor chat sessions through the encrypted wrapper', ()
 
         const [stored] = rawDb.stored(INSTRUCTOR_SESSIONS);
         expectEnvelope(stored);
+        expect(stored.title).toMatchObject({ __ubc_enc: 1, kid: 'student-chat-2026-01' });
+        expect(JSON.stringify(stored)).not.toContain('Instructor chat');
         expect(stored).toMatchObject({
             sessionId: 'isess-1',
             instructorId: 'i1',
             instructorName: 'Dr I',
-            title: 'Instructor chat',
             messageCount: 4,
             duration: '2m',
             savedAt: '2026-08-26T10:00:00.000Z',
