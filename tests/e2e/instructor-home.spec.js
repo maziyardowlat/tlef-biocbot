@@ -829,6 +829,15 @@ test.describe('Instructor home dashboard', () => {
                 null,
             ]);
 
+            // Struggle-table times keep PST / PDT before B.C.'s change and stay
+            // on UTC-7 after it, even in browsers whose tz data predates 2026b.
+            const ptTimes = [
+                '2026-01-15T20:00:00Z',
+                '2026-07-15T20:00:00Z',
+                '2026-11-01T09:00:00Z',
+                '2026-11-15T20:00:00Z',
+            ].map((iso) => testWindow.formatTimestampPT(iso));
+
             testWindow.localStorage.setItem('selectedCourseId', 'HOME-E2E-ALPHA');
             testWindow.history.replaceState({}, '', '/instructor/home?courseId=HOME-E2E-ALPHA');
             testWindow.clearSelectedCourse();
@@ -860,6 +869,7 @@ test.describe('Instructor home dashboard', () => {
                 completeDisplay,
                 infoClosed,
                 labels,
+                ptTimes,
                 notices,
                 selectedAfterClear,
                 urlAfterClear,
@@ -874,6 +884,12 @@ test.describe('Instructor home dashboard', () => {
         expect(helperState.completeDisplay).toBe('block');
         expect(helperState.infoClosed).toBe(true);
         expect(helperState.labels).toEqual(['Photosynthesis', 'Respiration']);
+        expect(helperState.ptTimes).toEqual([
+            'Jan 15, 2026, 12:00 PM',
+            'Jul 15, 2026, 1:00 PM',
+            'Nov 1, 2026, 2:00 AM',
+            'Nov 15, 2026, 1:00 PM',
+        ]);
         expect(helperState.notices).toEqual([
             { message: 'No course selected', type: 'error' },
             { message: 'No cumulative topics to download', type: 'info' },

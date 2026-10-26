@@ -1795,6 +1795,19 @@ function renderMHFlags() {
 }
 
 /**
+ * Time zone to format a date in Vancouver time.
+ * B.C. stays on UTC-7 from 2026-11-01 02:00 PDT (09:00 UTC), but browsers with
+ * time-zone data older than tzdata 2026b still fall back to UTC-8 for
+ * America/Vancouver. Pin instants from then on to a fixed UTC-7 zone so every
+ * browser agrees; earlier instants keep Vancouver's PDT/PST rules.
+ */
+function vancouverTimeZoneFor(date) {
+    const bcPermanentUtc7From = Date.UTC(2026, 10, 1, 9);
+    // Etc/GMT+7 is UTC-7: the POSIX sign is inverted.
+    return new Date(date).getTime() >= bcPermanentUtc7From ? 'Etc/GMT+7' : 'America/Vancouver';
+}
+
+/**
  * Format a timestamp to Pacific Time (Vancouver) string
  */
 function formatTimestampPT(timestamp) {
@@ -1802,7 +1815,7 @@ function formatTimestampPT(timestamp) {
     try {
         const date = new Date(timestamp);
         return date.toLocaleString('en-US', {
-            timeZone: 'America/Vancouver',
+            timeZone: vancouverTimeZoneFor(date),
             year: 'numeric',
             month: 'short',
             day: 'numeric',

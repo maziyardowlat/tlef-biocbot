@@ -1165,6 +1165,21 @@ function renderLiveStruggleTable() {
 }
 
 /**
+ * Time zone to format a date in Vancouver time.
+ * B.C. stays on UTC-7 from 2026-11-01 02:00 PDT (09:00 UTC), but browsers with
+ * time-zone data older than tzdata 2026b still fall back to UTC-8 for
+ * America/Vancouver. Pin instants from then on to a fixed UTC-7 zone so every
+ * browser agrees; earlier instants keep Vancouver's PDT/PST rules.
+ * @param {Date|string|number} date - Date to format
+ * @returns {string} IANA time zone name
+ */
+function vancouverTimeZoneFor(date) {
+    const bcPermanentUtc7From = Date.UTC(2026, 10, 1, 9);
+    // Etc/GMT+7 is UTC-7: the POSIX sign is inverted.
+    return new Date(date).getTime() >= bcPermanentUtc7From ? 'Etc/GMT+7' : 'America/Vancouver';
+}
+
+/**
  * Format timestamp to Pacific Time (Vancouver)
  * @param {Date|string} timestamp - Timestamp to format
  * @returns {string} Formatted timestamp in PT (e.g., "Feb 13, 2024, 7:25 PM")
@@ -1175,7 +1190,7 @@ function formatTimestampPT(timestamp) {
     // America/Vancouver, not America/Los_Angeles: B.C. stays on UTC-7 year-round
     // from Nov 1, 2026 while Los Angeles still falls back to UTC-8.
     const options = {
-        timeZone: 'America/Vancouver',
+        timeZone: vancouverTimeZoneFor(date),
         month: 'short',
         day: 'numeric',
         year: 'numeric',
