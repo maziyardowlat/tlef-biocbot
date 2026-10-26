@@ -1140,7 +1140,7 @@ function renderLiveStruggleTable() {
     // Build table rows
     let html = '';
     dataToDisplay.forEach(item => {
-        const timestamp = formatTimestampPST(item.timestamp);
+        const timestamp = formatTimestampPT(item.timestamp);
         const stateBadge = item.state === 'Active'
             ? '<span class="state-badge active">Active</span>'
             : '<span class="state-badge inactive">Inactive</span>';
@@ -1165,16 +1165,17 @@ function renderLiveStruggleTable() {
 }
 
 /**
- * Format timestamp to PST timezone
+ * Format timestamp to Pacific Time (Vancouver)
  * @param {Date|string} timestamp - Timestamp to format
- * @returns {string} Formatted timestamp in PST (e.g., "February 13, 2024, 7:25 PM")
+ * @returns {string} Formatted timestamp in PT (e.g., "Feb 13, 2024, 7:25 PM")
  */
-function formatTimestampPST(timestamp) {
+function formatTimestampPT(timestamp) {
     const date = typeof timestamp === 'string' ? new Date(timestamp) : timestamp;
-    
-    // Format to PST (America/Los_Angeles) - automatically handles PST/PDT
+
+    // America/Vancouver, not America/Los_Angeles: B.C. stays on UTC-7 year-round
+    // from Nov 1, 2026 while Los Angeles still falls back to UTC-8.
     const options = {
-        timeZone: 'America/Los_Angeles',
+        timeZone: 'America/Vancouver',
         month: 'short',
         day: 'numeric',
         year: 'numeric',
@@ -1216,11 +1217,11 @@ function downloadStruggleActivityCSV() {
     
     // Build CSV
     let csv = anonymizeStudentsEnabled
-        ? 'Time (PST),Topic,Status\n'
-        : 'Time (PST),Name,Topic,Status\n';
+        ? 'Time (PT),Topic,Status\n'
+        : 'Time (PT),Name,Topic,Status\n';
 
     dataToExport.forEach(item => {
-        const timestamp = formatTimestampPST(item.timestamp);
+        const timestamp = formatTimestampPT(item.timestamp);
         const topic = capitalizeFirst(item.topic).replace(/"/g, '""');
         const status = item.state;
 
@@ -1349,7 +1350,7 @@ function renderWeeklyStruggleChart(weekData, totalWeeksAvailable) {
         const d = new Date(w.weekStart);
         return d.toLocaleDateString('en-US', {
             month: 'short', day: 'numeric',
-            timeZone: 'America/Los_Angeles'
+            timeZone: 'America/Vancouver'
         });
     });
 
@@ -1371,7 +1372,7 @@ function renderWeeklyStruggleChart(weekData, totalWeeksAvailable) {
         const lastDate = new Date(weekData[weekData.length - 1].weekStart);
         const lastEndDate = new Date(lastDate);
         lastEndDate.setDate(lastEndDate.getDate() + 6);
-        const fmt = { month: 'short', day: 'numeric', timeZone: 'America/Los_Angeles' };
+        const fmt = { month: 'short', day: 'numeric', timeZone: 'America/Vancouver' };
         rangeLabel.textContent = `${firstDate.toLocaleDateString('en-US', fmt)} – ${lastEndDate.toLocaleDateString('en-US', fmt)}`;
     }
 

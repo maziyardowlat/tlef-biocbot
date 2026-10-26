@@ -968,10 +968,13 @@ test.describe('flagged.js — utility functions exposed on window', () => {
                     w.formatTimestamp(new Date(Date.now() - 14 * 86_400_000).toISOString()),
                     w.formatTimestamp('not-a-real-date'),
                 ],
-                pdt: [
-                    w.formatTimestampPDT(null),
-                    w.formatTimestampPDT(new Date().toISOString()),
-                    w.formatTimestampPDT('not-a-real-date'),
+                pt: [
+                    w.formatTimestampPT(null),
+                    w.formatTimestampPT(new Date().toISOString()),
+                    w.formatTimestampPT('not-a-real-date'),
+                    // Nov 15 2026, 20:00 UTC: Los Angeles has fallen back to
+                    // UTC-8 (12:00 PM), Vancouver stays on UTC-7 (01:00 PM).
+                    w.formatTimestampPT('2026-11-15T20:00:00Z'),
                 ],
                 escaped: w.escapeHtml('<script>alert(1)</script>'),
             };
@@ -1005,11 +1008,12 @@ test.describe('flagged.js — utility functions exposed on window', () => {
         expect(result.timestamps[5]).toMatch(/\//); // toLocaleDateString
         expect(result.timestamps[6]).toBe('Invalid date');
 
-        expect(result.pdt[0]).toBe('Unknown');
-        expect(result.pdt[1]).toContain('PDT');
-        // The PDT formatter throws on a bad date inside the try/catch fallback;
+        expect(result.pt[0]).toBe('Unknown');
+        expect(result.pt[1]).toMatch(/ PT$/);
+        // The PT formatter throws on a bad date inside the try/catch fallback;
         // depending on platform it might either parse as Invalid Date or throw.
-        expect(['Invalid date', 'Invalid Date PDT']).toContain(result.pdt[2]);
+        expect(['Invalid date', 'Invalid Date PT']).toContain(result.pt[2]);
+        expect(result.pt[3]).toBe('Nov 15, 2026, 01:00 PM PT');
 
         expect(result.escaped).toBe('&lt;script&gt;alert(1)&lt;/script&gt;');
     });
