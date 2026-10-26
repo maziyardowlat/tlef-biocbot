@@ -141,17 +141,9 @@ async function updateFlagStatus(db, flagId, newStatus, userId) {
 async function getMentalHealthFlagStats(db, courseId) {
     const collection = getCollection(db);
 
-    const pipeline = [
-        { $match: { courseId } },
-        {
-            $group: {
-                _id: '$status',
-                count: { $sum: 1 }
-            }
-        }
-    ];
-
-    const stats = await collection.aggregate(pipeline).toArray();
+    // Counted here rather than with $group: the encryption wrapper rejects
+    // $group on protected collections, and a course has few flags.
+    const flags = await collection.find({ courseId }, { projection: { status: 1 } }).toArray();
 
     const statistics = {
         total: 0,
@@ -162,9 +154,9 @@ async function getMentalHealthFlagStats(db, courseId) {
         disregarded: 0
     };
 
-    stats.forEach(stat => {
-        statistics[stat._id] = stat.count;
-        statistics.total += stat.count;
+    flags.forEach(({ status }) => {
+        statistics[status] = (statistics[status] || 0) + 1;
+        statistics.total += 1;
     });
 
     return statistics;

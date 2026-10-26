@@ -8,32 +8,37 @@ const { MongoClient } = require('mongodb');
 const {
     buildChatEncryptionConfig,
     requireEncryptionToolkit,
-    ENCRYPTED_CHAT_COLLECTIONS
+    ENCRYPTED_FIELDS
 } = require('../src/config/chatEncryption');
 
+/** Every configured value carries this, so stored plaintext is easy to spot. */
+const SYNTHETIC_MARKER = 'synthetic-canary-plaintext';
+
 /**
- * The synthetic document each collection is probed with. Only `chatData` is
- * configured for encryption; the operational fields around it must survive as
- * plaintext so existing filters and sorts keep working.
+ * The synthetic document each collection is probed with. Every configured
+ * field gets a value containing SYNTHETIC_MARKER; the operational fields around
+ * them must survive as plaintext so existing filters and sorts keep working.
  *
  * @param {string} collectionName
+ * @param {readonly string[]} fields
  */
-function syntheticDocument(collectionName) {
-    return {
-        sessionId: `synthetic-canary-session-${collectionName}`,
+function syntheticDocument(collectionName, fields) {
+    /** @type {Record<string, any>} */
+    const document = {
+        canaryId: `synthetic-canary-${collectionName}`,
         courseId: 'SYNTH-101',
         studentId: 'synthetic-student',
-        instructorId: 'synthetic-instructor',
-        superchatId: 'synthetic-superchat',
         isDeleted: false,
-        savedAt: new Date().toISOString(),
-        chatData: {
-            messages: [
-                { type: 'user', content: 'Synthetic student question' },
-                { type: 'bot', content: 'Synthetic BiocBot answer' }
-            ]
-        }
+        savedAt: new Date().toISOString()
     };
+    for (const field of fields) {
+        document[field] = {
+            messages: [
+                { type: 'user', content: `${SYNTHETIC_MARKER} ${collectionName}.${field}` }
+            ]
+        };
+    }
+    return document;
 }
 
 async function main() {
@@ -67,42 +72,46 @@ async function main() {
             collections: {}
         };
 
-        for (const collectionName of ENCRYPTED_CHAT_COLLECTIONS) {
-            const protectedChats = protectedDb.collection(collectionName);
-            const rawChats = canaryDb.collection(collectionName);
-            const document = syntheticDocument(collectionName);
+        for (const [collectionName, fields] of Object.entries(ENCRYPTED_FIELDS)) {
+            const protectedCollection = protectedDb.collection(collectionName);
+            const rawCollection = canaryDb.collection(collectionName);
+            const document = syntheticDocument(collectionName, fields);
 
-            await protectedChats.insertOne(document);
-            const raw = await rawChats.findOne({ sessionId: document.sessionId });
-            const roundTrip = await protectedChats.findOne({ sessionId: document.sessionId });
-            const envelope = raw?.chatData;
-            const collectionReport = {
-                isProtected: protectedDb.isProtected(collectionName),
-                operationalFieldsRemainQueryable:
-                    raw?.sessionId === document.sessionId && raw?.courseId === document.courseId,
-                storedChatData: {
+            await protectedCollection.insertOne(document);
+            const raw = await rawCollection.findOne({ canaryId: document.canaryId });
+            const roundTrip = await protectedCollection.findOne({ canaryId: document.canaryId });
+
+            /** @type {Record<string, any>} */
+            const storedFields = {};
+            for (const field of fields) {
+                const envelope = raw?.[field];
+                storedFields[field] = {
                     isEnvelope: envelope?.__ubc_enc === 1,
-                    version: envelope?.__ubc_enc,
                     algorithm: envelope?.alg,
                     keyId: envelope?.kid,
                     ivBytes: envelope?.iv?.buffer?.length,
                     tagBytes: envelope?.tag?.buffer?.length,
-                    hasCiphertext: (envelope?.ct?.buffer?.length || 0) > 0,
-                    plaintextMessagesPresent: Object.prototype.hasOwnProperty.call(
-                        envelope || {},
-                        'messages'
-                    )
-                },
-                protectedReadMatches:
-                    JSON.stringify(roundTrip?.chatData) === JSON.stringify(document.chatData)
+                    hasCiphertext: (envelope?.ct?.buffer?.length || 0) > 0
+                };
+            }
+
+            const collectionReport = {
+                isProtected: protectedDb.isProtected(collectionName),
+                operationalFieldsRemainQueryable:
+                    raw?.canaryId === document.canaryId && raw?.courseId === document.courseId,
+                storedFields,
+                plaintextPresentAtRest: JSON.stringify(raw).includes(SYNTHETIC_MARKER),
+                protectedReadMatches: fields.every(
+                    (field) => JSON.stringify(roundTrip?.[field]) === JSON.stringify(document[field])
+                )
             };
             report.collections[collectionName] = collectionReport;
 
             if (
                 !collectionReport.isProtected ||
                 !collectionReport.operationalFieldsRemainQueryable ||
-                !collectionReport.storedChatData.isEnvelope ||
-                collectionReport.storedChatData.plaintextMessagesPresent ||
+                !Object.values(storedFields).every((stored) => stored.isEnvelope) ||
+                collectionReport.plaintextPresentAtRest ||
                 !collectionReport.protectedReadMatches
             ) {
                 throw new Error(

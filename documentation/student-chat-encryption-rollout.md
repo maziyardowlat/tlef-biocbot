@@ -1,44 +1,58 @@
 # Student chat encryption rollout
 
-BiocBot uses `@ubc/genai-toolkit-encryption` to encrypt the `chatData` field of
-its chat-transcript collections in MongoDB. Application code continues to read
-and write normal JavaScript objects; MongoDB stores an authenticated
-AES-256-GCM envelope instead of the transcript payload.
+BiocBot uses `@ubc/genai-toolkit-encryption` to encrypt chat transcripts and
+other student- or instructor-written text in MongoDB. Application code continues
+to read and write normal JavaScript objects; MongoDB stores an authenticated
+AES-256-GCM envelope in place of each configured field.
 
 ## Protected collections
 
-One policy, one key, one namespace covers all three:
+One policy, one key, one namespace covers all of them:
 
-| Collection | Encrypted field | Written by |
+| Collection | Encrypted fields | Written by |
 | --- | --- | --- |
-| `chat_sessions` | `chatData` | student course chat |
-| `student_super_course_chat_sessions` | `chatData` | student Super Course chat |
-| `instructor_chat_sessions` | `chatData` | instructor Super Course chat |
+| `chat_sessions` | `chatData`, `title` | student course chat |
+| `student_super_course_chat_sessions` | `chatData`, `title` | student Super Course chat |
+| `instructor_chat_sessions` | `chatData`, `title` | instructor Super Course chat |
+| `mentalHealthFlags` | `message`, `conversationContext`, `llmReason` | wellbeing check on student messages |
+| `flaggedQuestions` | `questionContent`, `flagDescription`, `instructorResponse` | flag button and instructor replies |
+| `messageFeedback` | `messageContentPreview` | thumbs up/down on a bot reply |
+| `chatSurveyResponses` | `comment` | end-of-chat survey |
+| `quizAttempts` | `studentAnswer`, `feedback` | quiz answers and their AI feedback |
 
-The list lives in `ENCRYPTED_CHAT_COLLECTIONS` in `src/config/chatEncryption.js`
-and is the single source the config, the synthetic canary, and the tests all
-read. Add a collection there and it is protected everywhere at once.
+Chat titles are encrypted because the app builds them from the first 50
+characters of the student's first question.
 
-Nothing else is encrypted. `mentalHealthFlags`, `quizAttempts`, `users`,
-`documents`, Qdrant payloads, and LMS tokens are all out of scope for this
-rollout.
+The map lives in `ENCRYPTED_FIELDS` in `src/config/chatEncryption.js` and is
+the single source the config, the synthetic canary, and the tests all read. Add
+a field there and it is protected everywhere at once — but only after checking
+that nothing filters, sorts, regex-searches, groups, or indexes on it. The
+toolkit rejects all of those on an encrypted field, and it rejects `$group`
+anywhere on a protected collection; that is why the flag, mental-health, and
+quiz statistics count in code instead of with an aggregation.
 
-The rollout deliberately leaves `courseId`, `studentId`, `instructorId`,
-`superchatId`, `sessionId`, `studentName`, `instructorName`, `unitName`,
-`title`, `messageCount`, `duration`, `savedAt`, timestamps, and deletion flags
-in plaintext. They remain available for existing filters, sorts, retention jobs,
-pseudonymization, and dashboards — including the `distinct('studentId', …)`
-query behind Super Course pseudonyms. Expanding the schema to names or
-identifiers requires a separate query/index review.
+Nothing else is encrypted. `users`, `courses` (including `studentEnrollment`),
+`student_pseudonyms`, LMS identity mappings and tokens, `documents`, Qdrant
+payloads, and `struggleActivity` are out of scope for this rollout.
+
+The rollout deliberately leaves ids (`courseId`, `studentId`, `instructorId`,
+`superchatId`, `sessionId`, `flagId`), names (`studentName`, `instructorName`),
+`unitName`, statuses, `flagReason`, `concernLevel`, `correct`, `messageCount`,
+`duration`, `savedAt`, timestamps, and deletion flags in plaintext. They remain
+available for existing filters, sorts, retention jobs, pseudonymization, and
+dashboards — including the `distinct('studentId', …)` query behind Super Course
+pseudonyms. Expanding the schema to names or identifiers requires a separate
+query/index review, because those are looked up by value and would need blind
+indexes.
 
 Each envelope's additional authenticated data binds it to its own namespace,
 collection, field, and key id, so a ciphertext cannot be moved between these
-three collections even though they share a key.
+collections or fields even though they share a key.
 
 ## Security boundary
 
 A person with MongoDB access but without the application key cannot decrypt the
-configured chat payload. Someone who compromises both the running application
+configured fields. Someone who compromises both the running application
 and its key can decrypt it because BiocBot must possess the key to show chat
 history. The wrapper does not protect plaintext in logs, exports, browser
 storage, Qdrant, application memory, or third-party calls.
@@ -60,12 +74,14 @@ Run the synthetic real-MongoDB canary first:
 npm run encryption:canary
 ```
 
-It creates a uniquely named temporary database, writes one synthetic chat
-through the wrapper **into every collection in `ENCRYPTED_CHAT_COLLECTIONS`**,
-verifies the raw envelope and protected round trip for each, reports only
-non-sensitive structural metadata, and drops the temporary database. A
-collection added to the policy but not actually protected fails the canary
-instead of passing it silently.
+It creates a uniquely named temporary database, writes one synthetic document
+through the wrapper **into every collection in `ENCRYPTED_FIELDS`**, with a
+marker string in every configured field. It verifies that each configured field
+is stored as an envelope, that the marker appears nowhere at rest, and that a
+protected read returns the original values. It reports only non-sensitive
+structural metadata and drops the temporary database. A field added to the
+policy but not actually protected fails the canary instead of passing it
+silently.
 
 1. Generate a dedicated key:
 
@@ -85,10 +101,12 @@ instead of passing it silently.
 3. Start BiocBot and save a new student chat. Chat history and instructor views
    should look unchanged because reads are decrypted transparently.
 
-4. Inspect MongoDB only for structure. `chatData` should be an object containing
-   `__ubc_enc`, `alg`, `kid`, `iv`, `tag`, and `ct`; it must not contain the
-   original `messages` or other transcript fields. Do not copy ciphertext,
-   binary fields, or source documents into tickets or logs.
+4. Inspect MongoDB only for structure. `chatData` and `title` should each be an
+   object containing `__ubc_enc`, `alg`, `kid`, `iv`, `tag`, and `ct`; neither
+   may contain the original `messages` or title text. The same holds for the
+   fields listed above in any flag, feedback, survey, or quiz record created
+   while testing. Do not copy ciphertext, binary fields, or source documents
+   into tickets or logs.
 
 ## Existing-data workflow
 
@@ -169,6 +187,33 @@ npm run encryption:migrate -- --collection chat_sessions --backup-confirmed --ve
 npm run encryption:verify -- --collection chat_sessions
 ```
 
+### Chat titles in already-migrated chats
+
+`title` joined the policy after `chatData`. A chat collection migrated before
+that still has plaintext titles; running its commands above again encrypts only
+the titles. The migration checks each configured field separately and skips
+values already in their target state, so `chatData` is not re-encrypted.
+
+Use toolkit `0.1.1` or later for these reruns. In `0.1.0`, a rerun resumed
+after a finished checkpoint and could skip older documents while still
+reporting `completed`. If chat migrations were rerun under `0.1.0`, run
+`npm run encryption:plan:all` after upgrading; it counts any plaintext left in
+configured fields without printing values.
+
+### Free-text collections
+
+`mentalHealthFlags`, `flaggedQuestions`, `messageFeedback`,
+`chatSurveyResponses`, and `quizAttempts` follow the same sequence. Run it once
+per collection, substituting its name:
+
+```bash
+npm run encryption:plan -- --collection mentalHealthFlags
+npm run encryption:migrate:dry-run -- --collection mentalHealthFlags
+npm run encryption:migrate -- --collection mentalHealthFlags --max-documents 25 --backup-confirmed --verify
+npm run encryption:migrate -- --collection mentalHealthFlags --backup-confirmed --verify
+npm run encryption:verify -- --collection mentalHealthFlags
+```
+
 Run each collection's canary, review it, and only then remove `--max-documents`.
 Migrate one collection at a time so a failure is scoped to one dataset.
 
@@ -177,14 +222,15 @@ concurrent changes before updating a document. Its checkpoint collection is
 `_ubc_encryption_migrations` and contains operational metadata, not chat data or
 keys.
 
-### Schema fingerprint change
+### Schema fingerprint changes
 
-Adding the two collections changes the configuration's schema fingerprint
-(`02379b2de95ff204…` to `b5cf92b20420346a…`). Two consequences:
+Every change to `ENCRYPTED_FIELDS` changes the configuration's schema
+fingerprint — adding the two Super Course chat collections did, and adding the
+titles and free-text collections did again. Two consequences:
 
 - The default migration id derives from the fingerprint, so it changes too. Any
-  checkpoint from the earlier `chat_sessions` migration is not resumed by
-  default, and `npm run encryption:status` reports it with
+  checkpoint from an earlier migration is not resumed by default, and
+  `npm run encryption:status` reports it with
   `schemaMatchesCurrentConfig: false`. That row is historical; it is not an
   error. Passing an explicit `--migration-id` from before the change would raise
   a lease error — start a new id instead.
@@ -196,8 +242,8 @@ Adding the two collections changes the configuration's schema fingerprint
 ## Moving from mixed to strict
 
 Keep mixed reads while plaintext and encrypted documents coexist. The policies
-are global, not per collection, so strict mode requires **all three**
-collections to be fully migrated and verified first. Only then should staging
+are global, not per collection, so strict mode requires **every configured
+collection** to be fully migrated and verified first. Only then should staging
 change to:
 
 ```text
@@ -210,25 +256,26 @@ alongside a `mixed` query policy at configuration time.
 
 Restart and exercise save, history, continue-chat, instructor download, student
 analytics, deletion, title update, and pseudonym flows — for the course chat,
-the student Super Course chat, and the instructor Super Course chat. Strict
-reads fail closed if any configured `chatData` value is plaintext, malformed,
-tampered with, or encrypted under an unavailable key.
+the student Super Course chat, and the instructor Super Course chat — then the
+mental-health flag list and stats, flagged questions and their stats, message
+feedback, the chat survey, and quiz attempts and stats. Strict reads fail closed
+if any configured value is plaintext, malformed, tampered with, or encrypted
+under an unavailable key.
 
 ## Staging gate
 
 Before staging deployment:
 
-- Pin and install toolkit version `0.1.0` from UBC GitHub Packages.
+- Pin and install toolkit version `0.1.1` from UBC GitHub Packages.
 - Inject the dedicated key through the staging secret manager; never commit it.
 - Confirm the key and MongoDB backup are stored separately.
 - Capture a tested pre-migration backup and a restore point.
 - Run the test suite and a local encrypted-write/raw-storage canary.
 - Deploy mixed-read/encrypted-write mode first.
-- Confirm a newly saved chat is encrypted at rest and readable in every UI, for
-  all three transcript collections.
+- Confirm newly written records are encrypted at rest and readable in every UI,
+  for every collection in the table above.
 - Run plan, dry-run, a small migration canary, full migration, and verification
-  — separately for `chat_sessions`, `student_super_course_chat_sessions`, and
-  `instructor_chat_sessions`.
+  — separately for each collection in the table above.
 - Switch to strict/encrypted policies in a later deployment after verification.
 - Monitor typed toolkit authentication and plaintext-rejection failures.
 

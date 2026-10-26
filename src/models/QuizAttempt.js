@@ -74,52 +74,31 @@ async function getAttemptsByStudent(db, studentId, courseId) {
 async function getAttemptStats(db, studentId, courseId) {
     const collection = getCollection(db);
 
-    const pipeline = [
-        { $match: { studentId, courseId } },
-        {
-            $group: {
-                _id: null,
-                totalAttempts: { $sum: 1 },
-                correctCount: { $sum: { $cond: ['$correct', 1, 0] } },
-                byUnit: {
-                    $push: {
-                        lectureName: '$lectureName',
-                        correct: '$correct'
-                    }
-                }
-            }
-        }
-    ];
+    // Counted here rather than with $group: the encryption wrapper rejects
+    // $group on protected collections, and one student's attempts are few.
+    const attempts = await collection.find(
+        { studentId, courseId },
+        { projection: { lectureName: 1, correct: 1 } }
+    ).toArray();
 
-    const results = await collection.aggregate(pipeline).toArray();
-
-    if (results.length === 0) {
-        return {
-            totalAttempts: 0,
-            correctCount: 0,
-            accuracy: 0,
-            unitBreakdown: {}
-        };
-    }
-
-    const stats = results[0];
-
-    // Build per-unit breakdown
+    let correctCount = 0;
     const unitBreakdown = {};
-    for (const entry of stats.byUnit) {
+    for (const entry of attempts) {
         if (!unitBreakdown[entry.lectureName]) {
             unitBreakdown[entry.lectureName] = { total: 0, correct: 0 };
         }
         unitBreakdown[entry.lectureName].total++;
         if (entry.correct) {
+            correctCount++;
             unitBreakdown[entry.lectureName].correct++;
         }
     }
 
+    const totalAttempts = attempts.length;
     return {
-        totalAttempts: stats.totalAttempts,
-        correctCount: stats.correctCount,
-        accuracy: stats.totalAttempts > 0 ? Math.round((stats.correctCount / stats.totalAttempts) * 100) : 0,
+        totalAttempts,
+        correctCount,
+        accuracy: totalAttempts > 0 ? Math.round((correctCount / totalAttempts) * 100) : 0,
         unitBreakdown
     };
 }

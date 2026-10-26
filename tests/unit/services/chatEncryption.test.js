@@ -9,9 +9,13 @@ const {
 } = require('../../../src/services/chatEncryption');
 const {
     loadEncryptionToolkit,
-    ENCRYPTED_CHAT_COLLECTIONS
+    ENCRYPTED_COLLECTIONS,
+    ENCRYPTED_FIELDS
 } = require('../../../src/config/chatEncryption');
 const { encryptedMemoryDb } = require('../helpers/encrypted-memory-db');
+const MentalHealthFlag = require('../../../src/models/MentalHealthFlag');
+const FlaggedQuestion = require('../../../src/models/FlaggedQuestion');
+const QuizAttempt = require('../../../src/models/QuizAttempt');
 
 // The toolkit is an optional dependency on GitHub Packages, so an install
 // without a registry token (CI, a fresh clone) does not have it. The feature
@@ -162,19 +166,24 @@ describeWithToolkit('chat transcript collections share one encryption policy', (
         return { rawDb, protectedDb };
     }
 
-    test('every configured transcript collection is protected, and nothing else is', async () => {
+    test('every configured collection is protected, and nothing else is', async () => {
         const { protectedDb } = await wrap();
 
-        expect([...ENCRYPTED_CHAT_COLLECTIONS]).toEqual([
+        expect([...ENCRYPTED_COLLECTIONS]).toEqual([
             'chat_sessions',
             'student_super_course_chat_sessions',
-            'instructor_chat_sessions'
+            'instructor_chat_sessions',
+            'mentalHealthFlags',
+            'flaggedQuestions',
+            'messageFeedback',
+            'chatSurveyResponses',
+            'quizAttempts'
         ]);
-        for (const name of ENCRYPTED_CHAT_COLLECTIONS) {
+        for (const name of ENCRYPTED_COLLECTIONS) {
             expect(protectedDb.isProtected(name)).toBe(true);
         }
         // Collections deliberately left out of this rollout.
-        for (const name of ['users', 'documents', 'quizAttempts', 'mentalHealthFlags', 'superchats']) {
+        for (const name of ['users', 'courses', 'documents', 'superchats', 'struggleActivity']) {
             expect(protectedDb.isProtected(name)).toBe(false);
         }
     });
@@ -211,7 +220,9 @@ describeWithToolkit('chat transcript collections share one encryption policy', (
         expect(stored.chatData.messages).toBeUndefined();
         expect(stored.chatData.iv.buffer).toHaveLength(12);
         expect(stored.chatData.tag.buffer).toHaveLength(16);
+        expect(stored.title).toMatchObject({ __ubc_enc: 1, kid: 'student-chat-2026-01' });
         expect(JSON.stringify(stored)).not.toContain('confidential transcript');
+        expect(JSON.stringify(stored)).not.toContain('Super Course Chat');
 
         // Operational fields stay plaintext and unchanged.
         expect(stored).toMatchObject({
@@ -220,7 +231,6 @@ describeWithToolkit('chat transcript collections share one encryption policy', (
             instructorId: 'inst-1',
             superchatId: 'sc-1',
             instructorName: 'Dr I',
-            title: 'Super Course Chat',
             messageCount: 2,
             duration: '45s',
             savedAt: '2026-08-26T10:00:00.000Z',
@@ -358,5 +368,112 @@ describeWithToolkit('chat transcript collections share one encryption policy', (
         const currentDb = /** @type {any} */ (await createEncryptedDb(rawDb, buildChatEncryptionConfig(env)));
         const found = await currentDb.collection('chat_sessions').findOne({ sessionId: 'pre-existing' });
         expect(found.chatData).toEqual(payload.chatData);
+    });
+});
+
+// Flag reports, feedback, survey comments, and quiz answers hold copies of
+// chat text or student-written text, so they joined the same policy and key.
+describeWithToolkit('free-text fields outside the transcript collections', () => {
+    const NON_CHAT_COLLECTIONS = [
+        'mentalHealthFlags',
+        'flaggedQuestions',
+        'messageFeedback',
+        'chatSurveyResponses',
+        'quizAttempts'
+    ];
+
+    async function wrap(seed = {}) {
+        const rawDb = encryptedMemoryDb(seed);
+        const protectedDb = /** @type {any} */ (await initializeChatEncryption(rawDb, {
+            BIOCBOT_CHAT_ENCRYPTION_ENABLED: 'true',
+            BIOCBOT_CHAT_ENCRYPTION_KEY: SYNTHETIC_KEY
+        }));
+        return { rawDb, protectedDb };
+    }
+
+    test.each(NON_CHAT_COLLECTIONS)('%s stores envelopes for its configured fields only', async (name) => {
+        const { rawDb, protectedDb } = await wrap();
+        /** @type {Record<string, any>} */
+        const document = { recordId: 'rec-1', courseId: 'C1', studentId: 'stu-1', status: 'pending' };
+        for (const field of ENCRYPTED_FIELDS[name]) {
+            document[field] = [{ role: 'user', content: `confidential ${name}.${field}` }];
+        }
+
+        await protectedDb.collection(name).insertOne(document);
+
+        const [stored] = rawDb.stored(name);
+        for (const field of ENCRYPTED_FIELDS[name]) {
+            expect(stored[field]).toMatchObject({ __ubc_enc: 1, alg: 'A256GCM', kid: 'student-chat-2026-01' });
+        }
+        expect(JSON.stringify(stored)).not.toContain('confidential');
+        expect(stored).toMatchObject({ recordId: 'rec-1', courseId: 'C1', studentId: 'stu-1', status: 'pending' });
+
+        const found = await protectedDb.collection(name).findOne({ recordId: 'rec-1' });
+        expect(found).toEqual(document);
+    });
+
+    test('a survey response without a comment still round-trips', async () => {
+        const { protectedDb } = await wrap();
+        const response = { responseId: 'r-1', courseId: 'C1', comment: null };
+
+        await protectedDb.collection('chatSurveyResponses').insertOne(response);
+
+        const found = await protectedDb.collection('chatSurveyResponses').findOne({ responseId: 'r-1' });
+        expect(found.comment).toBeNull();
+    });
+
+    test('the wrapper rejects $group here, which is why the stats helpers count in code', async () => {
+        const { protectedDb } = await wrap();
+        const pipeline = [{ $match: { courseId: 'C1' } }, { $group: { _id: '$status', count: { $sum: 1 } } }];
+
+        await expect((async () => protectedDb.collection('mentalHealthFlags').aggregate(pipeline).toArray())())
+            .rejects.toMatchObject({ code: 'ENCRYPTED_AGGREGATION_NOT_SUPPORTED' });
+    });
+
+    test('mental-health flag stats work through the wrapper', async () => {
+        const { rawDb, protectedDb } = await wrap();
+        for (const concernLevel of ['moderate', 'high']) {
+            await MentalHealthFlag.createMentalHealthFlag(protectedDb, {
+                studentId: 'stu-1', courseId: 'C1', message: 'confidential message', concernLevel
+            });
+        }
+        const [first] = await MentalHealthFlag.getMentalHealthFlagsForCourse(protectedDb, 'C1');
+        await MentalHealthFlag.updateFlagStatus(protectedDb, first.flagId, 'escalated', 'inst-1');
+
+        expect(JSON.stringify(rawDb.stored('mentalHealthFlags'))).not.toContain('confidential');
+        expect(first.message).toBe('confidential message');
+        expect(await MentalHealthFlag.getMentalHealthFlagStats(protectedDb, 'C1')).toMatchObject({
+            total: 2, pending: 1, escalated: 1
+        });
+    });
+
+    test('flagged-question stats work through the wrapper', async () => {
+        const { rawDb, protectedDb } = await wrap();
+        await FlaggedQuestion.createFlaggedQuestion(protectedDb, {
+            courseId: 'C1', studentId: 'stu-1', flagReason: 'incorrect',
+            flagDescription: 'confidential description',
+            questionContent: { question: 'confidential bot reply' }
+        });
+
+        expect(JSON.stringify(rawDb.stored('flaggedQuestions'))).not.toContain('confidential');
+        expect(await FlaggedQuestion.getFlagStatistics(protectedDb, 'C1')).toMatchObject({ total: 1, pending: 1 });
+    });
+
+    test('quiz attempt stats work through the wrapper', async () => {
+        const { rawDb, protectedDb } = await wrap();
+        for (const [lectureName, correct] of [['Unit 1', true], ['Unit 1', false], ['Unit 2', true]]) {
+            await QuizAttempt.saveAttempt(protectedDb, {
+                studentId: 'stu-1', courseId: 'C1', questionId: 'q', lectureName, correct,
+                questionType: 'short-answer', studentAnswer: 'confidential answer', feedback: 'confidential feedback'
+            });
+        }
+
+        expect(JSON.stringify(rawDb.stored('quizAttempts'))).not.toContain('confidential');
+        expect(await QuizAttempt.getAttemptStats(protectedDb, 'stu-1', 'C1')).toEqual({
+            totalAttempts: 3,
+            correctCount: 2,
+            accuracy: 67,
+            unitBreakdown: { 'Unit 1': { total: 2, correct: 1 }, 'Unit 2': { total: 1, correct: 1 } }
+        });
     });
 });
