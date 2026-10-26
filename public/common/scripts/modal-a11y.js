@@ -90,6 +90,15 @@
     function restoreLegacyRoot(modalRootEl, dialogEl) {
         if (!dialogEl.classList.contains('a11y-modal-host')) return;
         if (dialogEl.isConnected) {
+            // The dialog's top layer is also where anything that needs to
+            // paint above an open modal (e.g. notifications.js reparents its
+            // toast container here) ends up living. Rescue any such content
+            // back to <body> before discarding the dialog, or it gets
+            // silently deleted along with it - including a just-shown error
+            // toast from the same code path that's now closing the modal.
+            Array.from(dialogEl.children).forEach((child) => {
+                if (child !== modalRootEl) document.body.appendChild(child);
+            });
             dialogEl.replaceWith(modalRootEl);
         }
     }

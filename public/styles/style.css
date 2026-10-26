@@ -551,7 +551,14 @@ header.sidebar {
     position: fixed;
     top: 20px;
     right: 20px;
-    z-index: 1000;
+    /* Every modal/overlay in the app uses z-index: 1000, so toasts need to sit
+       above that or they get painted behind the modal's backdrop-filter blur -
+       visible in principle, but visually washed out and easy to miss while the
+       user's focus is on the modal itself. Keep this above every modal variant
+       (documents.css/downloads.css .modal, dashboard.css .modal-overlay) so a
+       notification fired while a modal is open stays fully readable without
+       closing it, without needing a separate per-modal error UI. */
+    z-index: 1100;
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -565,6 +572,12 @@ header.sidebar {
     animation: slide-in 0.3s ease-out;
     position: relative;
     padding-right: 30px;
+    /* Flex items default to min-width:auto, so a long word with no break
+       opportunities (e.g. a raw JSON error body with no spaces) forces this
+       wider than the container instead of wrapping. */
+    min-width: 0;
+    overflow-wrap: break-word;
+    word-break: break-word;
 }
 
 .notification.success {
