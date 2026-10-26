@@ -1795,21 +1795,21 @@ function renderMHFlags() {
 }
 
 /**
- * Format a timestamp to PDT string
+ * Format a timestamp to Pacific Time (Vancouver) string
  */
-function formatTimestampPDT(timestamp) {
+function formatTimestampPT(timestamp) {
     if (!timestamp) return 'Unknown';
     try {
         const date = new Date(timestamp);
         return date.toLocaleString('en-US', {
-            timeZone: 'America/Los_Angeles',
+            timeZone: 'America/Vancouver',
             year: 'numeric',
             month: 'short',
             day: 'numeric',
             hour: '2-digit',
             minute: '2-digit',
             hour12: true
-        }) + ' PDT';
+        }) + ' PT';
     } catch (e) {
         return 'Invalid date';
     }
@@ -1832,7 +1832,7 @@ function createMHFlagCard(flag) {
         <div class="mh-flag-card-header">
             <span class="mh-concern-badge ${badgeClass}">${concernLabel}</span>
             <div class="mh-flag-meta">
-                <span class="mh-flag-date">${formatTimestampPDT(flag.createdAt)}</span>
+                <span class="mh-flag-date">${formatTimestampPT(flag.createdAt)}</span>
                 <span class="mh-flag-status ${flag.status}">${flag.status.toUpperCase()}</span>
             </div>
         </div>
