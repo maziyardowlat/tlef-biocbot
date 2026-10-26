@@ -974,7 +974,16 @@ test.describe('flagged.js — utility functions exposed on window', () => {
                     w.formatTimestampPT('not-a-real-date'),
                     // Nov 15 2026, 20:00 UTC: Los Angeles has fallen back to
                     // UTC-8 (12:00 PM), Vancouver stays on UTC-7 (01:00 PM).
+                    // Must hold even in browsers whose tz data predates 2026b.
                     w.formatTimestampPT('2026-11-15T20:00:00Z'),
+                    // Before the change Vancouver still follows PST / PDT.
+                    w.formatTimestampPT('2026-01-15T20:00:00Z'),
+                    w.formatTimestampPT('2026-07-15T20:00:00Z'),
+                    // Last PDT minute, then the instant B.C. would have fallen back.
+                    w.formatTimestampPT('2026-11-01T08:59:00Z'),
+                    w.formatTimestampPT('2026-11-01T09:00:00Z'),
+                    // No spring-forward or fall-back afterwards.
+                    w.formatTimestampPT('2027-07-15T20:00:00Z'),
                 ],
                 escaped: w.escapeHtml('<script>alert(1)</script>'),
             };
@@ -1013,7 +1022,14 @@ test.describe('flagged.js — utility functions exposed on window', () => {
         // The PT formatter throws on a bad date inside the try/catch fallback;
         // depending on platform it might either parse as Invalid Date or throw.
         expect(['Invalid date', 'Invalid Date PT']).toContain(result.pt[2]);
-        expect(result.pt[3]).toBe('Nov 15, 2026, 01:00 PM PT');
+        expect(result.pt.slice(3)).toEqual([
+            'Nov 15, 2026, 01:00 PM PT',
+            'Jan 15, 2026, 12:00 PM PT',
+            'Jul 15, 2026, 01:00 PM PT',
+            'Nov 1, 2026, 01:59 AM PT',
+            'Nov 1, 2026, 02:00 AM PT',
+            'Jul 15, 2027, 01:00 PM PT',
+        ]);
 
         expect(result.escaped).toBe('&lt;script&gt;alert(1)&lt;/script&gt;');
     });
