@@ -38,7 +38,7 @@ BiocBot follows a split architecture with a public frontend and a private backen
 
 ### Prerequisites
 
-- Node.js v18.x or higher
+- Node.js 22 or later
 - MongoDB instance
 - Qdrant vector database (Docker recommended)
 - OpenAI API key
@@ -310,7 +310,7 @@ A GitHub Actions workflow at [`.github/workflows/playwright.yml`](.github/workfl
 ### What the workflow does
 
 1. Boots `mongo:7` and `qdrant/qdrant:latest` as service containers inside the runner.
-2. Installs Node 20 and project dependencies.
+2. Installs Node 22 and project dependencies.
 3. Installs the Chromium browser via `npx playwright install --with-deps chromium`.
 4. Runs `npm test` with `BIOCBOT_TEST_LLM_STUB=1` so no external LLM calls are made.
 5. Uploads the Playwright HTML report, Monocart report, coverage reports, and (on failure) traces/videos/screenshots as workflow artifacts.
@@ -341,7 +341,7 @@ Steps to enable:
 
 ### Customizing
 
-- **Different Node version**: change `node-version: 20` in the workflow.
+- **Different Node version**: change `node-version: 22` in each workflow (`unit.yml`, `playwright.yml` and `a11y.yml`), and `engines.node` in `package.json` to match.
 - **Switch from `npm install` to `npm ci`**: commit `package-lock.json` (currently in `.gitignore`), then change the install step and re-enable `cache: npm` on the `setup-node` action.
 - **Add a manual trigger**: add `workflow_dispatch:` under the top-level `on:` block.
 - **Run on more branches**: extend the `branches:` lists under `push:` and `pull_request:`.
