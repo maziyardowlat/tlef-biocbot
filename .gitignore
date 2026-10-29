@@ -12,3 +12,4 @@
 /playwright/.auth
 .claude/
 .npmrc
+.nvmrc

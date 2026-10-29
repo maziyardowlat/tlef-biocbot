@@ -155,9 +155,7 @@ item after the fix pass and rerun.
 
 ## Commands
 
-Use Node.js 22.23.4. The repository records this in `.nvmrc` (and sets
-`>=22.23.4` as the floor in `package.json`); with nvm, run `nvm use` before
-installing or running tests.
+Use Node.js 22 or later (`engines.node` in `package.json` is `>=22`).
 
 List discovered a11y tests without needing the app services to pass:
 
