@@ -155,10 +155,9 @@ item after the fix pass and rerun.
 
 ## Commands
 
-Use Node.js 24.17.0 or newer within the 24.x release line. The repository records
-this in `.nvmrc` and `package.json`; with nvm, run `nvm use` before installing or
-running tests. `npm run test:a11y` performs a preflight check and prints corrective
-guidance before Playwright loads when the runtime is incompatible.
+Use Node.js 22.23.4. The repository records this in `.nvmrc` (and sets
+`>=22.23.4` as the floor in `package.json`); with nvm, run `nvm use` before
+installing or running tests.
 
 List discovered a11y tests without needing the app services to pass:
 
