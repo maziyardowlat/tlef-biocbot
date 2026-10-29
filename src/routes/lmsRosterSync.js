@@ -70,6 +70,17 @@ function isDropCandidate(enrollment, { externalCourseId, rosterExternalUserIds }
     return Boolean(enrollment.externalUserId) && !rosterExternalUserIds.has(String(enrollment.externalUserId));
 }
 
+/**
+ * Whether an instructor turned this student's access off by hand. That
+ * outranks the roster, so a sync leaves it off. Access a roster sync took
+ * away carries droppedAt (Canvas and Academic Sync both stamp it; the
+ * instructor's toggle rewrites the record without it) and comes back when the
+ * student is on the roster again.
+ */
+function isDisabledByInstructor(enrollment) {
+    return Boolean(enrollment) && enrollment.enrolled === false && !enrollment.droppedAt;
+}
+
 async function persistCanvasSync({ db, course, externalCourseId, report, confirmLeft = async () => new Set(), syncedBy }) {
     const mappings = await db.collection('lms_identity_mappings').find({
         courseId: course.courseId,
@@ -115,8 +126,13 @@ async function persistCanvasSync({ db, course, externalCourseId, report, confirm
         updatedAt: now
     };
 
+    const accessKeptOff = [];
     for (const mapping of mappings) {
         const localUserId = String(mapping.localUserId);
+        if (isDisabledByInstructor(existingEnrollment[localUserId])) {
+            accessKeptOff.push({ localUserId, name: mapping.externalLabel || '' });
+            continue;
+        }
         set[`studentEnrollment.${localUserId}`] = {
             ...(existingEnrollment[localUserId] || {}),
             enrolled: true,
@@ -134,7 +150,7 @@ async function persistCanvasSync({ db, course, externalCourseId, report, confirm
         { $set: set }
     );
 
-    return { syncToken, prune, dropCandidates, unmatchedBiocBotStudents };
+    return { syncToken, prune, dropCandidates, unmatchedBiocBotStudents, accessKeptOff };
 }
 
 function createLmsRosterSyncRouter(integration, dependencies = {}) {
@@ -183,7 +199,10 @@ function createLmsRosterSyncRouter(integration, dependencies = {}) {
                     provider,
                     client: req.canvasApi,
                     externalCourseId: source.courseId,
-                    matchedBy: req.user.userId
+                    matchedBy: req.user.userId,
+                    // This sync enrolls who it matches, so a roster student
+                    // never needs the course code to get in.
+                    provisionAccounts: true
                 });
                 const safety = await persistCanvasSync({
                     db: req.app.locals.db,
@@ -310,6 +329,7 @@ module.exports = {
     buildPruneSafety,
     createLmsRosterSyncRouter,
     effectiveRosterSource,
+    isDisabledByInstructor,
     isDropCandidate,
     persistCanvasSync,
     pruneCoverageThreshold

@@ -536,13 +536,16 @@ function renderUnmatchedPanel(match) {
 
     const lms = match?.unmatchedLmsStudents || [];
     const noBiocBotAccount = lms.filter((entry) => entry.reason === 'no-biocbot-account');
-    const identityConflicts = lms.filter((entry) => entry.reason !== 'no-biocbot-account');
+    const missingPuid = lms.filter((entry) => entry.reason === 'missing-puid');
+    const otherAccount = lms.filter((entry) => entry.reason === 'puid-on-other-account' || entry.reason === 'email-on-other-account');
+    const identityConflicts = lms.filter((entry) => entry.reason === 'duplicate-biocbot-account');
+    const keptOff = match?.accessKeptOff || [];
     const local = match?.unmatchedBiocBotStudents || [];
     const dropCandidates = match?.dropCandidates || [];
     const dropCandidateIds = new Set(dropCandidates.map((entry) => String(entry.localUserId)));
     const accessDisabled = local.filter((entry) => entry.accessDisabled);
     const notOnRoster = local.filter((entry) => !entry.accessDisabled && !dropCandidateIds.has(String(entry.localUserId)));
-    if (!lms.length && !local.length) {
+    if (!lms.length && !local.length && !keptOff.length) {
         panel.hidden = true;
         return;
     }
@@ -550,7 +553,10 @@ function renderUnmatchedPanel(match) {
     const provider = providerLabel(match.provider);
     currentRosterMatch = match;
     panel.hidden = false;
-    summary.textContent = `${lms.length + local.length} students could not be matched`;
+    summary.textContent = [
+        lms.length + local.length ? `${lms.length + local.length} students could not be matched` : '',
+        keptOff.length ? `${keptOff.length} kept with access off` : ''
+    ].filter(Boolean).join(' · ');
     const list = (entries, describe) => entries.map((entry) => `<li>${describe(entry)}</li>`).join('');
     const coverage = match.coverage || {};
     const coveragePercent = coverage.total
@@ -563,9 +569,30 @@ function renderUnmatchedPanel(match) {
         ` : ''}
         ${noBiocBotAccount.length ? `
             <section class="lms-unmatched-group">
-            <p><strong>In ${escapeHTML(provider)}, not in BiocBot (${noBiocBotAccount.length})</strong></p>
-            <p>These students have not signed in to BiocBot yet. No action is needed; their account is created on first CWL login.</p>
+            <p><strong>In ${escapeHTML(provider)}, not in this BiocBot course (${noBiocBotAccount.length})</strong></p>
+            <p>These students have not joined this course in BiocBot. Share the student course code with them, then sync again to match them.</p>
             <ul>${list(noBiocBotAccount, (entry) => `${escapeHTML(entry.name)}${entry.email ? ` &lt;${escapeHTML(entry.email)}&gt;` : ' (no email visible to BiocBot)'}`)}</ul>
+            </section>
+        ` : ''}
+        ${missingPuid.length ? `
+            <section class="lms-unmatched-group">
+            <p><strong>No PUID from ${escapeHTML(provider)} (${missingPuid.length})</strong></p>
+            <p>${escapeHTML(provider)} did not share a PUID (integration_id) for these students, so BiocBot could not enroll them. They can join with the student course code.</p>
+            <ul>${list(missingPuid, (entry) => `${escapeHTML(entry.name)}${entry.email ? ` &lt;${escapeHTML(entry.email)}&gt;` : ''}`)}</ul>
+            </section>
+        ` : ''}
+        ${otherAccount.length ? `
+            <section class="lms-unmatched-group">
+            <p><strong>Already in BiocBot under another account (${otherAccount.length})</strong></p>
+            <p>BiocBot already has an account with this student's PUID or email that the sync cannot enroll as a student, such as an instructor, TA, or deactivated account. The sync left it alone rather than create a second account. They can join with the student course code.</p>
+            <ul>${list(otherAccount, (entry) => `${escapeHTML(entry.name)}${entry.email ? ` &lt;${escapeHTML(entry.email)}&gt;` : ''}`)}</ul>
+            </section>
+        ` : ''}
+        ${keptOff.length ? `
+            <section class="lms-unmatched-group">
+            <p><strong>On the ${escapeHTML(provider)} roster, access turned off by an instructor (${keptOff.length})</strong></p>
+            <p>An instructor turned these students' BiocBot access off for this course, so the sync left it off. Turn it back on in the student list if that was a mistake.</p>
+            <ul>${list(keptOff, (entry) => escapeHTML(entry.name || entry.localUserId))}</ul>
             </section>
         ` : ''}
         ${identityConflicts.length ? `
@@ -905,12 +932,17 @@ async function matchLmsStudents() {
         const match = provider === 'canvas' ? result.data : result.data.match;
         if (provider === 'canvas') {
             await loadLmsGrades(currentGradeCourseId, provider);
+            // The sync enrolls who it matches, so the student list changed.
+            await loadStudents(currentGradeCourseId);
         } else {
             applyLmsGradeView(result.data);
         }
         renderUnmatchedPanel(match);
+        const created = match.createdAccounts?.length || 0;
         showNotification(
-            `Matched ${match.matchedCount} of ${match.rosterSize} ${providerLabel(provider)} students.`,
+            `Matched ${match.matchedCount} of ${match.rosterSize} ${providerLabel(provider)} students.${created
+                ? ` ${created} ${created === 1 ? 'has' : 'have'} not signed in to BiocBot yet and will have access at first CWL sign-in.`
+                : ''}`,
             match.matchedCount ? 'success' : 'error'
         );
     } catch (error) {

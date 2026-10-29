@@ -4,6 +4,7 @@ const {
     buildPruneSafety,
     createLmsRosterSyncRouter,
     effectiveRosterSource,
+    isDisabledByInstructor,
     isDropCandidate
 } = require('../../../src/routes/lmsRosterSync');
 
@@ -65,7 +66,7 @@ describe('LMS roster sync routes', () => {
         const db = memoryDb({
             courses: [course({
                 studentEnrollment: {
-                    'user-1': { enrolled: false, source: 'manual' },
+                    'user-1': { enrolled: true, source: 'manual' },
                     'user-2': { enrolled: true, source: 'manual' },
                     'user-3': canvasEnrollment('903'),
                     'user-4': canvasEnrollment('904'),
@@ -112,7 +113,8 @@ describe('LMS roster sync routes', () => {
         expect(matchRoster).toHaveBeenCalledWith(expect.objectContaining({
             provider: 'canvas',
             externalCourseId: '10',
-            client: harness.canvasClient
+            client: harness.canvasClient,
+            provisionAccounts: true
         }));
         expect(res.body.data).toMatchObject({
             rosterSource: 'canvas',
@@ -135,6 +137,64 @@ describe('LMS roster sync routes', () => {
             externalCourseId: '10'
         });
         expect(stored.lmsRosterSync.dropCandidateIds).toEqual(['user-3']);
+    });
+
+    test('Canvas sync keeps access an instructor turned off, but restores access a roster sync took away', async () => {
+        const harness = integrationHarness();
+        const droppedAt = new Date('2026-09-15');
+        const db = memoryDb({
+            courses: [course({
+                rosterSource: 'canvas',
+                studentEnrollment: {
+                    // The instructor's toggle rewrites the record without droppedAt.
+                    'user-1': { enrolled: false, updatedAt: new Date('2026-09-20') },
+                    'user-2': canvasEnrollment('902', { enrolled: false, droppedAt }),
+                    'user-3': { enrolled: false, source: 'academicSync', puid: 'P3', droppedAt }
+                }
+            })]
+        });
+        const matchRoster = jest.fn(async ({ db: matchDb }) => {
+            await matchDb.collection('lms_identity_mappings').insertMany(['1', '2', '3'].map((n) => ({
+                courseId: 'BIOC-1',
+                provider: 'canvas',
+                externalCourseId: '10',
+                externalUserId: `90${n}`,
+                externalLabel: `Student ${n}`,
+                localUserId: `user-${n}`
+            })));
+            return {
+                provider: 'canvas',
+                externalCourseId: '10',
+                rosterSize: 3,
+                matchedCount: 3,
+                matchedBy: { integration: 3 },
+                createdAccounts: [],
+                unmatchedLmsStudents: [],
+                unmatchedBiocBotStudents: [],
+                coverage: { total: 3, integrationId: 3, sisId: 0, email: 0, loginId: 0 }
+            };
+        });
+        const app = makeRouteApp(createLmsRosterSyncRouter(harness.integration, { matchRoster }), { db, user: instructor });
+
+        const res = await request(app)
+            .post('/courses/BIOC-1/sync')
+            .send({ provider: 'canvas' })
+            .expect(200);
+
+        expect(res.body.data.accessKeptOff).toEqual([{ localUserId: 'user-1', name: 'Student 1' }]);
+        const stored = await db.collection('courses').findOne({ courseId: 'BIOC-1' });
+        expect(stored.studentEnrollment['user-1']).toEqual({ enrolled: false, updatedAt: new Date('2026-09-20') });
+        expect(stored.studentEnrollment['user-2']).toMatchObject({ enrolled: true, source: 'canvas', externalUserId: '902' });
+        expect(stored.studentEnrollment['user-2'].droppedAt).toBeUndefined();
+        expect(stored.studentEnrollment['user-3']).toMatchObject({ enrolled: true, source: 'canvas', externalUserId: '903' });
+    });
+
+    test('tells an instructor toggle apart from a roster drop', () => {
+        expect(isDisabledByInstructor({ enrolled: false, updatedAt: new Date() })).toBe(true);
+        expect(isDisabledByInstructor({ enrolled: false, source: 'manual' })).toBe(true);
+        expect(isDisabledByInstructor(canvasEnrollment('903', { enrolled: false, droppedAt: new Date() }))).toBe(false);
+        expect(isDisabledByInstructor({ enrolled: true })).toBe(false);
+        expect(isDisabledByInstructor(undefined)).toBe(false);
     });
 
     test('Canvas sync takes ownership from Academic Sync when explicitly triggered', async () => {

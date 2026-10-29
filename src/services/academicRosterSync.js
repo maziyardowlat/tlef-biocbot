@@ -1,6 +1,7 @@
 const { createId } = require('./id');
 const { getAcademicApiClient } = require('./academicApi');
 const { normalizeEmail } = require('./authorization');
+const { buildPlaceholderStudent } = require('../models/User');
 
 function normalizeText(value) {
     return typeof value === 'string' ? value.trim() : '';
@@ -79,35 +80,14 @@ async function upsertAcademicStudent(db, student, courseId) {
         };
     }
 
-    const username = student.email || student.puid || student.studentId || generateUserId();
-    const user = {
-        userId: generateUserId(),
-        username,
-        email: student.email || null,
-        passwordHash: null,
-        role: 'student',
-        displayName: student.preferredName || username,
-        authProvider: 'saml',
-        samlId: null,
-        puid: student.puid || null,
-        academicStudentId: student.studentId || null,
-        isActive: true,
-        lastLogin: null,
-        createdAt: now,
-        updatedAt: now,
-        studentOnboardingComplete: false,
-        preferences: {
-            theme: 'light',
-            notifications: true,
-            courseId
-        },
-        permissions: {
-            systemAdmin: false
-        },
-        struggleState: {
-            topics: []
-        }
-    };
+    const user = buildPlaceholderStudent({
+        username: student.email || student.puid || student.studentId || generateUserId(),
+        puid: student.puid,
+        email: student.email,
+        displayName: student.preferredName,
+        academicStudentId: student.studentId,
+        courseId
+    }, now);
 
     await usersCollection.insertOne(user);
 
