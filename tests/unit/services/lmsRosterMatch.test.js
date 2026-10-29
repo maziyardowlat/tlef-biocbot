@@ -1,4 +1,5 @@
 const { memoryDb } = require('../helpers/memory-db');
+const { createOrGetSAMLUser } = require('../../../src/models/User');
 const {
     confirmLeftCanvasCourse,
     matchCourseRoster,
@@ -251,6 +252,168 @@ describe('LMS roster matching', () => {
 
         expect(summary.matchedCount).toBe(0);
         expect(summary.unmatchedBiocBotStudents).toEqual([]);
+    });
+});
+
+describe('Canvas roster sync enrollment (provisionAccounts)', () => {
+    async function runSync(db, entries) {
+        return matchCourseRoster({
+            db,
+            course,
+            provider: 'canvas',
+            roster: { externalCourseId: '77', entries },
+            matchedBy: 'inst-1',
+            provisionAccounts: true
+        });
+    }
+
+    const users = (db) => db.collection('users').find({}).toArray();
+
+    test('finds a student who signed in for another course by PUID, whatever its casing', async () => {
+        const db = memoryDb({
+            users: [localUser({ userId: 'user-9', puid: 'PUID-ADA', preferences: { courseId: 'OTHER-1' } })]
+        });
+
+        // A grade-only match still sees only this course's students.
+        expect((await runMatch(db, [rosterEntry({ integrationId: 'puid-ada' })])).matchedCount).toBe(0);
+
+        const summary = await runSync(db, [rosterEntry({ integrationId: 'puid-ada' })]);
+
+        expect(summary.matchedCount).toBe(1);
+        expect(summary.matchedBy.integration).toBe(1);
+        expect(summary.createdAccounts).toEqual([]);
+        const [mapping] = await db.collection('lms_identity_mappings').find({}).toArray();
+        expect(mapping.localUserId).toBe('user-9');
+        // Their own course choice is theirs; enrollment is the sync's job.
+        expect((await users(db))[0].preferences.courseId).toBe('OTHER-1');
+    });
+
+    test('creates a placeholder for a student who never signed in, and CWL login lands on it', async () => {
+        const db = memoryDb({ users: [] });
+
+        const graded = await runMatch(db, [rosterEntry({ integrationId: 'PUID-NEW' })]);
+        expect(graded.unmatchedLmsStudents[0].reason).toBe('no-biocbot-account');
+        expect(await users(db)).toEqual([]);
+
+        const summary = await runSync(db, [rosterEntry({ integrationId: 'PUID-NEW', email: 'New@Student.UBC.ca', name: 'New Student' })]);
+
+        expect(summary.matchedCount).toBe(1);
+        expect(summary.unmatchedLmsStudents).toEqual([]);
+        const [placeholder] = await users(db);
+        expect(placeholder).toMatchObject({
+            username: 'PUID-NEW',
+            puid: 'PUID-NEW',
+            email: 'new@student.ubc.ca',
+            displayName: 'New Student',
+            role: 'student',
+            authProvider: 'saml',
+            isActive: true,
+            lastLogin: null,
+            studentOnboardingComplete: false,
+            preferences: expect.objectContaining({ courseId: 'BIOC-1' })
+        });
+        expect(summary.createdAccounts).toEqual([{ localUserId: placeholder.userId, name: 'New Student' }]);
+        const [mapping] = await db.collection('lms_identity_mappings').find({}).toArray();
+        expect(mapping).toMatchObject({ localUserId: placeholder.userId, matchedBy: 'integration' });
+
+        const login = await createOrGetSAMLUser(db, {
+            samlId: 'PUID-NEW',
+            puid: 'PUID-NEW',
+            email: 'new@student.ubc.ca',
+            username: 'PUID-NEW',
+            displayName: 'New Student',
+            role: 'student'
+        });
+        expect(login.user.userId).toBe(placeholder.userId);
+        expect(await users(db)).toHaveLength(1);
+    });
+
+    test('a second sync reuses the placeholder instead of making another', async () => {
+        const db = memoryDb({ users: [] });
+        await runSync(db, [rosterEntry({ integrationId: 'PUID-NEW' })]);
+        const again = await runSync(db, [rosterEntry({ integrationId: 'PUID-NEW' })]);
+
+        expect(again.createdAccounts).toEqual([]);
+        expect(again.matchedCount).toBe(1);
+        expect(await users(db)).toHaveLength(1);
+    });
+
+    test('never creates an account for a row without a PUID', async () => {
+        const db = memoryDb({ users: [] });
+        const summary = await runSync(db, [rosterEntry({ integrationId: '', email: 'nopuid@student.ubc.ca' })]);
+
+        expect(summary.matchedCount).toBe(0);
+        expect(summary.unmatchedLmsStudents).toEqual([expect.objectContaining({ externalUserId: '900', reason: 'missing-puid' })]);
+        expect(await users(db)).toEqual([]);
+    });
+
+    test('leaves instructor, TA, and deactivated accounts holding the PUID alone', async () => {
+        const db = memoryDb({
+            users: [
+                localUser({ userId: 'inst-9', role: 'instructor', puid: 'PUID-A', email: 'a@ubc.ca', preferences: {} }),
+                localUser({ userId: 'ta-9', role: 'ta', puid: 'PUID-B', email: 'b@ubc.ca', preferences: {} }),
+                localUser({ userId: 'gone-9', puid: 'PUID-C', email: 'c@ubc.ca', isActive: false, preferences: {} })
+            ]
+        });
+        const summary = await runSync(db, [
+            rosterEntry({ externalUserId: '901', integrationId: 'PUID-A', email: '' }),
+            rosterEntry({ externalUserId: '902', integrationId: 'puid-b', email: '' }),
+            rosterEntry({ externalUserId: '903', integrationId: 'PUID-C', email: '' })
+        ]);
+
+        expect(summary.matchedCount).toBe(0);
+        expect(summary.unmatchedLmsStudents.map((row) => row.reason)).toEqual([
+            'puid-on-other-account',
+            'puid-on-other-account',
+            'puid-on-other-account'
+        ]);
+        expect(await users(db)).toHaveLength(3);
+    });
+
+    test('will not create a second account for an email another account already uses', async () => {
+        const db = memoryDb({
+            users: [localUser({ userId: 'legacy-1', puid: '', email: 'ada@student.ubc.ca', preferences: { courseId: 'OTHER-1' } })]
+        });
+        const summary = await runSync(db, [rosterEntry({ integrationId: 'PUID-ADA' })]);
+
+        expect(summary.matchedCount).toBe(0);
+        expect(summary.unmatchedLmsStudents).toEqual([expect.objectContaining({ reason: 'email-on-other-account' })]);
+        expect(await users(db)).toHaveLength(1);
+    });
+
+    test('an account from outside the course never costs a course student their email match', async () => {
+        const db = memoryDb({
+            users: [
+                localUser({ userId: 'user-1', puid: '' }),
+                // Same email, pulled in only because their PUID is on the roster.
+                localUser({ userId: 'user-9', puid: 'PUID-GRACE', preferences: { courseId: 'OTHER-1' } })
+            ]
+        });
+        const summary = await runSync(db, [
+            rosterEntry({ externalUserId: '900', integrationId: 'PUID-ADA' }),
+            rosterEntry({ externalUserId: '901', integrationId: 'PUID-GRACE', email: 'grace@student.ubc.ca' })
+        ]);
+
+        const mappings = await db.collection('lms_identity_mappings').find({}).toArray();
+        expect(Object.fromEntries(mappings.map((m) => [m.externalUserId, [m.localUserId, m.matchedBy]]))).toEqual({
+            900: ['user-1', 'email'],
+            901: ['user-9', 'integration']
+        });
+        expect(summary.createdAccounts).toEqual([]);
+    });
+
+    test('two roster rows with one PUID make one account, and the second is reported', async () => {
+        const db = memoryDb({ users: [] });
+        const summary = await runSync(db, [
+            rosterEntry({ externalUserId: '900', integrationId: 'PUID-TWIN', email: '' }),
+            rosterEntry({ externalUserId: '901', integrationId: 'puid-twin', email: '' })
+        ]);
+
+        expect(summary.matchedCount).toBe(1);
+        expect(summary.unmatchedLmsStudents).toEqual([
+            expect.objectContaining({ externalUserId: '901', reason: 'duplicate-biocbot-account' })
+        ]);
+        expect(await users(db)).toHaveLength(1);
     });
 });
 

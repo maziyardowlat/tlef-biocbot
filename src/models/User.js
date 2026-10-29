@@ -167,6 +167,52 @@ async function createUser(db, userData) {
 }
 
 /**
+ * The account a roster sync creates for a student it enrolls before they have
+ * ever signed in. It is a CWL account in waiting: authProvider 'saml' plus the
+ * PUID is what createOrGetSAMLUser looks up, so the student's first CWL login
+ * lands on this account instead of creating a second one.
+ * @param {Object} details
+ * @param {string} details.username
+ * @param {string|null} details.puid
+ * @param {string|null} [details.email]
+ * @param {string|null} [details.displayName]
+ * @param {string|null} [details.academicStudentId]
+ * @param {string} details.courseId - The course that enrolled them
+ * @param {Date} [now]
+ * @returns {Object} A users document, not yet inserted
+ */
+function buildPlaceholderStudent({ username, puid, email, displayName, academicStudentId, courseId }, now = new Date()) {
+    return {
+        userId: createId('user'),
+        username,
+        email: email || null,
+        passwordHash: null,
+        role: 'student',
+        displayName: displayName || username,
+        authProvider: 'saml',
+        samlId: null,
+        puid: puid || null,
+        academicStudentId: academicStudentId || null,
+        isActive: true,
+        lastLogin: null,
+        createdAt: now,
+        updatedAt: now,
+        studentOnboardingComplete: false,
+        preferences: {
+            theme: 'light',
+            notifications: true,
+            courseId
+        },
+        permissions: {
+            systemAdmin: false
+        },
+        struggleState: {
+            topics: []
+        }
+    };
+}
+
+/**
  * Authenticate user with username and password
  * @param {Object} db - MongoDB database instance
  * @param {string} username - Username or email
@@ -605,6 +651,7 @@ async function completeStudentOnboarding(db, userId) {
 module.exports = {
     getUsersCollection,
     createUser,
+    buildPlaceholderStudent,
     authenticateUser,
     getUserById,
     getUserByPuid,
