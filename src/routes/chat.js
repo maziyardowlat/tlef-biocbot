@@ -121,7 +121,17 @@ function extractUnitNumbers(message, maxUnitNumber) {
  * has no digit at all - it must not be tried first, since deleting an early
  * unit shifts later units' positions without changing their labels. A
  * display-name substring match (word-boundary gated) is also checked, as an
- * additional, non-exclusive way to match a unit named by topic.
+ * additional way to match a unit named by topic.
+ *
+ * Number/unit-word matches and display-name matches are tracked separately
+ * because they warrant different confidence: an explicit "unit 4" is
+ * unambiguous and can narrow the scope down to just that unit. A display-name
+ * match can't - "this unit" or "does this unit cover cells?" matches a
+ * display name like "Cells" without the student meaning to leave their
+ * current unit at all, so on its own a display-name match only *adds* a unit
+ * to the scope rather than replacing it; the student's current unit stays in.
+ * When at least one number/unit-word match exists, display-name matches are
+ * folded in as additional narrowing instead, same as before.
  *
  * Only ever narrows: the result is always a subset of allowedLectureNames,
  * so this can never surface a unit the student isn't authorized to see -
@@ -135,9 +145,10 @@ function extractUnitNumbers(message, maxUnitNumber) {
  * @param {string} message - The student's latest message
  * @param {Array<{name: string, displayName?: string}>} publishedLectures - Every published lecture, in course order
  * @param {string[]} allowedLectureNames - The names already authorized for this request (the scope boundary)
+ * @param {string} currentUnitName - The unit the student is currently in; kept in scope when only display-name matches are found
  * @returns {string[]|null} Narrowed lecture names (subset of allowedLectureNames, in order), or null if nothing detected
  */
-function detectRequestedUnits(message, publishedLectures, allowedLectureNames) {
+function detectRequestedUnits(message, publishedLectures, allowedLectureNames, currentUnitName) {
     if (!message || !Array.isArray(publishedLectures) || publishedLectures.length === 0) return null;
     if (!Array.isArray(allowedLectureNames) || allowedLectureNames.length === 0) return null;
 
@@ -150,18 +161,18 @@ function detectRequestedUnits(message, publishedLectures, allowedLectureNames) {
     }, publishedLectures.length) || publishedLectures.length;
 
     const requestedNumbers = extractUnitNumbers(message, maxUnitNumber);
-    const lowerMessage = message.toLowerCase();
-    const matched = new Set();
+    const matchedByNumber = new Set();
+    const matchedByDisplayName = new Set();
 
     publishedLectures.forEach((lecture, index) => {
         const numMatch = lecture.name && lecture.name.match(/\d+/);
         if (numMatch) {
-            if (requestedNumbers.has(parseInt(numMatch[0], 10))) matched.add(lecture.name);
+            if (requestedNumbers.has(parseInt(numMatch[0], 10))) matchedByNumber.add(lecture.name);
         } else {
             // No digit in this lecture's own name - fall back to its
             // position in the published order.
             const position = index + 1;
-            if (requestedNumbers.has(position)) matched.add(lecture.name);
+            if (requestedNumbers.has(position)) matchedByNumber.add(lecture.name);
         }
         // Display-name matching: e.g. a student writing "the Mendelian
         // inheritance unit" when that unit's displayName is "Mendelian
@@ -183,13 +194,24 @@ function detectRequestedUnits(message, publishedLectures, allowedLectureNames) {
                 const windowEnd = Math.min(message.length, nameMatch.index + nameMatch[0].length + 15);
                 const nearby = message.slice(windowStart, windowEnd);
                 if (/\b(?:units?|chapters?)\b/i.test(nearby)) {
-                    matched.add(lecture.name);
+                    matchedByDisplayName.add(lecture.name);
                 }
             }
         }
     });
 
-    if (matched.size === 0) return null;
+    if (matchedByNumber.size === 0 && matchedByDisplayName.size === 0) return null;
+
+    // An explicit number/unit-word reference narrows the scope outright
+    // (display-name matches still fold in as additional narrowing, same as
+    // before). With no number reference, a display-name-only match adds to
+    // the scope instead of replacing it, so "this unit" or an incidental
+    // mention near the word "unit" can't drop the unit the student is
+    // actually in.
+    const matched = matchedByNumber.size > 0
+        ? new Set([...matchedByNumber, ...matchedByDisplayName])
+        : new Set([...matchedByDisplayName, currentUnitName]);
+
     const narrowed = allowedLectureNames.filter(name => matched.has(name));
     return narrowed.length > 0 ? narrowed : null;
 }
@@ -1407,7 +1429,7 @@ router.post('/', async (req, res) => {
         // already computed above - this can only shrink that scope, never
         // expand it, so it can't surface a unit the student isn't authorized
         // to see.
-        const requestedUnits = detectRequestedUnits(message, publishedLectureObjs, lectureNames);
+        const requestedUnits = detectRequestedUnits(message, publishedLectureObjs, lectureNames, unitName);
         // A small set of explicit "all of them" phrases ("quiz me on every
         // unit", "summarize everything so far") also fan out, since that's
         // the shape of the original #594 incident - a vague request with no

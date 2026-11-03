@@ -635,10 +635,15 @@ describe('main chat pipeline', () => {
         });
     });
 
-    test('a unit\'s display name does narrow the scope when "unit" appears next to it', async () => {
+    test('a unit\'s display name adds that unit to the scope when "unit" appears next to it, alongside the student\'s current unit', async () => {
         // "the Cells unit" is a genuine, deliberate unit reference, unlike
-        // an incidental mention of the same word - this must still narrow.
+        // an incidental mention of the same word - this must still bring
+        // Unit 2 into scope. But a display-name match alone (no explicit
+        // "unit 2") isn't confident enough to narrow the scope down to only
+        // that unit - it adds Unit 2 to the student's actual current unit
+        // (Unit 3) rather than replacing it, so this fans out across both.
         const { qdrant } = aiWith();
+        qdrant.searchDocumentsByLecture.mockResolvedValueOnce(new Map());
         const db = chatDb({
             isAdditiveRetrieval: true,
             lectures: [
@@ -647,10 +652,31 @@ describe('main chat pipeline', () => {
                 { name: 'Unit 3', isPublished: true },
             ],
         });
-        await request(app({ db })).post('/').send({
+        const res = await request(app({ db })).post('/').send({
             message: 'Can you quiz me on the Cells unit?', courseId: 'C1', unitName: 'Unit 3',
         });
-        expect(qdrant.searchDocuments.mock.calls[0][1]).toMatchObject({ lectureNames: ['Unit 2'] });
+        expect(res.body.retrieval.searchScope).toEqual(['Unit 2', 'Unit 3']);
+    });
+
+    test.each([
+        'In this unit, how do cells divide?',
+        'Does this unit cover cells?',
+    ])('"this unit" phrasing near a display name ("%s") keeps the student\'s current unit in scope instead of narrowing away from it', async (message) => {
+        // The proximity check that lets "the Cells unit" narrow also matches
+        // "this unit" when a display name happens to be nearby, even though
+        // the student means the unit they're actually in (Unit 8), not the
+        // display-name unit (Unit 2). A display-name-only match must add
+        // Unit 2 to scope, not drop Unit 8.
+        const { qdrant } = aiWith();
+        qdrant.searchDocumentsByLecture.mockResolvedValueOnce(new Map());
+        const lectures = Array.from({ length: 8 }, (_, i) => ({ name: `Unit ${i + 1}`, isPublished: true }));
+        lectures[1].displayName = 'Cells';
+        const db = chatDb({ isAdditiveRetrieval: true, lectures });
+
+        const res = await request(app({ db })).post('/').send({
+            message, courseId: 'C1', unitName: 'Unit 8',
+        });
+        expect(res.body.retrieval.searchScope).toEqual(['Unit 2', 'Unit 8']);
     });
 
     test('explicit requests name more units than the configured Top-K still get every named unit a slot', async () => {
