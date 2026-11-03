@@ -492,6 +492,10 @@ async function setupMockedSettingsRoutes(page, options = {}) {
             },
         },
         transferRequests: [],
+        // POST bodies sent to /api/settings/global (login restrictions,
+        // academic API gate) - tests assert on this to confirm a cancelled
+        // confirm dialog never sends a request at all.
+        globalSaveRequests: [],
         notesLlmKey: {
             status: 'valid',
             last4: 'mock',
@@ -701,6 +705,7 @@ async function setupMockedSettingsRoutes(page, options = {}) {
 
         if (pathname === '/api/settings/global') {
             if (method === 'POST') {
+                state.globalSaveRequests.push(route.request().postDataJSON());
                 await route.fulfill(jsonResponse({ success: true }));
                 return;
             }
@@ -1141,12 +1146,14 @@ test.describe('Instructor settings UI', () => {
             timeout: 10_000,
         });
 
-        // Login restrictions autosaves (#632) - no Save button to click, no
-        // toast; the toggle autosaves silently like any other checkbox.
+        // Login restrictions affects every course, so flipping it confirms
+        // before saving rather than autosaving silently (#605) - no Save
+        // button to click, but a confirm dialog gates the request.
         await openSettingsPanel(page, 'admin-access');
         await expect(page.locator('#login-restriction-section')).toBeVisible();
         await expect(page.locator('#system-admin-section')).toBeVisible();
         await setInputChecked(page, '#allow-local-login-toggle', false);
+        await acceptConfirmDialog(page);
 
         // Student chat autosaves (#605) - no Save button to click. This
         // field gets a per-field indicator (it's an input, not a toggle).
@@ -1433,6 +1440,71 @@ test.describe('Instructor settings UI', () => {
         await page.locator('#delete-collection').click();
         await acceptConfirmDialog(page);
         await expect(page.locator('.notification.error', { hasText: 'Failed to delete data: Delete rejected' })).toBeVisible();
+    });
+
+    test('keeps newly typed question-prompt text after an in-flight autosave resolves', async ({ page }) => {
+        // Regression test for a bug where saveQuestionPrompts() re-applied the
+        // server's response into the textareas after every autosave. The
+        // response reflects the value as of when the request was sent, so
+        // anything typed while that request was in flight got clobbered.
+        await openMockedSettings(page);
+        await openSettingsPanel(page, 'admin-safety');
+
+        await page.route('**/api/settings/question-prompts', async (route) => {
+            if (route.request().method() !== 'POST') {
+                return route.fallback();
+            }
+            // Echo back the *stale* value from when the request was sent,
+            // like the real API does, after an artificial delay so there's
+            // time to keep typing before the response lands.
+            const body = route.request().postDataJSON();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            await route.fulfill(jsonResponse({
+                success: true,
+                prompts: {
+                    systemPrompt: body.systemPrompt,
+                    trueFalse: body.trueFalse,
+                    multipleChoice: body.multipleChoice,
+                    shortAnswer: body.shortAnswer,
+                },
+            }));
+        });
+
+        const systemPromptField = page.locator('#question-system-prompt');
+        await systemPromptField.fill('Typed before the autosave fired');
+        await expect(page.locator('#question-system-prompt + .field-autosave-indicator'))
+            .toHaveAttribute('data-state', 'saving', { timeout: 3_000 });
+
+        // Keep "typing" while that save is in flight - set the value directly
+        // (no further input events) so this only exercises whether the save's
+        // own completion handler overwrites it, not a second autosave cycle.
+        await page.evaluate(() => {
+            const field = /** @type {HTMLTextAreaElement} */ (document.getElementById('question-system-prompt'));
+            field.value = 'Typed before the autosave fired, plus more typed during the save';
+        });
+
+        await expect(page.locator('#question-system-prompt + .field-autosave-indicator'))
+            .toHaveAttribute('data-state', 'saved', { timeout: 5_000 });
+        await expect(systemPromptField).toHaveValue('Typed before the autosave fired, plus more typed during the save');
+    });
+
+    test('confirms before saving the login-restriction toggle and reverts on cancel', async ({ page }) => {
+        const state = await openMockedSettings(page);
+        await openSettingsPanel(page, 'admin-access');
+
+        const toggle = page.locator('#allow-local-login-toggle');
+        await expect(toggle).not.toBeChecked();
+
+        await setInputChecked(page, '#allow-local-login-toggle', true);
+        await dismissConfirmDialog(page);
+        await expect(toggle).not.toBeChecked();
+        expect(state.globalSaveRequests).toHaveLength(0);
+
+        await setInputChecked(page, '#allow-local-login-toggle', true);
+        await acceptConfirmDialog(page);
+        await expect.poll(() => state.globalSaveRequests.length).toBe(1);
+        expect(state.globalSaveRequests[0]).toMatchObject({ allowLocalLogin: true });
+        await expect(toggle).toBeChecked();
     });
 
     test('handles transfer validation, master toggles, modal closing, errors, and warning success', async ({ page }) => {

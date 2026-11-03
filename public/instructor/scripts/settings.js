@@ -299,7 +299,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (note) note.hidden = true;
     }
 
-    // Design-system replacement for window.confirm() (#632) - the native
+    // Design-system replacement for window.confirm() (#605) - the native
     // "localhost:8080 says..." dialog doesn't match the app at all. Reuses
     // the transfer-course-modal card styling and the shared a11yModal
     // focus-trap contract, and resolves the same way confirm() would (true
@@ -461,10 +461,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // Generic wiring for a section that autosaves every field with
-    // createFieldAutosaveController (#605 pilot, #632 extended to the rest of
-    // Settings). Checkboxes/radios autosave silently on 'change' (their own
-    // flip is feedback enough); every other field type autosaves on 'input'
-    // with the spinner/checkmark indicator. excludeIds skips fields that
+    // createFieldAutosaveController (#605: piloted on Student chat, then
+    // extended to the rest of Settings). Checkboxes/radios autosave silently
+    // on 'change' (their own flip is feedback enough); every other field
+    // type autosaves on 'input' with the spinner/checkmark indicator.
+    // excludeIds skips fields that
     // aren't really "save this value" inputs - e.g. a bucket picker <select>
     // that loads different data, or a field with its own dedicated
     // save/test button (API keys).
@@ -2391,7 +2392,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }, { busyLabel: 'Testing...' });
 
-    // Course basics (autosave, #632)
+    // Course basics (autosave, #605)
     const saveCourseBasics = async () => {
         const courseId = await getCurrentCourseId();
         const yearLevelSelect = document.getElementById('course-year-level-select');
@@ -2444,7 +2445,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         busyLabel: 'Resetting...'
     });
 
-    // Course prompts (autosave, #632)
+    // Course prompts (autosave, #605)
     wireAutosaveSection(document.getElementById('ai-persona-section'), savePromptsConfigToServer);
 
     wireSectionButton('reset-prompts', async () => {
@@ -2464,7 +2465,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         busyLabel: 'Resetting...'
     });
 
-    // Quiz practice (autosave, #632)
+    // Quiz practice (autosave, #605)
     wireAutosaveSection(document.getElementById('quiz-settings-section'), saveQuizConfigToServer);
 
     wireSectionButton('reset-quiz-settings', async () => {
@@ -2480,7 +2481,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         busyLabel: 'Resetting...'
     });
 
-    // Privacy & sessions (autosave, #632 - previously a dirty-gated manual
+    // Privacy & sessions (autosave, #605 - previously a dirty-gated manual
     // save, #605)
     const privacySave = async () => {
         await saveAnonymizeStudentsToServer();
@@ -2502,7 +2503,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         busyLabel: 'Resetting...'
     });
 
-    // Super course: per-course bucket membership (autosave, #632). The
+    // Super course: per-course bucket membership (autosave, #605). The
     // "Create a new bucket" name/key fields live in this same section but
     // aren't membership state - excluded so typing a new bucket name doesn't
     // trigger a membership save. Also called directly from initSuperchatManagement()
@@ -2528,7 +2529,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         busyLabel: 'Removing...'
     });
 
-    // Super course: shared bucket settings (autosave, #632). Excludes the
+    // Super course: shared bucket settings (autosave, #605). Excludes the
     // bucket picker <select> (switching it loads a different bucket's data,
     // it isn't a field to persist) and the API key input (its own dedicated
     // save/test buttons, see the LLM key section below). Unlike the manual
@@ -2585,35 +2586,72 @@ document.addEventListener('DOMContentLoaded', async () => {
         await rollbackPlatformEmbeddingModel('ubc-llm-proxy');
     }, { busyLabel: 'Cancelling...' });
 
-    // Admin: login restrictions (autosave, #632)
-    wireAutosaveSection(document.getElementById('login-restriction-section'), async () => {
-        const allowLocalLogin = document.getElementById('allow-local-login-toggle')?.checked;
-        const response = await fetch('/api/settings/global', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ allowLocalLogin })
+    // Admin: login restrictions and academic API gate affect every course,
+    // not just the one currently selected, so they confirm before saving
+    // instead of autosaving silently - the same "deliberate action" reasoning
+    // that keeps Platform & Models on an explicit Save (#605). Wired directly
+    // to 'change' rather than through wireAutosaveSection's 900ms debounce,
+    // so the dialog appears immediately instead of popping up a second after
+    // the click. Cancelling flips the toggle back and sends no request.
+    function wireConfirmedToggle(toggleId, buildConfirmMessage, saveFn) {
+        const toggle = document.getElementById(toggleId);
+        if (!toggle) return;
+        toggle.addEventListener('change', async () => {
+            const message = typeof buildConfirmMessage === 'function'
+                ? buildConfirmMessage(toggle.checked)
+                : buildConfirmMessage;
+            if (!(await confirmDialog(message))) {
+                toggle.checked = !toggle.checked;
+                return;
+            }
+            try {
+                await saveFn();
+            } catch (error) {
+                console.error(`Error saving ${toggleId}:`, error);
+                showNotification(error.message || 'Could not save your change', 'error');
+            }
         });
-        const result = await response.json();
-        if (!response.ok || !result.success) {
-            throw new Error(result.error || 'Failed to save login settings');
-        }
-    });
+    }
 
-    // Admin: academic API integration gate (autosave, #632)
-    wireAutosaveSection(document.getElementById('academic-api-section'), async () => {
-        const academicApiEnabled = document.getElementById('academic-api-enabled-toggle')?.checked;
-        const response = await fetch('/api/settings/global', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ academicApiEnabled })
-        });
-        const result = await response.json();
-        if (!response.ok || !result.success) {
-            throw new Error(result.error || 'Failed to save academic API settings');
+    wireConfirmedToggle(
+        'allow-local-login-toggle',
+        (enabled) => enabled
+            ? 'Allow local username/password login and registration for all courses?'
+            : 'Disable local login and registration for all courses? Users will only be able to log in via CWL.',
+        async () => {
+            const allowLocalLogin = document.getElementById('allow-local-login-toggle')?.checked;
+            const response = await fetch('/api/settings/global', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ allowLocalLogin })
+            });
+            const result = await response.json();
+            if (!response.ok || !result.success) {
+                throw new Error(result.error || 'Failed to save login settings');
+            }
         }
-    });
+    );
 
-    // Admin: question generation prompts (autosave, #632)
+    wireConfirmedToggle(
+        'academic-api-enabled-toggle',
+        (enabled) => enabled
+            ? 'Enable the academic API (Class List Sync) for all courses? Instructors of record will be able to join without a code, and class lists will sync automatically from the roster.'
+            : 'Disable the academic API (Class List Sync) for all courses? Courses will fall back to joining and enrolling with a course code.',
+        async () => {
+            const academicApiEnabled = document.getElementById('academic-api-enabled-toggle')?.checked;
+            const response = await fetch('/api/settings/global', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ academicApiEnabled })
+            });
+            const result = await response.json();
+            if (!response.ok || !result.success) {
+                throw new Error(result.error || 'Failed to save academic API settings');
+            }
+        }
+    );
+
+    // Admin: question generation prompts (autosave, #605)
     const saveQuestionPrompts = async () => {
         const courseId = await getCurrentCourseId();
         const systemPrompt = document.getElementById('question-system-prompt')?.value;
@@ -2634,7 +2672,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (!response.ok || !result.success) {
             throw new Error(result.message || 'Failed to save question prompts');
         }
-        if (result.prompts) applyQuestionPromptValues(result.prompts);
+        // Don't re-apply result.prompts here (unlike Reset below) - the
+        // response reflects the values as of when the request was sent, so
+        // writing it back into the textareas would clobber anything typed
+        // while the save was in flight, same reasoning as the Super Course
+        // bucket settings save above.
     };
     wireAutosaveSection(document.getElementById('question-generation-section'), saveQuestionPrompts);
 
@@ -2656,13 +2698,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         busyLabel: 'Resetting...'
     });
 
-    // Admin: mental health detection prompt (autosave, #632)
+    // Admin: mental health detection prompt (autosave, #605)
     wireAutosaveSection(document.getElementById('mental-health-detection-section'), async () => {
         const courseId = await getCurrentCourseId();
         const prompt = document.getElementById('mental-health-detection-prompt')?.value;
-        if (!prompt) {
-            throw new Error('Detection prompt cannot be empty');
-        }
+        // Skip the save rather than erroring - clearing the textarea to
+        // retype it would otherwise toast "cannot be empty" at every pause
+        // in typing. The empty value never reaches the server, so the last
+        // non-empty prompt stays saved until a non-empty value is typed.
+        if (!prompt) return;
         const response = await fetch('/api/settings/mental-health-prompt', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
