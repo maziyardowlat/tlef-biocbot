@@ -49,6 +49,12 @@ const UNIT_WORD_PATTERN = /\bunits?\b/gi;
 // fine - fanning out across the already-allowed scope is a weaker, safer
 // action than narrowing to one specific (possibly wrong) unit number.
 const BROAD_REQUEST_PATTERN = /\b(?:each|every|all(?:\s+the)?)\s+(?:units?|chapters?|weeks?|lectures?|modules?|lessons?)\b|everything\s+(?:so\s+far|(?:we\s*(?:'|’)?ve\s+)?covered)/i;
+// Phrases where the student points at the unit they're in, even when the same
+// message names another one ("how does this unit relate to unit 2?"). Only
+// ever keeps the current unit in scope next to a detected unit; on its own it
+// narrows nothing, since "how does this unit build on earlier ones?" still
+// needs the rest of the additive scope.
+const CURRENT_UNIT_PATTERN = /\b(?:this|current)\s+unit\b|\bunit\s+(?:we\s*(?:'|’)?re|we\s+are|i\s*(?:'|’)?m|i\s+am)\s+(?:on|in)\b/i;
 
 /**
  * Pull every number that's connected to a "unit(s)"-style reference word by
@@ -131,7 +137,9 @@ function extractUnitNumbers(message, maxUnitNumber) {
  * current unit at all, so on its own a display-name match only *adds* a unit
  * to the scope rather than replacing it; the student's current unit stays in.
  * When at least one number/unit-word match exists, display-name matches are
- * folded in as additional narrowing instead, same as before.
+ * folded in as additional narrowing instead, same as before. Either way, a
+ * message that also points at the current unit ("how does this unit relate to
+ * unit 2?") keeps that unit in scope alongside the ones it names.
  *
  * Only ever narrows: the result is always a subset of allowedLectureNames,
  * so this can never surface a unit the student isn't authorized to see -
@@ -145,7 +153,7 @@ function extractUnitNumbers(message, maxUnitNumber) {
  * @param {string} message - The student's latest message
  * @param {Array<{name: string, displayName?: string}>} publishedLectures - Every published lecture, in course order
  * @param {string[]} allowedLectureNames - The names already authorized for this request (the scope boundary)
- * @param {string} currentUnitName - The unit the student is currently in; kept in scope when only display-name matches are found
+ * @param {string} currentUnitName - The unit the student is currently in; kept in scope when only display-name matches are found, or when the message points at it
  * @returns {string[]|null} Narrowed lecture names (subset of allowedLectureNames, in order), or null if nothing detected
  */
 function detectRequestedUnits(message, publishedLectures, allowedLectureNames, currentUnitName) {
@@ -211,6 +219,7 @@ function detectRequestedUnits(message, publishedLectures, allowedLectureNames, c
     const matched = matchedByNumber.size > 0
         ? new Set([...matchedByNumber, ...matchedByDisplayName])
         : new Set([...matchedByDisplayName, currentUnitName]);
+    if (CURRENT_UNIT_PATTERN.test(message)) matched.add(currentUnitName);
 
     const narrowed = allowedLectureNames.filter(name => matched.has(name));
     return narrowed.length > 0 ? narrowed : null;

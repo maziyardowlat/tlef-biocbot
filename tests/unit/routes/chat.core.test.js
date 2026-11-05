@@ -679,6 +679,57 @@ describe('main chat pipeline', () => {
         expect(res.body.retrieval.searchScope).toEqual(['Unit 2', 'Unit 8']);
     });
 
+    describe('a named unit next to the student\'s current unit', () => {
+        const eightUnitCourse = (isAdditiveRetrieval) => chatDb({
+            isAdditiveRetrieval,
+            lectures: Array.from({ length: 8 }, (_, i) => ({ name: `Unit ${i + 1}`, isPublished: true })),
+        });
+        const ask = (db, message, unitName) => request(app({ db })).post('/').send({ message, courseId: 'C1', unitName });
+
+        test.each([
+            'How does this unit relate to unit 2?',
+            'compare unit 2 with this unit',
+            'Is the current unit connected to unit 2?',
+            "Is the unit we're on connected to unit 2?",
+            'Is the unit we’re on connected to unit 2?',
+            "Does the unit I'm in build on unit 2?",
+        ])('additive on: "%s" searches both units', async (message) => {
+            const { qdrant } = aiWith();
+            const res = await ask(eightUnitCourse(true), message, 'Unit 8');
+            expect(res.body.retrieval.searchScope).toEqual(['Unit 2', 'Unit 8']);
+            expect(qdrant.searchDocumentsByLecture).toHaveBeenCalled();
+        });
+
+        test('additive on: naming a unit without pointing at the current one still narrows to it', async () => {
+            aiWith();
+            const res = await ask(eightUnitCourse(true), 'What was unit 2 about?', 'Unit 8');
+            expect(res.body.retrieval.searchScope).toEqual(['Unit 2']);
+        });
+
+        test('additive on: "this unit" on its own keeps the full additive scope', async () => {
+            const { qdrant } = aiWith();
+            const res = await ask(eightUnitCourse(true), 'How does this unit build on the earlier ones?', 'Unit 8');
+            expect(res.body.retrieval.searchScope).toHaveLength(8);
+            expect(qdrant.searchDocumentsByLecture).not.toHaveBeenCalled();
+        });
+
+        test('additive on: a later unit stays out of reach when compared to this unit', async () => {
+            aiWith();
+            const res = await ask(eightUnitCourse(true), 'How does this unit relate to unit 7?', 'Unit 3');
+            expect(res.body.retrieval.searchScope).toEqual(['Unit 3']);
+        });
+
+        test.each([
+            'What was unit 2 about?',
+            'How does this unit relate to unit 2?',
+        ])('additive off: "%s" stays in the current unit', async (message) => {
+            const { qdrant } = aiWith();
+            const res = await ask(eightUnitCourse(false), message, 'Unit 8');
+            expect(res.body.retrieval.searchScope).toEqual(['Unit 8']);
+            expect(qdrant.searchDocumentsByLecture).not.toHaveBeenCalled();
+        });
+    });
+
     test('explicit requests name more units than the configured Top-K still get every named unit a slot', async () => {
         const { qdrant } = aiWith();
         qdrant.searchDocumentsByLecture.mockResolvedValueOnce(new Map());
