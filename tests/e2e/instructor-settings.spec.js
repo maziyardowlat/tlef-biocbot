@@ -347,6 +347,19 @@ async function setInputChecked(page, selector, checked) {
     );
 }
 
+// confirmMessage-gated actions (Reset to defaults, Delete bucket, etc.) now
+// go through the in-page #confirm-dialog-modal instead of window.confirm()
+// (#632) - call these *after* clicking whatever action opens it.
+async function acceptConfirmDialog(page) {
+    await expect(page.locator('#confirm-dialog-modal')).toHaveClass(/show/, { timeout: 10_000 });
+    await page.locator('#confirm-dialog-confirm').click();
+}
+
+async function dismissConfirmDialog(page) {
+    await expect(page.locator('#confirm-dialog-modal')).toHaveClass(/show/, { timeout: 10_000 });
+    await page.locator('#confirm-dialog-cancel').click();
+}
+
 function jsonResponse(body, status = 200) {
     return {
         status,
@@ -479,6 +492,10 @@ async function setupMockedSettingsRoutes(page, options = {}) {
             },
         },
         transferRequests: [],
+        // POST bodies sent to /api/settings/global (login restrictions,
+        // academic API gate) - tests assert on this to confirm a cancelled
+        // confirm dialog never sends a request at all.
+        globalSaveRequests: [],
         notesLlmKey: {
             status: 'valid',
             last4: 'mock',
@@ -688,6 +705,7 @@ async function setupMockedSettingsRoutes(page, options = {}) {
 
         if (pathname === '/api/settings/global') {
             if (method === 'POST') {
+                state.globalSaveRequests.push(route.request().postDataJSON());
                 await route.fulfill(jsonResponse({ success: true }));
                 return;
             }
@@ -1026,6 +1044,9 @@ test.describe('Instructor settings UI', () => {
     test('saves prompts, retrieval, idle timeout, quiz download, and anonymize settings for the selected course', async ({ page }) => {
         await openSettings(page);
 
+        // AI prompts autosaves (#632) - no Save button, no success toast;
+        // the field gets a spinner-then-checkmark indicator instead. Assert
+        // on DB truth below via expect.poll rather than a toast.
         await openSettingsPanel(page, 'prompts');
         await page.locator('#base-prompt').fill('Updated base prompt from settings UI');
         await page.locator('#protege-prompt').fill('Updated protege prompt from settings UI');
@@ -1034,28 +1055,20 @@ test.describe('Instructor settings UI', () => {
         await page.locator('#directive-prompt').fill('Updated directive prompt from settings UI');
         await page.locator('#quiz-help-prompt').fill('Updated quiz help prompt from settings UI');
         await page.locator('#chat-summary-prompt').fill('Updated chat summary prompt from settings UI');
-        await page.locator('#save-prompts').click();
-        await expect(page.locator('.notification.success', { hasText: 'Prompts saved' })).toBeVisible({
-            timeout: 10_000,
-        });
 
+        // Privacy & sessions also autosaves (#632) - no Save button to click.
         await openSettingsPanel(page, 'privacy');
         await page.locator('#idle-timeout-input').fill('5.5');
         await page.locator('#session-timeout-input').fill('45');
         await setInputChecked(page, '#anonymize-students-toggle', true);
-        await page.locator('#save-privacy-settings').click();
-        await expect(page.locator('.notification.success', { hasText: 'Privacy settings saved' })).toBeVisible({
-            timeout: 10_000,
-        });
 
+        // Student chat autosaves (#605) - no Save button to click. Toggles
+        // save silently (no indicator, by design); the debounce + save is
+        // confirmed below via the persisted DB state in the expect.poll.
         await openSettingsPanel(page, 'student-chat');
         await setInputChecked(page, '#additive-retrieval-toggle', true);
         await setInputChecked(page, '#additional-material-secondary-toggle', true);
         await setInputChecked(page, '#source-attribution-download-toggle', true);
-        await page.locator('#save-student-chat').click();
-        await expect(page.locator('.notification.success', { hasText: 'Student chat settings saved' })).toBeVisible({
-            timeout: 10_000,
-        });
 
         await expect.poll(async () => {
             const course = await readCourse();
@@ -1133,19 +1146,20 @@ test.describe('Instructor settings UI', () => {
             timeout: 10_000,
         });
 
+        // Login restrictions affects every course, so flipping it confirms
+        // before saving rather than autosaving silently (#605) - no Save
+        // button to click, but a confirm dialog gates the request.
         await openSettingsPanel(page, 'admin-access');
         await expect(page.locator('#login-restriction-section')).toBeVisible();
         await expect(page.locator('#system-admin-section')).toBeVisible();
         await setInputChecked(page, '#allow-local-login-toggle', false);
-        await page.locator('#save-access-settings').click();
-        await expect(page.locator('.notification.success', { hasText: 'Login settings saved' })).toBeVisible({
-            timeout: 10_000,
-        });
+        await acceptConfirmDialog(page);
 
+        // Student chat autosaves (#605) - no Save button to click. This
+        // field gets a per-field indicator (it's an input, not a toggle).
         await openSettingsPanel(page, 'student-chat');
         await page.locator('#student-chat-topk-input').fill('4');
-        await page.locator('#save-student-chat').click();
-        await expect(page.locator('.notification.success', { hasText: 'Student chat settings saved' })).toBeVisible({
+        await expect(page.locator('#student-chat-topk-input + .field-autosave-indicator')).toHaveAttribute('data-state', 'saved', {
             timeout: 10_000,
         });
 
@@ -1176,8 +1190,8 @@ test.describe('Instructor settings UI', () => {
         await openSettingsPanel(page, 'lifecycle');
 
         await expect(page.locator('#course-status-badge')).toHaveText('Active');
-        page.once('dialog', (dialog) => dialog.accept());
         await page.locator('#toggle-course-active-btn').click();
+        await acceptConfirmDialog(page);
 
         await expect(page.locator('.notification.success', { hasText: 'Course deactivated' })).toBeVisible({
             timeout: 10_000,
@@ -1185,8 +1199,8 @@ test.describe('Instructor settings UI', () => {
         await expect(page.locator('#course-status-badge')).toHaveText('Inactive');
         await expect.poll(async () => (await readCourse()).status, { timeout: 10_000 }).toBe('inactive');
 
-        page.once('dialog', (dialog) => dialog.accept());
         await page.locator('#toggle-course-active-btn').click();
+        await acceptConfirmDialog(page);
 
         await expect(page.locator('.notification.success', { hasText: 'Course reactivated successfully' })).toBeVisible({
             timeout: 10_000,
@@ -1292,12 +1306,12 @@ test.describe('Instructor settings UI', () => {
         await openSettingsPanel(page, 'prompts');
         await page.locator('#base-prompt').fill('Dirty base prompt');
 
-        page.once('dialog', (dialog) => dialog.dismiss());
         await page.locator('#reset-prompts').click();
+        await dismissConfirmDialog(page);
         await expect(page.locator('#base-prompt')).toHaveValue('Dirty base prompt');
 
-        page.once('dialog', (dialog) => dialog.accept());
         await page.locator('#reset-prompts').click();
+        await acceptConfirmDialog(page);
 
         await expect(page.locator('#base-prompt')).toHaveValue('Default base prompt');
         await expect(page.locator('#protege-prompt')).toHaveValue('Default protege prompt');
@@ -1312,8 +1326,8 @@ test.describe('Instructor settings UI', () => {
         await setInputChecked(page, '#additive-retrieval-toggle', false);
         await setInputChecked(page, '#additional-material-secondary-toggle', true);
         await setInputChecked(page, '#source-attribution-download-toggle', true);
-        page.once('dialog', (dialog) => dialog.accept());
         await page.locator('#reset-student-chat').click();
+        await acceptConfirmDialog(page);
         await expect(page.locator('#additive-retrieval-toggle')).toBeChecked();
         await expect(page.locator('#additional-material-secondary-toggle')).not.toBeChecked();
         await expect(page.locator('#source-attribution-download-toggle')).not.toBeChecked();
@@ -1324,8 +1338,8 @@ test.describe('Instructor settings UI', () => {
         await page.locator('#idle-timeout-input').fill('9');
         await page.locator('#session-timeout-input').fill('60');
         await setInputChecked(page, '#anonymize-students-toggle', true);
-        page.once('dialog', (dialog) => dialog.accept());
         await page.locator('#reset-privacy-settings').click();
+        await acceptConfirmDialog(page);
         await expect(page.locator('#idle-timeout-input')).toHaveValue('4');
         await expect(page.locator('#session-timeout-input')).toHaveValue('30');
         await expect(page.locator('#anonymize-students-toggle')).not.toBeChecked();
@@ -1335,8 +1349,8 @@ test.describe('Instructor settings UI', () => {
         await setInputChecked(page, '#quiz-enabled-toggle', true);
         await setInputChecked(page, '#quiz-material-access-toggle', false);
         await setInputChecked(page, '.testable-unit-checkbox[value="Unit 1"]', false);
-        page.once('dialog', (dialog) => dialog.accept());
         await page.locator('#reset-quiz-settings').click();
+        await acceptConfirmDialog(page);
         await expect(page.locator('#quiz-enabled-toggle')).not.toBeChecked();
         await expect(page.locator('#quiz-material-access-toggle')).toBeChecked();
         await expect(page.locator('.testable-unit-checkbox[value="Unit 1"]')).toBeChecked();
@@ -1370,31 +1384,31 @@ test.describe('Instructor settings UI', () => {
         await expect(page.locator('.notification.error', { hasText: 'Grant rejected' })).toBeVisible();
 
         const freshRevoke = page.locator(`.system-admin-revoke-btn[data-email="${TEST_USERS.instructor_fresh.email}"]`);
-        page.once('dialog', (dialog) => dialog.dismiss());
         await freshRevoke.click();
+        await dismissConfirmDialog(page);
         await expect(freshRevoke).toHaveText('Revoke');
 
-        page.once('dialog', (dialog) => dialog.accept());
         await freshRevoke.click();
+        await acceptConfirmDialog(page);
         await expect(page.locator('.notification.success', { hasText: `System admin access revoked for ${TEST_USERS.instructor_fresh.email}.` })).toBeVisible();
 
         state.revokeResult = { success: false, error: 'Revoke rejected' };
-        page.once('dialog', (dialog) => dialog.accept());
         await freshRevoke.click();
+        await acceptConfirmDialog(page);
         await expect(page.locator('.notification.error', { hasText: 'Revoke rejected' })).toBeVisible();
 
         await openSettingsPanel(page, 'admin-safety');
-        page.once('dialog', (dialog) => dialog.dismiss());
         await page.locator('#reset-mh-prompt').click();
+        await dismissConfirmDialog(page);
         await expect(page.locator('#mental-health-detection-prompt')).toHaveValue('Mock detection prompt');
 
-        page.once('dialog', (dialog) => dialog.accept());
         await page.locator('#reset-mh-prompt').click();
+        await acceptConfirmDialog(page);
         await expect(page.locator('#mental-health-detection-prompt')).toHaveValue('Default detection prompt');
         await expect(page.locator('.notification.success', { hasText: 'Detection prompt reset to default' })).toBeVisible();
 
-        page.once('dialog', (dialog) => dialog.accept());
         await page.locator('#reset-question-prompts').click();
+        await acceptConfirmDialog(page);
         await expect(page.locator('#question-system-prompt')).toHaveValue('Default question system');
         await expect(page.locator('#question-true-false-prompt')).toHaveValue('Default true false');
         await expect(page.locator('#question-multiple-choice-prompt')).toHaveValue('Default multiple choice');
@@ -1402,20 +1416,20 @@ test.describe('Instructor settings UI', () => {
         await expect(page.locator('.notification.success', { hasText: 'Question prompts reset to defaults' })).toBeVisible();
 
         await openSettingsPanel(page, 'student-chat');
-        page.once('dialog', (dialog) => dialog.accept());
         await page.locator('#reset-student-chat').click();
+        await acceptConfirmDialog(page);
         await expect(page.locator('#student-chat-topk-input')).toHaveValue('3');
         await expect(page.locator('.notification.success', { hasText: 'Student chat settings reset to defaults' })).toBeVisible();
         // (Super Course bucket reset/management is covered by the dedicated
         // superchats specs; the standalone "reset super course" button is gone.)
 
         await openSettingsPanel(page, 'admin-database');
-        page.once('dialog', (dialog) => dialog.dismiss());
         await page.locator('#delete-collection').click();
+        await dismissConfirmDialog(page);
         await expect(page.locator('#delete-collection')).toHaveText('Delete All Data');
 
-        page.once('dialog', (dialog) => dialog.accept());
         await page.locator('#delete-collection').click();
+        await acceptConfirmDialog(page);
         await expect(page.locator('.notification.success', { hasText: 'All data deleted successfully! Qdrant: 4, MongoDB: 9 documents removed.' })).toBeVisible();
 
         state.deleteAllResult = {
@@ -1423,9 +1437,74 @@ test.describe('Instructor settings UI', () => {
             message: 'Delete rejected',
             data: { qdrantDeletedCount: 0, mongoDeletedCount: 0 },
         };
-        page.once('dialog', (dialog) => dialog.accept());
         await page.locator('#delete-collection').click();
+        await acceptConfirmDialog(page);
         await expect(page.locator('.notification.error', { hasText: 'Failed to delete data: Delete rejected' })).toBeVisible();
+    });
+
+    test('keeps newly typed question-prompt text after an in-flight autosave resolves', async ({ page }) => {
+        // Regression test for a bug where saveQuestionPrompts() re-applied the
+        // server's response into the textareas after every autosave. The
+        // response reflects the value as of when the request was sent, so
+        // anything typed while that request was in flight got clobbered.
+        await openMockedSettings(page);
+        await openSettingsPanel(page, 'admin-safety');
+
+        await page.route('**/api/settings/question-prompts', async (route) => {
+            if (route.request().method() !== 'POST') {
+                return route.fallback();
+            }
+            // Echo back the *stale* value from when the request was sent,
+            // like the real API does, after an artificial delay so there's
+            // time to keep typing before the response lands.
+            const body = route.request().postDataJSON();
+            await new Promise(resolve => setTimeout(resolve, 500));
+            await route.fulfill(jsonResponse({
+                success: true,
+                prompts: {
+                    systemPrompt: body.systemPrompt,
+                    trueFalse: body.trueFalse,
+                    multipleChoice: body.multipleChoice,
+                    shortAnswer: body.shortAnswer,
+                },
+            }));
+        });
+
+        const systemPromptField = page.locator('#question-system-prompt');
+        await systemPromptField.fill('Typed before the autosave fired');
+        await expect(page.locator('#question-system-prompt + .field-autosave-indicator'))
+            .toHaveAttribute('data-state', 'saving', { timeout: 3_000 });
+
+        // Keep "typing" while that save is in flight - set the value directly
+        // (no further input events) so this only exercises whether the save's
+        // own completion handler overwrites it, not a second autosave cycle.
+        await page.evaluate(() => {
+            const field = /** @type {HTMLTextAreaElement} */ (document.getElementById('question-system-prompt'));
+            field.value = 'Typed before the autosave fired, plus more typed during the save';
+        });
+
+        await expect(page.locator('#question-system-prompt + .field-autosave-indicator'))
+            .toHaveAttribute('data-state', 'saved', { timeout: 5_000 });
+        await expect(systemPromptField).toHaveValue('Typed before the autosave fired, plus more typed during the save');
+    });
+
+    test('confirms before saving the login-restriction toggle and reverts on cancel', async ({ page }) => {
+        const state = await openMockedSettings(page);
+        await openSettingsPanel(page, 'admin-access');
+
+        const toggle = page.locator('#allow-local-login-toggle');
+        await expect(toggle).not.toBeChecked();
+
+        await setInputChecked(page, '#allow-local-login-toggle', true);
+        await dismissConfirmDialog(page);
+        await expect(toggle).not.toBeChecked();
+        expect(state.globalSaveRequests).toHaveLength(0);
+
+        await setInputChecked(page, '#allow-local-login-toggle', true);
+        await acceptConfirmDialog(page);
+        await expect.poll(() => state.globalSaveRequests.length).toBe(1);
+        expect(state.globalSaveRequests[0]).toMatchObject({ allowLocalLogin: true });
+        await expect(toggle).toBeChecked();
     });
 
     test('handles transfer validation, master toggles, modal closing, errors, and warning success', async ({ page }) => {
@@ -1509,14 +1588,14 @@ test.describe('Instructor settings UI', () => {
         const state = await openMockedSettings(page, { canDeleteAll: false });
         await openSettingsPanel(page, 'lifecycle');
 
-        page.once('dialog', (dialog) => dialog.dismiss());
         await page.locator('#toggle-course-active-btn').click();
+        await dismissConfirmDialog(page);
         await expect(page.locator('#course-status-badge')).toHaveText('Active');
 
         state.lifecycleStatus = 500;
         state.lifecycleResult = { success: false, message: 'Lifecycle rejected' };
-        page.once('dialog', (dialog) => dialog.accept());
         await page.locator('#toggle-course-active-btn').click();
+        await acceptConfirmDialog(page);
         await expect(page.locator('.notification.error', { hasText: 'Lifecycle rejected' })).toBeVisible();
         await expect(page.locator('#course-status-badge')).toHaveText('Active');
         await expect(page.locator('#toggle-course-active-btn')).toHaveText('Deactivate Course');
@@ -1549,18 +1628,24 @@ test.describe('Instructor settings UI', () => {
         await openSettingsPanel(page, 'quiz');
         await expect(page.locator('#testable-units-container')).toContainText('Loading units...');
 
+        // AI prompts autosaves (#632) - no Save button to click. Swap in the
+        // failure-mocked route first, then fill the fields so the debounced
+        // save that fires from the fill actually hits the failing mock
+        // (filling first and swapping routes after would race the autosave
+        // against the route swap).
         await openSettingsPanel(page, 'prompts');
-        await page.locator('#base-prompt').fill('Mock base prompt');
-        await page.locator('#protege-prompt').fill('Mock protege prompt');
-        await page.locator('#tutor-prompt').fill('Mock tutor prompt');
         await page.unroute('**/*');
         const state = await setupMockedSettingsRoutes(page, {
             canDeleteAll: false,
             promptSaveResult: { success: false, message: 'Prompt save rejected' },
         });
         state.abortPaths.add('/api/settings/quiz');
-        await page.locator('#save-prompts').click();
-        await expect(page.locator('.notification.error', { hasText: 'Prompt save rejected' })).toBeVisible();
+        await page.locator('#base-prompt').fill('Mock base prompt');
+        await page.locator('#protege-prompt').fill('Mock protege prompt');
+        await page.locator('#tutor-prompt').fill('Mock tutor prompt');
+        await expect(page.locator('.notification.error', { hasText: 'Prompt save rejected' })).toBeVisible({
+            timeout: 10_000,
+        });
     });
 
     test('uses defensive lifecycle states when course context or course load is missing', async ({ page }) => {
@@ -1634,22 +1719,25 @@ test.describe('Instructor settings UI', () => {
         await openSettingsPanel(page, 'admin-access');
         await expect(page.locator('#system-admin-list')).toContainText('Failed to load system admins.');
 
+        // AI prompts autosaves (#632) - no Save button to click; the failing
+        // mock is already in place from openMockedSettings() above.
         await openSettingsPanel(page, 'prompts');
         await page.locator('#base-prompt').fill('Mock base prompt');
         await page.locator('#protege-prompt').fill('Mock protege prompt');
         await page.locator('#tutor-prompt').fill('Mock tutor prompt');
-        await page.locator('#save-prompts').click();
-        await expect(page.locator('.notification.error', { hasText: 'Prompt save rejected' })).toBeVisible();
+        await expect(page.locator('.notification.error', { hasText: 'Prompt save rejected' })).toBeVisible({
+            timeout: 10_000,
+        });
 
-        page.once('dialog', (dialog) => dialog.accept());
         await page.locator('#reset-prompts').click();
+        await acceptConfirmDialog(page);
         await expect(page.locator('.notification.error', { hasText: 'Prompt save rejected' }).last()).toBeVisible();
 
         await openSettingsPanel(page, 'admin-safety');
 
         state.abortPaths.add('/api/settings/mental-health-prompt/reset');
-        page.once('dialog', (dialog) => dialog.accept());
         await page.locator('#reset-mh-prompt').click();
+        await acceptConfirmDialog(page);
         await expect(page.locator('.notification.error', { hasText: 'Failed to fetch' })).toBeVisible();
         state.abortPaths.delete('/api/settings/mental-health-prompt/reset');
 
@@ -1658,24 +1746,24 @@ test.describe('Instructor settings UI', () => {
             message: 'Question reset rejected',
             prompts: { systemPrompt: '', trueFalse: '', multipleChoice: '', shortAnswer: '' },
         };
-        page.once('dialog', (dialog) => dialog.dismiss());
         await page.locator('#reset-question-prompts').click();
+        await dismissConfirmDialog(page);
         await expect(page.locator('#reset-question-prompts')).toHaveText('Reset Question Prompts to Default');
 
-        page.once('dialog', (dialog) => dialog.accept());
         await page.locator('#reset-question-prompts').click();
+        await acceptConfirmDialog(page);
         await expect(page.locator('.notification.error', { hasText: 'Question reset rejected' })).toBeVisible();
 
         state.abortPaths.add('/api/settings/question-prompts/reset');
-        page.once('dialog', (dialog) => dialog.accept());
         await page.locator('#reset-question-prompts').click();
+        await acceptConfirmDialog(page);
         await expect(page.locator('.notification.error', { hasText: 'Failed to fetch' }).last()).toBeVisible();
         state.abortPaths.delete('/api/settings/question-prompts/reset');
 
         await openSettingsPanel(page, 'admin-database');
         state.abortPaths.add('/api/qdrant/delete-all-collections');
-        page.once('dialog', (dialog) => dialog.accept());
         await page.locator('#delete-collection').click();
+        await acceptConfirmDialog(page);
         await expect(page.locator('.notification.error', { hasText: 'Failed to delete data: Network or server error' })).toBeVisible();
         state.abortPaths.delete('/api/qdrant/delete-all-collections');
 
@@ -1704,8 +1792,8 @@ test.describe('Instructor settings UI', () => {
             if (button) button.setAttribute('data-email', email);
         }, TEST_USERS.instructor_fresh.email);
         state.abortPaths.add('/api/settings/system-admins/revoke');
-        page.once('dialog', (dialog) => dialog.accept());
         await page.locator(`.system-admin-revoke-btn[data-email="${TEST_USERS.instructor_fresh.email}"]`).click();
+        await acceptConfirmDialog(page);
         await expect(page.locator('.notification.error', { hasText: 'Failed to revoke system admin access.' })).toBeVisible();
 
         const closeButtons = page.locator('.notification-close');

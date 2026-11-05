@@ -1006,6 +1006,8 @@ async function loadChatSurveyResponses(courseId) {
     const statusEl = document.getElementById('survey-responses-status');
     const container = document.getElementById('survey-responses-container');
     const downloadButton = document.getElementById('download-survey-responses');
+    const statusFilterSelect = document.getElementById('survey-status-filter');
+    const refreshButton = document.getElementById('refresh-survey-responses');
 
     if (statusEl) {
         statusEl.textContent = 'Loading survey responses...';
@@ -1018,6 +1020,11 @@ async function loadChatSurveyResponses(courseId) {
     if (downloadButton) {
         downloadButton.disabled = true;
     }
+    // Disabled while a load is in flight (#570) so changing the filter or
+    // hitting Refresh mid-request can't kick off a second, overlapping fetch
+    // whose response could race the first and show stale data.
+    if (statusFilterSelect) statusFilterSelect.disabled = true;
+    if (refreshButton) refreshButton.disabled = true;
 
     try {
         const statusFilter = document.getElementById('survey-status-filter')?.value || 'all';
@@ -1052,6 +1059,8 @@ async function loadChatSurveyResponses(courseId) {
         if (downloadButton) {
             downloadButton.disabled = !currentSurveyCourseId;
         }
+        if (statusFilterSelect) statusFilterSelect.disabled = false;
+        if (refreshButton) refreshButton.disabled = false;
     }
 }
 
@@ -1260,7 +1269,7 @@ function renderStudents(courseId) {
                         </span>
                         <span>Enrolled</span>
                     </label>
-                    <button class="btn-small btn-secondary" id="save-${s.userId}" disabled
+                    <button class="btn-small btn-secondary btn-accent" id="save-${s.userId}" disabled
                             onclick="saveEnrollment('${courseId}','${s.userId}')">Save</button>
                     
                     ${isTA ? `
@@ -1374,7 +1383,13 @@ window.demoteFromTA = async function(studentId, studentName, courseId) {
 window.toggleEnrollment = function(courseId, studentId, value) {
     dirtyEnrollment.set(studentId, !!value);
     const btn = document.getElementById(`save-${studentId}`);
-    if (btn) btn.disabled = false;
+    if (!btn) return;
+    // Only enable Save when the toggle actually differs from the
+    // last-persisted value - toggling off and back on (or vice versa)
+    // lands back on the original state, so there's nothing to save.
+    const original = currentStudents.find(s => s.userId === studentId);
+    const isDirty = !!value !== !!(original && original.enrolled);
+    btn.disabled = !isDirty;
 };
 
 window.saveEnrollment = async function(courseId, studentId) {
@@ -1387,6 +1402,11 @@ window.saveEnrollment = async function(courseId, studentId) {
         });
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         showNotification(`Enrollment ${value ? 'enabled' : 'disabled'} for ${studentId}`, 'success');
+        // Update the cached original so a later toggle's dirty-check compares
+        // against the value that's now actually persisted, not the pre-save one.
+        const original = currentStudents.find(s => s.userId === studentId);
+        if (original) original.enrolled = value;
+        dirtyEnrollment.delete(studentId);
         const btn = document.getElementById(`save-${studentId}`);
         if (btn) btn.disabled = true;
     } catch (err) {
