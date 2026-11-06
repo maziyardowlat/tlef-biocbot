@@ -92,7 +92,8 @@ describe('POST /login passport.authenticate flow', () => {
         expect(res.status).toBe(200);
         expect(res.body).toMatchObject({ success: true, redirect: '/instructor/home', user: { userId: 'u1', shaped: true } });
         expect(authService.createSessionUser).toHaveBeenCalledWith(user);
-        expect(session).toMatchObject({ userId: 'u1', userRole: 'instructor', userDisplayName: 'Dr. I' });
+        expect(session).toMatchObject({ userId: 'u1', userRole: 'instructor' });
+        expect(session).not.toHaveProperty('userDisplayName');
     });
 
     test('200 success falls back to a manually shaped user when authService is absent', async () => {
@@ -261,7 +262,7 @@ describe('POST /saml/callback', () => {
         const res = await request(buildApp({ user, session })).post('/saml/callback').type('form').send({ SAMLResponse: 'mock' });
         expect(res.status).toBe(302);
         expect(res.headers.location).toBe(destination);
-        expect(session).toEqual({ userId: 'u1', userRole: role, userDisplayName: 'User' });
+        expect(session).toEqual({ userId: 'u1', userRole: role });
     });
 
     test('redirects to /login and skips session writes when passport advances without a user', async () => {

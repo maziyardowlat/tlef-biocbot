@@ -72,6 +72,10 @@ async function createFlaggedQuestion(db, flagData) {
     
     const flag = {
         ...flagData,
+        // Both are optional, and the encryption wrapper refuses an undefined
+        // value in a field it protects.
+        questionContent: flagData.questionContent ?? null,
+        flagDescription: flagData.flagDescription ?? null,
         flagId,
         flagStatus: 'pending',
         createdAt: now,
@@ -181,7 +185,7 @@ async function updateInstructorResponse(db, flagId, responseData) {
     const updateData = {
         instructorResponse: responseData.response,
         instructorId: responseData.instructorId,
-        instructorName: responseData.instructorName,
+        instructorName: responseData.instructorName ?? null,
         flagStatus: finalStatus,
         updatedAt: now
     };

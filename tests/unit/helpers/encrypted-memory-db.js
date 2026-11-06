@@ -26,6 +26,28 @@ function getPath(doc, path) {
     return path.split('.').reduce((acc, key) => (acc == null ? undefined : acc[key]), doc);
 }
 
+function setPath(doc, path, value) {
+    const segments = path.split('.');
+    const last = segments.pop();
+    let target = doc;
+    for (const segment of segments) {
+        if (target[segment] === null || typeof target[segment] !== 'object') target[segment] = {};
+        target = target[segment];
+    }
+    target[last] = value;
+}
+
+function unsetPath(doc, path) {
+    const segments = path.split('.');
+    const last = segments.pop();
+    let target = doc;
+    for (const segment of segments) {
+        if (target === null || typeof target !== 'object') return;
+        target = target[segment];
+    }
+    if (target !== null && typeof target === 'object') delete target[last];
+}
+
 function compareValues(a, b) {
     if (a == null && b == null) return 0;
     if (a == null) return 1;
@@ -96,14 +118,38 @@ class EnvelopeSafeCollection {
             // Like MongoDB, an upsert starts from the filter's plain equality fields.
             const inserted = Object.fromEntries(Object.entries(query || {})
                 .filter(([key, value]) => !key.startsWith('$') && (value === null || typeof value !== 'object')));
-            Object.assign(inserted, update.$setOnInsert, update.$set);
+            Object.assign(inserted, update.$setOnInsert);
+            for (const [key, value] of Object.entries(update.$set || {})) {
+                setPath(inserted, key, value);
+            }
             this.docs.push(inserted);
             return { matchedCount: 0, modifiedCount: 0, upsertedCount: 1, upsertedId: 'mem-upsert' };
         }
         for (const [key, value] of Object.entries(update.$set || {})) {
-            target[key] = value;
+            setPath(target, key, value);
+        }
+        for (const key of Object.keys(update.$unset || {})) {
+            unsetPath(target, key);
         }
         return { matchedCount: 1, modifiedCount: 1, upsertedCount: 0 };
+    }
+
+    /** Only updateOne: the one bulk operation the code under test sends. */
+    async bulkWrite(operations) {
+        let upsertedCount = 0;
+        let matchedCount = 0;
+        for (const { updateOne } of operations) {
+            const result = await this.updateOne(updateOne.filter, updateOne.update, { upsert: updateOne.upsert });
+            upsertedCount += result.upsertedCount;
+            matchedCount += result.matchedCount;
+        }
+        return { upsertedCount, matchedCount };
+    }
+
+    async deleteMany(query) {
+        const before = this.docs.length;
+        this.docs = this.docs.filter((doc) => !matchesQuery(doc, query || {}));
+        return { deletedCount: before - this.docs.length };
     }
 
     async deleteOne(query) {

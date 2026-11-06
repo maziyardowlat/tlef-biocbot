@@ -16,6 +16,15 @@ function llmThrowing() {
 }
 
 describe('TrackerService.analyzeMessage', () => {
+    test('never writes the student message or the analysis to the logs', async () => {
+        const llm = llmReturning(JSON.stringify({ isStruggling: true, mappedTopic: 'Secret Topic', reason: 'Secret reason' }));
+
+        await new TrackerService(llm).analyzeMessage('my secret question', 'BIOC-1', 'Unit 1', ['Secret Topic']);
+
+        const logged = JSON.stringify([...console.log.mock.calls, ...console.warn.mock.calls]);
+        expect(logged).not.toMatch(/my secret question|Secret Topic|Secret reason/);
+    });
+
     test('maps a struggle to an approved topic (case-insensitive) above the confidence floor', async () => {
         const llm = llmReturning(JSON.stringify({
             isStruggling: true,

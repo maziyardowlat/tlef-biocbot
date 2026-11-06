@@ -1267,7 +1267,7 @@ router.post('/generate-ai', async (req, res) => {
 
         if (!hasAccess) {
             console.log(`🚫 [PERMISSION] Access denied for user ${user?.userId || 'unknown'} to course ${courseId}`);
-            console.log(`🔍 [PERMISSION] Course instructorId: ${course.instructorId}, User: ${user?.userId}, Email: ${user?.email}`);
+            console.log(`🔍 [PERMISSION] Course instructorId: ${course.instructorId}, User: ${user?.userId}`);
             console.log(`🔍 [PERMISSION] Course instructors array: ${JSON.stringify(course.instructors)}`);
             return res.status(403).json({
                 success: false,

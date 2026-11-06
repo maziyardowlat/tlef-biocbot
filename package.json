@@ -14,6 +14,7 @@
     "encryption:plan": "ubc-genai-encryption plan --config ./src/config/encryption.js",
     "encryption:plan:all": "ubc-genai-encryption plan --config ./src/config/encryption.js --all-configured",
     "encryption:status": "ubc-genai-encryption status --config ./src/config/encryption.js",
+    "encryption:ensure-indexes": "ubc-genai-encryption ensure-indexes --config ./src/config/encryption.js",
     "encryption:migrate": "ubc-genai-encryption migrate --config ./src/config/encryption.js",
     "encryption:migrate:dry-run": "ubc-genai-encryption migrate --config ./src/config/encryption.js --dry-run",
     "encryption:verify": "ubc-genai-encryption verify --config ./src/config/encryption.js",

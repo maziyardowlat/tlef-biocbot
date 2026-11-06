@@ -122,13 +122,14 @@ test.describe('Quiz page — answering questions', () => {
 
         // The attempt was persisted server-side as correct:true.
         await expect.poll(async () => {
-            return await withDb((db) =>
-                db.collection('quizAttempts').countDocuments({
+            // Counted here: the result is encrypted when the server has encryption on.
+            const attempts = await withDb((db) =>
+                db.collection('quizAttempts').find({
                     courseId: QUIZ_COURSE_ID,
                     questionType: 'multiple-choice',
-                    correct: true,
-                })
+                }).toArray()
             );
+            return attempts.filter((attempt) => attempt.correct === true).length;
         }, { timeout: 10_000 }).toBe(1);
     });
 

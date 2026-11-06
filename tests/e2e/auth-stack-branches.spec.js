@@ -42,6 +42,7 @@ const {
     cleanupCourses,
     cleanupCoursesForUser,
 } = require('./helpers/courses-test');
+const { deleteUsersByUsernamePrefix } = require('./helpers/app-db');
 
 const COURSE_A = 'BIOC-E2E-AUTH-BRANCH-A';
 
@@ -105,7 +106,7 @@ test.afterAll(async () => {
     await cleanupCourses([COURSE_A]);
     await cleanupCoursesForUser(instructorId);
     await withDb((db) =>
-        db.collection('users').deleteMany({ username: { $regex: /^e2e_auth_branch_/ } })
+        deleteUsersByUsernamePrefix(db, 'e2e_auth_branch_')
     );
 });
 

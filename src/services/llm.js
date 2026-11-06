@@ -249,7 +249,7 @@ class LLMService {
                 await this._performInitialization();
             }
 
-            console.log(`📤 Sending message to LLM: "${message.substring(0, 50)}..."`);
+            console.log('📤 Sending message to LLM');
 
             // Set default options for BiocBot context - provider-aware
             const defaultOptions = {
@@ -749,8 +749,6 @@ Return ONLY a JSON object with the following structure:
                 lane: LANES.FRONTEND,
                 response_format: { type: "json_object" } // For providers that support it
             });
-
-            console.log('🤖 [EVALUATION] Raw response:', response.content);
 
             // Parse JSON response
             let result;

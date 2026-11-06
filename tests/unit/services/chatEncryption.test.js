@@ -26,6 +26,8 @@ const describeWithToolkit = loadEncryptionToolkit() ? describe : describe.skip;
 
 const SYNTHETIC_KEY = Buffer.alloc(32, 7).toString('base64');
 
+const SYNTHETIC_BLIND_INDEX_KEY = Buffer.alloc(32, 9).toString('base64');
+
 /** @returns {any} */
 function fakeDb() {
     return {
@@ -92,7 +94,8 @@ describeWithToolkit('student chat encryption with the toolkit installed', () => 
     test('wraps chat_sessions when enabled with a valid dedicated key', async () => {
         const protectedDb = /** @type {any} */ (await initializeChatEncryption(fakeDb(), {
             BIOCBOT_CHAT_ENCRYPTION_ENABLED: 'true',
-            BIOCBOT_CHAT_ENCRYPTION_KEY: SYNTHETIC_KEY
+            BIOCBOT_CHAT_ENCRYPTION_KEY: SYNTHETIC_KEY,
+            BIOCBOT_BLIND_INDEX_KEY: SYNTHETIC_BLIND_INDEX_KEY
         }));
 
         expect(protectedDb).not.toBeNull();
@@ -106,7 +109,8 @@ describeWithToolkit('student chat encryption with the toolkit installed', () => 
         const rawDb = memoryDb();
         const protectedDb = /** @type {any} */ (await initializeChatEncryption(rawDb, {
             BIOCBOT_CHAT_ENCRYPTION_ENABLED: 'true',
-            BIOCBOT_CHAT_ENCRYPTION_KEY: SYNTHETIC_KEY
+            BIOCBOT_CHAT_ENCRYPTION_KEY: SYNTHETIC_KEY,
+            BIOCBOT_BLIND_INDEX_KEY: SYNTHETIC_BLIND_INDEX_KEY
         }));
         const chats = protectedDb.collection('chat_sessions');
         const plaintext = {
@@ -138,6 +142,7 @@ describeWithToolkit('student chat encryption with the toolkit installed', () => 
         await expect(initializeChatEncryption(fakeDb(), {
             BIOCBOT_CHAT_ENCRYPTION_ENABLED: 'true',
             BIOCBOT_CHAT_ENCRYPTION_KEY: SYNTHETIC_KEY,
+            BIOCBOT_BLIND_INDEX_KEY: SYNTHETIC_BLIND_INDEX_KEY,
             BIOCBOT_CHAT_ENCRYPTION_READ_POLICY: 'lenient'
         })).rejects.toMatchObject({ code: 'CONFIGURATION_ERROR' });
     });
@@ -162,6 +167,7 @@ describeWithToolkit('chat transcript collections share one encryption policy', (
         const protectedDb = /** @type {any} */ (await initializeChatEncryption(rawDb, {
             BIOCBOT_CHAT_ENCRYPTION_ENABLED: 'true',
             BIOCBOT_CHAT_ENCRYPTION_KEY: SYNTHETIC_KEY,
+            BIOCBOT_BLIND_INDEX_KEY: SYNTHETIC_BLIND_INDEX_KEY,
             ...extraEnv
         }));
         return { rawDb, protectedDb };
@@ -180,15 +186,19 @@ describeWithToolkit('chat transcript collections share one encryption policy', (
             'chatSurveyResponses',
             'quizAttempts',
             'lms_canvas_tokens',
-            'lms_moodle_tokens'
+            'lms_moodle_tokens',
+            'users',
+            'struggleActivity',
+            'lms_identity_mappings',
+            'lms_grade_snapshots',
+            'userAgreements'
         ]);
         for (const name of ENCRYPTED_COLLECTIONS) {
             expect(protectedDb.isProtected(name)).toBe(true);
         }
         // Collections deliberately left out of this rollout.
         for (const name of [
-            'users', 'courses', 'documents', 'superchats', 'struggleActivity',
-            'lms_identity_mappings', 'lms_grade_snapshots'
+            'courses', 'documents', 'superchats', 'superchat_notes', 'student_pseudonyms'
         ]) {
             expect(protectedDb.isProtected(name)).toBe(false);
         }
@@ -201,8 +211,8 @@ describeWithToolkit('chat transcript collections share one encryption policy', (
         };
         const { protectedDb } = await wrap({}, renames);
 
-        expect(Object.keys(resolveEncryptedFields(renames)).slice(-2))
-            .toEqual(['renamed_canvas_tokens', 'renamed_moodle_tokens']);
+        expect(Object.keys(resolveEncryptedFields(renames)))
+            .toEqual(expect.arrayContaining(['renamed_canvas_tokens', 'renamed_moodle_tokens']));
         expect(protectedDb.isProtected('renamed_canvas_tokens')).toBe(true);
         expect(protectedDb.isProtected('renamed_moodle_tokens')).toBe(true);
         expect(protectedDb.isProtected('lms_canvas_tokens')).toBe(false);
@@ -250,12 +260,15 @@ describeWithToolkit('chat transcript collections share one encryption policy', (
             studentId: 'stu-1',
             instructorId: 'inst-1',
             superchatId: 'sc-1',
-            instructorName: 'Dr I',
             messageCount: 2,
             duration: '45s',
             savedAt: '2026-08-26T10:00:00.000Z',
             isDeleted: false
         });
+        if (name === 'instructor_chat_sessions') {
+            expect(stored.instructorName).toMatchObject({ __ubc_enc: 1 });
+            expect(JSON.stringify(stored)).not.toContain('Dr I');
+        }
 
         // 2. A wrapped read returns the original payload unchanged.
         const found = await protectedDb.collection(name).findOne({ sessionId: 'sess-1' });
@@ -375,7 +388,7 @@ describeWithToolkit('chat transcript collections share one encryption policy', (
         // chat_sessions ciphertext must therefore remain readable.
         const { createEncryptedDb } = /** @type {any} */ (loadEncryptionToolkit());
         const { buildChatEncryptionConfig } = require('../../../src/config/chatEncryption');
-        const env = { BIOCBOT_CHAT_ENCRYPTION_KEY: SYNTHETIC_KEY };
+        const env = { BIOCBOT_CHAT_ENCRYPTION_KEY: SYNTHETIC_KEY, BIOCBOT_BLIND_INDEX_KEY: SYNTHETIC_BLIND_INDEX_KEY };
         const rawDb = encryptedMemoryDb();
 
         const previousConfig = buildChatEncryptionConfig(env);
@@ -406,7 +419,8 @@ describeWithToolkit('free-text fields outside the transcript collections', () =>
         const rawDb = encryptedMemoryDb(seed);
         const protectedDb = /** @type {any} */ (await initializeChatEncryption(rawDb, {
             BIOCBOT_CHAT_ENCRYPTION_ENABLED: 'true',
-            BIOCBOT_CHAT_ENCRYPTION_KEY: SYNTHETIC_KEY
+            BIOCBOT_CHAT_ENCRYPTION_KEY: SYNTHETIC_KEY,
+            BIOCBOT_BLIND_INDEX_KEY: SYNTHETIC_BLIND_INDEX_KEY
         }));
         return { rawDb, protectedDb };
     }

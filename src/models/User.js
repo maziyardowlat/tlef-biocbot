@@ -460,7 +460,7 @@ async function createOrGetSAMLUser(db, samlData) {
         // If PUID is provided but not yet stored (migration case), save it now
         if (samlData.puid && !existingUser.puid) {
             updateFields.puid = samlData.puid;
-            console.log(`Updating existing user ${existingUser.userId} with PUID: ${samlData.puid}`);
+            console.log(`Storing PUID on existing user ${existingUser.userId}`);
         }
 
         if (samlData.samlId && !existingUser.samlId) {
@@ -533,7 +533,7 @@ async function createOrGetSAMLUser(db, samlData) {
         email: normalizedEmail,
         passwordHash: null, // No password for SAML users
         role: samlData.role || 'student', // Default to student, can be updated
-        displayName: samlData.displayName || samlData.username,
+        displayName: samlData.displayName || samlData.username || normalizedEmail,
         authProvider: 'saml',
         samlId: samlData.samlId || null,
         puid: samlData.puid || null, // Store PUID for CWL users
@@ -554,7 +554,7 @@ async function createOrGetSAMLUser(db, samlData) {
     
     const result = await collection.insertOne(user);
     
-    console.log(`SAML user created: ${userId} (${user.role})${samlData.puid ? ` with PUID: ${samlData.puid}` : ''}`);
+    console.log(`SAML user created: ${userId} (${user.role})`);
     
     return {
         success: true,
@@ -781,15 +781,16 @@ async function updateUserStruggleState(db, userId, struggleData, courseId = null
             timestamp: now
         });
 
-        console.log(`💾 [DB] Persisted Active state for ${studentName} - Topic: ${normalizedTopic}`);
+        console.log(`💾 [DB] Persisted Active state for ${user.userId}`);
     }
 
-    // Persist changes
+    // Persist changes. struggleState is encrypted as one value, so it is written
+    // whole: an update cannot address a path inside it.
     await collection.updateOne(
         { userId },
         { 
             $set: { 
-                'struggleState.topics': topics,
+                struggleState: { ...(user.struggleState || {}), topics },
                 updatedAt: now
             }
         }
@@ -821,34 +822,36 @@ async function resetUserStruggleState(db, userId, topic, courseId = null) {
     const studentName = user.displayName || user.username || 'Unknown Student';
     const activeCourseId = courseId || user.preferences?.courseId || null;
 
-    let updateOp = {};
+    const existingTopics = user.struggleState?.topics || [];
     let topicsToReset = []; // Track which topics were reset
+    let remainingTopics = [];
     
     if (topic === 'ALL') {
         // Get all active topics before clearing
-        topicsToReset = user.struggleState?.topics || [];
-        
-        updateOp.$set = { 
-            'struggleState.topics': [],
-            updatedAt: now
-        };
+        topicsToReset = existingTopics;
     } else {
         // Find the specific topic before removing
         const normalizedTopic = topic.toLowerCase().trim();
-        const existingTopic = user.struggleState?.topics?.find(t => t.topic === normalizedTopic);
+        const existingTopic = existingTopics.find(t => t.topic === normalizedTopic);
         
         if (existingTopic) {
             topicsToReset = [existingTopic];
         }
         
         // Remove specific topic
-        updateOp.$pull = { 'struggleState.topics': { topic: normalizedTopic } };
-        updateOp.$set = { updatedAt: now };
+        remainingTopics = existingTopics.filter(t => t.topic !== normalizedTopic);
     }
 
-    const result = await collection.updateOne(
+    // struggleState is encrypted as one value, so it is written whole: an update
+    // cannot $pull from a path inside it.
+    await collection.updateOne(
         { userId },
-        updateOp
+        {
+            $set: {
+                struggleState: { ...(user.struggleState || {}), topics: remainingTopics },
+                updatedAt: now
+            }
+        }
     );
     
     // Persist to MongoDB for each topic that was reset (deactivated)
@@ -864,7 +867,7 @@ async function resetUserStruggleState(db, userId, topic, courseId = null) {
                 timestamp: now
             });
             
-            console.log(`💾 [DB] Persisted Inactive state for ${studentName} - Topic: ${topicObj.topic}`);
+            console.log(`💾 [DB] Persisted Inactive state for ${user.userId}`);
         }
     }
 

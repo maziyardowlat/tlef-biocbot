@@ -50,6 +50,8 @@ function requireEncryptionToolkit() {
 
 const CHAT_ENCRYPTION_NAMESPACE = 'tlef-biocbot';
 const ACTIVE_CHAT_KEY_ID = 'student-chat-2026-01';
+const ACTIVE_BLIND_INDEX_KEY_ID = 'user-lookup-2026-11';
+const BLIND_INDEX_KEY_ENV = 'BIOCBOT_BLIND_INDEX_KEY';
 
 /**
  * Every protected collection and the fields encrypted in it, in the order an
@@ -60,8 +62,15 @@ const ACTIVE_CHAT_KEY_ID = 'student-chat-2026-01';
  * question), mental-health flag excerpts, flagged responses, feedback previews,
  * survey comments, and quiz answers. The two LMS token collections hold each
  * instructor's Canvas OAuth tokens and Moodle web-service token, which the LMS
- * toolkit's token store only ever looks up by `userKey`. None of them is ever
- * filtered, sorted, regex-searched, grouped, or indexed, which is what makes
+ * toolkit's token store only ever looks up by `userKey`.
+ *
+ * The rest says who a person is, or attaches something sensitive to them: the
+ * `users` identity fields, the copies of names and emails saved on other
+ * records, LMS grades and quiz results, what a student has been struggling
+ * with, and the IP address and browser recorded when they accepted the terms.
+ *
+ * None of these is ever filtered, sorted, regex-searched, grouped, or indexed,
+ * apart from the lookups listed in BLIND_INDEXED_FIELDS. That is what makes
  * encrypting them safe; a field that is must not be added here without a query
  * review.
  *
@@ -77,17 +86,66 @@ const ACTIVE_CHAT_KEY_ID = 'student-chat-2026-01';
  * @type {Readonly<Record<string, readonly string[]>>}
  */
 const ENCRYPTED_FIELDS = Object.freeze({
-    chat_sessions: Object.freeze(['chatData', 'title']),
-    student_super_course_chat_sessions: Object.freeze(['chatData', 'title']),
-    instructor_chat_sessions: Object.freeze(['chatData', 'title']),
-    mentalHealthFlags: Object.freeze(['message', 'conversationContext', 'llmReason']),
-    flaggedQuestions: Object.freeze(['questionContent', 'flagDescription', 'instructorResponse']),
-    messageFeedback: Object.freeze(['messageContentPreview']),
-    chatSurveyResponses: Object.freeze(['comment']),
-    quizAttempts: Object.freeze(['studentAnswer', 'feedback']),
+    chat_sessions: Object.freeze(['chatData', 'title', 'studentName']),
+    student_super_course_chat_sessions: Object.freeze(['chatData', 'title', 'studentName']),
+    instructor_chat_sessions: Object.freeze(['chatData', 'title', 'instructorName']),
+    mentalHealthFlags: Object.freeze(['message', 'conversationContext', 'llmReason', 'studentName', 'concernLevel']),
+    flaggedQuestions: Object.freeze(['questionContent', 'flagDescription', 'instructorResponse', 'studentName', 'reporterName', 'instructorName']),
+    messageFeedback: Object.freeze(['messageContentPreview', 'studentName']),
+    chatSurveyResponses: Object.freeze(['comment', 'studentName']),
+    quizAttempts: Object.freeze(['studentAnswer', 'feedback', 'correct']),
     lms_canvas_tokens: Object.freeze(['tokens']),
-    lms_moodle_tokens: Object.freeze(['tokens'])
+    lms_moodle_tokens: Object.freeze(['tokens']),
+    users: Object.freeze(['username', 'email', 'displayName', 'puid', 'samlId', 'academicStudentId', 'struggleState']),
+    struggleActivity: Object.freeze(['studentName', 'topic']),
+    lms_identity_mappings: Object.freeze(['externalLabel', 'externalEmail']),
+    lms_grade_snapshots: Object.freeze(['score', 'grade']),
+    userAgreements: Object.freeze(['ipAddress', 'userAgent'])
 });
+
+/**
+ * The encrypted fields BiocBot still has to find a row by. Each stores a keyed
+ * digest of its value beside the ciphertext, so an equality or $in lookup keeps
+ * working; sorting, ranges, and regex searches do not. Login finds accounts by
+ * PUID, SAML id, username, and email, and the roster syncs by PUID, email, and
+ * student number.
+ *
+ * A digest shows which rows share a value, so only high-cardinality identifiers
+ * belong here. None is unique: nothing enforces uniqueness on `users` today,
+ * and basic and SAML accounts may legitimately share an email.
+ *
+ * Maps collection -> field -> the toolkit's normalizer for that value.
+ *
+ * @type {Readonly<Record<string, Readonly<Record<string, 'exact' | 'email'>>>>}
+ */
+const BLIND_INDEXED_FIELDS = Object.freeze({
+    users: Object.freeze({
+        username: 'exact',
+        email: 'email',
+        puid: 'exact',
+        samlId: 'exact',
+        academicStudentId: 'exact'
+    })
+});
+
+/**
+ * @param {string} collection
+ * @param {string} field
+ * @returns {{ encrypt: true, blindIndex?: { field: string, keyId: string, normalize: string, unique: false } }}
+ */
+function buildFieldPolicy(collection, field) {
+    const normalize = BLIND_INDEXED_FIELDS[collection]?.[field];
+    if (!normalize) return { encrypt: true };
+    return {
+        encrypt: true,
+        blindIndex: {
+            field: `${field}__bidx`,
+            keyId: ACTIVE_BLIND_INDEX_KEY_ID,
+            normalize,
+            unique: false
+        }
+    };
+}
 
 /** @type {readonly string[]} */
 const ENCRYPTED_COLLECTIONS = Object.freeze(Object.keys(ENCRYPTED_FIELDS));
@@ -136,10 +194,10 @@ function resolveEncryptedFields(env = process.env) {
 /**
  * Build BiocBot's application-owned encryption policy.
  *
- * The rollout intentionally protects only the free-text and LMS token fields
- * listed in ENCRYPTED_FIELDS. Operational fields (ids, names, statuses,
- * timestamps) stay plaintext so existing filters, sorts, retention,
- * pseudonymization, and dashboard queries keep their current semantics.
+ * The rollout protects the fields listed in ENCRYPTED_FIELDS. Operational
+ * fields (opaque ids, statuses, timestamps) stay plaintext so existing filters,
+ * sorts, retention, pseudonymization, and dashboard queries keep their current
+ * semantics.
  *
  * @param {NodeJS.ProcessEnv | Record<string, string | undefined>} env
  * @returns {import('@ubc/genai-toolkit-encryption').EncryptionConfig}
@@ -162,7 +220,7 @@ function buildChatEncryptionConfig(env = process.env) {
                 env: 'BIOCBOT_CHAT_ENCRYPTION_KEY'
             },
             decryptionKeys: [],
-            blindIndexKeys: [],
+            blindIndexKeys: [{ id: ACTIVE_BLIND_INDEX_KEY_ID, env: BLIND_INDEX_KEY_ENV }],
             env
         }),
         readPolicy,
@@ -171,7 +229,7 @@ function buildChatEncryptionConfig(env = process.env) {
         collections: Object.fromEntries(
             Object.entries(resolveEncryptedFields(env)).map(([name, fields]) => [
                 name,
-                { fields: Object.fromEntries(fields.map((field) => [field, { encrypt: true }])) }
+                { fields: Object.fromEntries(fields.map((field) => [field, buildFieldPolicy(name, field)])) }
             ])
         ),
         database: {
@@ -181,7 +239,10 @@ function buildChatEncryptionConfig(env = process.env) {
 }
 
 module.exports = {
+    ACTIVE_BLIND_INDEX_KEY_ID,
     ACTIVE_CHAT_KEY_ID,
+    BLIND_INDEX_KEY_ENV,
+    BLIND_INDEXED_FIELDS,
     CHAT_ENCRYPTION_NAMESPACE,
     ENCRYPTED_COLLECTIONS,
     ENCRYPTED_FIELDS,

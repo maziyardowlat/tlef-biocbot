@@ -176,7 +176,7 @@ describe.each([
             activeLlmProvider: 'openai',
             llmCredentials: { openai: { ciphertext: 'encrypted:secret', status: 'valid' } },
             llmApiKey: { ciphertext: 'encrypted:secret', status: 'valid' },
-            updatedBy: 'admin@example.com'
+            updatedBy: 'admin1'
         });
     });
 

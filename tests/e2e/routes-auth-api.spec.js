@@ -10,6 +10,7 @@ const crypto = require('crypto');
 const { test, expect, request } = require('./fixtures/monocart');
 const { TEST_USERS, storageStatePath } = require('./helpers/users');
 const { withDb, getUserIdByUsername } = require('./helpers/courses-test');
+const { deleteUsersByUsernamePrefix } = require('./helpers/app-db');
 
 let instructorId;
 let studentId;
@@ -26,7 +27,7 @@ test.beforeAll(async () => {
 test.afterAll(async () => {
     // Clean any users created during this spec
     await withDb((db) =>
-        db.collection('users').deleteMany({ username: { $regex: /^e2e_api_auth_/ } })
+        deleteUsersByUsernamePrefix(db, 'e2e_api_auth_')
     );
 });
 

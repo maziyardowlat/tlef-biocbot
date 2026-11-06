@@ -19,7 +19,7 @@ BiocBot is an AI-powered study assistant platform that enables students to inter
 - **SAML / UBC CWL Auth**: Shibboleth integration alongside local username/password auth
 - **User Agreement**: Modal-gated terms acceptance before platform access
 - **Session Idle Timeout**: Automatic logout after inactivity
-- **Student Chat Encryption**: Optional field-level encryption for chat transcripts, chat titles, and other student-written text, with resumable migration tooling
+- **Field Encryption**: Optional field-level encryption for chat transcripts, other student-written text, LMS tokens, user identity, and LMS grades, with resumable migration tooling
 
 ## 🏗️ Architecture
 
@@ -136,7 +136,7 @@ docker run -p 6333:6333 qdrant/qdrant
 npm run dev
 ```
 
-For the staged student-chat encryption rollout, see
+For the staged encryption rollout, see
 [`documentation/student-chat-encryption-rollout.md`](documentation/student-chat-encryption-rollout.md).
 
 ## Health checks

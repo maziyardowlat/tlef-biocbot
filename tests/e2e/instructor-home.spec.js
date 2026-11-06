@@ -1,6 +1,7 @@
 // @ts-check
 require('dotenv').config();
 const { MongoClient } = require('mongodb');
+const { openAppDb } = require('./helpers/app-db');
 const { test, expect } = require('./fixtures/monocart');
 const { TEST_USERS, storageStatePath } = require('./helpers/users');
 
@@ -27,7 +28,7 @@ async function withDb(fn) {
     const client = new MongoClient(process.env.MONGO_URI);
     await client.connect();
     try {
-        return await fn(client.db());
+        return await fn(await openAppDb(client));
     } finally {
         await client.close();
     }

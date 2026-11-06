@@ -2,6 +2,7 @@
 require('dotenv').config();
 const path = require('path');
 const { MongoClient } = require('mongodb');
+const { openAppDb } = require('./helpers/app-db');
 const { test, expect, request } = require('./fixtures/monocart');
 const { TEST_USERS, loadCredentials } = require('./helpers/users');
 const { resetLlmStub, addLlmStubRule } = require('./helpers/llm-stub');
@@ -72,7 +73,7 @@ async function withDb(callback) {
     const client = new MongoClient(process.env.MONGO_URI);
     await client.connect();
     try {
-        return await callback(client.db());
+        return await callback(await openAppDb(client));
     } finally {
         await client.close();
     }

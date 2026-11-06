@@ -37,9 +37,6 @@ function getUserAgreementsCollection(db) {
  */
 async function getUserAgreement(db, userId, role) {
     console.log('🔍 [USER_AGREEMENT] Getting agreement for:', { userId, role });
-    console.log('🔍 [USER_AGREEMENT] Database object:', db);
-    console.log('🔍 [USER_AGREEMENT] Database type:', typeof db);
-    console.log('🔍 [USER_AGREEMENT] Database collections method:', typeof db?.collection);
     
     if (!db) {
         throw new Error('Database object is undefined');
@@ -51,8 +48,6 @@ async function getUserAgreement(db, userId, role) {
         userId,
         userType: role 
     });
-    
-    console.log('🔍 [USER_AGREEMENT] Found agreement:', agreement);
     
     if (!agreement) {
         return {
@@ -137,38 +132,20 @@ async function hasUserAgreed(db, userId, role, currentVersion = '1.0') {
 async function getAgreementStats(db, role = null) {
     const collection = getUserAgreementsCollection(db);
     
-    const matchStage = role ? { userType: role } : {};
-    
-    const pipeline = [
-        { $match: matchStage },
-        {
-            $group: {
-                _id: null,
-                totalUsers: { $sum: 1 },
-                agreedUsers: { $sum: { $cond: ['$hasAgreed', 1, 0] } },
-                pendingUsers: { $sum: { $cond: ['$hasAgreed', 0, 1] } }
-            }
-        }
-    ];
-    
-    const result = await collection.aggregate(pipeline).toArray();
-    
-    if (result.length === 0) {
-        return {
-            totalUsers: 0,
-            agreedUsers: 0,
-            pendingUsers: 0,
-            agreementRate: 0
-        };
-    }
-    
-    const stats = result[0];
-    const agreementRate = stats.totalUsers > 0 ? (stats.agreedUsers / stats.totalUsers) * 100 : 0;
-    
+    // Counted here rather than with $group: the encryption wrapper rejects
+    // $group on protected collections.
+    const agreements = await collection
+        .find(role ? { userType: role } : {}, { projection: { hasAgreed: 1 } })
+        .toArray();
+
+    const totalUsers = agreements.length;
+    const agreedUsers = agreements.filter((agreement) => agreement.hasAgreed).length;
+    const agreementRate = totalUsers > 0 ? (agreedUsers / totalUsers) * 100 : 0;
+
     return {
-        totalUsers: stats.totalUsers,
-        agreedUsers: stats.agreedUsers,
-        pendingUsers: stats.pendingUsers,
+        totalUsers,
+        agreedUsers,
+        pendingUsers: totalUsers - agreedUsers,
         agreementRate: Math.round(agreementRate * 100) / 100
     };
 }

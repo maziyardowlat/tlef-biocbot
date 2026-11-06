@@ -390,7 +390,7 @@ test.describe('/api/student/struggle (student)', () => {
         await withDb((db) =>
             db.collection('users').updateOne(
                 { userId: studentId },
-                { $set: { 'struggleState.topics': [{ topic: 'mitosis', count: 4, isActive: true, lastStruggle: new Date() }] } }
+                { $set: { struggleState: { topics: [{ topic: 'mitosis', count: 4, isActive: true, lastStruggle: new Date() }] } } }
             )
         );
     });

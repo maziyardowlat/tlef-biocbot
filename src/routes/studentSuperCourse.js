@@ -110,7 +110,7 @@ async function trackSuperCourseStruggle({ db, llmService, user, message, superch
             superchatId: superchatId || null
         });
 
-        console.log(`🕵️ [SUPER_STRUGGLE] Recorded "${analysis.topic}" (${isActive ? 'Active' : 'Inactive'}) for ${studentName} → course ${analysis.courseId} (conf ${analysis.matchConfidence})`);
+        console.log(`🕵️ [SUPER_STRUGGLE] Recorded struggle (${isActive ? 'Active' : 'Inactive'}) for ${user.userId} → course ${analysis.courseId} (conf ${analysis.matchConfidence})`);
     } catch (error) {
         console.error('❌ [SUPER_STRUGGLE] Error tracking Super Chat struggle:', error);
     }

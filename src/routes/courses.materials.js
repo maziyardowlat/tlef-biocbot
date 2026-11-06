@@ -78,7 +78,6 @@ router.post('/:courseId/remove-document', async (req, res) => {
  */
 router.post('/course-materials/confirm', async (req, res) => {
     console.log('🔧 [BACKEND] Course materials confirm endpoint hit!');
-    console.log('🔧 [BACKEND] Request body:', req.body);
     
     try {
         const { week, instructorId } = req.body;

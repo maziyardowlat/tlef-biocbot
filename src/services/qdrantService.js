@@ -702,8 +702,6 @@ class QdrantService {
      */
     async searchDocuments(query, filters = {}, limit = 10) {
         try {
-            console.log(`Searching for: "${query}"`);
-
             // Ensure collection exists before searching
             await this.ensureCollectionExists();
 

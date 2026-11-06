@@ -97,17 +97,55 @@ async function upsertAcademicStudent(db, student, courseId) {
     };
 }
 
-function getManagedEnrollmentPuids(course = {}) {
+/**
+ * The accounts this course's academic sync enrolled earlier. Enrollment records
+ * are keyed by user id and hold no identity: a course document is not encrypted
+ * and its enrollment keys are dynamic, so `users` stays the only place that
+ * says who an account is.
+ * @param {Object} course
+ * @returns {Set<string>}
+ */
+function getManagedEnrollmentUserIds(course = {}) {
     const enrollment = course.studentEnrollment || {};
-    const managed = new Map();
+    return new Set(
+        Object.entries(enrollment)
+            .filter(([, record]) => record && record.source === 'academicSync')
+            .map(([userId]) => userId)
+    );
+}
 
-    for (const [userId, record] of Object.entries(enrollment)) {
-        if (!record || record.source !== 'academicSync') continue;
-        const puid = normalizeText(record.puid || record.academicSync?.puid);
-        if (puid) managed.set(puid, userId);
+const ENROLLMENT_IDENTITY_FIELDS = Object.freeze(['puid', 'studentId', 'email', 'displayName', 'academicSync']);
+
+/**
+ * Remove the copies of PUIDs, student numbers, emails, and names that earlier
+ * academic syncs saved on enrollment records. Safe to run on every start: a
+ * course with nothing left to remove is not written.
+ * @param {Object} db - The raw database; `courses` is not encrypted
+ * @returns {Promise<number>} How many courses changed
+ */
+async function stripEnrollmentIdentity(db) {
+    const courses = db.collection('courses');
+    const rows = await courses
+        .find({ studentEnrollment: { $exists: true } }, { projection: { courseId: 1, studentEnrollment: 1 } })
+        .toArray();
+
+    let changed = 0;
+    for (const { _id, studentEnrollment } of rows) {
+        /** @type {Record<string, ''>} */
+        const unset = {};
+        for (const [userId, record] of Object.entries(studentEnrollment || {})) {
+            for (const field of ENROLLMENT_IDENTITY_FIELDS) {
+                if (record && Object.hasOwn(record, field)) {
+                    unset[`studentEnrollment.${userId}.${field}`] = '';
+                }
+            }
+        }
+        if (Object.keys(unset).length) {
+            await courses.updateOne({ _id }, { $unset: unset });
+            changed += 1;
+        }
     }
-
-    return managed;
+    return changed;
 }
 
 async function syncCourseRoster(db, courseId, options = {}) {
@@ -149,7 +187,7 @@ async function syncCourseRoster(db, courseId, options = {}) {
         };
     }
 
-    const managedBefore = getManagedEnrollmentPuids(course);
+    const managedBefore = getManagedEnrollmentUserIds(course);
     const now = new Date();
     const summary = {
         success: true,
@@ -163,8 +201,10 @@ async function syncCourseRoster(db, courseId, options = {}) {
         skipped: skipped.length
     };
 
-    for (const [puid, student] of incoming.entries()) {
+    const syncedUserIds = new Set();
+    for (const student of incoming.values()) {
         const user = await upsertAcademicStudent(db, student, courseId);
+        syncedUserIds.add(user.userId);
 
         await coursesCollection.updateOne(
             { courseId },
@@ -173,10 +213,6 @@ async function syncCourseRoster(db, courseId, options = {}) {
                     [`studentEnrollment.${user.userId}`]: {
                         enrolled: true,
                         source: 'academicSync',
-                        puid,
-                        studentId: student.studentId || null,
-                        email: student.email || null,
-                        displayName: student.preferredName || null,
                         syncedAt: now,
                         updatedAt: now
                     },
@@ -185,15 +221,15 @@ async function syncCourseRoster(db, courseId, options = {}) {
             }
         );
 
-        if (managedBefore.has(puid)) {
+        if (managedBefore.has(user.userId)) {
             summary.updated += 1;
         } else {
             summary.added += 1;
         }
     }
 
-    for (const [puid, userId] of managedBefore.entries()) {
-        if (incoming.has(puid)) continue;
+    for (const userId of managedBefore) {
+        if (syncedUserIds.has(userId)) continue;
 
         await coursesCollection.updateOne(
             { courseId },
@@ -232,6 +268,7 @@ async function syncCourseRoster(db, courseId, options = {}) {
 
 module.exports = {
     normalizeAcademicPerson,
+    stripEnrollmentIdentity,
     syncCourseRoster,
     upsertAcademicStudent
 };

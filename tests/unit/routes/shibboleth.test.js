@@ -52,7 +52,7 @@ describe('Shibboleth routes with mocked Passport', () => {
         const res = await request(app({ user, session })).post('/Shibboleth.sso/SAML2/POST').type('form').send({ SAMLResponse: 'mock' });
         expect(res.status).toBe(302);
         expect(res.headers.location).toBe(destination);
-        expect(session).toEqual({ userId: 'u1', userRole: role, userDisplayName: 'User' });
+        expect(session).toEqual({ userId: 'u1', userRole: role });
     });
 
     test('SAML callback currently throws when Passport advances without a user', async () => {

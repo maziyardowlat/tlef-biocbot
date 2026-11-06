@@ -249,6 +249,7 @@ describe('lmsIntegration configuration', () => {
 
 describeWithToolkits('LMS token stores on the encrypted database', () => {
     const SYNTHETIC_KEY = Buffer.alloc(32, 7).toString('base64');
+    const SYNTHETIC_BLIND_INDEX_KEY = Buffer.alloc(32, 9).toString('base64');
     /** @type {NodeJS.ProcessEnv} */
     let previous;
 
@@ -271,7 +272,8 @@ describeWithToolkits('LMS token stores on the encrypted database', () => {
         const protectedDb = await initializeChatEncryption(/** @type {any} */ (rawDb), {
             ...process.env,
             BIOCBOT_CHAT_ENCRYPTION_ENABLED: 'true',
-            BIOCBOT_CHAT_ENCRYPTION_KEY: SYNTHETIC_KEY
+            BIOCBOT_CHAT_ENCRYPTION_KEY: SYNTHETIC_KEY,
+            BIOCBOT_BLIND_INDEX_KEY: SYNTHETIC_BLIND_INDEX_KEY
         });
         return { rawDb, integration: createLmsIntegration(protectedDb) };
     }
