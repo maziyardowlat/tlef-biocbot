@@ -57,7 +57,7 @@ async function createMentalHealthFlag(db, flagData) {
         unitName: flagData.unitName || 'Unknown Unit',
         message: flagData.message,
         conversationContext: flagData.conversationContext || [],
-        concernLevel: flagData.concernLevel,
+        concernLevel: flagData.concernLevel ?? null,
         llmReason: flagData.llmReason || '',
         status: 'pending',
         escalatedBy: null,

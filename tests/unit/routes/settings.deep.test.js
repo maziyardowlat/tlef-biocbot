@@ -48,7 +48,7 @@ describe('POST /global — system-admin only', () => {
         const res = await request(app({ db, user: admin })).post('/global').send({ allowLocalLogin: false });
         expect(res.status).toBe(200);
         const saved = await db.collection('settings').findOne({ _id: 'global' });
-        expect(saved).toMatchObject({ allowLocalLogin: false, updatedBy: 'admin@x.com' });
+        expect(saved).toMatchObject({ allowLocalLogin: false, updatedBy: 'a1' });
     });
 });
 
@@ -248,7 +248,7 @@ describe('system-admin Super Course chat settings', () => {
         expect(res.status).toBe(200);
         expect(res.body.settings).toMatchObject({ studentTopK: 4, instructorTopK: 6, noteRetrievalRatio: 0.36 });
         const saved = await db.collection('settings').findOne({ _id: 'superCourseChat' });
-        expect(saved).toMatchObject({ showStudentSuperCourse: true, includeInactiveCourses: true, updatedBy: 'admin@x.com' });
+        expect(saved).toMatchObject({ showStudentSuperCourse: true, includeInactiveCourses: true, updatedBy: 'a1' });
     });
 
     test('reset stores and returns default settings', async () => {

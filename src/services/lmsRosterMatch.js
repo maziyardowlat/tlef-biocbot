@@ -388,8 +388,8 @@ async function matchCourseRoster({ db, course, provider, roster, matchedBy, prov
                 update: {
                     $set: {
                         localUserId: localUser.localUserId,
-                        externalLabel: entry.name,
-                        externalEmail: entry.email,
+                        externalLabel: entry.name ?? null,
+                        externalEmail: entry.email ?? null,
                         matchedBy: strategy,
                         mappedAt: now,
                         mappedBy: String(matchedBy)

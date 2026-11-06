@@ -1,5 +1,9 @@
 const { memoryDb } = require('../helpers/memory-db');
-const { syncCourseRoster, normalizeAcademicPerson } = require('../../../src/services/academicRosterSync');
+const {
+    syncCourseRoster,
+    normalizeAcademicPerson,
+    stripEnrollmentIdentity
+} = require('../../../src/services/academicRosterSync');
 
 describe('academicRosterSync', () => {
     test('normalizes toolkit person variants into the fields BIOCBOT stores', () => {
@@ -54,10 +58,10 @@ describe('academicRosterSync', () => {
         const course = await db.collection('courses').findOne({ courseId: 'BIOC-301' });
         expect(course.studentEnrollment[user.userId]).toMatchObject({
             enrolled: true,
-            source: 'academicSync',
-            puid: 'puid-1',
-            studentId: '11111111'
+            source: 'academicSync'
         });
+        // `users` is the only place that says who the account is.
+        expect(JSON.stringify(course.studentEnrollment)).not.toMatch(/puid-1|11111111|new@student|New Student/);
         expect(course.studentEnrollment.manual_user).toMatchObject({ enrolled: true });
         expect(course.academicSync.lastSyncSummary).toMatchObject({ incomingCount: 1, added: 1 });
     });
@@ -103,16 +107,44 @@ describe('academicRosterSync', () => {
         const course = await db.collection('courses').findOne({ courseId: 'BIOC-302' });
         expect(course.studentEnrollment.existing_student).toMatchObject({
             enrolled: true,
-            source: 'academicSync',
-            puid: 'puid-existing',
-            studentId: '22222222'
+            source: 'academicSync'
         });
+        expect(course.studentEnrollment.existing_student).not.toHaveProperty('puid');
         expect(course.studentEnrollment.dropped_student).toMatchObject({
             enrolled: false,
-            source: 'academicSync',
-            puid: 'puid-dropped'
+            source: 'academicSync'
         });
         expect(course.studentEnrollment.manual_student).toMatchObject({ enrolled: true });
+    });
+
+    test('an account matched by email stays managed when its stored PUID differs from the roster', async () => {
+        const db = memoryDb({
+            users: [{
+                userId: 'matched_by_email',
+                username: 'same@student.ubc.ca',
+                email: 'same@student.ubc.ca',
+                role: 'student',
+                puid: 'puid-on-account',
+                isActive: true,
+                preferences: { courseId: 'BIOC-304' }
+            }],
+            courses: [{
+                courseId: 'BIOC-304',
+                academicSync: { academicPeriod: 'AP-2024W1', sectionIds: ['SEC-4'] },
+                studentEnrollment: { matched_by_email: { enrolled: true, source: 'academicSync' } }
+            }]
+        });
+        const academicApi = {
+            getStudentsFromSections: jest.fn().mockResolvedValue([
+                { puid: 'puid-on-roster', email: 'same@student.ubc.ca' }
+            ])
+        };
+
+        const result = await syncCourseRoster(db, 'BIOC-304', { academicApi });
+
+        expect(result).toMatchObject({ added: 0, updated: 1, removed: 0 });
+        const course = await db.collection('courses').findOne({ courseId: 'BIOC-304' });
+        expect(course.studentEnrollment.matched_by_email.enrolled).toBe(true);
     });
 
     test('fails closed when roster records are present but none have PUIDs', async () => {
@@ -166,5 +198,45 @@ describe('academicRosterSync coverage: missing course and identifier-less studen
             success: false,
             error: 'Course is not linked to academic sections'
         });
+    });
+});
+
+describe('stripEnrollmentIdentity', () => {
+    test('removes identity copies from enrollment records and leaves the rest', async () => {
+        const db = memoryDb({
+            courses: [
+                {
+                    courseId: 'BIOC-401',
+                    studentEnrollment: {
+                        synced: {
+                            enrolled: true,
+                            source: 'academicSync',
+                            puid: 'puid-1',
+                            studentId: '11111111',
+                            email: 'a@student.ubc.ca',
+                            displayName: 'A Student',
+                            academicSync: { puid: 'puid-1' },
+                            syncedAt: new Date('2026-01-01')
+                        },
+                        manual: { enrolled: false, joinedAt: new Date('2026-01-02') }
+                    }
+                },
+                { courseId: 'BIOC-402', studentEnrollment: { manual: { enrolled: true } } },
+                { courseId: 'BIOC-403' }
+            ]
+        });
+
+        expect(await stripEnrollmentIdentity(db)).toBe(1);
+
+        const course = await db.collection('courses').findOne({ courseId: 'BIOC-401' });
+        expect(course.studentEnrollment.synced).toEqual({
+            enrolled: true,
+            source: 'academicSync',
+            syncedAt: new Date('2026-01-01')
+        });
+        expect(course.studentEnrollment.manual).toEqual({ enrolled: false, joinedAt: new Date('2026-01-02') });
+
+        // Nothing is left, so a later start writes nothing.
+        expect(await stripEnrollmentIdentity(db)).toBe(0);
     });
 });

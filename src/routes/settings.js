@@ -281,7 +281,7 @@ router.post('/system-admins', async (req, res) => {
 
         const email = normalizeEmail(req.body && req.body.email);
         const result = await grantSystemAdminByEmail(db, email, {
-            grantedBy: normalizeEmail(req.user.email)
+            grantedBy: req.user.userId
         });
 
         if (!result.success) {
@@ -569,7 +569,7 @@ router.put('/super-course-chat', async (req, res) => {
                 $set: {
                     ...settings,
                     updatedAt: new Date(),
-                    updatedBy: normalizeEmail(req.user.email)
+                    updatedBy: req.user.userId
                 },
                 $setOnInsert: { createdAt: new Date() }
             },
@@ -605,7 +605,7 @@ router.post('/super-course-chat/reset', async (req, res) => {
                 $set: {
                     ...settings,
                     updatedAt: new Date(),
-                    updatedBy: normalizeEmail(req.user.email)
+                    updatedBy: req.user.userId
                 },
                 $setOnInsert: { createdAt: new Date() }
             },
@@ -940,7 +940,7 @@ router.post('/global', async (req, res) => {
         // other.
         const set = {
             updatedAt: new Date(),
-            updatedBy: normalizeEmail(req.user.email)
+            updatedBy: req.user.userId
         };
         if (typeof req.body.allowLocalLogin !== 'undefined') {
             set.allowLocalLogin = !!req.body.allowLocalLogin;
@@ -1243,7 +1243,7 @@ router.post('/llm', async (req, res) => {
                             ? body.backendInheritsFrontend
                             : undefined
                     },
-                    normalizeEmail(req.user.email)
+                    req.user.userId
                 )
                 : await adminModelSettings.saveChatSettings(
                 db,
@@ -1257,7 +1257,7 @@ router.post('/llm', async (req, res) => {
                         ? body.backendInheritsFrontend
                         : undefined
                 },
-                normalizeEmail(req.user.email)
+                req.user.userId
             );
         } catch (error) {
             if (error.code === 'INVALID_CHAT_MODEL') {
@@ -1596,7 +1596,7 @@ router.post('/llm/embedding', async (req, res) => {
             profile,
             courseIds: surfaces.courseIds,
             includeNotes: surfaces.includeNotes,
-            requestedBy: normalizeEmail(req.user.email)
+            requestedBy: req.user.userId
         });
 
         await scopeModelSettings.stagePendingEmbedding(db, scope, provider, {
@@ -1655,7 +1655,7 @@ router.post('/llm/embedding/rollback', async (req, res) => {
                 const result = await migrationRunner.cancelAndCleanup(
                     db,
                     pending.migrationId,
-                    normalizeEmail(req.user.email)
+                    req.user.userId
                 );
                 cleanup = result && result.cleanup;
             }
@@ -2273,7 +2273,7 @@ router.put('/notes-llm-key', async (req, res) => {
         if (result.ok) {
             await db.collection('settings').updateOne(
                 { _id: 'notesLlm' },
-                { $set: { updatedBy: normalizeEmail(req.user.email) } }
+                { $set: { updatedBy: req.user.userId } }
             );
             if (result.httpStatus === 200) result.body.message = 'Notes API key saved';
         }
@@ -2404,7 +2404,7 @@ router.put('/instructor-superchat-llm-key', async (req, res) => {
         if (result.ok) {
             await db.collection('settings').updateOne(
                 { _id: SUPER_COURSE_SETTINGS_ID },
-                { $set: { updatedBy: normalizeEmail(req.user.email) } }
+                { $set: { updatedBy: req.user.userId } }
             );
             if (result.httpStatus === 200) {
                 result.body.message = 'Instructor Super Course chat API key saved';

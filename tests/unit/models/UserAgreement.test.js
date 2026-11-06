@@ -1,7 +1,7 @@
 /**
  * Unit tests for src/models/UserAgreement.js against the in-memory Mongo double.
  * createOrUpdate exercises upsert ($set + $setOnInsert); getAgreementStats
- * exercises aggregate() ($match -> $group with $sum/$cond).
+ * counts in code, because the encryption wrapper rejects $group.
  */
 const { memoryDb } = require('../helpers/memory-db');
 const UserAgreement = require('../../../src/models/UserAgreement');

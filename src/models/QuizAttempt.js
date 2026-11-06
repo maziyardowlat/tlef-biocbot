@@ -35,7 +35,7 @@ async function saveAttempt(db, attemptData) {
         lectureName: attemptData.lectureName,
         questionType: attemptData.questionType,
         studentAnswer: attemptData.studentAnswer,
-        correct: attemptData.correct,
+        correct: attemptData.correct ?? null,
         feedback: attemptData.feedback || '',
         attemptedAt: new Date()
     };

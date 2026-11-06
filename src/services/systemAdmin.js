@@ -10,9 +10,9 @@ async function listSystemAdmins(db) {
             isActive: true,
             'permissions.systemAdmin': true
         })
-        .sort({ email: 1 })
         .toArray();
 
+    // Sorted here: MongoDB cannot order an encrypted email.
     return users.map(user => {
         const resolvedUser = applyAccessState(user);
         return {
@@ -26,7 +26,7 @@ async function listSystemAdmins(db) {
             lastLogin: resolvedUser.lastLogin || null,
             permissions: resolvedUser.permissions
         };
-    });
+    }).sort((a, b) => String(a.email || '').localeCompare(String(b.email || '')));
 }
 
 async function grantSystemAdminByEmail(db, email, options = {}) {

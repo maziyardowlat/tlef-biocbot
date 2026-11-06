@@ -6,6 +6,7 @@ require('dotenv').config({ quiet: true });
 const { randomBytes } = require('node:crypto');
 const { MongoClient } = require('mongodb');
 const {
+    BLIND_INDEXED_FIELDS,
     buildChatEncryptionConfig,
     requireEncryptionToolkit,
     resolveEncryptedFields
@@ -32,11 +33,11 @@ function syntheticDocument(collectionName, fields) {
         savedAt: new Date().toISOString()
     };
     for (const field of fields) {
-        document[field] = {
-            messages: [
-                { type: 'user', content: `${SYNTHETIC_MARKER} ${collectionName}.${field}` }
-            ]
-        };
+        const text = `${SYNTHETIC_MARKER} ${collectionName}.${field}`;
+        // A blind-indexed field holds an identifier, which is what gets looked up.
+        document[field] = BLIND_INDEXED_FIELDS[collectionName]?.[field]
+            ? text
+            : { messages: [{ type: 'user', content: text }] };
     }
     return document;
 }
@@ -56,13 +57,23 @@ async function main() {
         await client.connect();
         canaryDb = client.db(databaseName);
 
-        const config = buildChatEncryptionConfig({
+        const canaryEnv = {
             ...process.env,
             BIOCBOT_CHAT_ENCRYPTION_KEY: randomBytes(32).toString('base64'),
+            BIOCBOT_BLIND_INDEX_KEY: randomBytes(32).toString('base64')
+        };
+        const protectedDb = await createEncryptedDb(canaryDb, buildChatEncryptionConfig({
+            ...canaryEnv,
             BIOCBOT_CHAT_ENCRYPTION_READ_POLICY: 'mixed',
             BIOCBOT_CHAT_ENCRYPTION_QUERY_POLICY: 'mixed'
-        });
-        const protectedDb = await createEncryptedDb(canaryDb, config);
+        }));
+        // What an environment runs once every collection is migrated: lookups
+        // use only the digest, and any plaintext left in a field is rejected.
+        const strictDb = await createEncryptedDb(canaryDb, buildChatEncryptionConfig({
+            ...canaryEnv,
+            BIOCBOT_CHAT_ENCRYPTION_READ_POLICY: 'strict',
+            BIOCBOT_CHAT_ENCRYPTION_QUERY_POLICY: 'encrypted'
+        }));
 
         // Every configured collection is probed, not just the first one. A
         // collection added to the policy but missed here would otherwise pass a
@@ -95,11 +106,28 @@ async function main() {
                 };
             }
 
+            /** @type {Record<string, any>} */
+            const blindIndexes = {};
+            for (const field of Object.keys(BLIND_INDEXED_FIELDS[collectionName] || {})) {
+                const lookup = { [field]: document[field] };
+                const [mixedHit, strictHit] = await Promise.all([
+                    protectedCollection.findOne(lookup),
+                    strictDb.collection(collectionName).findOne(lookup)
+                ]);
+                blindIndexes[field] = {
+                    hasDigest: typeof raw?.[`${field}__bidx`] === 'string',
+                    mixedLookupFindsRow: mixedHit?.canaryId === document.canaryId,
+                    strictLookupFindsRow: strictHit?.canaryId === document.canaryId,
+                    digestHiddenFromReads: !Object.hasOwn(mixedHit || {}, `${field}__bidx`)
+                };
+            }
+
             const collectionReport = {
                 isProtected: protectedDb.isProtected(collectionName),
                 operationalFieldsRemainQueryable:
                     raw?.canaryId === document.canaryId && raw?.courseId === document.courseId,
                 storedFields,
+                blindIndexes,
                 plaintextPresentAtRest: JSON.stringify(raw).includes(SYNTHETIC_MARKER),
                 protectedReadMatches: fields.every(
                     (field) => JSON.stringify(roundTrip?.[field]) === JSON.stringify(document[field])
@@ -111,6 +139,7 @@ async function main() {
                 !collectionReport.isProtected ||
                 !collectionReport.operationalFieldsRemainQueryable ||
                 !Object.values(storedFields).every((stored) => stored.isEnvelope) ||
+                !Object.values(blindIndexes).every((index) => Object.values(index).every(Boolean)) ||
                 collectionReport.plaintextPresentAtRest ||
                 !collectionReport.protectedReadMatches
             ) {

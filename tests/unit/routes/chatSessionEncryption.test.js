@@ -61,6 +61,8 @@ const instructorRouter = require('../../../src/routes/instructorChat');
 const describeWithToolkit = loadEncryptionToolkit() ? describe : describe.skip;
 
 const SYNTHETIC_KEY = Buffer.alloc(32, 7).toString('base64');
+
+const SYNTHETIC_BLIND_INDEX_KEY = Buffer.alloc(32, 9).toString('base64');
 const STUDENT_SESSIONS = 'student_super_course_chat_sessions';
 const INSTRUCTOR_SESSIONS = 'instructor_chat_sessions';
 
@@ -87,6 +89,7 @@ async function encryptedApp(router, user, seed = {}) {
     const db = await initializeChatEncryption(rawDb, {
         BIOCBOT_CHAT_ENCRYPTION_ENABLED: 'true',
         BIOCBOT_CHAT_ENCRYPTION_KEY: SYNTHETIC_KEY,
+        BIOCBOT_BLIND_INDEX_KEY: SYNTHETIC_BLIND_INDEX_KEY,
     });
     return { rawDb, app: makeRouteApp(router, { db, user }) };
 }
@@ -222,6 +225,7 @@ describeWithToolkit('student Super Course chat sessions through the encrypted wr
             db: await initializeChatEncryption(rawDb, {
                 BIOCBOT_CHAT_ENCRYPTION_ENABLED: 'true',
                 BIOCBOT_CHAT_ENCRYPTION_KEY: SYNTHETIC_KEY,
+                BIOCBOT_BLIND_INDEX_KEY: SYNTHETIC_BLIND_INDEX_KEY,
             }),
             user: { userId: 's2', role: 'student', displayName: 'Student Two' },
         });
@@ -251,10 +255,11 @@ describeWithToolkit('instructor chat sessions through the encrypted wrapper', ()
         expectEnvelope(stored);
         expect(stored.title).toMatchObject({ __ubc_enc: 1, kid: 'student-chat-2026-01' });
         expect(JSON.stringify(stored)).not.toContain('Instructor chat');
+        expect(stored.instructorName).toMatchObject({ __ubc_enc: 1 });
+        expect(JSON.stringify(stored)).not.toContain('Dr I');
         expect(stored).toMatchObject({
             sessionId: 'isess-1',
             instructorId: 'i1',
-            instructorName: 'Dr I',
             messageCount: 4,
             duration: '2m',
             savedAt: '2026-08-26T10:00:00.000Z',
@@ -335,6 +340,7 @@ describeWithToolkit('instructor chat sessions through the encrypted wrapper', ()
             db: await initializeChatEncryption(rawDb, {
                 BIOCBOT_CHAT_ENCRYPTION_ENABLED: 'true',
                 BIOCBOT_CHAT_ENCRYPTION_KEY: SYNTHETIC_KEY,
+                BIOCBOT_BLIND_INDEX_KEY: SYNTHETIC_BLIND_INDEX_KEY,
             }),
             user: { userId: 'i2', role: 'instructor', displayName: 'Dr Two' },
         });

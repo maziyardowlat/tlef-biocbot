@@ -38,7 +38,7 @@ async function createActivityEntry(db, data) {
 
     const entry = {
         userId: data.userId,
-        studentName: data.studentName,
+        studentName: data.studentName ?? null,
         courseId: data.courseId,
         topic: data.topic.toLowerCase().trim(),
         state: data.state,
@@ -51,7 +51,7 @@ async function createActivityEntry(db, data) {
     };
     
     const result = await collection.insertOne(entry);
-    console.log(`📝 [STRUGGLE_ACTIVITY] Created ${entry.state} entry for ${entry.studentName} - Topic: ${entry.topic}`);
+    console.log(`📝 [STRUGGLE_ACTIVITY] Created ${entry.state} entry for ${entry.userId}`);
     
     return result;
 }
@@ -145,6 +145,18 @@ async function getActivityByStudent(db, userId, options = {}) {
 }
 
 /**
+ * The Monday, 00:00 UTC, of the ISO week a moment falls in.
+ * @param {Date} date
+ * @returns {Date}
+ */
+function getIsoWeekStart(date) {
+    const monday = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+    const day = monday.getUTCDay();
+    monday.setUTCDate(monday.getUTCDate() - (day === 0 ? 6 : day - 1));
+    return monday;
+}
+
+/**
  * Get weekly active struggle topics aggregated by ISO week
  * @param {Object} db - MongoDB database instance
  * @param {string|null} courseId - Course identifier, or null to aggregate across
@@ -187,52 +199,37 @@ async function getWeeklyActiveTopics(db, courseId, options = {}) {
         match.superchatId = options.superchatId;
     }
 
-    const pipeline = [
-        {
-            $match: match
-        },
-        {
-            $group: {
-                _id: {
-                    weekStart: {
-                        $dateFromParts: {
-                            isoWeekYear: { $isoWeekYear: '$timestamp' },
-                            isoWeek: { $isoWeek: '$timestamp' },
-                            isoDayOfWeek: 1
-                        }
-                    },
-                    topic: { $toLower: '$topic' }
-                },
-                uniqueStudents: { $addToSet: '$userId' }
-            }
-        },
-        {
-            $project: {
-                _id: 0,
-                weekStart: '$_id.weekStart',
-                topic: '$_id.topic',
-                studentCount: { $size: '$uniqueStudents' }
-            }
-        },
-        {
-            $group: {
-                _id: '$weekStart',
-                topics: { $push: { topic: '$topic', studentCount: '$studentCount' } },
-                totalCount: { $sum: '$studentCount' }
-            }
-        },
-        { $sort: { _id: 1 } },
-        {
-            $project: {
-                _id: 0,
-                weekStart: '$_id',
-                topics: 1,
-                totalCount: 1
-            }
-        }
-    ];
+    // Counted here rather than with $group: the encryption wrapper rejects
+    // $group on protected collections, and the lookback keeps this to a few
+    // weeks of activations.
+    const rows = await collection
+        .find(match, { projection: { timestamp: 1, topic: 1, userId: 1 } })
+        .toArray();
 
-    return await collection.aggregate(pipeline).toArray();
+    /** @type {Map<number, Map<string, Set<string>>>} */
+    const studentsByWeekAndTopic = new Map();
+    for (const { timestamp, topic, userId } of rows) {
+        const week = getIsoWeekStart(new Date(timestamp)).getTime();
+        const normalizedTopic = String(topic || '').toLowerCase();
+        if (!studentsByWeekAndTopic.has(week)) studentsByWeekAndTopic.set(week, new Map());
+        const topics = studentsByWeekAndTopic.get(week);
+        if (!topics.has(normalizedTopic)) topics.set(normalizedTopic, new Set());
+        topics.get(normalizedTopic).add(userId);
+    }
+
+    return [...studentsByWeekAndTopic.entries()]
+        .sort(([weekA], [weekB]) => weekA - weekB)
+        .map(([week, topics]) => {
+            const weekTopics = [...topics.entries()].map(([topic, students]) => ({
+                topic,
+                studentCount: students.size
+            }));
+            return {
+                weekStart: new Date(week),
+                topics: weekTopics,
+                totalCount: weekTopics.reduce((total, { studentCount }) => total + studentCount, 0)
+            };
+        });
 }
 
 module.exports = {

@@ -7,6 +7,7 @@ const cors = require('cors');
 
 const { MongoClient } = require('mongodb');
 const { ensureCourseCodes } = require('./models/Course');
+const { stripEnrollmentIdentity } = require('./services/academicRosterSync');
 const { ensureSuperchatsFromLegacy } = require('./models/Superchat');
 const { ensureIndexes: ensureMessageFeedbackIndexes } = require('./models/MessageFeedback');
 const { ensureIndexes: ensureChatSurveyResponseIndexes } = require('./models/ChatSurveyResponse');
@@ -154,14 +155,15 @@ function configureSession() {
 /**
  * Initialize Passport authentication
  * Must be called after session middleware is configured
+ * @param {Object} runtimeDb - The encrypted wrapper when field encryption is on
  * @returns {Promise<void>}
  */
-async function initializePassportAuth() {
+async function initializePassportAuth(runtimeDb) {
     try {
         console.log('🔐 Starting Passport initialization...');
 
         // Initialize Passport with database connection
-        passport = initializePassport(db);
+        passport = initializePassport(runtimeDb);
 
         // Initialize Passport middleware (must be after session middleware)
         app.use(passport.initialize());
@@ -180,13 +182,14 @@ async function initializePassportAuth() {
 
 /**
  * Initialize the authentication service
+ * @param {Object} runtimeDb - The encrypted wrapper when field encryption is on
  * @returns {Promise<void>}
  */
-async function initializeAuth() {
+async function initializeAuth(runtimeDb) {
     try {
         console.log('🔐 Starting authentication service initialization...');
-        authService = new AuthService(db);
-        authMiddleware = createAuthMiddleware(db);
+        authService = new AuthService(runtimeDb);
+        authMiddleware = createAuthMiddleware(runtimeDb);
 
         // Make auth service available to routes
         app.locals.authService = authService;
@@ -719,12 +722,19 @@ async function startServer() {
         
         // Initialize core services in correct order
         await connectToMongoDB(); // Resolves the MongoDB client promise for session store
-        
+
+        // Built before anything that touches `users` or the LMS token stores:
+        // login, the auth middleware, and the default-user setup must read and
+        // write those through the encrypted wrapper, or lookups would miss
+        // encrypted rows and writes would store plaintext. Routes still receive
+        // it only after the startup migrations below.
+        const runtimeDb = await initializeChatEncryption(db);
+
         // Verify session configuration
         configureSession();
         
         // Initialize Passport (requires session middleware - already configured)
-        await initializePassportAuth();
+        await initializePassportAuth(runtimeDb);
         
         // Mount Shibboleth routes AFTER session and Passport are configured
         // These routes use Passport authentication and require session support
@@ -732,16 +742,12 @@ async function startServer() {
         
         // Initialize other services
         await initializeLLM();
-        await initializeAuth();
-
-        // Built before the LMS integration so its token stores write through
-        // the encrypted wrapper; routes still receive it only after the
-        // startup migrations below.
-        const runtimeDb = await initializeChatEncryption(db);
+        await initializeAuth(runtimeDb);
         await initializeLms(runtimeDb);
 
         // Run migrations
         await ensureCourseCodes(db);
+        await stripEnrollmentIdentity(db);
         await ensureSuperchatsFromLegacy(db);
         await ensureMessageFeedbackIndexes(db);
         await ensureChatSurveyResponseIndexes(db);
@@ -756,8 +762,9 @@ async function startServer() {
             console.error('⚠️ Failed to resume provider migrations:', error.message);
         });
 
-        // Keep startup migrations and connect-mongo on the driver's raw Db.
-        // Routes receive the protected wrapper only after startup work is done;
+        // Keep startup migrations and connect-mongo on the driver's raw Db; none
+        // of them reads an encrypted field. Routes receive the protected wrapper
+        // only after startup work is done;
         // unconfigured collections continue to pass through unchanged.
         app.locals.db = runtimeDb;
 

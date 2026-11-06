@@ -73,10 +73,12 @@ async function cleanupSeededRows() {
                 { courseId: STU_COURSE_ID, filename: /^E2E student forged document/ },
             ],
         });
-        await db.collection('mentalHealthFlags').deleteMany({
-            courseId: STU_COURSE_ID,
-            message: /E2E mental-health sentinel/,
-        });
+        // Matched here: the message is encrypted when the server has encryption on.
+        const courseFlags = await db.collection('mentalHealthFlags').find({ courseId: STU_COURSE_ID }).toArray();
+        const sentinelFlagIds = courseFlags
+            .filter((flag) => /E2E mental-health sentinel/.test(String(flag.message)))
+            .map((flag) => flag._id);
+        await db.collection('mentalHealthFlags').deleteMany({ _id: { $in: sentinelFlagIds } });
         await db.collection('courses').updateMany(
             { courseId: { $in: [STU_COURSE_ID, STU_OTHER_COURSE_ID] } },
             {
@@ -450,9 +452,10 @@ test.describe('POST /api/chat — RAG answer and source attribution', () => {
         expect(res.ok()).toBeTruthy();
 
         await expect.poll(async () => {
-            const flag = await withDb((db) =>
-                db.collection('mentalHealthFlags').findOne({ courseId: STU_COURSE_ID, message })
+            const flags = await withDb((db) =>
+                db.collection('mentalHealthFlags').find({ courseId: STU_COURSE_ID }).toArray()
             );
+            const flag = flags.find((candidate) => candidate.message === message);
             return flag && {
                 studentId: flag.studentId,
                 concernLevel: flag.concernLevel,

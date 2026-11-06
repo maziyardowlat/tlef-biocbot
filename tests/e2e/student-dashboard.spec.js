@@ -223,15 +223,14 @@ test.describe('Student dashboard UI', () => {
             return topics.map((topic) => topic.topic).sort();
         }, { timeout: 10_000 }).toEqual(['mitosis']);
 
-        const inactiveAudit = await withDb((db) =>
-            db.collection('struggleActivity').findOne({
+        const inactiveEntries = await withDb((db) =>
+            db.collection('struggleActivity').find({
                 userId: studentId,
                 courseId: STU_COURSE_ID,
-                topic: APPROVED_TOPIC.toLowerCase(),
                 state: 'Inactive',
-            })
+            }).toArray()
         );
-        expect(inactiveAudit).toBeTruthy();
+        expect(inactiveEntries.map((entry) => entry.topic)).toContain(APPROVED_TOPIC.toLowerCase());
     });
 
     test('reset all clears dashboard topics and returns the summary to inactive', async ({ page }) => {
