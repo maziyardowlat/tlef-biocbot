@@ -217,8 +217,6 @@ function initializePassport(db) {
                     },
                     async (profile, done) => {
 
-                        console.log( 'passport.js profile', profile );
-
                         try {
                             // Extract UBC Shibboleth attributes
                             // The attribute is called 'ubcEduCwlPuid' and can be in multiple formats:
@@ -234,8 +232,6 @@ function initializePassport(db) {
                                 console.warn('[UBC SHIB] ubcEduCwlPuid not found in profile');
                                 console.warn('[UBC SHIB] Available profile keys:', Object.keys(profile));
                                 console.warn('[UBC SHIB] Available attributes:', Object.keys(profile.attributes || {}));
-                            } else {
-                                console.log(`[UBC SHIB] Extracted ubcEduCwlPuid: ${ubcEduCwlPuid}`);
                             }
                             
                             const samlId = profile.nameID || ubcEduCwlPuid;
@@ -293,7 +289,7 @@ function initializePassport(db) {
                                 role = 'student';
                             }
 
-                            console.log(`[UBC SHIB] Affiliation: ${JSON.stringify(affiliationList)}, Email: ${normalizedEmail}, Assigned Role: ${role}`);
+                            console.log(`[UBC SHIB] Affiliation: ${JSON.stringify(affiliationList)}, Assigned Role: ${role}`);
 
                             // Create or get user from UBC Shibboleth data
                             // ubcEduCwlPuid is the primary identifier for CWL users

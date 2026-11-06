@@ -280,8 +280,8 @@ describe('main chat pipeline', () => {
 
     test('validates DB, message, course context, and published unit', async () => {
         expect((await request(app({ db: null })).post('/').send({ message: 'hi' })).status).toBe(503);
-        // Current logging calls .substring() before type validation, so numeric input reaches the catch handler.
-        expect((await request(app({ db: memoryDb({}) })).post('/').send({ message: 4 })).status).toBe(500);
+        // A message that is not a string is rejected, not thrown on.
+        expect((await request(app({ db: memoryDb({}) })).post('/').send({ message: 4 })).status).toBe(400);
         expect((await request(app({ db: memoryDb({}) })).post('/').send({ message: 'hi' })).status).toBe(400);
         expect((await request(app({ db: memoryDb({ courses: [] }) })).post('/').send({ message: 'hi', courseId: 'C1', unitName: 'Unit 1' })).status).toBe(404);
         aiWith();

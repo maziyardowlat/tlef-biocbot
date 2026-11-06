@@ -20,7 +20,6 @@ class TrackerService {
      */
     async analyzeMessage(message, courseId, unitName, approvedTopics = []) {
         try {
-            console.log(`🕵️ [TRACKER_DEBUG] LLM Analyze Request for: "${message}"`);
             const cleanApprovedTopics = Array.isArray(approvedTopics)
                 ? approvedTopics.filter(topic => typeof topic === 'string' && topic.trim())
                 : [];
@@ -62,8 +61,6 @@ Rules:
                 systemPrompt: "You are an empathetic analyst detecting student struggle. Output JSON only."
             });
 
-            console.log(`🕵️ [TRACKER_DEBUG] LLM Raw Response:`, response.content);
-
             const rawContent = (response.content || '').replace(/```json/g, '').replace(/```/g, '').trim();
             if (!rawContent) {
                 console.warn('⚠️ [TRACKER] Empty LLM response — likely token budget consumed by reasoning. Treating as no struggle.');
@@ -76,8 +73,6 @@ Rules:
             const content = (jsonStart !== -1 && jsonEnd > 0) ? rawContent.substring(jsonStart, jsonEnd) : rawContent;
             const result = JSON.parse(content);
             
-            console.log(`🕵️ [TRACKER_DEBUG] Parsed Result:`, result);
-
             const mappedTopic = typeof result.mappedTopic === 'string' ? result.mappedTopic.trim() : '';
             const approvedTopicMap = new Map(
                 cleanApprovedTopics.map((topic) => [topic.toLowerCase(), topic])
@@ -181,8 +176,6 @@ Rules:
                 maxTokens: 220,
                 systemPrompt: "You are an empathetic analyst detecting student struggle across courses. Output JSON only."
             });
-
-            console.log(`🕵️ [TRACKER_DEBUG] Cross-course LLM Raw Response:`, response.content);
 
             const rawContent = (response.content || '').replace(/```json/g, '').replace(/```/g, '').trim();
             if (!rawContent) {

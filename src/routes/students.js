@@ -261,7 +261,6 @@ router.get('/:courseId/:studentId/sessions/own', async (req, res) => {
         }
         
         // Debug logging
-        console.log('🔍 [STUDENT_SESSIONS] User object:', user);
         console.log('🔍 [STUDENT_SESSIONS] User role:', user.role);
         console.log('🔍 [STUDENT_SESSIONS] User ID:', user.userId);
         console.log('🔍 [STUDENT_SESSIONS] Requested student ID:', studentId);

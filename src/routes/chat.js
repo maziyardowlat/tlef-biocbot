@@ -1184,7 +1184,6 @@ router.post('/', async (req, res) => {
     try {
         console.log('🔥 [CHAT_ROUTE_HIT] Processing POST /api/chat');
         console.log('💬 [CHAT_API] New chat request received');
-        console.log('💬 [CHAT_API] Message:', req.body.message?.substring(0, 50) + '...');
         console.log('💬 [CHAT_API] Has conversationContext:', !!req.body.conversationContext);
         console.log('🔐 [CHAT_API] Auth check - Cookie present:', !!req.headers.cookie);
         console.log('🔐 [CHAT_API] Auth check - User present:', !!req.user);
@@ -1209,7 +1208,7 @@ router.post('/', async (req, res) => {
             });
         }
 
-        console.log(`💬 Chat request received: "${message.substring(0, 50)}..."`);
+        console.log('💬 Chat request received');
         console.log(`🎯 Mode: ${mode || 'default'}`);
 
         // Require courseId and unitName per requirements
@@ -1328,10 +1327,9 @@ router.post('/', async (req, res) => {
                     // Normal message analysis
                     // 1. Analyze message for struggle
                     console.log('🕵️ [CHAT_API_DEBUG] ------------------------------------------------');
-                    console.log(`🕵️ [CHAT_API_DEBUG] Analysis Start for msg: "${message.substring(0, 50)}..."`);
+                    console.log('🕵️ [CHAT_API_DEBUG] Analysis Start');
                     
                     const analysis = await trackerService.analyzeMessage(message, courseId, unitName, approvedStruggleTopics);
-                    console.log('🕵️ [CHAT_API_DEBUG] Raw Analysis Result:', JSON.stringify(analysis, null, 2));
 
                     if (analysis.isStruggling && analysis.isMapped) {
                         // 2. Update user state and persist to MongoDB for mapped topics only
@@ -2095,7 +2093,7 @@ router.post('/save', async (req, res) => {
             { upsert: true }
         );
 
-        console.log(`Chat session saved: ${sessionId} for student ${studentName} in course ${courseId}`);
+        console.log(`Chat session saved: ${sessionId} for student ${studentId} in course ${courseId}`);
 
         res.json({
             success: true,

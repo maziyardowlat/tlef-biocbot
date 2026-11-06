@@ -37,9 +37,6 @@ function getUserAgreementsCollection(db) {
  */
 async function getUserAgreement(db, userId, role) {
     console.log('🔍 [USER_AGREEMENT] Getting agreement for:', { userId, role });
-    console.log('🔍 [USER_AGREEMENT] Database object:', db);
-    console.log('🔍 [USER_AGREEMENT] Database type:', typeof db);
-    console.log('🔍 [USER_AGREEMENT] Database collections method:', typeof db?.collection);
     
     if (!db) {
         throw new Error('Database object is undefined');
@@ -51,8 +48,6 @@ async function getUserAgreement(db, userId, role) {
         userId,
         userType: role 
     });
-    
-    console.log('🔍 [USER_AGREEMENT] Found agreement:', agreement);
     
     if (!agreement) {
         return {

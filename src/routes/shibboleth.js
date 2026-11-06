@@ -54,7 +54,6 @@ router.get('/Shibboleth.sso/Login', (req, res, next) => {
 const samlCallbackHandlers = [
     (req, res, next) => {
         console.log(`[SHIBBOLETH DEBUG] Received SAML callback at ${req.path}`);
-        console.log('[SHIBBOLETH DEBUG] Request body:', req.body);
         next();
     },
     passport.authenticate('ubcshib', {
@@ -69,7 +68,6 @@ const samlCallbackHandlers = [
         if (req.user) {
             req.session.userId = req.user.userId;
             req.session.userRole = req.user.role;
-            req.session.userDisplayName = req.user.displayName;
         }
 
         // Determine the redirect path based on the user's role.

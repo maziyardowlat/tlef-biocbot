@@ -38,8 +38,6 @@ function sendAuthenticationUnavailable(res) {
 // Generic middleware to log all incoming requests to this router for debugging
 router.use((req, res, next) => {
     console.log(`[AUTH DEBUG] Incoming request: ${req.method} ${req.originalUrl}`);
-    console.log(`[AUTH DEBUG] Request Body:`, req.body);
-    console.log(`[AUTH DEBUG] Request Query:`, req.query);
     next();
 });
 
@@ -106,7 +104,6 @@ router.post('/login', async (req, res, next) => {
             // Also store role in session for backward compatibility
             req.session.userId = user.userId;
             req.session.userRole = user.role;
-            req.session.userDisplayName = user.displayName;
 
             console.log(`User logged in: ${user.userId} (${user.role})`);
 
@@ -371,9 +368,6 @@ router.post('/logout', (req, res) => {
 router.get('/me', async (req, res) => {
     try {
         console.log('Auth /me endpoint called');
-        console.log('Passport user:', req.user);
-        console.log('Session:', req.session);
-        console.log('Session userId:', req.session?.userId);
 
         // Check if user is authenticated via Passport
         // Passport populates req.user after deserialization
@@ -598,8 +592,6 @@ router.post('/set-course', async (req, res) => {
 router.get('/tas', async (req, res) => {
     try {
         console.log('🔍 [AUTH_TAS] Request received');
-        console.log('🔍 [AUTH_TAS] Session:', req.session);
-        console.log('🔍 [AUTH_TAS] User:', req.user);
 
         // Get authenticated user information
         const user = req.user;
@@ -832,7 +824,6 @@ router.get('/saml', (req, res, next) => {
 router.post('/saml/callback',
     (req, res, next) => {
         console.log('[AUTH DEBUG] SAML callback received at /api/auth/saml/callback.');
-        console.log('[AUTH DEBUG] Request body:', req.body);
         next();
     },
     passport.authenticate('saml', {
@@ -857,7 +848,6 @@ router.post('/saml/callback',
         if (req.user) {
             req.session.userId = req.user.userId;
             req.session.userRole = req.user.role;
-            req.session.userDisplayName = req.user.displayName;
         }
 
         res.redirect(redirectPath);
