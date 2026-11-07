@@ -1996,6 +1996,11 @@
     font-size: 1rem;
 }
 
+/* Shared padding above is too tight for the global select chevron (#643). */
+.question-form select {
+    padding-right: 34px;
+}
+
 .question-form select:focus,
 .question-form textarea:focus,
 .question-form input[type="text"]:focus {
