@@ -379,6 +379,20 @@ async function runStudentChat(options) {
     };
 
     const bus = core.createEventBus();
+    // For local development only: prints each agent's output, which quotes the
+    // student and the course material, so it is off unless asked for.
+    if (process.env.AGENT_CHAT_DEBUG === '1') {
+        console.log(`🤖 [AGENT_DEBUG] ${mode} mode, student said: ${JSON.stringify(message)}`);
+        const started = {};
+        bus.subscribe('agent.started', event => { started[event.agentId] = Date.now(); });
+        bus.subscribe('agent.completed', event => {
+            const seconds = started[event.agentId] ? ((Date.now() - started[event.agentId]) / 1000).toFixed(1) : '?';
+            console.log(`🤖 [AGENT_DEBUG] ${event.agentId} finished in ${seconds}s${event.truncated ? ' (cut off)' : ''}:\n${JSON.stringify(event.output, null, 2)}`);
+        });
+        bus.subscribe('tool.*', event => {
+            console.log(`🤖 [AGENT_DEBUG] tool ${event.toolId} for ${event.agentId}: ${event.type.replace('tool.', '')}`);
+        });
+    }
     bus.subscribe('agent.*', event => {
         if (event.type === 'agent.failed' || event.type === 'agent.retrying' || event.type === 'agent.continued' || event.type === 'agent.skipped') {
             const detail = event.failure
