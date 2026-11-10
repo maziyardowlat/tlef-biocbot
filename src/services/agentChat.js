@@ -128,7 +128,8 @@ const REPROMPT_TEXT = '\n\n----------------\nHey, I know you asked another quest
  * math that still parses as JSON, mended because only BiocBot knows it expects
  * math.
  * - `\?` for `\)?` inside open inline math.
- * - A doubled backslash inside [SMILES], which is one backslash in SMILES.
+ * - A doubled backslash inside [SMILES], which is one backslash in SMILES, or
+ *   anywhere outside math, where chat text never means one.
  * - A LaTeX command that JSON read as a control character (`\frac` as a form
  *   feed and "rac", `\theta` as a tab and "heta"), inside math only, because a
  *   real tab or new line is normal text elsewhere. Form feeds and backspaces
@@ -150,8 +151,14 @@ function mendMathText(text) {
     for (let i = 0; i < mended.length; i += 1) {
         const char = mended[i];
         const next = mended[i + 1];
-        if (char === '\\' && next === '(') { inMath = true; result += '\\('; i += 1; continue; }
-        if (char === '\\' && next === ')') { inMath = false; result += '\\)'; i += 1; continue; }
+        // Outside math, a doubled backslash is over-escaping, never meant: the
+        // real-model check saw `C=C\\C` in a SMILES string written without
+        // tags. Drop one and look at the pair again, so `\\(` opens math.
+        if (!inMath && char === '\\' && next === '\\') continue;
+        // The same over-escaping on the closing delimiter of inline math.
+        if (inMath && char === '\\' && next === '\\' && mended[i + 2] === ')') continue;
+        if (char === '\\' && (next === '(' || next === '[')) { inMath = true; result += `\\${next}`; i += 1; continue; }
+        if (char === '\\' && (next === ')' || next === ']')) { inMath = false; result += `\\${next}`; i += 1; continue; }
         if (inMath && char === '\\' && next === '?') { inMath = false; result += '\\)?'; i += 1; continue; }
         if (inMath && controls[char] && /[a-zA-Z]/.test(next || '')) { result += `\\${controls[char]}`; continue; }
         result += char;
@@ -374,7 +381,9 @@ async function runStudentChat(options) {
     const bus = core.createEventBus();
     bus.subscribe('agent.*', event => {
         if (event.type === 'agent.failed' || event.type === 'agent.retrying' || event.type === 'agent.continued' || event.type === 'agent.skipped') {
-            const detail = event.failure ? `${event.failure.code}: ${event.failure.message}` : '';
+            const detail = event.failure
+                ? `${event.failure.code}: ${event.failure.message}`
+                : (event.because ? `because ${event.because.join(', ')} failed` : '');
             console.log(`🤖 [AGENT_CHAT] ${event.type} ${event.agentId} ${detail}`);
         }
     });

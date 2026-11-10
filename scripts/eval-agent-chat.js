@@ -14,7 +14,10 @@
  * what is indexed in Qdrant. It costs money and its results vary, so it isn't
  * part of the unit suite.
  *
- *   node scripts/eval-agent-chat.js <courseId> [--runs 3] [--out results.json]
+ *   node scripts/eval-agent-chat.js <courseId> [--runs 3] [--out results.json] [--only id,id] [--baseline]
+ *
+ * --baseline sends the same cases through the old handler's single call (its
+ * system prompt and message template), to compare against.
  *
  * It reads MONGO_URI and the key-encryption secret from .env, and uses the
  * course's stored provider key, exactly as POST /api/chat does.
@@ -109,12 +112,30 @@ function mathProblems(text) {
     return problems;
 }
 
+/** A doubled backslash outside math, in or out of [SMILES] tags, is damage. */
 function smilesProblems(text) {
-    const problems = [];
-    for (const [, smiles] of text.matchAll(/\[SMILES\]([\s\S]*?)\[\/SMILES\]/g)) {
-        if (smiles.includes('\\\\')) problems.push(`doubled backslash in ${smiles}`);
+    const outsideMath = text.replace(/\\\(([\s\S]*?)\\\)|\\\[([\s\S]*?)\\\]/g, '');
+    return (outsideMath.match(/.{0,20}\\\\.{0,10}/g) || []).map(found => `doubled backslash: ${found}`);
+}
+
+/** The old handler's single call, as src/routes/chat.js builds it. */
+async function runBaseline(llm, coursePrompts, testCase) {
+    const coverageNote = `The course context below only includes material from: ${testCase.context.match(/Unit \d+/)[0]}.`;
+    let messageToSend;
+    if (testCase.mode === 'protege') {
+        messageToSend = `CONTEXT (The correct answers):\n${testCase.context}\n\nINSTRUCTIONS:\nBased on the Context above, act as the student described in the System Prompt.\nDo not explain the context to the user. Ask the user to explain it to you.\n\nThe user just said: "${testCase.message}"`;
+    } else if (testCase.mode === 'explain') {
+        messageToSend = `Use the provided course context to help explain the concept if needed. ${coverageNote}\n\nCourse context:\n${testCase.context}\n\nConcept/Text to explain:\n"${testCase.message}"`;
+    } else {
+        messageToSend = `Answer using the course context below as your primary source, and cite which unit a fact came from. ${coverageNote}\n\nCourse context:\n${testCase.context}\n\nStudent question: ${testCase.message}`;
     }
-    return problems;
+    const response = await llm.sendMessage(messageToSend, {
+        lane: 'frontend',
+        temperature: 0.5,
+        maxTokens: 32768,
+        systemPrompt: coursePrompts.base + coursePrompts[testCase.mode]
+    });
+    return { reply: response.content, usedFallback: false, failures: {}, outputs: {} };
 }
 
 function score(testCase, reply, usedFallback) {
@@ -142,6 +163,7 @@ async function main() {
     const runs = Number(argValue('--runs', '3'));
     const out = argValue('--out', null);
     const only = argValue('--only', null);
+    const baseline = process.argv.includes('--baseline');
     const cases = only ? CASES.filter(c => only.split(',').includes(c.id)) : CASES;
 
     const client = await MongoClient.connect(process.env.MONGO_URI);
@@ -170,7 +192,7 @@ async function main() {
                 }
             };
             const started = Date.now();
-            const outcome = await agentChat.runStudentChat({
+            const outcome = baseline ? await runBaseline(recordingLlm, coursePrompts, testCase).then(r => ({ reply: r.reply, run: r })) : await agentChat.runStudentChat({
                 mode: testCase.mode,
                 message: testCase.message,
                 history: [],
@@ -215,6 +237,7 @@ async function main() {
     const protege = results.filter(r => r.mode === 'protege' && r.score.parsed);
     const times = results.map(r => r.seconds).sort((a, b) => a - b);
     const summary = {
+        path: baseline ? 'old handler (baseline)' : 'agents framework',
         model: (({ chatModel, reasoningEffort } = {}) => ({ chatModel, reasoningEffort }))(
             course.llmModelSettings?.providers?.[course.activeLlmProvider || 'openai']
         ),
