@@ -252,3 +252,87 @@ describeWithFramework('the agent path', () => {
         expect(Tracker).not.toHaveBeenCalled();
     });
 });
+
+/** Splits a server-sent event body into { event, data } frames. */
+function parseEvents(text) {
+    return text.split('\n\n').filter(Boolean).map(frame => {
+        const event = (frame.match(/^event: (.*)$/m) || [])[1];
+        const data = (frame.match(/^data: (.*)$/m) || [])[1];
+        return { event, data: data && JSON.parse(data) };
+    });
+}
+
+const streamed = (body, user) => post(body, user)
+    .set('Accept', 'text/event-stream, application/json')
+    .buffer(true)
+    .parse((res, done) => {
+        let text = '';
+        res.setEncoding('utf8');
+        res.on('data', chunk => { text += chunk; });
+        res.on('end', () => done(null, text));
+    });
+
+describeWithFramework('progress streamed to the chat page', () => {
+    test('sends each step’s status, then the usual response as the result', async () => {
+        ai();
+
+        const res = await streamed({ mode: 'tutor' });
+
+        expect(res.status).toBe(200);
+        expect(res.headers['content-type']).toContain('text/event-stream');
+        const events = parseEvents(res.body);
+        expect(events.filter(e => e.event === 'progress').map(e => e.data.status)).toEqual([
+            agentChat.PROGRESS.tracker.status,
+            agentChat.PROGRESS.tutor.status,
+            agentChat.PROGRESS.planning.status,
+            agentChat.PROGRESS.writer.status
+        ]);
+        const result = events.at(-1);
+        expect(result.event).toBe('result');
+        expect(result.data.status).toBe(200);
+        expect(result.data.body).toMatchObject({ success: true, message: 'An agent reply.', citations: [expect.any(Object)] });
+    });
+
+    test('an error after the stream starts comes back as the result, with its status', async () => {
+        ai({ writer: () => ({ content: 'Not JSON.' }) });
+
+        const res = await streamed({ mode: 'tutor' });
+
+        const result = parseEvents(res.body).at(-1);
+        expect(result).toEqual({
+            event: 'result',
+            data: { status: 500, body: expect.objectContaining({ success: false, message: 'Sorry, I encountered an error processing your message.' }) }
+        });
+    });
+
+    test('a retrieval failure after the stream starts comes back as an error result', async () => {
+        const { qdrant } = ai();
+        qdrant.searchDocuments.mockRejectedValue(new Error('Service endpoint unreachable'));
+
+        const res = await streamed({ mode: 'tutor' });
+
+        const result = parseEvents(res.body).at(-1);
+        expect(result.event).toBe('result');
+        expect(result.data.status).toBeGreaterThanOrEqual(400);
+        expect(result.data.body.success).toBe(false);
+    });
+
+    test('an unpublished unit is still a plain 400, before any stream', async () => {
+        ai();
+
+        const res = await streamed({ mode: 'tutor', unitName: 'Unit 2' });
+
+        expect(res.status).toBe(400);
+        expect(res.headers['content-type']).toContain('application/json');
+    });
+
+    test('the old path ignores the header and answers with JSON', async () => {
+        delete process.env.AGENT_CHAT_MODES;
+        ai();
+
+        const res = await post({ mode: 'tutor' }).set('Accept', 'text/event-stream, application/json');
+
+        expect(res.headers['content-type']).toContain('application/json');
+        expect(res.body.message).toBe('An old-path reply.');
+    });
+});

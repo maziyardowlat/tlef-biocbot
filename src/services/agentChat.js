@@ -120,6 +120,20 @@ const PROTEGE_PLAN_SCHEMA = Object.freeze({
     }
 });
 
+/**
+ * What the student sees while each step runs. The framework carries a label
+ * and status on an agent and sends them with its events; BiocBot streams them
+ * to the chat page (see handleAgentChat in src/routes/chat.js).
+ */
+const PROGRESS = Object.freeze({
+    tracker: Object.freeze({ label: 'Understanding', status: 'BiocBot is understanding your message' }),
+    tutor: Object.freeze({ label: 'Course materials', status: 'BiocBot is finding relevant course materials' }),
+    // Not agents' own labels: the planning step's model call after retrieval,
+    // and the summariser, whose config has no progress field in 0.2.0-rc.1.
+    planning: Object.freeze({ label: 'Planning', status: 'BiocBot is working out what to say' }),
+    writer: Object.freeze({ label: 'Writing', status: 'BiocBot is finalizing its response' })
+});
+
 const FALLBACK_REPLY = 'Sorry, I encountered an error processing your message.';
 const REPROMPT_TEXT = '\n\n----------------\nHey, I know you asked another question, would you like to summarize our chat again?';
 
@@ -212,6 +226,7 @@ function buildStudentChatSystem({ mode, modePrompts, trackerPrompt, checkSummary
             prompt: trackerPrompt,
             outputSchema: TRACKER_SCHEMA,
             llmOptions: { lane: LANES.BACKEND, temperature: 0.1, maxTokens: 220, responseFormat: 'json' },
+            progress: PROGRESS.tracker,
             tools: { writes: ['struggle-update'] }
         });
     }
@@ -230,6 +245,7 @@ function buildStudentChatSystem({ mode, modePrompts, trackerPrompt, checkSummary
         // The course's student-facing model decides what to say, as it does today.
         llmOptions: { lane: LANES.FRONTEND, temperature: 0.5, maxTokens: 32768, responseFormat: 'json' },
         timeoutMs: 120000,
+        progress: PROGRESS.tutor,
         context: { history: true },
         // The tracker goes first so that directive mode sees this message's update.
         ...(trackerPrompt ? { dependsOn: ['tracker'] } : {}),
@@ -240,6 +256,7 @@ function buildStudentChatSystem({ mode, modePrompts, trackerPrompt, checkSummary
     const system = {
         id: `biocbot-student-chat-${mode}`,
         agents: definitions.map(({ id }) => id),
+        visibleAgents: definitions.filter(({ progress }) => progress).map(({ id }) => id),
         summariser: {
             instructions: modePrompts.writer,
             fallbackReply: FALLBACK_REPLY,
@@ -302,6 +319,8 @@ function toHistory(messages, message) {
  * @param {(analysis: Object) => Promise<void>} options.recordStruggle - Persists a mapped struggle
  * @param {() => ({ active: boolean, topic?: string })} options.directiveState
  * @param {Object} [options.identifiers]
+ * @param {(update: { step: string, label: string, status: string }) => void} [options.onProgress]
+ *   Called as each visible step starts. It must not throw, and nothing waits for it.
  * @returns {Promise<{ run: Object, reply: string, replyResponse: Object|null, accessError: any, failureCause: any }>}
  */
 async function runStudentChat(options) {
@@ -310,7 +329,7 @@ async function runStudentChat(options) {
     const { core, runtime } = loaded;
     const {
         mode, message, llm, coursePrompts, runTracker, trackerContext, checkSummaryAttempt,
-        preview = false, retrieve, recordStruggle, directiveState, identifiers = {}
+        preview = false, retrieve, recordStruggle, directiveState, identifiers = {}, onProgress
     } = options;
 
     const modePrompts = buildModePrompts({ mode, coursePrompts });
@@ -393,6 +412,22 @@ async function runStudentChat(options) {
             console.log(`🤖 [AGENT_DEBUG] tool ${event.toolId} for ${event.agentId}: ${event.type.replace('tool.', '')}`);
         });
     }
+    if (typeof onProgress === 'function') {
+        const report = (step, progress) => {
+            try {
+                onProgress({ step, label: progress.label, status: progress.status });
+            } catch (error) {
+                console.error('❌ [AGENT_CHAT] Progress listener failed:', error);
+            }
+        };
+        bus.subscribe('agent.started', event => {
+            if (event.visible && event.progress) report(event.agentId, event.progress);
+            else if (event.agentId === 'summariser') report('summariser', PROGRESS.writer);
+        });
+        bus.subscribe('tool.completed', event => {
+            if (event.toolId === 'course-context') report('tutor', PROGRESS.planning);
+        });
+    }
     bus.subscribe('agent.*', event => {
         if (event.type === 'agent.failed' || event.type === 'agent.retrying' || event.type === 'agent.continued' || event.type === 'agent.skipped') {
             const detail = event.failure
@@ -438,6 +473,7 @@ module.exports = {
     AGENT_MODES,
     FALLBACK_REPLY,
     REPROMPT_TEXT,
+    PROGRESS,
     loadFramework,
     resolveAgentMode,
     isAgentChatEnabled,

@@ -372,3 +372,37 @@ describeWithFramework('the summary check', () => {
         expect(outcome.reply).toBe('A reply.');
     });
 });
+
+describeWithFramework('progress for the student (shown while they wait)', () => {
+    test('reports each visible step as it starts, in order', async () => {
+        const model = mockModel();
+        const updates = [];
+        const { options } = setUp({ llm: model.llm, onProgress: update => updates.push(update) });
+
+        await agentChat.runStudentChat(options);
+
+        expect(updates.map(({ step, status }) => [step, status])).toEqual([
+            ['tracker', agentChat.PROGRESS.tracker.status],
+            ['tutor', agentChat.PROGRESS.tutor.status],
+            ['tutor', agentChat.PROGRESS.planning.status],
+            ['summariser', agentChat.PROGRESS.writer.status]
+        ]);
+    });
+
+    test('a listener that throws does not change the reply', async () => {
+        const model = mockModel();
+        const { options } = setUp({ llm: model.llm, onProgress: () => { throw new Error('broken listener'); } });
+
+        const outcome = await agentChat.runStudentChat(options);
+
+        expect(outcome.run.usedFallback).toBe(false);
+        expect(outcome.reply).toBe('A reply.');
+    });
+
+    test('the summary check stays out of view', () => {
+        const { system } = agentChat.buildStudentChatSystem({
+            mode: 'tutor', modePrompts: { planner: 'p', writer: 'w' }, trackerPrompt: 't', checkSummaryAttempt: true
+        });
+        expect(system.visibleAgents).toEqual(['tracker', 'tutor']);
+    });
+});
