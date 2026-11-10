@@ -283,8 +283,8 @@ describeWithFramework('progress streamed to the chat page', () => {
         const events = parseEvents(res.body);
         expect(events.filter(e => e.event === 'progress').map(e => e.data.status)).toEqual([
             agentChat.PROGRESS.tracker.status,
+            agentChat.PROGRESS.courseSearch.status,
             agentChat.PROGRESS.tutor.status,
-            agentChat.PROGRESS.planning.status,
             agentChat.PROGRESS.writer.status
         ]);
         const result = events.at(-1);

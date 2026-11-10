@@ -122,15 +122,15 @@ const PROTEGE_PLAN_SCHEMA = Object.freeze({
 
 /**
  * What the student sees while each step runs. The framework carries a label
- * and status on an agent and sends them with its events; BiocBot streams them
- * to the chat page (see handleAgentChat in src/routes/chat.js).
+ * and status on an agent, on the summariser and on a tool, and sends them with
+ * its events; BiocBot streams them to the chat page (see handleAgentChat in
+ * src/routes/chat.js). In order: the tracker, the course search (the tutor's
+ * read tool), the tutor's own model call, then the writer.
  */
 const PROGRESS = Object.freeze({
     tracker: Object.freeze({ label: 'Understanding', status: 'BiocBot is understanding your message' }),
-    tutor: Object.freeze({ label: 'Course materials', status: 'BiocBot is finding relevant course materials' }),
-    // Not agents' own labels: the planning step's model call after retrieval,
-    // and the summariser, whose config has no progress field in 0.2.0-rc.1.
-    planning: Object.freeze({ label: 'Planning', status: 'BiocBot is working out what to say' }),
+    courseSearch: Object.freeze({ label: 'Course materials', status: 'BiocBot is finding relevant course materials' }),
+    tutor: Object.freeze({ label: 'Planning', status: 'BiocBot is working out what to say' }),
     writer: Object.freeze({ label: 'Writing', status: 'BiocBot is finalizing its response' })
 });
 
@@ -256,10 +256,11 @@ function buildStudentChatSystem({ mode, modePrompts, trackerPrompt, checkSummary
     const system = {
         id: `biocbot-student-chat-${mode}`,
         agents: definitions.map(({ id }) => id),
-        visibleAgents: definitions.filter(({ progress }) => progress).map(({ id }) => id),
+        visibleAgents: [...definitions.filter(({ progress }) => progress).map(({ id }) => id), 'summariser'],
         summariser: {
             instructions: modePrompts.writer,
             fallbackReply: FALLBACK_REPLY,
+            progress: PROGRESS.writer,
             // A failed tutor would leave the writer with no course material (decision 23).
             requires: ['tutor'],
             llmOptions: { lane: LANES.FRONTEND, temperature: 0.5, maxTokens: 32768, responseFormat: 'json' },
@@ -321,7 +322,7 @@ function toHistory(messages, message) {
  * @param {Object} [options.identifiers]
  * @param {(update: { step: string, label: string, status: string }) => void} [options.onProgress]
  *   Called as each visible step starts. It must not throw, and nothing waits for it.
- * @returns {Promise<{ run: Object, reply: string, replyResponse: Object|null, accessError: any, failureCause: any }>}
+ * @returns {Promise<{ run: Object, reply: string, replyCall: { model?: string, usage?: any }|null, accessError: any, failureCause: any }>}
  */
 async function runStudentChat(options) {
     const loaded = loadFramework();
@@ -374,28 +375,12 @@ async function runStudentChat(options) {
             };
         }
     });
-    // A retry runs the tutor's read tools again, so retrieval is kept for the
-    // request rather than searching Qdrant twice.
-    let retrieval = null;
     tools.register({
         id: 'course-context',
         sideEffect: false,
-        run: () => {
-            retrieval = retrieval || retrieve();
-            return retrieval;
-        }
+        progress: PROGRESS.courseSearch,
+        run: () => retrieve()
     });
-
-    // The run returns parsed outputs only, so the writer's raw response (model
-    // and usage, which the response carries today) is kept here.
-    let replyResponse = null;
-    const recordingLlm = {
-        sendMessage: async (text, llmOptions) => {
-            const response = await llm.sendMessage(text, llmOptions);
-            if (llmOptions && llmOptions.systemPrompt === system.summariser.instructions) replyResponse = response;
-            return response;
-        }
-    };
 
     const bus = core.createEventBus();
     // For local development only: prints each agent's output, which quotes the
@@ -412,22 +397,7 @@ async function runStudentChat(options) {
             console.log(`🤖 [AGENT_DEBUG] tool ${event.toolId} for ${event.agentId}: ${event.type.replace('tool.', '')}`);
         });
     }
-    if (typeof onProgress === 'function') {
-        const report = (step, progress) => {
-            try {
-                onProgress({ step, label: progress.label, status: progress.status });
-            } catch (error) {
-                console.error('❌ [AGENT_CHAT] Progress listener failed:', error);
-            }
-        };
-        bus.subscribe('agent.started', event => {
-            if (event.visible && event.progress) report(event.agentId, event.progress);
-            else if (event.agentId === 'summariser') report('summariser', PROGRESS.writer);
-        });
-        bus.subscribe('tool.completed', event => {
-            if (event.toolId === 'course-context') report('tutor', PROGRESS.planning);
-        });
-    }
+    if (typeof onProgress === 'function') subscribeProgress(bus, onProgress);
     bus.subscribe('agent.*', event => {
         if (event.type === 'agent.failed' || event.type === 'agent.retrying' || event.type === 'agent.continued' || event.type === 'agent.skipped') {
             const detail = event.failure
@@ -444,7 +414,7 @@ async function runStudentChat(options) {
         system,
         { message, history: toHistory(options.history, message), identifiers },
         {
-            llm: recordingLlm,
+            llm,
             bus,
             agents,
             tools,
@@ -466,7 +436,56 @@ async function runStudentChat(options) {
     // A check that failed adds nothing, as today (chat.js:1765).
     const reply = check && check.isSummaryAttempt === false ? `${run.reply}${REPROMPT_TEXT}` : run.reply;
 
-    return { run, reply, replyResponse, accessError, failureCause };
+    // The response reports the call that finished the reply, as the old handler
+    // reports its last call (a continuation's, if there was one), so nothing is
+    // summed across calls.
+    const writerCalls = (run.modelCalls && run.modelCalls.summariser) || [];
+    const replyCall = writerCalls[writerCalls.length - 1] || null;
+
+    return { run, reply, replyCall, accessError, failureCause };
+}
+
+/**
+ * Sends the student each visible step's status, from the framework's events.
+ * An agent's status shows when it starts, a visible tool's while it runs, and
+ * the agent's again once the tool is done, because the agent's model call
+ * comes after its read tools. The framework announces an agent and its read
+ * tools in one go, so only the last status published together is sent: the
+ * agent's own status would otherwise flash before the course search's.
+ * @param {Object} bus
+ * @param {(update: { step: string, label: string, status: string }) => void} onProgress
+ */
+function subscribeProgress(bus, onProgress) {
+    const agentProgress = new Map();
+    let pending = null;
+    let lastStatus = null;
+    const flush = () => {
+        const update = pending;
+        pending = null;
+        if (!update || update.status === lastStatus) return;
+        lastStatus = update.status;
+        try {
+            onProgress(update);
+        } catch (error) {
+            console.error('❌ [AGENT_CHAT] Progress listener failed:', error);
+        }
+    };
+    const show = (step, progress) => {
+        if (!pending) queueMicrotask(flush);
+        pending = { step, label: progress.label, status: progress.status };
+    };
+    bus.subscribe('agent.started', event => {
+        if (!event.visible || !event.progress) return;
+        agentProgress.set(event.agentId, event.progress);
+        show(event.agentId, event.progress);
+    });
+    bus.subscribe('tool.*', event => {
+        if (!event.visible) return;
+        if (event.type === 'tool.started' && event.progress) show(event.agentId, event.progress);
+        else if ((event.type === 'tool.completed' || event.type === 'tool.failed') && agentProgress.has(event.agentId)) {
+            show(event.agentId, agentProgress.get(event.agentId));
+        }
+    });
 }
 
 module.exports = {

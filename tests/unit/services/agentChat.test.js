@@ -168,7 +168,7 @@ describeWithFramework.each(['tutor', 'protege', 'explain'])('%s mode on the fram
         expect(outcome.run.usedFallback).toBe(false);
         expect(outcome.reply).toBe('A reply.');
         expect(model.calls.map(call => call.step)).toEqual(['tracker', 'tutor', 'writer']);
-        expect(outcome.replyResponse).toMatchObject({ model: 'mock-model', usage: { total_tokens: 7 } });
+        expect(outcome.replyCall).toEqual({ model: 'mock-model', usage: { total_tokens: 7 } });
     });
 
     test('keeps each step on its lane, with JSON mode on', async () => {
@@ -203,6 +203,9 @@ describeWithFramework.each(['tutor', 'protege', 'explain'])('%s mode on the fram
         const outcome = await agentChat.runStudentChat(options);
 
         expect(outcome.reply).toBe('The start of it and the rest.');
+        // The response reports the call that finished the reply, as the old handler does.
+        expect(outcome.run.modelCalls.summariser).toHaveLength(2);
+        expect(outcome.replyCall).toEqual({ model: 'mock-model', usage: { total_tokens: 7 } });
         const continued = model.callsTo('writer')[1];
         expect(continued.options.temperature).toBe(mode === 'protege' ? 0.8 : 0.6);
         expect(continued.message.continuation).toEqual({
@@ -383,10 +386,31 @@ describeWithFramework('progress for the student (shown while they wait)', () => 
 
         expect(updates.map(({ step, status }) => [step, status])).toEqual([
             ['tracker', agentChat.PROGRESS.tracker.status],
+            ['tutor', agentChat.PROGRESS.courseSearch.status],
             ['tutor', agentChat.PROGRESS.tutor.status],
-            ['tutor', agentChat.PROGRESS.planning.status],
             ['summariser', agentChat.PROGRESS.writer.status]
         ]);
+    });
+
+    test('keeps the same order without the struggle check', async () => {
+        const model = mockModel();
+        const updates = [];
+        const { options } = setUp({ llm: model.llm, runTracker: false, onProgress: update => updates.push(update.status) });
+
+        await agentChat.runStudentChat(options);
+
+        expect(updates).toEqual([
+            agentChat.PROGRESS.courseSearch.status,
+            agentChat.PROGRESS.tutor.status,
+            agentChat.PROGRESS.writer.status
+        ]);
+    });
+
+    test('the writer status is on the summariser config', () => {
+        const { system } = agentChat.buildStudentChatSystem({
+            mode: 'tutor', modePrompts: { planner: 'p', writer: 'w' }, trackerPrompt: 't'
+        });
+        expect(system.summariser.progress).toBe(agentChat.PROGRESS.writer);
     });
 
     test('a listener that throws does not change the reply', async () => {
@@ -403,6 +427,6 @@ describeWithFramework('progress for the student (shown while they wait)', () => 
         const { system } = agentChat.buildStudentChatSystem({
             mode: 'tutor', modePrompts: { planner: 'p', writer: 'w' }, trackerPrompt: 't', checkSummaryAttempt: true
         });
-        expect(system.visibleAgents).toEqual(['tracker', 'tutor']);
+        expect(system.visibleAgents).toEqual(['tracker', 'tutor', 'summariser']);
     });
 });

@@ -407,7 +407,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
             let status = response.status;
             let data;
-            if ((response.headers.get('Content-Type') || '').includes('text/event-stream')) {
+            // A response with no headers (a test's fake fetch) reads as JSON.
+            if ((response.headers?.get?.('Content-Type') || '').includes('text/event-stream')) {
                 const result = await readChatProgressStream(response, update => setTypingStatus(update && update.status));
                 status = result.status;
                 data = result.body || {};

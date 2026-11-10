@@ -1678,13 +1678,13 @@ async function runAgentChat({ req, res, db, course, llmService, qdrant, approved
     }
 
     const searchResults = retrieved ? retrieved.searchResults : [];
-    const replyResponse = outcome.replyResponse || {};
+    const replyCall = outcome.replyCall || {};
     res.json({
         success: true,
         messageId: generateChatMessageId(),
         message: outcome.reply,
-        model: replyResponse.model,
-        usage: replyResponse.usage,
+        model: replyCall.model,
+        usage: replyCall.usage,
         timestamp: new Date().toISOString(),
         mode: mode || 'default',
         citations: retrieved ? retrieved.citations : [],
