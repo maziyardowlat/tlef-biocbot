@@ -18,7 +18,7 @@
 .progress-fill {
   height: 100%;
   background: linear-gradient(90deg, #4caf50, #45a049);
-  transition: width 0.3s ease;
+  transition: width 0.3s var(--bb-ease-reveal);
   width: 25%; /* Start at 25% for step 1 */
 }
 
@@ -34,7 +34,7 @@
   position: relative;
   padding: 0.5rem 1rem;
   border-radius: var(--bb-radius);
-  transition: all 0.3s ease;
+  transition: all 0.3s var(--bb-ease-reveal);
 }
 
 .step-indicator.active {
@@ -221,7 +221,7 @@
   border: 2px solid var(--bb-ink-16);
   border-radius: var(--bb-radius);
   font-size: var(--bb-text-nav);
-  transition: border-color 0.3s ease;
+  transition: border-color 0.3s var(--bb-ease-reveal);
 }
 
 /* Shared padding above is too tight for the global select chevron (#643). */
@@ -326,7 +326,7 @@
   border: 2px solid var(--bb-ink-16);
   border-radius: var(--bb-radius);
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all 0.3s var(--bb-ease-reveal);
   background: white;
 }
 
@@ -460,7 +460,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background-color 0.3s ease;
+  transition: background-color 0.3s var(--bb-ease-reveal);
 }
 
 .add-objective-btn:hover {
@@ -533,7 +533,7 @@
   background: white;
   border: 2px solid var(--bb-ink-16);
   border-radius: var(--bb-radius);
-  transition: all 0.3s ease;
+  transition: all 0.3s var(--bb-ease-reveal);
 }
 
 .material-item.required {
@@ -602,7 +602,7 @@
   border-radius: var(--bb-radius);
   cursor: pointer;
   font-size: var(--bb-text-card-body);
-  transition: background-color 0.3s ease;
+  transition: background-color 0.3s var(--bb-ease-reveal);
 }
 
 .upload-btn:hover {
@@ -632,7 +632,7 @@
   border-radius: var(--bb-radius);
   font-size: var(--bb-text-nav);
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all 0.3s var(--bb-ease-reveal);
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -679,7 +679,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background-color 0.3s ease;
+  transition: background-color 0.3s var(--bb-ease-reveal);
 }
 
 .add-question-btn:hover {
@@ -957,7 +957,7 @@ fieldset.radio-group-fieldset {
   cursor: pointer;
   padding: 0.5rem;
   border-radius: var(--bb-radius);
-  transition: background-color 0.2s ease;
+  transition: background-color 0.2s var(--bb-ease-reveal);
 }
 
 .radio-option:hover {
@@ -1177,7 +1177,7 @@ fieldset.radio-group-fieldset {
   border-radius: var(--bb-radius);
   background: white;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all 0.3s var(--bb-ease-reveal);
 }
 
 .upload-file-btn:hover {
@@ -1207,7 +1207,7 @@ fieldset.radio-group-fieldset {
   border: 2px solid var(--bb-ink-16);
   border-radius: var(--bb-radius);
   font-size: var(--bb-text-nav);
-  transition: border-color 0.3s ease;
+  transition: border-color 0.3s var(--bb-ease-reveal);
 }
 
 .input-section input:focus,
@@ -1257,7 +1257,7 @@ fieldset.radio-group-fieldset {
   border: 2px solid var(--bb-ink-16);
   border-radius: var(--bb-radius);
   font-size: var(--bb-text-nav);
-  transition: border-color 0.3s ease;
+  transition: border-color 0.3s var(--bb-ease-reveal);
 }
 
 .objectives-input-section .objective-input:focus {
@@ -1273,7 +1273,7 @@ fieldset.radio-group-fieldset {
   padding: 0.75rem 1.5rem;
   font-size: var(--bb-text-h3-group);
   cursor: pointer;
-  transition: background-color 0.3s ease;
+  transition: background-color 0.3s var(--bb-ease-reveal);
 }
 
 .objectives-input-section .add-objective-btn:hover {
@@ -1381,7 +1381,7 @@ fieldset.radio-group-fieldset {
   border-radius: var(--bb-radius);
   text-decoration: none;
   font-weight: 600;
-  transition: all 0.3s ease;
+  transition: all 0.3s var(--bb-ease-reveal);
   min-width: 200px;
 }
 
