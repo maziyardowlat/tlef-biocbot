@@ -266,6 +266,9 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Load mental health flags section
     loadMentalHealthFlags();
     initMHEventListeners();
+
+    // Load flashcard "review again" stats section
+    loadReviewAgainStats();
 });
 
 /**
@@ -1790,6 +1793,93 @@ function renderMHFlags() {
 
     mhState.filteredFlags.forEach(flag => {
         const card = createMHFlagCard(flag);
+        list.appendChild(card);
+    });
+}
+
+/**
+ * Load the flashcard "review again" stats section. This is a
+ * course-wide aggregate (counts only, no student identity), so it
+ * doesn't need the anonymize-students check that per-student views
+ * (like Student Hub) use.
+ */
+async function loadReviewAgainStats() {
+    const section = document.getElementById('review-again-section');
+    const loading = document.getElementById('ra-loading');
+    const empty = document.getElementById('ra-empty');
+    const list = document.getElementById('ra-list');
+    const totalBadge = document.getElementById('ra-total-count');
+
+    // Flashcard deck management (and this stats view) is instructor-only
+    // server-side (requireInstructorCourse in flashcards.js) - no TA
+    // permission grants access, unlike the rest of this page.
+    if (typeof isTA === 'function' && isTA()) {
+        if (section) section.style.display = 'none';
+        return;
+    }
+    if (section) section.style.display = '';
+
+    if (loading) loading.style.display = 'block';
+    if (empty) empty.style.display = 'none';
+    if (list) list.innerHTML = '';
+
+    try {
+        const courseId = await getCurrentCourseId();
+        if (!courseId) return;
+
+        const response = await fetch(`/api/flashcards/instructor/review-again-stats?courseId=${courseId}`);
+        const result = await response.json();
+
+        if (result.success) {
+            const stats = result.data || [];
+            if (totalBadge) totalBadge.textContent = stats.length;
+            renderReviewAgainStats(stats);
+        }
+    } catch (error) {
+        console.error('Error loading review-again stats:', error);
+    } finally {
+        if (loading) loading.style.display = 'none';
+    }
+}
+
+/**
+ * Same citation format as the student flashcards page
+ * (public/student/scripts/flashcards.js's sourceLabel), so a card looks
+ * the same whether a student or an instructor is looking at it.
+ */
+function formatCardSourceLabel(source) {
+    if (!source) return 'Instructor-created card';
+    if (source.slideNumber) return `${source.fileName || 'Course material'}, slide ${source.slideNumber}`;
+    if (source.pageNumber) return `${source.fileName || 'Course material'}, page ${source.pageNumber}`;
+    return `${source.fileName || 'Course material'}${Number.isInteger(source.chunkIndex) ? `, section ${source.chunkIndex + 1}` : ''}`;
+}
+
+function renderReviewAgainStats(stats) {
+    const list = document.getElementById('ra-list');
+    const empty = document.getElementById('ra-empty');
+    if (!list) return;
+
+    list.innerHTML = '';
+
+    if (!stats.length) {
+        if (empty) empty.style.display = 'block';
+        return;
+    }
+    if (empty) empty.style.display = 'none';
+
+    stats.forEach(stat => {
+        const card = document.createElement('div');
+        card.className = 'ra-card';
+        card.innerHTML = `
+            <div class="ra-card-main">
+                <p class="ra-card-front">${escapeHtml(stat.front)}</p>
+                <p class="ra-card-source">${escapeHtml(stat.lectureName || '')} — ${escapeHtml(formatCardSourceLabel(stat.source))}</p>
+            </div>
+            <div class="ra-card-counts">
+                <span class="ra-card-student-count">${stat.studentCount} student${stat.studentCount === 1 ? '' : 's'}</span>
+                <span class="ra-card-again-count">${stat.totalAgainCount} "again" presses</span>
+            </div>
+        `;
         list.appendChild(card);
     });
 }

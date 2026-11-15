@@ -116,6 +116,67 @@ describe('flashcard instructor routes', () => {
     });
 });
 
+describe('GET /instructor/review-again-stats', () => {
+    test('rejects students', async () => {
+        const response = await request(app({ db: courseDb(), user: student }))
+            .get('/instructor/review-again-stats?courseId=C1');
+        expect(response.status).toBe(403);
+    });
+
+    test('returns cards sorted by distinct student count, with no student identity exposed', async () => {
+        const db = courseDb();
+        const deck = await seedPublishedDeck(db);
+        const [card] = deck.publishedCards;
+
+        await FlashcardDeck.saveStudentReview(db, { studentId: 's1', courseId: 'C1', deckId: deck.deckId, deckVersion: 1, cardId: card.cardId, rating: 'again' });
+        await FlashcardDeck.saveStudentReview(db, { studentId: 's2', courseId: 'C1', deckId: deck.deckId, deckVersion: 1, cardId: card.cardId, rating: 'again' });
+
+        const response = await request(app({ db, user: instructor })).get('/instructor/review-again-stats?courseId=C1');
+        expect(response.status).toBe(200);
+        expect(response.body.data).toEqual([
+            expect.objectContaining({
+                deckId: deck.deckId,
+                cardId: card.cardId,
+                studentCount: 2,
+                totalAgainCount: 2
+            })
+        ]);
+        // No per-student field anywhere in the payload.
+        expect(JSON.stringify(response.body.data)).not.toMatch(/s1|s2/);
+    });
+
+    test('resolves the generic "Course material" fallback to the real document filename', async () => {
+        const db = courseDb();
+        await db.collection('documents').insertOne({
+            documentId: 'doc-missing-name',
+            originalName: 'Week 3 Slides.pptx'
+        });
+        const draft = await FlashcardDeck.saveGeneratedDraft(db, {
+            courseId: 'C1',
+            lectureName: 'Unit 1',
+            cards: [{ front: 'Front', back: 'Back', source: { documentId: 'doc-missing-name' } }],
+            generatedBy: 'i1'
+        });
+        const deck = await FlashcardDeck.publishDraft(db, draft.deckId, 'i1');
+        const [card] = deck.publishedCards;
+        expect(card.source.fileName).toBe('Course material');
+
+        await FlashcardDeck.saveStudentReview(db, { studentId: 's1', courseId: 'C1', deckId: deck.deckId, deckVersion: 1, cardId: card.cardId, rating: 'again' });
+
+        const response = await request(app({ db, user: instructor })).get('/instructor/review-again-stats?courseId=C1');
+        expect(response.status).toBe(200);
+        expect(response.body.data[0].source.fileName).toBe('Week 3 Slides.pptx');
+    });
+
+    test('returns an empty list when no cards have been marked "again"', async () => {
+        const db = courseDb();
+        await seedPublishedDeck(db);
+        const response = await request(app({ db, user: instructor })).get('/instructor/review-again-stats?courseId=C1');
+        expect(response.status).toBe(200);
+        expect(response.body.data).toEqual([]);
+    });
+});
+
 describe('flashcard student routes', () => {
     test('lists only published decks in published units', async () => {
         const db = courseDb();
