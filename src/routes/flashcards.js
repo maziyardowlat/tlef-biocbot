@@ -244,6 +244,34 @@ router.put('/instructor/:deckId', async (req, res) => {
     }
 });
 
+/**
+ * Edit a single card's question/answer text in place, from the "Review
+ * again" view - distinct from PUT /instructor/:deckId, which replaces a
+ * whole draft. Updates draftCards and publishedCards together wherever
+ * the card exists, so the fix shows up in Course Upload and for students
+ * immediately rather than waiting on a republish.
+ */
+router.put('/instructor/:deckId/cards/:cardId', async (req, res) => {
+    try {
+        const db = req.app.locals.db;
+        const deck = await FlashcardDeck.getDeckById(db, req.params.deckId);
+        if (!deck) return res.status(404).json({ success: false, message: 'Flashcard deck not found' });
+        const course = await requireInstructorCourse(db, req, res, deck.courseId);
+        if (!course) return;
+
+        const updated = await FlashcardDeck.updateCardText(db, deck.deckId, req.params.cardId, {
+            front: req.body.front,
+            back: req.body.back
+        });
+        if (!updated) return res.status(404).json({ success: false, message: 'Flashcard deck not found' });
+        return res.json({ success: true, message: 'Flashcard updated', data: instructorDeckSummary(updated) });
+    } catch (error) {
+        console.error('Error updating flashcard text:', error);
+        const status = /not found/i.test(error.message) ? 404 : 400;
+        return res.status(status).json({ success: false, message: error.message || 'Unable to update flashcard' });
+    }
+});
+
 router.post('/instructor/:deckId/publish', async (req, res) => {
     try {
         const db = req.app.locals.db;

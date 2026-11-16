@@ -100,6 +100,73 @@ describe('FlashcardDeck', () => {
         expect(deck.publishedCards).toHaveLength(2);
     });
 
+    test('updateCardText edits a published card in place without bumping publishedVersion', async () => {
+        const db = memoryDb({});
+        const draft = await FlashcardDeck.saveGeneratedDraft(db, {
+            courseId: 'C1', lectureName: 'Unit 1', cards: sampleCards(), generatedBy: 'i1'
+        });
+        const published = await FlashcardDeck.publishDraft(db, draft.deckId, 'i1');
+        const cardId = published.publishedCards[0].cardId;
+
+        const updated = await FlashcardDeck.updateCardText(db, draft.deckId, cardId, {
+            front: 'What does ATP synthase actually produce?',
+            back: 'ATP, from ADP and inorganic phosphate.'
+        });
+
+        expect(updated.publishedVersion).toBe(1);
+        expect(updated.publishedCards[0]).toMatchObject({
+            cardId,
+            front: 'What does ATP synthase actually produce?',
+            back: 'ATP, from ADP and inorganic phosphate.'
+        });
+        // Second card, and the card's source, are untouched by the edit.
+        expect(updated.publishedCards[1].front).toBe(sampleCards()[1].front);
+        expect(updated.publishedCards[0].source).toMatchObject(sampleCards()[0].source);
+    });
+
+    test('updateCardText updates draft and published copies together when both contain the card', async () => {
+        const db = memoryDb({});
+        const draft = await FlashcardDeck.saveGeneratedDraft(db, {
+            courseId: 'C1', lectureName: 'Unit 1', cards: sampleCards(), generatedBy: 'i1'
+        });
+        const published = await FlashcardDeck.publishDraft(db, draft.deckId, 'i1');
+        const cardId = published.publishedCards[0].cardId;
+        // Simulate an in-progress, unpublished edit sitting in the draft.
+        await FlashcardDeck.unpublishDeck(db, draft.deckId);
+
+        const updated = await FlashcardDeck.updateCardText(db, draft.deckId, cardId, {
+            front: 'Updated front',
+            back: 'Updated back'
+        });
+
+        expect(updated.draftCards.find(c => c.cardId === cardId)).toMatchObject({ front: 'Updated front', back: 'Updated back' });
+        expect(updated.publishedCards.find(c => c.cardId === cardId)).toMatchObject({ front: 'Updated front', back: 'Updated back' });
+    });
+
+    test('updateCardText rejects a blank front/back or a collision with a sibling card', async () => {
+        const db = memoryDb({});
+        const draft = await FlashcardDeck.saveGeneratedDraft(db, {
+            courseId: 'C1', lectureName: 'Unit 1', cards: sampleCards(), generatedBy: 'i1'
+        });
+        const [cardA, cardB] = draft.draftCards;
+
+        await expect(FlashcardDeck.updateCardText(db, draft.deckId, cardA.cardId, { front: '', back: 'x' }))
+            .rejects.toThrow(/front and back/i);
+        await expect(FlashcardDeck.updateCardText(db, draft.deckId, cardA.cardId, { front: cardB.front, back: 'x' }))
+            .rejects.toThrow(/unique/i);
+    });
+
+    test('updateCardText returns null for an unknown deck and throws for an unknown cardId', async () => {
+        const db = memoryDb({});
+        const draft = await FlashcardDeck.saveGeneratedDraft(db, {
+            courseId: 'C1', lectureName: 'Unit 1', cards: sampleCards(), generatedBy: 'i1'
+        });
+
+        expect(await FlashcardDeck.updateCardText(db, 'deck_missing', 'anything', { front: 'a', back: 'b' })).toBeNull();
+        await expect(FlashcardDeck.updateCardText(db, draft.deckId, 'fc_missing', { front: 'a', back: 'b' }))
+            .rejects.toThrow(/not found/i);
+    });
+
     test('stores only per-student mastery and review counts', async () => {
         const db = memoryDb({});
         await FlashcardDeck.saveStudentReview(db, {

@@ -268,6 +268,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     initMHEventListeners();
 
     // Load flashcard "review again" stats section
+    initReviewAgainModal();
     loadReviewAgainStats();
 });
 
@@ -1831,9 +1832,9 @@ async function loadReviewAgainStats() {
         const result = await response.json();
 
         if (result.success) {
-            const stats = result.data || [];
-            if (totalBadge) totalBadge.textContent = stats.length;
-            renderReviewAgainStats(stats);
+            reviewAgainStats = result.data || [];
+            if (totalBadge) totalBadge.textContent = reviewAgainStats.length;
+            renderReviewAgainStats(reviewAgainStats);
         }
     } catch (error) {
         console.error('Error loading review-again stats:', error);
@@ -1867,9 +1868,13 @@ function renderReviewAgainStats(stats) {
     }
     if (empty) empty.style.display = 'none';
 
-    stats.forEach(stat => {
+    stats.forEach((stat, index) => {
         const card = document.createElement('div');
         card.className = 'ra-card';
+        card.tabIndex = 0;
+        card.setAttribute('role', 'button');
+        card.setAttribute('aria-label', `View flashcard: ${stat.front}`);
+        card.dataset.raIndex = String(index);
         card.innerHTML = `
             <div class="ra-card-main">
                 <p class="ra-card-front">${escapeHtml(stat.front)}</p>
@@ -1880,7 +1885,143 @@ function renderReviewAgainStats(stats) {
                 <span class="ra-card-again-count">${stat.totalAgainCount} "again" presses</span>
             </div>
         `;
+        card.addEventListener('click', () => openReviewAgainCardModal(index));
+        card.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                openReviewAgainCardModal(index);
+            }
+        });
         list.appendChild(card);
+    });
+}
+
+// Stats currently backing the Review Again list/modal, so the modal can look
+// up a card's full data (deckId, cardId, source) by the index stashed on its
+// row - re-set every time loadReviewAgainStats() refreshes the list.
+let reviewAgainStats = [];
+let reviewAgainModalCardIndex = null;
+
+/**
+ * Render a card side's live preview exactly like the Course Upload editor
+ * does, so a card looks the same in both places.
+ */
+function renderReviewAgainCardPreview(side) {
+    const input = document.getElementById(`ra-card-modal-${side}`);
+    const preview = document.getElementById(`ra-card-modal-${side}-preview`);
+    if (!input || !preview) return;
+    if (typeof RichText === 'undefined') {
+        preview.textContent = input.value || '';
+        return;
+    }
+    RichText.render(preview, input.value || '');
+}
+
+function setReviewAgainModalEditing(isEditing) {
+    const front = document.getElementById('ra-card-modal-front');
+    const back = document.getElementById('ra-card-modal-back');
+    const editBtn = document.getElementById('ra-card-modal-edit-btn');
+    const saveBtn = document.getElementById('ra-card-modal-save-btn');
+    const cancelBtn = document.getElementById('ra-card-modal-cancel-btn');
+    if (front) front.readOnly = !isEditing;
+    if (back) back.readOnly = !isEditing;
+    if (editBtn) editBtn.style.display = isEditing ? 'none' : '';
+    if (saveBtn) saveBtn.style.display = isEditing ? '' : 'none';
+    if (cancelBtn) cancelBtn.style.display = isEditing ? '' : 'none';
+}
+
+function openReviewAgainCardModal(index) {
+    const stat = reviewAgainStats[index];
+    const modal = document.getElementById('ra-card-modal');
+    if (!stat || !modal) return;
+
+    reviewAgainModalCardIndex = index;
+
+    document.getElementById('ra-card-modal-title').textContent = stat.lectureName || 'Flashcard';
+    document.getElementById('ra-card-modal-source').textContent = formatCardSourceLabel(stat.source);
+    document.getElementById('ra-card-modal-counts').textContent =
+        `${stat.studentCount} student${stat.studentCount === 1 ? '' : 's'} · ${stat.totalAgainCount} "again" presses`;
+
+    const front = document.getElementById('ra-card-modal-front');
+    const back = document.getElementById('ra-card-modal-back');
+    if (front) front.value = stat.front;
+    if (back) back.value = stat.back;
+    renderReviewAgainCardPreview('front');
+    renderReviewAgainCardPreview('back');
+    setReviewAgainModalEditing(false);
+
+    modal.classList.add('show');
+}
+
+function closeReviewAgainCardModal() {
+    const modal = document.getElementById('ra-card-modal');
+    if (modal) modal.classList.remove('show');
+    reviewAgainModalCardIndex = null;
+}
+
+async function saveReviewAgainCardEdit() {
+    const stat = reviewAgainStats[reviewAgainModalCardIndex];
+    const saveBtn = document.getElementById('ra-card-modal-save-btn');
+    if (!stat || !saveBtn) return;
+
+    const front = document.getElementById('ra-card-modal-front')?.value.trim();
+    const back = document.getElementById('ra-card-modal-back')?.value.trim();
+    if (!front || !back) {
+        showErrorMessage('A flashcard needs both a front and a back.');
+        return;
+    }
+
+    const originalText = saveBtn.textContent;
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving...';
+
+    try {
+        const response = await fetch(`/api/flashcards/instructor/${stat.deckId}/cards/${stat.cardId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ front, back })
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.message || 'Unable to save flashcard');
+
+        stat.front = front;
+        stat.back = back;
+        setReviewAgainModalEditing(false);
+        renderReviewAgainStats(reviewAgainStats);
+        showSuccessMessage('Flashcard updated.');
+    } catch (error) {
+        console.error('Error saving flashcard edit:', error);
+        showErrorMessage(error.message || 'Unable to save flashcard');
+    } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = originalText;
+    }
+}
+
+function initReviewAgainModal() {
+    const modal = document.getElementById('ra-card-modal');
+    if (!modal) return;
+
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal) closeReviewAgainCardModal();
+    });
+    document.getElementById('ra-card-modal-close')?.addEventListener('click', closeReviewAgainCardModal);
+    document.getElementById('ra-card-modal-edit-btn')?.addEventListener('click', () => setReviewAgainModalEditing(true));
+    document.getElementById('ra-card-modal-save-btn')?.addEventListener('click', saveReviewAgainCardEdit);
+    document.getElementById('ra-card-modal-cancel-btn')?.addEventListener('click', () => {
+        const stat = reviewAgainStats[reviewAgainModalCardIndex];
+        if (stat) {
+            document.getElementById('ra-card-modal-front').value = stat.front;
+            document.getElementById('ra-card-modal-back').value = stat.back;
+            renderReviewAgainCardPreview('front');
+            renderReviewAgainCardPreview('back');
+        }
+        setReviewAgainModalEditing(false);
+    });
+    document.getElementById('ra-card-modal-front')?.addEventListener('input', () => renderReviewAgainCardPreview('front'));
+    document.getElementById('ra-card-modal-back')?.addEventListener('input', () => renderReviewAgainCardPreview('back'));
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && modal.classList.contains('show')) closeReviewAgainCardModal();
     });
 }
 

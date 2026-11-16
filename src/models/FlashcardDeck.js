@@ -161,6 +161,58 @@ async function updateDraft(db, deckId, updates) {
     return getDeckById(db, deckId);
 }
 
+/**
+ * Edit a single card's text in place, by cardId, wherever it currently
+ * lives - draftCards, publishedCards, or both. Used by the instructor
+ * "Review again" view, where the card an instructor is correcting is
+ * typically already published (students are actively reviewing it), so
+ * this intentionally skips the normal draft -> publish flow and the
+ * publishedVersion bump that would come with it: it's a text correction,
+ * not a new release.
+ * @param {Object} db - MongoDB database instance
+ * @param {string} deckId - Deck containing the card
+ * @param {string} cardId - Card to edit
+ * @param {{front: string, back: string}} updates - New front/back text
+ * @returns {Promise<Object|null>} The updated deck, or null if the deck doesn't exist
+ */
+async function updateCardText(db, deckId, cardId, updates) {
+    const existing = await getDeckById(db, deckId);
+    if (!existing) return null;
+
+    const front = normalizeText(updates.front, 300);
+    const back = normalizeText(updates.back, 1200);
+    if (!front || !back) {
+        throw new Error('Every flashcard needs a front and back');
+    }
+    const normalizedFront = normalizeFront(front);
+
+    const applyToList = (cards) => {
+        if (!Array.isArray(cards)) return null;
+        const index = cards.findIndex(card => card.cardId === cardId);
+        if (index === -1) return null;
+        const collides = cards.some((card, i) => i !== index && normalizeFront(card.front) === normalizedFront);
+        if (collides) {
+            throw new Error('Flashcard fronts must be unique within a deck');
+        }
+        const updated = [...cards];
+        updated[index] = { ...updated[index], front, back };
+        return updated;
+    };
+
+    const updatedDraft = applyToList(existing.draftCards);
+    const updatedPublished = applyToList(existing.publishedCards);
+    if (!updatedDraft && !updatedPublished) {
+        throw new Error('Flashcard not found');
+    }
+
+    const set = { updatedAt: new Date() };
+    if (updatedDraft) set.draftCards = updatedDraft;
+    if (updatedPublished) set.publishedCards = updatedPublished;
+
+    await getDecksCollection(db).updateOne({ deckId }, { $set: set });
+    return getDeckById(db, deckId);
+}
+
 async function publishDraft(db, deckId, publishedBy) {
     const existing = await getDeckById(db, deckId);
     if (!existing) return null;
@@ -340,6 +392,7 @@ module.exports = {
     listPublishedDecks,
     saveGeneratedDraft,
     updateDraft,
+    updateCardText,
     publishDraft,
     unpublishDeck,
     markUnitStale,

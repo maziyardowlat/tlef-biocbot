@@ -177,6 +177,48 @@ describe('GET /instructor/review-again-stats', () => {
     });
 });
 
+describe('PUT /instructor/:deckId/cards/:cardId', () => {
+    test('rejects students', async () => {
+        const db = courseDb();
+        const deck = await seedPublishedDeck(db);
+        const response = await request(app({ db, user: student }))
+            .put(`/instructor/${deck.deckId}/cards/${deck.publishedCards[0].cardId}`)
+            .send({ front: 'New front', back: 'New back' });
+        expect(response.status).toBe(403);
+    });
+
+    test('edits a published card and the fix is reflected in review-again-stats', async () => {
+        const db = courseDb();
+        const deck = await seedPublishedDeck(db);
+        const [card] = deck.publishedCards;
+        await FlashcardDeck.saveStudentReview(db, { studentId: 's1', courseId: 'C1', deckId: deck.deckId, deckVersion: 1, cardId: card.cardId, rating: 'again' });
+
+        const response = await request(app({ db, user: instructor }))
+            .put(`/instructor/${deck.deckId}/cards/${card.cardId}`)
+            .send({ front: 'Corrected front', back: 'Corrected back' });
+        expect(response.status).toBe(200);
+        expect(response.body.data.publishedCards[0]).toMatchObject({ cardId: card.cardId, front: 'Corrected front', back: 'Corrected back' });
+
+        const stats = await request(app({ db, user: instructor })).get('/instructor/review-again-stats?courseId=C1');
+        expect(stats.body.data[0].front).toBe('Corrected front');
+    });
+
+    test('404s for an unknown deck, 400s for a missing front/back', async () => {
+        const db = courseDb();
+        const deck = await seedPublishedDeck(db);
+
+        const missingDeck = await request(app({ db, user: instructor }))
+            .put('/instructor/deck_missing/cards/fc_missing')
+            .send({ front: 'a', back: 'b' });
+        expect(missingDeck.status).toBe(404);
+
+        const blankFront = await request(app({ db, user: instructor }))
+            .put(`/instructor/${deck.deckId}/cards/${deck.publishedCards[0].cardId}`)
+            .send({ front: '', back: 'b' });
+        expect(blankFront.status).toBe(400);
+    });
+});
+
 describe('flashcard student routes', () => {
     test('lists only published decks in published units', async () => {
         const db = courseDb();
