@@ -13,8 +13,8 @@
  *
  * This path sits beside the old handler and is off by default. AGENT_CHAT_MODES
  * turns it on per mode (a comma-separated list of tutor, explain, protege).
- * The mental-health check and the chat summary stay on the old code (2b and
- * decision 29).
+ * The mental-health check runs here as an async agent (2b), so the reply never
+ * waits for it. The chat summary stays on the old code (decision 29).
  */
 
 const prompts = require('./prompts');
@@ -121,6 +121,32 @@ const PROTEGE_PLAN_SCHEMA = Object.freeze({
 });
 
 /**
+ * The mental-health check (2b). The old check is startMentalHealthCheck in
+ * src/routes/chat.js, which the old path still runs. Students never see this
+ * agent, so it has no progress and isn't in visibleAgents.
+ */
+const MENTAL_HEALTH = Object.freeze({
+    agent: 'mental-health-check',
+    contextTool: 'mental-health-context',
+    flagTool: 'mental-health-flag',
+    // Nothing waits for it, so a slow model only delays the flag. Past this it
+    // fails, visibly, instead of answering late.
+    timeoutMs: 60000
+});
+// The levels the default detection prompt asks for, which the flags page reads
+// (public/instructor/scripts/flagged.js:2066). Anything else fails the schema,
+// so a reply the check can't read is a failure, never "no concern".
+const CONCERN_LEVELS = Object.freeze(['no concern', 'low concern', 'high concern']);
+const MENTAL_HEALTH_SCHEMA = Object.freeze({
+    type: 'object',
+    required: ['concernLevel', 'reason'],
+    properties: {
+        concernLevel: { type: 'string', enum: CONCERN_LEVELS },
+        reason: { type: 'string' }
+    }
+});
+
+/**
  * What the student sees while each step runs. The framework carries a label
  * and status on an agent, on the summariser and on a tool, and sends them with
  * its events; BiocBot streams them to the chat page (see handleAgentChat in
@@ -214,9 +240,10 @@ function buildModePrompts({ mode, coursePrompts }) {
  * @param {{ planner: string, writer: string }} options.modePrompts
  * @param {string} [options.trackerPrompt] - Set to run the struggle check
  * @param {boolean} [options.checkSummaryAttempt]
+ * @param {string} [options.mentalHealthPrompt] - Set to run the mental-health check
  * @returns {{ definitions: Object[], system: Object }}
  */
-function buildStudentChatSystem({ mode, modePrompts, trackerPrompt, checkSummaryAttempt }) {
+function buildStudentChatSystem({ mode, modePrompts, trackerPrompt, checkSummaryAttempt, mentalHealthPrompt }) {
     const definitions = [];
     const add = definition => definitions.push({ version: '1.0.0', ...definition });
 
@@ -252,6 +279,29 @@ function buildStudentChatSystem({ mode, modePrompts, trackerPrompt, checkSummary
         // Directive mode is for the tutor prompt only (old handler: chat.js:1705).
         tools: { reads: ['course-context', ...(mode === 'tutor' ? ['directive-state'] : [])] }
     });
+    if (mentalHealthPrompt) {
+        add({
+            id: MENTAL_HEALTH.agent,
+            // The reply never waits for it, like the old check's fire-and-forget call.
+            mode: 'async',
+            // The course's prompt, or the default, so instructors can still edit it.
+            prompt: mentalHealthPrompt,
+            outputSchema: MENTAL_HEALTH_SCHEMA,
+            // The old call's settings (src/services/llm.js analyzeMentalHealth).
+            // JSON mode needs the prompt to mention JSON, which the default does
+            // and an instructor's edit might not, so it's on only then.
+            llmOptions: {
+                lane: LANES.BACKEND,
+                temperature: 0.1,
+                maxTokens: 256,
+                ...(/json/i.test(mentalHealthPrompt) ? { responseFormat: 'json' } : {})
+            },
+            timeoutMs: MENTAL_HEALTH.timeoutMs,
+            // No context.history: the model reads only the trimmed conversation,
+            // through the read tool, as the old check sends it.
+            tools: { reads: [MENTAL_HEALTH.contextTool], writes: [MENTAL_HEALTH.flagTool] }
+        });
+    }
 
     const system = {
         id: `biocbot-student-chat-${mode}`,
@@ -304,6 +354,34 @@ function toHistory(messages, message) {
 }
 
 /**
+ * The part of the conversation the mental-health check reads and saves with a
+ * flag, trimmed as startMentalHealthCheck in src/routes/chat.js does: the last
+ * assistant message, then the last two student messages. The browser's
+ * history usually ends with the current message already, so it's added only
+ * when the history is empty. The entries are the ones the browser sent, as
+ * the old check saves them.
+ * @param {Array<{role: string, content: string}>} conversationMessages - From the request body
+ * @param {string} message
+ * @returns {Array<{role: string, content: string}>}
+ */
+function trimMentalHealthContext(conversationMessages, message) {
+    const sent = Array.isArray(conversationMessages) ? conversationMessages : [];
+    const allMessages = sent.length > 0 ? sent : [{ role: 'user', content: message }];
+    const recentStudentMessages = allMessages.filter(entry => entry && entry.role === 'user').slice(-2);
+    const recentBotMessage = [...allMessages].reverse().find(entry => entry && entry.role === 'assistant');
+    return [...(recentBotMessage ? [recentBotMessage] : []), ...recentStudentMessages];
+}
+
+/**
+ * The text the old check sends the model (src/services/llm.js analyzeMentalHealth).
+ * @param {Array<{role: string, content: string}>} messages
+ * @returns {string}
+ */
+function serializeConversation(messages) {
+    return messages.map(entry => `[${entry.role}]: ${entry.content}`).join('\n\n');
+}
+
+/**
  * Runs one student message through the agents.
  *
  * @param {Object} options
@@ -319,10 +397,16 @@ function toHistory(messages, message) {
  * @param {() => Promise<{ contextText: string, coverageNote: string }>} options.retrieve
  * @param {(analysis: Object) => Promise<void>} options.recordStruggle - Persists a mapped struggle
  * @param {() => ({ active: boolean, topic?: string })} options.directiveState
- * @param {Object} [options.identifiers]
+ * @param {{ courseId?: string, unitName?: string, userId?: string, studentName?: string }} [options.identifiers]
+ *   Tools get these, and the model never does. The mental-health flag takes the
+ *   student and course from here.
+ * @param {{ prompt: string, conversationMessages?: Array<{role: string, content: string}>, saveFlag: (flag: Object) => Promise<any> }} [options.mentalHealthCheck]
+ *   Set to run the mental-health check. `conversationMessages` is the history
+ *   the browser sent, and `saveFlag` saves a flag with the old check's fields.
  * @param {(update: { step: string, label: string, status: string }) => void} [options.onProgress]
  *   Called as each visible step starts. It must not throw, and nothing waits for it.
  * @returns {Promise<{ run: Object, reply: string, replyCall: { model?: string, usage?: any }|null, accessError: any, failureCause: any }>}
+ *   `run.asyncDone` settles once the mental-health check has finished. Nothing in a request waits for it.
  */
 async function runStudentChat(options) {
     const loaded = loadFramework();
@@ -330,7 +414,7 @@ async function runStudentChat(options) {
     const { core, runtime } = loaded;
     const {
         mode, message, llm, coursePrompts, runTracker, trackerContext, checkSummaryAttempt,
-        preview = false, retrieve, recordStruggle, directiveState, identifiers = {}, onProgress
+        preview = false, retrieve, recordStruggle, directiveState, identifiers = {}, mentalHealthCheck, onProgress
     } = options;
 
     const modePrompts = buildModePrompts({ mode, coursePrompts });
@@ -341,7 +425,8 @@ async function runStudentChat(options) {
         trackerPrompt: runTracker
             ? TrackerService.buildAnalysisPrompt(trackerContext.courseId, trackerContext.unitName, approvedTopics)
             : null,
-        checkSummaryAttempt
+        checkSummaryAttempt,
+        mentalHealthPrompt: mentalHealthCheck ? mentalHealthCheck.prompt : null
     });
 
     const agents = core.createAgentRegistry();
@@ -381,6 +466,35 @@ async function runStudentChat(options) {
         progress: PROGRESS.courseSearch,
         run: () => retrieve()
     });
+    if (mentalHealthCheck) {
+        const conversation = trimMentalHealthContext(mentalHealthCheck.conversationMessages, message);
+        tools.register({
+            id: MENTAL_HEALTH.contextTool,
+            sideEffect: false,
+            // The model gets this beside the message, in place of the history.
+            run: () => serializeConversation(conversation)
+        });
+        tools.register({
+            id: MENTAL_HEALTH.flagTool,
+            sideEffect: true,
+            // No allowInPreview: a sentence typed while testing the bot must not
+            // create a flag or page anyone, so a preview blocks this (decision 21).
+            run: async ({ input, output }) => {
+                if (output.concernLevel === 'no concern') return;
+                const ids = input.identifiers || {};
+                await mentalHealthCheck.saveFlag({
+                    studentId: ids.userId,
+                    studentName: ids.studentName,
+                    courseId: ids.courseId,
+                    unitName: ids.unitName,
+                    message: input.message,
+                    conversationContext: conversation,
+                    concernLevel: output.concernLevel,
+                    llmReason: output.reason
+                });
+            }
+        });
+    }
 
     const bus = core.createEventBus();
     // For local development only: prints each agent's output, which quotes the
@@ -403,8 +517,17 @@ async function runStudentChat(options) {
             const detail = event.failure
                 ? `${event.failure.code}: ${event.failure.message}`
                 : (event.because ? `because ${event.because.join(', ')} failed` : '');
-            console.log(`🤖 [AGENT_CHAT] ${event.type} ${event.agentId} ${detail}`);
+            if (event.type === 'agent.failed' && event.agentId === MENTAL_HEALTH.agent) {
+                // The old check turned this into "no concern" (src/services/llm.js:808-830).
+                console.error(`❌ [AGENT_CHAT] ${event.type} ${event.agentId} ${detail} (The check didn't finish: no flag was saved, and nothing was decided.)`);
+            } else {
+                console.log(`🤖 [AGENT_CHAT] ${event.type} ${event.agentId} ${detail}`);
+            }
         }
+    });
+    bus.subscribe('tool.failed', event => {
+        if (event.agentId !== MENTAL_HEALTH.agent) return;
+        console.error(`❌ [AGENT_CHAT] ${event.type} ${event.agentId}/${event.toolId} ${event.failure.code}: ${event.failure.message}`);
     });
     const hooks = core.createHookManager({ bus });
     hooks.addFilter('agent.output', (output, context) =>
@@ -421,7 +544,7 @@ async function runStudentChat(options) {
             hooks,
             auditLog: runtime.createAuditLog({
                 bus,
-                sink: entry => console.log(`🧾 [AGENT_AUDIT] ${entry.agentId}/${entry.toolId} ${entry.status}${entry.code ? ` ${entry.code}` : ''}`)
+                sink: entry => console.log(`🧾 [AGENT_AUDIT] ${entry.agentId}/${entry.toolId} ${entry.status}${entry.failureCode ? ` ${entry.failureCode}` : ''}`)
             }),
             isRetryable: failure => !isLlmAccessError(failure.cause)
         },
@@ -493,6 +616,8 @@ module.exports = {
     FALLBACK_REPLY,
     REPROMPT_TEXT,
     PROGRESS,
+    MENTAL_HEALTH,
+    CONCERN_LEVELS,
     loadFramework,
     resolveAgentMode,
     isAgentChatEnabled,
@@ -500,6 +625,8 @@ module.exports = {
     buildStudentChatSystem,
     mendMathText,
     toHistory,
+    trimMentalHealthContext,
+    serializeConversation,
     isLlmAccessError,
     runStudentChat
 };
