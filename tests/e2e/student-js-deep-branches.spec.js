@@ -217,6 +217,7 @@ async function openDeepHarness(page, options = {}) {
     <script src="/common/scripts/assessment-scoring.js"></script>
     <script src="/student/scripts/student-state.js"></script>
     <script src="/student/scripts/student-chat-core.js"></script>
+    <script src="/student/scripts/student-chat-request.js"></script>
     <script src="/student/scripts/student-practice.js"></script>
     <script src="/student/scripts/student-session.js"></script>
     <script src="/student/scripts/student-restore.js"></script>
