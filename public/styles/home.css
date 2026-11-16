@@ -201,6 +201,7 @@
   background: white;
   border-radius: var(--bb-radius);
   padding: 30px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   border: 1px solid var(--bb-ink-16);
 }
 
@@ -490,10 +491,12 @@
 /* Hover effects for interactive elements */
 .course-actions .action-btn:hover {
   transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .digest-flags .action-btn:hover {
   transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 /* Flagged Content Section */
@@ -694,6 +697,7 @@
 
 .stat-card:hover {
   transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 .stat-card .stat-label {
@@ -866,6 +870,7 @@
   background-color: white;
   border-radius: var(--bb-radius);
   border: 1px solid var(--bb-ink-16);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .live-struggle-table-container .table-header {
@@ -1033,6 +1038,7 @@
   background-color: white;
   border-radius: var(--bb-radius);
   border: 1px solid var(--bb-ink-16);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .weekly-struggle-chart-container .chart-header {
@@ -1113,6 +1119,7 @@
   color: #fff;
   font-size: 0.82rem;
   line-height: 1.4;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.15s var(--bb-ease-reveal);
@@ -1347,6 +1354,7 @@
     transition: opacity 0.2s var(--bb-ease-reveal), visibility 0.2s var(--bb-ease-reveal);
     z-index: 1000;
     pointer-events: none;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
     font-weight: normal;
     line-height: 1.4;
 }
@@ -1401,6 +1409,7 @@
 
 .approved-topic-chip:hover {
     background: #dceeff;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
 }
 
 .approved-topic-chip.editing {
@@ -1585,6 +1594,7 @@
 .clickable-topic-card:hover,
 .clickable-topic-card:focus {
     transform: translateY(-2px);
+    box-shadow: 0 8px 18px rgba(0, 0, 0, 0.12) !important;
     outline: none;
 }
 
@@ -1611,6 +1621,7 @@
     width: min(440px, 100%);
     background: #fff;
     border-radius: var(--bb-radius);
+    box-shadow: 0 24px 60px rgba(15, 23, 42, 0.24);
     overflow: hidden;
 }
 

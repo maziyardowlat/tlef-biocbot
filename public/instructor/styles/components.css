@@ -107,6 +107,7 @@
   display: flex;
   flex-direction: column;
   min-height: 160px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
 }
 
 .survey-response-card {
@@ -114,6 +115,7 @@
   border: 1px solid var(--bb-ink-16);
   border-radius: var(--bb-radius);
   background: var(--bb-white);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
 }
 
 .ta-card {
@@ -121,6 +123,11 @@
   border: 1px solid var(--bb-ink-16);
   border-radius: var(--bb-radius);
   padding: 20px;
+  transition: box-shadow 0.2s;
+}
+
+.ta-card:hover {
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
 }
 
 /* ─── Question management buttons ─────────────────────────────────────────
