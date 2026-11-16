@@ -996,12 +996,12 @@
 }
 
 #ra-card-modal-edit-btn {
-    background: #4a90e2;
-    border-color: #4a90e2;
+    background: var(--primary-color);
+    border-color: var(--primary-color);
     color: white;
 }
 
 #ra-card-modal-edit-btn:hover {
-    background: #3a7bc8;
-    border-color: #3a7bc8;
+    background: var(--accent-color);
+    border-color: var(--accent-color);
 }
