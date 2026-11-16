@@ -378,34 +378,54 @@ describeWithFramework('the summary check', () => {
     });
 });
 
-describeWithFramework('progress for the student (shown while they wait)', () => {
-    test('reports each visible step as it starts, in order', async () => {
+describeWithFramework('what the student is shown while they wait (the route streams it, R4)', () => {
+    /** Each visible step as it starts: an agent, or a tool while its agent runs. */
+    function watchVisibleStarts(bus) {
+        const starts = [];
+        bus.subscribe('agent.started', event => { if (event.visible) starts.push([event.agentId, event.progress.status]); });
+        bus.subscribe('tool.started', event => { if (event.visible) starts.push([`${event.agentId}/${event.toolId}`, event.progress.status]); });
+        return starts;
+    }
+    const newBus = () => agentChat.loadFramework().core.createEventBus();
+
+    test('runs on the bus and with the run id it’s given, so the route’s stream sees this run', async () => {
         const model = mockModel();
-        const updates = [];
-        const { options } = setUp({ llm: model.llm, onProgress: update => updates.push(update) });
+        const bus = newBus();
+        const runIds = new Set();
+        bus.subscribe('*', event => runIds.add(event.runId));
+        const { options } = setUp({ llm: model.llm, bus, runId: 'run-1' });
+
+        const outcome = await agentChat.runStudentChat(options);
+
+        expect(outcome.run.runId).toBe('run-1');
+        expect([...runIds]).toEqual(['run-1']);
+    });
+
+    test('shows the struggle check, the course search, the planning step and the writer, each with its own status', async () => {
+        const model = mockModel();
+        const bus = newBus();
+        const starts = watchVisibleStarts(bus);
+        const { options } = setUp({ llm: model.llm, bus });
 
         await agentChat.runStudentChat(options);
 
-        expect(updates.map(({ step, status }) => [step, status])).toEqual([
+        expect(starts).toEqual([
             ['tracker', agentChat.PROGRESS.tracker.status],
-            ['tutor', agentChat.PROGRESS.courseSearch.status],
             ['tutor', agentChat.PROGRESS.tutor.status],
+            ['tutor/course-context', agentChat.PROGRESS.courseSearch.status],
             ['summariser', agentChat.PROGRESS.writer.status]
         ]);
     });
 
-    test('keeps the same order without the struggle check', async () => {
+    test('without the struggle check, shows the other three', async () => {
         const model = mockModel();
-        const updates = [];
-        const { options } = setUp({ llm: model.llm, runTracker: false, onProgress: update => updates.push(update.status) });
+        const bus = newBus();
+        const starts = watchVisibleStarts(bus);
+        const { options } = setUp({ llm: model.llm, runTracker: false, bus });
 
         await agentChat.runStudentChat(options);
 
-        expect(updates).toEqual([
-            agentChat.PROGRESS.courseSearch.status,
-            agentChat.PROGRESS.tutor.status,
-            agentChat.PROGRESS.writer.status
-        ]);
+        expect(starts.map(([step]) => step)).toEqual(['tutor', 'tutor/course-context', 'summariser']);
     });
 
     test('the writer status is on the summariser config', () => {
@@ -415,9 +435,11 @@ describeWithFramework('progress for the student (shown while they wait)', () => 
         expect(system.summariser.progress).toBe(agentChat.PROGRESS.writer);
     });
 
-    test('a listener that throws does not change the reply', async () => {
+    test('a listener on the bus that throws does not change the reply', async () => {
         const model = mockModel();
-        const { options } = setUp({ llm: model.llm, onProgress: () => { throw new Error('broken listener'); } });
+        const bus = newBus();
+        bus.subscribe('*', () => { throw new Error('broken listener'); });
+        const { options } = setUp({ llm: model.llm, bus });
 
         const outcome = await agentChat.runStudentChat(options);
 
@@ -740,14 +762,18 @@ describeWithFramework('the mental-health check on the framework', () => {
         expect(failing.calls.map(call => call.step).filter(name => name !== 'mental-health')).toEqual(['tracker', 'tutor', 'writer']);
     });
 
-    test('adds no progress for the student', async () => {
-        const model = mockModel();
-        const updates = [];
-        const { options } = withCheck({ llm: model.llm, onProgress: update => updates.push(update.step) });
+    test('is never visible to the student, nor are its tools', async () => {
+        const model = mockModel({ 'mental-health': () => json(CONCERN) });
+        const bus = agentChat.loadFramework().core.createEventBus();
+        const checkEvents = [];
+        bus.subscribe('*', event => { if (event.agentId === 'mental-health-check') checkEvents.push(event); });
+        const { options, saveFlag } = withCheck({ llm: model.llm, bus });
 
         const outcome = await agentChat.runStudentChat(options);
         await outcome.run.asyncDone;
 
-        expect(updates).toEqual(['tracker', 'tutor', 'tutor', 'summariser']);
+        expect(saveFlag).toHaveBeenCalledTimes(1);
+        expect(checkEvents.map(event => event.type)).toEqual(expect.arrayContaining(['agent.started', 'tool.started', 'agent.completed']));
+        checkEvents.forEach(event => expect(event.visible).not.toBe(true));
     });
 });

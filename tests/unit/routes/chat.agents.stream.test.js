@@ -45,11 +45,12 @@ const MentalHealthFlag = require('../../../src/models/MentalHealthFlag');
 const { resolveCourseAi } = require('../../../src/routes/llmKeyMiddleware');
 const agentChat = require('../../../src/services/agentChat');
 const router = require('../../../src/routes/chat');
+const vendorRoutes = require('../../../src/routes/vendor');
 
 const describeWithFramework = agentChat.loadFramework() !== null ? describe : describe.skip;
 
 /** What the student page loads to post a message, in its order (public/student/index.html). */
-const PAGE_SCRIPTS = ['/student/scripts/student-chat-request.js'];
+const PAGE_SCRIPTS = ['/vendor/agents-chat.js', '/student/scripts/student-chat-request.js'];
 
 // The text a student sees, pinned here as text so that a change to it shows.
 const UNDERSTANDING = 'BiocBot is understanding your message';
@@ -127,6 +128,7 @@ function pageApp({ user = student, db = memoryDb({ courses: [course] }), headers
     });
     app.use('/api/chat', router);
     app.use('/student', express.static(path.join(__dirname, '../../../public/student')));
+    app.use('/vendor', vendorRoutes);
     return app;
 }
 
@@ -141,18 +143,20 @@ async function listen(app = pageApp()) {
 /**
  * The student page's request code in a VM, loaded by URL in the page's order,
  * with relative URLs resolved against the test's server, as a browser would.
+ * As in a browser, a script that doesn't load (the chat client, where the
+ * framework isn't installed) doesn't run, and the page goes on without it.
  */
-async function openPage(base) {
+async function openPage(base, scripts = PAGE_SCRIPTS) {
     const page = vm.createContext({
         console,
         TextDecoder,
+        DOMException,
         fetch: (url, init) => fetch(new URL(url, base), init)
     });
     page.window = page;
-    for (const src of PAGE_SCRIPTS) {
+    for (const src of scripts) {
         const response = await fetch(new URL(src, base));
-        expect(response.status).toBe(200);
-        vm.runInContext(await response.text(), page, { filename: src });
+        if (response.ok) vm.runInContext(await response.text(), page, { filename: src });
     }
     return page;
 }
@@ -674,5 +678,71 @@ describe('with AGENT_CHAT_MODES unset, the old path is unchanged', () => {
         expect(raw.headers.get('content-type')).toBe('application/json; charset=utf-8');
         expect(llm.analyzeMentalHealth).toHaveBeenCalled();
         expect(agentChat.runStudentChat).not.toHaveBeenCalled();
+    });
+});
+
+// Not parity: what the chat package adds, and how the page copes without it.
+describeWithFramework('the chat package’s stream (new in R4)', () => {
+    test('opens with the format and the run’s id, which is the run the body reports', async () => {
+        ai();
+        const raw = await readRaw(await listen(), { mode: 'tutor' });
+
+        const [open] = raw.events;
+        expect(open).toEqual({ event: 'open', data: { format: 1, runId: expect.any(String) } });
+        const [result] = resultOf(raw.events);
+        expect(result.data.body.debug.agentRunId).toBe(open.data.runId);
+        statusEventsOf(raw.events).forEach(({ data }) => expect(data.runId).toBe(open.data.runId));
+    });
+
+    test('sends each visible step’s start and finish as a status, and the status line as activity', async () => {
+        ai();
+        const raw = await readRaw(await listen(), { mode: 'tutor' });
+
+        const step = ({ data }) => [data.toolId ? `${data.agentId}/${data.toolId}` : data.agentId, data.status, data.state];
+        expect(raw.events.filter(e => e.event === 'status').map(step)).toEqual([
+            ['tracker', UNDERSTANDING, 'running'],
+            ['tracker', UNDERSTANDING, 'done'],
+            ['tutor', PLANNING, 'running'],
+            ['tutor/course-context', FINDING, 'running'],
+            ['tutor/course-context', FINDING, 'done'],
+            ['tutor', PLANNING, 'done'],
+            ['summariser', FINALIZING, 'running'],
+            ['summariser', FINALIZING, 'done']
+        ]);
+        expect(raw.events.filter(e => e.event === 'activity').map(({ data }) => data.status))
+            .toEqual([UNDERSTANDING, FINDING, PLANNING, FINALIZING]);
+    });
+
+    test('a step that fails is sent as failed, with no code or message', async () => {
+        ai({ writer: () => ({ content: 'Not JSON. FAILURE-MARKER' }) });
+        const raw = await readRaw(await listen(), { mode: 'tutor' });
+
+        const failed = raw.events.filter(e => e.event === 'status' && e.data.state === 'failed');
+        expect(failed).toEqual([{
+            event: 'status',
+            data: { runId: expect.any(String), agentId: 'summariser', label: LABELS[FINALIZING], status: FINALIZING, state: 'failed' }
+        }]);
+    });
+
+    test('the student page gets the client as a classic script, from the installed package', async () => {
+        const base = await listen();
+
+        const response = await fetch(new URL('/vendor/agents-chat.js', base));
+
+        expect(response.status).toBe(200);
+        expect(response.headers.get('content-type')).toMatch(/javascript/);
+        expect(await response.text()).toBe(require('fs').readFileSync(require.resolve('@ubc/genai-toolkit-agents-chat/client.global.js'), 'utf8'));
+    });
+
+    test('where the client doesn’t load, the page asks for JSON and gets the same reply, with no statuses', async () => {
+        ai();
+        const base = await listen();
+        const page = await openPage(base, PAGE_SCRIPTS.filter(src => !src.startsWith('/vendor/')));
+
+        const got = await sendAsThePage(page, { mode: 'tutor' });
+
+        expect(got.shown).toEqual([]);
+        expect(got.status).toBe(200);
+        expect(stable(got.body)).toEqual(agentReplyBody({ mode: 'tutor' }));
     });
 });

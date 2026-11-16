@@ -46,6 +46,7 @@ const providerMigrationsRoutes = require('./routes/providerMigrations');
 const academicSyncRoutes = require('./routes/academicSync');
 const studentPseudonymRoutes = require('./routes/studentPseudonyms');
 const previewRoutes = require('./routes/preview');
+const vendorRoutes = require('./routes/vendor');
 const { createHealthRouter } = require('./routes/health');
 const { createCanvasLmsRouter } = require('./routes/canvasLms');
 const { createLmsGradesRouter } = require('./routes/lmsGrades');
@@ -84,6 +85,7 @@ app.use(cors({
 app.use('/assets', express.static(path.join(__dirname, '../public/assets')));
 app.use('/styles', express.static(path.join(__dirname, '../public/styles')));
 app.use('/common', express.static(path.join(__dirname, '../public/common')));
+app.use('/vendor', vendorRoutes);
 
 
 // Shibboleth routes will be mounted after session and Passport are configured
