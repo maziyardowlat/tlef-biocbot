@@ -297,8 +297,8 @@ function buildStudentChatSystem({ mode, modePrompts, trackerPrompt, checkSummary
                 ...(/json/i.test(mentalHealthPrompt) ? { responseFormat: 'json' } : {})
             },
             timeoutMs: MENTAL_HEALTH.timeoutMs,
-            // No context.history: the model reads only the trimmed conversation,
-            // through the read tool, as the old check sends it.
+            // No context.history: the model reads only the trimmed conversation
+            // the old check sends, through the read tool and the message.
             tools: { reads: [MENTAL_HEALTH.contextTool], writes: [MENTAL_HEALTH.flagTool] }
         });
     }
@@ -379,6 +379,22 @@ function trimMentalHealthContext(conversationMessages, message) {
  */
 function serializeConversation(messages) {
     return messages.map(entry => `[${entry.role}]: ${entry.content}`).join('\n\n');
+}
+
+/**
+ * What the check's read tool gives the model: the old check's text without the
+ * current message at its end, because the framework always sends that message
+ * as `message`. The model then reads each message once, in the old order. Read
+ * twice, the current message made the model rate concerns higher than the old
+ * check did (scripts/eval-mental-health-check.js, in the 2b PR).
+ * @param {Array<{role: string, content: string}>} conversation - From trimMentalHealthContext
+ * @param {string} message
+ * @returns {string}
+ */
+function mentalHealthContextText(conversation, message) {
+    const last = conversation[conversation.length - 1];
+    const endsWithMessage = !!last && last.role === 'user' && last.content === message;
+    return serializeConversation(endsWithMessage ? conversation.slice(0, -1) : conversation);
 }
 
 /**
@@ -472,7 +488,7 @@ async function runStudentChat(options) {
             id: MENTAL_HEALTH.contextTool,
             sideEffect: false,
             // The model gets this beside the message, in place of the history.
-            run: () => serializeConversation(conversation)
+            run: () => mentalHealthContextText(conversation, message)
         });
         tools.register({
             id: MENTAL_HEALTH.flagTool,
@@ -627,6 +643,7 @@ module.exports = {
     toHistory,
     trimMentalHealthContext,
     serializeConversation,
+    mentalHealthContextText,
     isLlmAccessError,
     runStudentChat
 };

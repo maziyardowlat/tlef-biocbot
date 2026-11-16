@@ -401,9 +401,12 @@ describeWithFramework('the mental-health check on the agent path', () => {
 
         const [call] = agent.checkCalls();
         expect(call.options.systemPrompt).toBe(oldPrompt);
+        // The old check's last entry is the current message, which the
+        // framework sends as `message`, so the tool's text stops before it.
+        expect(oldContext.at(-1)).toEqual({ role: 'user', content: DISTRESS });
         expect(JSON.parse(call.message)).toEqual({
             message: DISTRESS,
-            toolResults: { 'mental-health-context': agentChat.serializeConversation(oldContext) }
+            toolResults: { 'mental-health-context': agentChat.serializeConversation(oldContext.slice(0, -1)) }
         });
         expect(MentalHealthFlag.createMentalHealthFlag.mock.calls[0][1]).toEqual(oldFlag);
     });

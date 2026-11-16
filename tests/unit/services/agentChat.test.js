@@ -528,10 +528,18 @@ describe('the conversation the check reads is trimmed as the old check trims it'
     test('keeps the entries the browser sent, as the old check saves them', () => {
         expect(agentChat.trimMentalHealthContext(CONVERSATION, CURRENT)[0]).toBe(CONVERSATION[2]);
     });
+
+    test.each([
+        ['ends with the current message, which the framework sends as `message`', TRIMMED, agentChat.serializeConversation(TRIMMED.slice(0, 2))],
+        ['is only the current message', [{ role: 'user', content: CURRENT }], ''],
+        ['doesn’t end with the current message, so it is all kept', TRIMMED.slice(0, 2), agentChat.serializeConversation(TRIMMED.slice(0, 2))]
+    ])('the model’s text, when the conversation %s', (_, conversation, expected) => {
+        expect(agentChat.mentalHealthContextText(conversation, CURRENT)).toBe(expected);
+    });
 });
 
 describeWithFramework('the model reads what the old check sent it', () => {
-    test('the same system prompt and model settings, with the old check’s text beside the message', async () => {
+    test('the same system prompt and model settings, and every message the old check sent, once, in its order', async () => {
         // BiocBot's real LLM service, with only the provider mocked.
         const provider = {
             sendMessage: jest.fn(async (message, options) => {
@@ -552,8 +560,12 @@ describeWithFramework('the model reads what the old check sent it', () => {
         await outcome.run.asyncDone;
 
         const [message, newOptions] = provider.sendMessage.mock.calls.find(([, sent]) => step(sent.systemPrompt) === 'mental-health');
-        // The framework always sends the message; the conversation replaces the history.
-        expect(JSON.parse(message)).toEqual({ message: CURRENT, toolResults: { 'mental-health-context': oldText } });
+        // The framework always sends the current message, so the read tool's
+        // text is the old text up to it: together they are the old text.
+        const sent = JSON.parse(message);
+        expect(Object.keys(sent)).toEqual(['message', 'toolResults']);
+        expect(sent.message).toBe(CURRENT);
+        expect(`${sent.toolResults['mental-health-context']}\n\n[user]: ${sent.message}`).toBe(oldText);
         expect(oldText).toBe(TRIMMED.map(entry => `[${entry.role}]: ${entry.content}`).join('\n\n'));
         // JSON mode is the one addition.
         const { responseFormat, ...rest } = newOptions;
@@ -603,7 +615,7 @@ describeWithFramework('the mental-health check on the framework', () => {
         await outcome.run.asyncDone;
 
         const [call] = model.callsTo('mental-health');
-        expect(call.message).toEqual({ message: CURRENT, toolResults: { 'mental-health-context': agentChat.serializeConversation(TRIMMED) } });
+        expect(call.message).toEqual({ message: CURRENT, toolResults: { 'mental-health-context': agentChat.serializeConversation(TRIMMED.slice(0, 2)) } });
         expect(call.options).toEqual({ ...CHECK_DEFINITION.llmOptions, systemPrompt: MH_PROMPT });
     });
 
