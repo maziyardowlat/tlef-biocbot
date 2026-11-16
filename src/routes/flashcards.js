@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const CourseModel = require('../models/Course');
 const FlashcardDeck = require('../models/FlashcardDeck');
+const DocumentModel = require('../models/Document');
 const flashcardService = require('../services/flashcardService');
 const { hasSystemAdminAccess } = require('../services/authorization');
 const { resolveCourseAi, sendLlmKeyError } = require('./llmKeyMiddleware');
@@ -116,6 +117,56 @@ router.get('/instructor', async (req, res) => {
     }
 });
 
+/**
+ * Cards most often marked "Review again" across every student in the
+ * course, aggregated (not per-student) - counts only, no student
+ * identity, so this doesn't need to be gated by the course's
+ * anonymize-students setting.
+ */
+router.get('/instructor/review-again-stats', async (req, res) => {
+    try {
+        const { courseId } = req.query;
+        if (!courseId) return res.status(400).json({ success: false, message: 'courseId is required' });
+        const db = req.app.locals.db;
+        const course = await requireInstructorCourse(db, req, res, courseId);
+        if (!course) return;
+
+        const stats = await FlashcardDeck.getReviewAgainStats(db, courseId);
+
+        // Resolve the generic "Course material" placeholder back to the real
+        // filename when we have a documentId to look it up with, so the
+        // instructor sees an actual citation instead of a dead-end label.
+        const documentIds = [...new Set(
+            stats
+                .filter(stat => stat.source?.documentId && stat.source.fileName === 'Course material')
+                .map(stat => stat.source.documentId)
+        )];
+        const documentsById = new Map();
+        if (documentIds.length > 0) {
+            const documents = await Promise.all(documentIds.map(id => DocumentModel.getDocumentById(db, id)));
+            documents.forEach((document, index) => {
+                const fileName = document?.originalName || document?.filename;
+                if (fileName) documentsById.set(documentIds[index], fileName);
+            });
+        }
+
+        const data = stats.map(stat => {
+            if (stat.source?.documentId && stat.source.fileName === 'Course material') {
+                const resolvedName = documentsById.get(stat.source.documentId);
+                if (resolvedName) {
+                    return { ...stat, source: { ...stat.source, fileName: resolvedName } };
+                }
+            }
+            return stat;
+        });
+
+        return res.json({ success: true, data });
+    } catch (error) {
+        console.error('Error loading review-again stats:', error);
+        return res.status(500).json({ success: false, message: 'Unable to load review-again stats' });
+    }
+});
+
 router.post('/instructor/generate', async (req, res) => {
     const { courseId, lectureName } = req.body;
     const cardCount = Number(req.body.cardCount || flashcardService.DEFAULT_CARD_COUNT);
@@ -190,6 +241,34 @@ router.put('/instructor/:deckId', async (req, res) => {
     } catch (error) {
         console.error('Error updating flashcard draft:', error);
         return res.status(400).json({ success: false, message: error.message || 'Unable to save draft' });
+    }
+});
+
+/**
+ * Edit a single card's question/answer text in place, from the "Review
+ * again" view - distinct from PUT /instructor/:deckId, which replaces a
+ * whole draft. Updates draftCards and publishedCards together wherever
+ * the card exists, so the fix shows up in Course Upload and for students
+ * immediately rather than waiting on a republish.
+ */
+router.put('/instructor/:deckId/cards/:cardId', async (req, res) => {
+    try {
+        const db = req.app.locals.db;
+        const deck = await FlashcardDeck.getDeckById(db, req.params.deckId);
+        if (!deck) return res.status(404).json({ success: false, message: 'Flashcard deck not found' });
+        const course = await requireInstructorCourse(db, req, res, deck.courseId);
+        if (!course) return;
+
+        const updated = await FlashcardDeck.updateCardText(db, deck.deckId, req.params.cardId, {
+            front: req.body.front,
+            back: req.body.back
+        });
+        if (!updated) return res.status(404).json({ success: false, message: 'Flashcard deck not found' });
+        return res.json({ success: true, message: 'Flashcard updated', data: instructorDeckSummary(updated) });
+    } catch (error) {
+        console.error('Error updating flashcard text:', error);
+        const status = /not found/i.test(error.message) ? 404 : 400;
+        return res.status(status).json({ success: false, message: error.message || 'Unable to update flashcard' });
     }
 });
 

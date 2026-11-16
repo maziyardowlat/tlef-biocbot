@@ -13,6 +13,8 @@
     <link rel="manifest" href="../assets/images/site.webmanifest">
     
     <link rel="stylesheet" href="../styles/style.css">
+    <link rel="stylesheet" href="../styles/documents.css">
+    <link rel="stylesheet" href="../styles/rich-text.css">
     <link rel="stylesheet" href="../styles/flagged.css">
 </head>
 <body class="instructor-app">
@@ -104,6 +106,55 @@
 
             <hr class="section-divider" />
 
+            <!-- Flashcard "Review Again" Section -->
+            <div id="review-again-section" class="review-again-section">
+                <div class="ra-section-header">
+                    <h2>Flashcards Marked "Review Again"</h2>
+                    <span class="ra-badge" id="ra-total-count">0</span>
+                </div>
+                <p class="ra-section-description">Cards students most often ask to see again, aggregated across the whole course - not tied to any individual student.</p>
+                <div id="ra-loading" class="loading-message"><p>Loading review-again stats...</p></div>
+                <div id="ra-empty" class="empty-message" style="display: none;"><p>No flashcards have been marked "Review again" yet.</p></div>
+                <div id="ra-list" class="ra-list"></div>
+            </div>
+
+            <!-- Flashcard detail/edit modal, opened from a Review Again row -->
+            <div id="ra-card-modal" class="modal ra-card-modal" role="dialog" aria-modal="true" aria-labelledby="ra-card-modal-title">
+                <div class="modal-content ra-card-modal-content">
+                    <div class="modal-header">
+                        <h3 id="ra-card-modal-title">Flashcard</h3>
+                        <button type="button" class="modal-close" id="ra-card-modal-close" aria-label="Close">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <p class="ra-card-modal-source" id="ra-card-modal-source"></p>
+                        <p class="ra-card-modal-counts" id="ra-card-modal-counts"></p>
+                        <div class="flashcard-editor-row" id="ra-card-modal-row">
+                            <label>Front
+                                <textarea class="flashcard-front-input" id="ra-card-modal-front" rows="2" maxlength="300" readonly></textarea>
+                            </label>
+                            <div class="flashcard-preview-group">
+                                <span class="flashcard-preview-label">Student preview · Front</span>
+                                <div class="flashcard-rendered-preview" id="ra-card-modal-front-preview" aria-label="Rendered preview of card front"></div>
+                            </div>
+                            <label>Back
+                                <textarea class="flashcard-back-input" id="ra-card-modal-back" rows="3" maxlength="1200" readonly></textarea>
+                            </label>
+                            <div class="flashcard-preview-group">
+                                <span class="flashcard-preview-label">Student preview · Back</span>
+                                <div class="flashcard-rendered-preview" id="ra-card-modal-back-preview" aria-label="Rendered preview of card back"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer ra-card-modal-footer">
+                        <button type="button" class="secondary-button" id="ra-card-modal-edit-btn">Edit</button>
+                        <button type="button" class="save-btn" id="ra-card-modal-save-btn" style="display: none;">Save</button>
+                        <button type="button" class="secondary-button" id="ra-card-modal-cancel-btn" style="display: none;">Cancel</button>
+                    </div>
+                </div>
+            </div>
+
+            <hr class="section-divider" />
+
             <!-- Filter Controls -->
             <div class="filter-controls">
                 <div class="filter-group">
@@ -168,6 +219,7 @@
     <script src="../common/scripts/icons.js"></script>
     <script src="../common/scripts/auth.js"></script>
     <script src="../common/scripts/notifications.js"></script>
+    <script src="../common/scripts/rich-text.js"></script>
     <script src="scripts/flagged.js"></script>
 </body>
 </html>

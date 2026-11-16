@@ -696,6 +696,109 @@
     gap: 1rem;
 }
 
+.review-again-section {
+    margin-bottom: 2rem;
+    padding: var(--bb-gap-loose);
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-left: 4px solid #3b82f6;
+    border-radius: 8px;
+}
+
+.ra-section-header {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.ra-section-header h2 {
+    margin: 0;
+    font-size: 1.25rem;
+    color: #1e40af;
+}
+
+.ra-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.5rem;
+    height: 1.5rem;
+    padding: 0 0.5rem;
+    background: #3b82f6;
+    color: white;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.ra-section-description {
+    margin: 0 0 1rem;
+    color: #3b5176;
+    font-size: 0.85rem;
+}
+
+.ra-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.ra-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    padding: 0.85rem 1rem;
+    background: white;
+    border: 1px solid #dbeafe;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.ra-card:hover,
+.ra-card:focus-visible {
+    border-color: #93c5fd;
+    box-shadow: 0 1px 4px rgba(30, 64, 175, 0.12);
+    outline: none;
+}
+
+.ra-card-main {
+    min-width: 0;
+}
+
+.ra-card-front {
+    margin: 0 0 0.25rem;
+    font-weight: 600;
+    color: #1f2937;
+    overflow-wrap: anywhere;
+}
+
+.ra-card-source {
+    margin: 0;
+    color: #5f666d;
+    font-size: 0.8rem;
+}
+
+.ra-card-counts {
+    flex-shrink: 0;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.ra-card-student-count {
+    display: block;
+    font-weight: 700;
+    color: #1e40af;
+}
+
+.ra-card-again-count {
+    display: block;
+    color: #5f666d;
+    font-size: 0.8rem;
+}
+
 .mh-flag-card {
     background: white;
     border: 1px solid #e2e8f0;
@@ -880,4 +983,40 @@
 
 .mh-disregard-btn:hover {
     background: #4b5563;
+}
+
+/* Review Again card modal */
+.ra-card-modal-content {
+    width: 90%;
+    max-width: 560px;
+}
+
+.ra-card-modal-source {
+    margin: 0 0 0.15rem;
+    color: #5f666d;
+    font-size: 0.85rem;
+}
+
+.ra-card-modal-counts {
+    margin: 0 0 1rem;
+    font-weight: 600;
+    color: #1e40af;
+    font-size: 0.85rem;
+}
+
+.ra-card-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+}
+
+#ra-card-modal-edit-btn {
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+    color: white;
+}
+
+#ra-card-modal-edit-btn:hover {
+    background: var(--accent-color);
+    border-color: var(--accent-color);
 }

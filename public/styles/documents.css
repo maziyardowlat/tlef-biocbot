@@ -1184,7 +1184,7 @@
 }
 
 .save-btn {
-    background-color: #4CAF50;
+    background-color: var(--primary-color);
     color: white;
     border: none;
     border-radius: 4px;
@@ -1194,7 +1194,7 @@
 }
 
 .save-btn:hover {
-    background-color: #45a049;
+    background-color: var(--accent-color);
 }
 
 /* Content Type Selection */

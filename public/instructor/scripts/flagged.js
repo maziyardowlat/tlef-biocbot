@@ -266,6 +266,10 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Load mental health flags section
     loadMentalHealthFlags();
     initMHEventListeners();
+
+    // Load flashcard "review again" stats section
+    initReviewAgainModal();
+    loadReviewAgainStats();
 });
 
 /**
@@ -1790,6 +1794,233 @@ function renderMHFlags() {
     mhState.filteredFlags.forEach(flag => {
         const card = createMHFlagCard(flag);
         list.appendChild(card);
+    });
+}
+
+/**
+ * Load the flashcard "review again" stats section. This is a
+ * course-wide aggregate (counts only, no student identity), so it
+ * doesn't need the anonymize-students check that per-student views
+ * (like Student Hub) use.
+ */
+async function loadReviewAgainStats() {
+    const section = document.getElementById('review-again-section');
+    const loading = document.getElementById('ra-loading');
+    const empty = document.getElementById('ra-empty');
+    const list = document.getElementById('ra-list');
+    const totalBadge = document.getElementById('ra-total-count');
+
+    // Flashcard deck management (and this stats view) is instructor-only
+    // server-side (requireInstructorCourse in flashcards.js) - no TA
+    // permission grants access, unlike the rest of this page.
+    if (typeof isTA === 'function' && isTA()) {
+        if (section) section.style.display = 'none';
+        return;
+    }
+    if (section) section.style.display = '';
+
+    if (loading) loading.style.display = 'block';
+    if (empty) empty.style.display = 'none';
+    if (list) list.innerHTML = '';
+
+    try {
+        const courseId = await getCurrentCourseId();
+        if (!courseId) return;
+
+        const response = await fetch(`/api/flashcards/instructor/review-again-stats?courseId=${courseId}`);
+        const result = await response.json();
+
+        if (result.success) {
+            reviewAgainStats = result.data || [];
+            if (totalBadge) totalBadge.textContent = reviewAgainStats.length;
+            renderReviewAgainStats(reviewAgainStats);
+        }
+    } catch (error) {
+        console.error('Error loading review-again stats:', error);
+    } finally {
+        if (loading) loading.style.display = 'none';
+    }
+}
+
+/**
+ * Same citation format as the student flashcards page
+ * (public/student/scripts/flashcards.js's sourceLabel), so a card looks
+ * the same whether a student or an instructor is looking at it.
+ */
+function formatCardSourceLabel(source) {
+    if (!source) return 'Instructor-created card';
+    if (source.slideNumber) return `${source.fileName || 'Course material'}, slide ${source.slideNumber}`;
+    if (source.pageNumber) return `${source.fileName || 'Course material'}, page ${source.pageNumber}`;
+    return `${source.fileName || 'Course material'}${Number.isInteger(source.chunkIndex) ? `, section ${source.chunkIndex + 1}` : ''}`;
+}
+
+function renderReviewAgainStats(stats) {
+    const list = document.getElementById('ra-list');
+    const empty = document.getElementById('ra-empty');
+    if (!list) return;
+
+    list.innerHTML = '';
+
+    if (!stats.length) {
+        if (empty) empty.style.display = 'block';
+        return;
+    }
+    if (empty) empty.style.display = 'none';
+
+    stats.forEach((stat, index) => {
+        const card = document.createElement('div');
+        card.className = 'ra-card';
+        card.tabIndex = 0;
+        card.setAttribute('role', 'button');
+        card.setAttribute('aria-label', `View flashcard: ${stat.front}`);
+        card.dataset.raIndex = String(index);
+        card.innerHTML = `
+            <div class="ra-card-main">
+                <p class="ra-card-front">${escapeHtml(stat.front)}</p>
+                <p class="ra-card-source">${escapeHtml(stat.lectureName || '')} — ${escapeHtml(formatCardSourceLabel(stat.source))}</p>
+            </div>
+            <div class="ra-card-counts">
+                <span class="ra-card-student-count">${stat.studentCount} student${stat.studentCount === 1 ? '' : 's'}</span>
+                <span class="ra-card-again-count">${stat.totalAgainCount} "again" presses</span>
+            </div>
+        `;
+        card.addEventListener('click', () => openReviewAgainCardModal(index));
+        card.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                openReviewAgainCardModal(index);
+            }
+        });
+        list.appendChild(card);
+    });
+}
+
+// Stats currently backing the Review Again list/modal, so the modal can look
+// up a card's full data (deckId, cardId, source) by the index stashed on its
+// row - re-set every time loadReviewAgainStats() refreshes the list.
+let reviewAgainStats = [];
+let reviewAgainModalCardIndex = null;
+
+/**
+ * Render a card side's live preview exactly like the Course Upload editor
+ * does, so a card looks the same in both places.
+ */
+function renderReviewAgainCardPreview(side) {
+    const input = document.getElementById(`ra-card-modal-${side}`);
+    const preview = document.getElementById(`ra-card-modal-${side}-preview`);
+    if (!input || !preview) return;
+    if (typeof RichText === 'undefined') {
+        preview.textContent = input.value || '';
+        return;
+    }
+    RichText.render(preview, input.value || '');
+}
+
+function setReviewAgainModalEditing(isEditing) {
+    const front = document.getElementById('ra-card-modal-front');
+    const back = document.getElementById('ra-card-modal-back');
+    const editBtn = document.getElementById('ra-card-modal-edit-btn');
+    const saveBtn = document.getElementById('ra-card-modal-save-btn');
+    const cancelBtn = document.getElementById('ra-card-modal-cancel-btn');
+    if (front) front.readOnly = !isEditing;
+    if (back) back.readOnly = !isEditing;
+    if (editBtn) editBtn.style.display = isEditing ? 'none' : '';
+    if (saveBtn) saveBtn.style.display = isEditing ? '' : 'none';
+    if (cancelBtn) cancelBtn.style.display = isEditing ? '' : 'none';
+}
+
+function openReviewAgainCardModal(index) {
+    const stat = reviewAgainStats[index];
+    const modal = document.getElementById('ra-card-modal');
+    if (!stat || !modal) return;
+
+    reviewAgainModalCardIndex = index;
+
+    document.getElementById('ra-card-modal-title').textContent = stat.lectureName || 'Flashcard';
+    document.getElementById('ra-card-modal-source').textContent = formatCardSourceLabel(stat.source);
+    document.getElementById('ra-card-modal-counts').textContent =
+        `${stat.studentCount} student${stat.studentCount === 1 ? '' : 's'} · ${stat.totalAgainCount} "again" presses`;
+
+    const front = document.getElementById('ra-card-modal-front');
+    const back = document.getElementById('ra-card-modal-back');
+    if (front) front.value = stat.front;
+    if (back) back.value = stat.back;
+    renderReviewAgainCardPreview('front');
+    renderReviewAgainCardPreview('back');
+    setReviewAgainModalEditing(false);
+
+    modal.classList.add('show');
+}
+
+function closeReviewAgainCardModal() {
+    const modal = document.getElementById('ra-card-modal');
+    if (modal) modal.classList.remove('show');
+    reviewAgainModalCardIndex = null;
+}
+
+async function saveReviewAgainCardEdit() {
+    const stat = reviewAgainStats[reviewAgainModalCardIndex];
+    const saveBtn = document.getElementById('ra-card-modal-save-btn');
+    if (!stat || !saveBtn) return;
+
+    const front = document.getElementById('ra-card-modal-front')?.value.trim();
+    const back = document.getElementById('ra-card-modal-back')?.value.trim();
+    if (!front || !back) {
+        showErrorMessage('A flashcard needs both a front and a back.');
+        return;
+    }
+
+    const originalText = saveBtn.textContent;
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving...';
+
+    try {
+        const response = await fetch(`/api/flashcards/instructor/${stat.deckId}/cards/${stat.cardId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ front, back })
+        });
+        const result = await response.json();
+        if (!response.ok || !result.success) throw new Error(result.message || 'Unable to save flashcard');
+
+        stat.front = front;
+        stat.back = back;
+        setReviewAgainModalEditing(false);
+        renderReviewAgainStats(reviewAgainStats);
+        showSuccessMessage('Flashcard updated.');
+    } catch (error) {
+        console.error('Error saving flashcard edit:', error);
+        showErrorMessage(error.message || 'Unable to save flashcard');
+    } finally {
+        saveBtn.disabled = false;
+        saveBtn.textContent = originalText;
+    }
+}
+
+function initReviewAgainModal() {
+    const modal = document.getElementById('ra-card-modal');
+    if (!modal) return;
+
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal) closeReviewAgainCardModal();
+    });
+    document.getElementById('ra-card-modal-close')?.addEventListener('click', closeReviewAgainCardModal);
+    document.getElementById('ra-card-modal-edit-btn')?.addEventListener('click', () => setReviewAgainModalEditing(true));
+    document.getElementById('ra-card-modal-save-btn')?.addEventListener('click', saveReviewAgainCardEdit);
+    document.getElementById('ra-card-modal-cancel-btn')?.addEventListener('click', () => {
+        const stat = reviewAgainStats[reviewAgainModalCardIndex];
+        if (stat) {
+            document.getElementById('ra-card-modal-front').value = stat.front;
+            document.getElementById('ra-card-modal-back').value = stat.back;
+            renderReviewAgainCardPreview('front');
+            renderReviewAgainCardPreview('back');
+        }
+        setReviewAgainModalEditing(false);
+    });
+    document.getElementById('ra-card-modal-front')?.addEventListener('input', () => renderReviewAgainCardPreview('front'));
+    document.getElementById('ra-card-modal-back')?.addEventListener('input', () => renderReviewAgainCardPreview('back'));
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape' && modal.classList.contains('show')) closeReviewAgainCardModal();
     });
 }
 
