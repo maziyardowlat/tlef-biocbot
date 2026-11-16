@@ -402,7 +402,7 @@ function createUnitElement(unitName, unitData, isExpanded = false, canDelete = t
                         <!-- Objectives will be added here -->
                     </div>
                     <div class="objective-input-container">
-                        <input type="text" id="objective-input-${unitId}" class="objective-input" placeholder="Enter learning objective...">
+                        <input type="text" id="objective-input-${unitId}" class="objective-input" placeholder="Enter learning objective..." onkeydown="if (event.key === 'Enter') { event.preventDefault(); addObjectiveFromInput('${unitName}'); }">
                         <button class="add-objective-btn-inline" onclick="addObjectiveFromInput('${unitName}')">+</button>
                     </div>
                 </div>
