@@ -1182,8 +1182,8 @@ router.get('/source-documents/:documentId/download', async (req, res) => {
  * Send a message to the LLM and get a response
  */
 /**
- * Start the mental-health check without waiting for it. Shared by the old
- * chat path and the agent path; it moves onto the agents framework in 2b.
+ * Start the mental-health check without waiting for it. The old chat path's
+ * check; the agent path runs it as an async agent (src/services/agentChat.js).
  */
 function startMentalHealthCheck({ req, llmService, course, db, message, conversationContext, courseId, unitName }) {
     // Fire-and-forget: parallel mental health detection LLM call
@@ -1635,9 +1635,6 @@ async function runAgentChat({ req, res, db, course, llmService, qdrant, approved
         }
     }
 
-    // Unchanged until 2b moves it onto the framework.
-    startMentalHealthCheck({ req, llmService, course, db, message, conversationContext, courseId, unitName });
-
     const coursePrompts = resolveCoursePrompts(course);
     coursePrompts.base = await appendLearningObjectives(db, courseId, scope.lectureNames, coursePrompts.base);
 
@@ -1652,7 +1649,19 @@ async function runAgentChat({ req, res, db, course, llmService, qdrant, approved
         trackerContext: { courseId, unitName, approvedTopics: approvedStruggleTopics },
         checkSummaryAttempt: !!req.body.checkSummaryAttempt,
         preview: previewSession.isPreviewRequest(req),
-        identifiers: { courseId, unitName, ...(req.user ? { userId: req.user.userId } : {}) },
+        identifiers: {
+            courseId,
+            unitName,
+            ...(req.user ? { userId: req.user.userId, studentName: req.user.displayName || req.user.username || 'Unknown' } : {})
+        },
+        // An async agent, so the reply never waits for it. It needs a student
+        // to flag, as the old check did. A preview runs it, and the framework
+        // blocks the flag (decision 21).
+        mentalHealthCheck: req.user ? {
+            prompt: course.mentalHealthDetectionPrompt || prompts.DEFAULT_MENTAL_HEALTH_DETECTION_PROMPT,
+            conversationMessages: conversationContext && conversationContext.conversationMessages,
+            saveFlag: flag => MentalHealthFlag.createMentalHealthFlag(db, flag)
+        } : null,
         retrieve: async () => {
             retrieved = await retrieveChatContext({ qdrant, course, courseId, unitName, message, scope });
             return { contextText: retrieved.contextText, coverageNote: retrieved.coverageNote };
