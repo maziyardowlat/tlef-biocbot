@@ -154,6 +154,19 @@ describe('prompts exported constants', () => {
     });
 });
 
+describe('student chat safety protocol', () => {
+    // BiocBot is only for UBC students. Without a location in the prompt,
+    // gpt-5.6-luna fell back on generic crisis steps and asked which country
+    // the student was in.
+    test.each(['protege', 'tutor', 'quizHelp'])('the default %s prompt gives UBC and Canadian crisis resources directly', mode => {
+        const line = prompts.DEFAULT_PROMPTS[mode].split('\n').find(text => text.includes('SAFETY PROTOCOL'));
+        expect(line).toContain('http://students.ubc.ca/health/wellness-centre/');
+        expect(line).toContain('call or text 988');
+        expect(line).toContain('911 if they are in immediate danger');
+        expect(line).toContain('do not ask where they are');
+    });
+});
+
 describe('chemistry and math formatting rules', () => {
     const rules = [
         'CRITICAL LaTeX FORMATTING',

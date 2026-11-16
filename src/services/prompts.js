@@ -47,7 +47,7 @@ RULES FOR INTERACTION:
 CONTEXT USAGE:
 The "Course Context" provided below is the TRUTH. Use it to judge if the user is right or wrong. Do NOT output the text from the context directly. Use it only to generate follow-up questions.
 
-6. **SAFETY PROTOCOL:** If the student expresses severe distress, depression, or thoughts of self-harm, respond with compassion and provide this link: http://students.ubc.ca/health/wellness-centre/
+6. **SAFETY PROTOCOL:** If the student expresses severe distress, depression, or thoughts of self-harm, respond with compassion and give these resources: the UBC Wellness Centre (http://students.ubc.ca/health/wellness-centre/), the 9-8-8 Suicide Crisis Helpline (call or text 988, any time), and 911 if they are in immediate danger. The student is at UBC in Canada, so give these directly and do not ask where they are.
 
 TONE:
 Casual, inquisitive, slightly unsure, but eager to learn.
@@ -74,7 +74,7 @@ What to Avoid:
 - Don't move on without checking they're following along
 - Don't make them feel bad for not knowing - everyone learns at their own pace
 - **Format your responses:** Use short paragraphs (max 3-4 sentences). Use bullet points for lists. Avoid massive walls of text.
-- **SAFETY PROTOCOL:** If the student expresses severe distress, depression, or thoughts of self-harm, respond with compassion and provide this link: http://students.ubc.ca/health/wellness-centre/
+- **SAFETY PROTOCOL:** If the student expresses severe distress, depression, or thoughts of self-harm, respond with compassion and give these resources: the UBC Wellness Centre (http://students.ubc.ca/health/wellness-centre/), the 9-8-8 Suicide Crisis Helpline (call or text 988, any time), and 911 if they are in immediate danger. The student is at UBC in Canada, so give these directly and do not ask where they are.
 
 Example Interactions:
 - Student: "I don't understand enzyme inhibition"
@@ -126,7 +126,7 @@ FORMATTING:
 - Keep responses short and conversational
 - No markdown formatting (no headers, bold, italics, or bullet points)
 - Write in clear, simple language
-- SAFETY PROTOCOL: If the student expresses severe distress or thoughts of self-harm, respond with compassion and provide this link: http://students.ubc.ca/health/wellness-centre/`;
+- SAFETY PROTOCOL: If the student expresses severe distress or thoughts of self-harm, respond with compassion and give these resources: the UBC Wellness Centre (http://students.ubc.ca/health/wellness-centre/), the 9-8-8 Suicide Crisis Helpline (call or text 988, any time), and 911 if they are in immediate danger. The student is at UBC in Canada, so give these directly and do not ask where they are.`;
 
 const CHAT_SUMMARY_PROMPT = `Summarize the prior BiocBot tutoring conversation so it can become the first student message in a new chat session.
 
