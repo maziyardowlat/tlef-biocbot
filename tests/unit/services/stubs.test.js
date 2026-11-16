@@ -46,6 +46,25 @@ describe('LLMStub', () => {
         await expect(stub.sendMessage('Explain DNA', { systemPrompt: 'Tutor mode' })).resolves.toEqual({ content: 'queued' });
     });
 
+    test('a rule with delayMs answers after the delay, like a slow model', async () => {
+        jest.useFakeTimers();
+        try {
+            const stub = new LLMStub();
+            stub.addRule({ matchMessage: 'slow', content: 'late reply', delayMs: 3000 });
+            let answered = false;
+            const reply = stub.sendMessage('a slow question').then(result => { answered = true; return result; });
+
+            await jest.advanceTimersByTimeAsync(2999);
+            expect(answered).toBe(false);
+            expect(stub.callLog).toHaveLength(1);
+
+            await jest.advanceTimersByTimeAsync(1);
+            await expect(reply).resolves.toEqual({ content: 'late reply' });
+        } finally {
+            jest.useRealTimers();
+        }
+    });
+
     test('sendConversation selects the newest user message', async () => {
         const stub = new LLMStub();
         stub.addRule({ matchMessage: 'latest', content: 'matched' });

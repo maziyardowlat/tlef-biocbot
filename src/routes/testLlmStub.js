@@ -42,14 +42,14 @@ router.post('/default', (req, res) => {
 
 router.post('/rule', (req, res) => {
     const stub = getLLMStub();
-    const { matchSystemPrompt, matchMessage, content } = req.body || {};
+    const { matchSystemPrompt, matchMessage, content, delayMs } = req.body || {};
     if (content === undefined) {
         return res.status(400).json({ success: false, message: 'Provide `content`' });
     }
     if (matchSystemPrompt === undefined && matchMessage === undefined) {
         return res.status(400).json({ success: false, message: 'Provide matchSystemPrompt or matchMessage' });
     }
-    stub.addRule({ matchSystemPrompt, matchMessage, content });
+    stub.addRule({ matchSystemPrompt, matchMessage, content, delayMs });
     return res.json({ success: true, ruleCount: stub.rules.length });
 });
 

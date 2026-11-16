@@ -22,6 +22,7 @@ const User = require('../models/User');
 const MentalHealthFlag = require('../models/MentalHealthFlag');
 const previewSession = require('../services/previewSession');
 const agentChat = require('../services/agentChat');
+const pendingChatReplies = require('../services/pendingChatReplies');
 const gridfs = require('../services/gridfs');
 const { resolveCourseAi, sendLlmKeyError } = require('./llmKeyMiddleware');
 const { evaluateObjectiveAnswer } = require('../services/objectiveAnswer');
@@ -1545,7 +1546,7 @@ function sendChatError(res, error) {
  * POST /api/chat on the agents framework. It returns the same response shape
  * as the old handler, so student.js doesn't change (PRD decision 28).
  */
-async function handleAgentChat({ req, res, db, course, llmService, qdrant, approvedStruggleTopics, agentMode }) {
+async function handleAgentChat({ req, res, db, course, llmService, qdrant, approvedStruggleTopics, agentMode, settlePendingReply }) {
     const { message, unitName } = req.body;
     console.log(`🤖 [AGENT_CHAT] Running ${agentMode} mode on the agents framework`);
 
@@ -1566,8 +1567,9 @@ async function handleAgentChat({ req, res, db, course, llmService, qdrant, appro
     // No visibleOutputs: a student sees what the agents are doing, never what
     // they said (decision 37).
     const stream = chat.wantsEventStream(req.headers) ? chat.openRunStream(res, { bus, runId }) : null;
-    // Anything that would have called res.status().json() sends the result instead.
-    const out = stream ? stream.responder : res;
+    // Anything that would have called res.status().json() sends the result
+    // instead, and keeps it for GET /pending-reply like a JSON reply.
+    const out = stream ? keepingResponder(stream.responder, settlePendingReply) : res;
     try {
         return await runAgentChat({ req, res: out, db, course, llmService, qdrant, approvedStruggleTopics, agentMode, scope, bus, runId });
     } catch (error) {
@@ -1576,6 +1578,28 @@ async function handleAgentChat({ req, res, db, course, llmService, qdrant, appro
         console.error('❌ Error in chat endpoint:', error);
         sendChatError(out, error);
     }
+}
+
+/**
+ * The stream's responder, also keeping the result for the conversation (GET
+ * /pending-reply), so a reply streamed to a page that has gone away is kept.
+ * @param {{ statusCode: number, status: Function, json: Function }} responder
+ * @param {((status: number, body: Object) => void) | null} settle
+ */
+function keepingResponder(responder, settle) {
+    if (!settle) return responder;
+    return {
+        get statusCode() { return responder.statusCode; },
+        status(code) {
+            responder.status(code);
+            return this;
+        },
+        json(body) {
+            settle(responder.statusCode, body);
+            responder.json(body);
+            return this;
+        }
+    };
 }
 
 async function runAgentChat({ req, res, db, course, llmService, qdrant, approvedStruggleTopics, agentMode, scope, bus, runId }) {
@@ -1701,6 +1725,56 @@ async function runAgentChat({ req, res, db, course, llmService, qdrant, approved
 }
 
 /**
+ * Keep this chat request's outcome for its conversation, so a page that
+ * reloads before the response arrives can still show the reply (GET
+ * /pending-reply). Every JSON response the request ends with is recorded; a
+ * streamed agent reply is recorded through the returned function instead.
+ * @returns {((status: number, body: Object) => void) | null}
+ */
+function trackPendingReply(req, res) {
+    const settle = pendingChatReplies.start({
+        userId: req.user && req.user.userId,
+        courseId: req.body.courseId,
+        conversationId: req.body.conversationId,
+        isExplanationRequest: !!req.body.isExplanationRequest
+    });
+    if (!settle) return null;
+    const json = res.json.bind(res);
+    res.json = body => {
+        settle(res.statusCode, body);
+        return json(body);
+    };
+    return settle;
+}
+
+/**
+ * GET /api/chat/pending-reply?courseId=&conversationId=
+ * The latest chat request's outcome in one of the student's conversations:
+ * state "pending" while the reply is being written, "ready" with `reply` (the
+ * body POST /api/chat responded with), "failed", or "none".
+ */
+router.get('/pending-reply', (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    if (!req.user) {
+        return res.status(401).json({ success: false, message: 'Authentication required' });
+    }
+    const { courseId, conversationId } = req.query;
+    if (typeof courseId !== 'string' || !courseId || typeof conversationId !== 'string' || !conversationId) {
+        return res.status(400).json({ success: false, message: 'courseId and conversationId are required' });
+    }
+    const entry = pendingChatReplies.get({ userId: req.user.userId, courseId, conversationId });
+    if (!entry) {
+        return res.json({ success: true, state: 'none' });
+    }
+    res.json({
+        success: true,
+        state: entry.state,
+        isExplanationRequest: entry.isExplanationRequest,
+        reply: entry.state === 'ready' ? entry.body : null
+    });
+});
+
+/**
  * POST /api/chat
  */
 router.post('/', async (req, res) => {
@@ -1741,6 +1815,9 @@ router.post('/', async (req, res) => {
                 message: 'courseId and unitName are required to start chat'
             });
         }
+
+        // From here on, the reply is kept for the conversation as well as sent.
+        const settlePendingReply = trackPendingReply(req, res);
 
         // Profanity filter: intercept before any RAG/GPT work to save tokens
         // If the cleaned text differs from the original, return a warning response
@@ -1802,7 +1879,7 @@ router.post('/', async (req, res) => {
         // The agents framework path (PRD Rung 2a), off unless AGENT_CHAT_MODES names this mode.
         const agentMode = agentChat.resolveAgentMode(req.body);
         if (agentChat.isAgentChatEnabled(agentMode)) {
-            return await handleAgentChat({ req, res, db, course, llmService, qdrant, approvedStruggleTopics, agentMode });
+            return await handleAgentChat({ req, res, db, course, llmService, qdrant, approvedStruggleTopics, agentMode, settlePendingReply });
         }
 
         // STRUGGLE DETECTION & TRACKING

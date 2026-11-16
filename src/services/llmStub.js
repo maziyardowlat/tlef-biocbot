@@ -53,7 +53,8 @@ class LLMStub {
     //   - matchSystemPrompt: substring to find in options.systemPrompt
     //   - matchMessage:      substring to find in the message string
     // A rule needs at least one matcher; calls with no rule match fall through
-    // to the FIFO queue, then to defaultContent.
+    // to the FIFO queue, then to defaultContent. An optional delayMs makes a
+    // matching call wait before it answers, like a slow model.
     addRule(rule) {
         if (!rule || (rule.matchSystemPrompt === undefined && rule.matchMessage === undefined)) {
             throw new Error('LLMStub.addRule: rule needs matchSystemPrompt or matchMessage');
@@ -62,6 +63,7 @@ class LLMStub {
             matchSystemPrompt: rule.matchSystemPrompt,
             matchMessage: rule.matchMessage,
             content: String(rule.content == null ? '' : rule.content),
+            delayMs: Math.max(0, Number(rule.delayMs) || 0),
         });
     }
 
@@ -71,14 +73,17 @@ class LLMStub {
         for (const r of this.rules) {
             const spOk = r.matchSystemPrompt === undefined || sysPrompt.includes(r.matchSystemPrompt);
             const mOk = r.matchMessage === undefined || msg.includes(r.matchMessage);
-            if (spOk && mOk) return r.content;
+            if (spOk && mOk) return r;
         }
         return null;
     }
 
-    _nextContent(message, options) {
-        const ruled = this._ruleMatch(message, options);
-        if (ruled !== null) return ruled;
+    async _nextContent(message, options) {
+        const rule = this._ruleMatch(message, options);
+        if (rule !== null) {
+            if (rule.delayMs) await new Promise((resolve) => setTimeout(resolve, rule.delayMs));
+            return rule.content;
+        }
         if (this.queue.length > 0) return this.queue.shift();
         return this.defaultContent;
     }
@@ -87,14 +92,14 @@ class LLMStub {
 
     async sendMessage(message, options = {}) {
         this.callLog.push({ kind: 'sendMessage', message: String(message).slice(0, 500), options });
-        const content = this._nextContent(message, options);
+        const content = await this._nextContent(message, options);
         return { content };
     }
 
     async sendConversation(messages = [], options = {}) {
         this.callLog.push({ kind: 'sendConversation', messages, options });
         const lastUser = [...messages].reverse().find((m) => m && m.role === 'user');
-        const content = this._nextContent(lastUser ? lastUser.content : '', options);
+        const content = await this._nextContent(lastUser ? lastUser.content : '', options);
         return { content };
     }
 
@@ -109,7 +114,7 @@ class LLMStub {
             async send(options = {}) {
                 stub.callLog.push({ kind: 'conversation.send', messages: [...messages], options });
                 const lastUser = [...messages].reverse().find((m) => m.role === 'user');
-                const content = stub._nextContent(lastUser ? lastUser.content : '', options);
+                const content = await stub._nextContent(lastUser ? lastUser.content : '', options);
                 return { content };
             },
         };
