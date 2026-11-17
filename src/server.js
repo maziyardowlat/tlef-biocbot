@@ -12,6 +12,7 @@ const { ensureSuperchatsFromLegacy } = require('./models/Superchat');
 const { ensureIndexes: ensureMessageFeedbackIndexes } = require('./models/MessageFeedback');
 const { ensureIndexes: ensureChatSurveyResponseIndexes } = require('./models/ChatSurveyResponse');
 const { ensureIndexes: ensureFlashcardIndexes } = require('./models/FlashcardDeck');
+const { ensureIndexes: ensureTopicDashboardTimeIndexes } = require('./models/TopicDashboardTime');
 const { ensureIndexes: ensureProviderMigrationIndexes } = require('./services/providerMigrationService');
 const { resumePendingMigrations } = require('./services/providerMigrationRunner');
 const { backfillExistingScopes } = require('./services/scopeModelSettings');
@@ -45,6 +46,7 @@ const exportChangeLogRoutes = require('./routes/exportChangeLog');
 const providerMigrationsRoutes = require('./routes/providerMigrations');
 const academicSyncRoutes = require('./routes/academicSync');
 const studentPseudonymRoutes = require('./routes/studentPseudonyms');
+const topicDashboardTimeRoutes = require('./routes/topicDashboardTime');
 const previewRoutes = require('./routes/preview');
 const vendorRoutes = require('./routes/vendor');
 const { createHealthRouter } = require('./routes/health');
@@ -630,6 +632,7 @@ function setupAPIRoutes() {
     app.use('/api/provider-migrations', authMiddleware.requireAuth, authMiddleware.populateUser, providerMigrationsRoutes);
     app.use('/api/academic-sync', authMiddleware.requireAuth, authMiddleware.populateUser, authMiddleware.requireInstructor, academicSyncRoutes);
     app.use('/api/student-pseudonyms', authMiddleware.requireAuth, authMiddleware.populateUser, studentPseudonymRoutes);
+    app.use('/api/topic-dashboard-time', authMiddleware.requireAuth, authMiddleware.populateUser, topicDashboardTimeRoutes);
     app.get(
         '/api/lms/configuration',
         authMiddleware.requireAuth,
@@ -754,6 +757,7 @@ async function startServer() {
         await ensureMessageFeedbackIndexes(db);
         await ensureChatSurveyResponseIndexes(db);
         await ensureFlashcardIndexes(db);
+        await ensureTopicDashboardTimeIndexes(db);
         await ensureProviderMigrationIndexes(db);
         const materializedModelScopes = await backfillExistingScopes(db);
         console.log(`✅ Materialized per-scope model settings for ${materializedModelScopes} AI surface(s)`);
