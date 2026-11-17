@@ -3,7 +3,7 @@
  *
  * The implementation lives in feature modules loaded before this file:
  *   student-state.js — shared page state (must load first)
- *   student-chat-core.js, student-practice.js, student-session.js,
+ *   student-chat-core.js, student-chat-request.js, student-practice.js, student-session.js,
  *   student-restore.js, student-course.js, student-calibration.js
  * All are classic scripts sharing the global scope. This file keeps the
  * top-level event listeners (the main DOMContentLoaded boot sequence and the
@@ -388,33 +388,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 
 
-            const fetchOptions = {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    // The agent path streams progress when asked; the old
-                    // path ignores this and answers with JSON as before.
-                    'Accept': 'text/event-stream, application/json'
-                },
-                body: JSON.stringify(requestBody)
-            };
-
-            if (signal) {
-                fetchOptions.signal = signal;
-            }
-
-            const response = await fetch('/api/chat', fetchOptions);
-
-            let status = response.status;
-            let data;
-            // A response with no headers (a test's fake fetch) reads as JSON.
-            if ((response.headers?.get?.('Content-Type') || '').includes('text/event-stream')) {
-                const result = await readChatProgressStream(response, update => setTypingStatus(update && update.status));
-                status = result.status;
-                data = result.body || {};
-            } else {
-                data = await response.json();
-            }
+            // student-chat-request.js
+            const { status, data } = await requestChatReply(requestBody, { signal, onStatus: setTypingStatus });
 
             if (status < 200 || status >= 300) {
                 throw new Error(data.message || `HTTP error! status: ${status}`);
@@ -1267,49 +1242,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         // Scroll to bottom
         chatMessages.scrollTop = chatMessages.scrollHeight;
-    }
-
-    /**
-     * Read a chat response sent as server-sent events: "progress" events while
-     * the agents run, then one "result" event with the response's status and
-     * body.
-     * @param {Response} response
-     * @param {(update: { step: string, label: string, status: string }) => void} onProgress
-     * @returns {Promise<{ status: number, body: Object }>}
-     */
-    async function readChatProgressStream(response, onProgress) {
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-        let result = null;
-        const handleFrame = frame => {
-            let event = 'message';
-            let data = '';
-            frame.split('\n').forEach(line => {
-                if (line.startsWith('event:')) event = line.slice(6).trim();
-                else if (line.startsWith('data:')) data += line.slice(5).trim();
-            });
-            if (!data) return;
-            const payload = JSON.parse(data);
-            if (event === 'progress') {
-                try { onProgress(payload); } catch (error) { console.warn('Could not show chat progress:', error); }
-            } else if (event === 'result') {
-                result = payload;
-            }
-        };
-        for (;;) {
-            const { value, done } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
-            let boundary;
-            while ((boundary = buffer.indexOf('\n\n')) !== -1) {
-                handleFrame(buffer.slice(0, boundary));
-                buffer = buffer.slice(boundary + 2);
-            }
-        }
-        if (buffer.trim()) handleFrame(buffer);
-        if (!result) throw new Error('The chat response ended before the reply arrived.');
-        return result;
     }
 
     /**

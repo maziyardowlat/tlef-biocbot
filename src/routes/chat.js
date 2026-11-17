@@ -6,6 +6,7 @@
 
 const express = require('express');
 const path = require('path');
+const { randomUUID } = require('crypto');
 const router = express.Router();
 const LLMService = require('../services/llm');
 const prompts = require('../services/prompts');
@@ -1554,53 +1555,30 @@ async function handleAgentChat({ req, res, db, course, llmService, qdrant, appro
         return res.status(400).json({ success: false, message: 'Selected unit is not published or does not exist' });
     }
 
-    // A browser that asks for text/event-stream gets each step's progress as it
-    // happens, then the usual response body in a final "result" event, with
-    // the status it would have had. Anything else gets plain JSON, as today.
-    const progress = startProgressStream(req, res);
-    const out = progress ? progress.responder : res;
+    // A browser that asks for text/event-stream gets what the agents are doing
+    // as it happens, through the framework's chat package (R4), then the usual
+    // response body as the stream's "result", with the status it would have
+    // had. Anything else gets plain JSON, as today. The stream opens before the
+    // run, so an error from here on still reaches the page as the result.
+    const { core, chat } = agentChat.loadFramework();
+    const bus = core.createEventBus();
+    const runId = randomUUID();
+    // No visibleOutputs: a student sees what the agents are doing, never what
+    // they said (decision 37).
+    const stream = chat.wantsEventStream(req.headers) ? chat.openRunStream(res, { bus, runId }) : null;
+    // Anything that would have called res.status().json() sends the result instead.
+    const out = stream ? stream.responder : res;
     try {
-        return await runAgentChat({ req, res: out, db, course, llmService, qdrant, approvedStruggleTopics, agentMode, scope, onProgress: progress && progress.send });
+        return await runAgentChat({ req, res: out, db, course, llmService, qdrant, approvedStruggleTopics, agentMode, scope, bus, runId });
     } catch (error) {
-        if (!progress) throw error;
+        if (!stream) throw error;
         if (sendLlmKeyError(out, error)) return;
         console.error('❌ Error in chat endpoint:', error);
         sendChatError(out, error);
     }
 }
 
-/**
- * Starts a server-sent event stream for a chat request that asks for one.
- * @returns {{ send: Function, responder: { status: Function, json: Function } } | null}
- */
-function startProgressStream(req, res) {
-    if (!String(req.headers.accept || '').includes('text/event-stream')) return null;
-    res.status(200).set({
-        'Content-Type': 'text/event-stream; charset=utf-8',
-        'Cache-Control': 'no-cache, no-transform',
-        Connection: 'keep-alive',
-        // Stops nginx from holding the events until the response ends.
-        'X-Accel-Buffering': 'no'
-    });
-    res.flushHeaders();
-    const write = (event, data) => {
-        // A student who navigates away closes the stream; the run still finishes.
-        if (!res.writableEnded && !res.destroyed) res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-    };
-    // Anything that would have called res.status().json() sends the result event instead.
-    const responder = {
-        statusCode: 200,
-        status(code) { this.statusCode = code; return this; },
-        json(body) {
-            write('result', { status: this.statusCode, body });
-            res.end();
-            return this;
-        }
-    };
-    return { send: update => write('progress', update), responder };
-}
-
-async function runAgentChat({ req, res, db, course, llmService, qdrant, approvedStruggleTopics, agentMode, scope, onProgress }) {
+async function runAgentChat({ req, res, db, course, llmService, qdrant, approvedStruggleTopics, agentMode, scope, bus, runId }) {
     const { message, mode, unitName, courseId, conversationContext } = req.body;
     let struggleState = null;
     let identifiedTopic = null;
@@ -1671,7 +1649,8 @@ async function runAgentChat({ req, res, db, course, llmService, qdrant, approved
             applyStruggleUpdate(updateResult, analysis.topic);
         },
         directiveState: () => ({ active: directiveModeActive, topic: identifiedTopic }),
-        onProgress
+        bus,
+        runId
     });
 
     const { run } = outcome;

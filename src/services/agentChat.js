@@ -14,7 +14,9 @@
  * This path sits beside the old handler and is off by default. AGENT_CHAT_MODES
  * turns it on per mode (a comma-separated list of tutor, explain, protege).
  * The mental-health check runs here as an async agent (2b), so the reply never
- * waits for it. The chat summary stays on the old code (decision 29).
+ * waits for it. The chat summary stays on the old code (decision 29). The
+ * route streams what the agents are doing to the page through the framework's
+ * chat package (R4, its PRD section 11).
  */
 
 const prompts = require('./prompts');
@@ -23,9 +25,10 @@ const { LANES } = require('./llmLanes');
 
 const CORE_PACKAGE = '@ubc/genai-toolkit-agents-core';
 const RUNTIME_PACKAGE = '@ubc/genai-toolkit-agents-runtime';
+const CHAT_SERVER_PACKAGE = '@ubc/genai-toolkit-agents-chat/server';
 const AGENT_MODES = Object.freeze(['tutor', 'explain', 'protege']);
 
-/** @type {{ core: any, runtime: any } | null | undefined} */
+/** @type {{ core: any, runtime: any, chat: any } | null | undefined} */
 let framework;
 
 /**
@@ -34,12 +37,13 @@ let framework;
  * optional dependency. The agent path is off by default, so a deployment that
  * never turns it on does not need it.
  *
- * @returns {{ core: any, runtime: any } | null}
+ * @returns {{ core: any, runtime: any, chat: any } | null} `chat` is the chat
+ *   package's server entry
  */
 function loadFramework() {
     if (framework === undefined) {
         try {
-            framework = { core: require(CORE_PACKAGE), runtime: require(RUNTIME_PACKAGE) };
+            framework = { core: require(CORE_PACKAGE), runtime: require(RUNTIME_PACKAGE), chat: require(CHAT_SERVER_PACKAGE) };
         } catch (error) {
             if (error.code !== 'MODULE_NOT_FOUND') throw error;
             framework = null;
@@ -419,8 +423,9 @@ function mentalHealthContextText(conversation, message) {
  * @param {{ prompt: string, conversationMessages?: Array<{role: string, content: string}>, saveFlag: (flag: Object) => Promise<any> }} [options.mentalHealthCheck]
  *   Set to run the mental-health check. `conversationMessages` is the history
  *   the browser sent, and `saveFlag` saves a flag with the old check's fields.
- * @param {(update: { step: string, label: string, status: string }) => void} [options.onProgress]
- *   Called as each visible step starts. It must not throw, and nothing waits for it.
+ * @param {Object} [options.bus] - The framework's event bus to run on, such as one the chat package
+ *   streams to the page. A new one by default.
+ * @param {string} [options.runId] - The run's id, which the stream sends only that run's events for
  * @returns {Promise<{ run: Object, reply: string, replyCall: { model?: string, usage?: any }|null, accessError: any, failureCause: any }>}
  *   `run.asyncDone` settles once the mental-health check has finished. Nothing in a request waits for it.
  */
@@ -430,7 +435,8 @@ async function runStudentChat(options) {
     const { core, runtime } = loaded;
     const {
         mode, message, llm, coursePrompts, runTracker, trackerContext, checkSummaryAttempt,
-        preview = false, retrieve, recordStruggle, directiveState, identifiers = {}, mentalHealthCheck, onProgress
+        preview = false, retrieve, recordStruggle, directiveState, identifiers = {}, mentalHealthCheck,
+        bus = core.createEventBus(), runId
     } = options;
 
     const modePrompts = buildModePrompts({ mode, coursePrompts });
@@ -512,7 +518,6 @@ async function runStudentChat(options) {
         });
     }
 
-    const bus = core.createEventBus();
     // For local development only: prints each agent's output, which quotes the
     // student and the course material, so it is off unless asked for.
     if (process.env.AGENT_CHAT_DEBUG === '1') {
@@ -527,7 +532,6 @@ async function runStudentChat(options) {
             console.log(`🤖 [AGENT_DEBUG] tool ${event.toolId} for ${event.agentId}: ${event.type.replace('tool.', '')}`);
         });
     }
-    if (typeof onProgress === 'function') subscribeProgress(bus, onProgress);
     bus.subscribe('agent.*', event => {
         if (event.type === 'agent.failed' || event.type === 'agent.retrying' || event.type === 'agent.continued' || event.type === 'agent.skipped') {
             const detail = event.failure
@@ -562,7 +566,8 @@ async function runStudentChat(options) {
                 bus,
                 sink: entry => console.log(`🧾 [AGENT_AUDIT] ${entry.agentId}/${entry.toolId} ${entry.status}${entry.failureCode ? ` ${entry.failureCode}` : ''}`)
             }),
-            isRetryable: failure => !isLlmAccessError(failure.cause)
+            isRetryable: failure => !isLlmAccessError(failure.cause),
+            ...(runId ? { createRunId: () => runId } : {})
         },
         { preview }
     );
@@ -582,49 +587,6 @@ async function runStudentChat(options) {
     const replyCall = writerCalls[writerCalls.length - 1] || null;
 
     return { run, reply, replyCall, accessError, failureCause };
-}
-
-/**
- * Sends the student each visible step's status, from the framework's events.
- * An agent's status shows when it starts, a visible tool's while it runs, and
- * the agent's again once the tool is done, because the agent's model call
- * comes after its read tools. The framework announces an agent and its read
- * tools in one go, so only the last status published together is sent: the
- * agent's own status would otherwise flash before the course search's.
- * @param {Object} bus
- * @param {(update: { step: string, label: string, status: string }) => void} onProgress
- */
-function subscribeProgress(bus, onProgress) {
-    const agentProgress = new Map();
-    let pending = null;
-    let lastStatus = null;
-    const flush = () => {
-        const update = pending;
-        pending = null;
-        if (!update || update.status === lastStatus) return;
-        lastStatus = update.status;
-        try {
-            onProgress(update);
-        } catch (error) {
-            console.error('❌ [AGENT_CHAT] Progress listener failed:', error);
-        }
-    };
-    const show = (step, progress) => {
-        if (!pending) queueMicrotask(flush);
-        pending = { step, label: progress.label, status: progress.status };
-    };
-    bus.subscribe('agent.started', event => {
-        if (!event.visible || !event.progress) return;
-        agentProgress.set(event.agentId, event.progress);
-        show(event.agentId, event.progress);
-    });
-    bus.subscribe('tool.*', event => {
-        if (!event.visible) return;
-        if (event.type === 'tool.started' && event.progress) show(event.agentId, event.progress);
-        else if ((event.type === 'tool.completed' || event.type === 'tool.failed') && agentProgress.has(event.agentId)) {
-            show(event.agentId, agentProgress.get(event.agentId));
-        }
-    });
 }
 
 module.exports = {
