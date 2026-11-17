@@ -15,6 +15,8 @@ const DocumentModel = require('../models/Document');
 const MessageFeedback = require('../models/MessageFeedback');
 const { hasPermission } = require('../services/permissions');
 const ChatSurveyResponse = require('../models/ChatSurveyResponse');
+const { hasSystemAdminAccess } = require('../services/authorization');
+const studentPseudonyms = require('../services/studentPseudonyms');
 const BadWordsFilter = require('bad-words');
 const profanityFilter = new BadWordsFilter();
 const TrackerService = require('../services/tracker');
@@ -1077,6 +1079,62 @@ router.get('/survey/course/:courseId/export', async (req, res) => {
     } catch (error) {
         console.error('Error exporting chat survey responses:', error);
         return res.status(500).json({ success: false, message: 'Internal server error while exporting survey responses' });
+    }
+});
+
+/**
+ * GET /api/chat/survey/course/:courseId/export/anonymized
+ * Export chat survey responses as anonymized CSV. System-admin only, so the
+ * same people who manage "Student anonymization IDs" are the only ones who
+ * can pull anonymized survey data. Reuses each student's existing
+ * student_pseudonyms code (course scope) rather than minting a new one, so
+ * the ID here always matches the one shown in that admin screen.
+ */
+router.get('/survey/course/:courseId/export/anonymized', async (req, res) => {
+    try {
+        const { courseId } = req.params;
+        const db = req.app.locals.db;
+        if (!db) {
+            return res.status(503).json({ success: false, message: 'Database connection not available' });
+        }
+
+        if (!hasSystemAdminAccess(req.user)) {
+            return res.status(403).json({ success: false, message: 'Only system admins can export anonymized survey responses' });
+        }
+
+        const scopeStatus = await studentPseudonyms.getScopeStatus(db, 'course', courseId);
+        if (!scopeStatus.complete) {
+            return res.status(409).json({
+                success: false,
+                message: 'Some students are missing anonymization IDs. Generate them in Student Hub before exporting.',
+                missingStudentIds: scopeStatus.missingStudentIds
+            });
+        }
+
+        const pseudonymByStudentId = new Map(scopeStatus.mappings.map(mapping => [mapping.studentId, mapping.pseudonym]));
+
+        const responses = await ChatSurveyResponse.listSurveyResponsesForCourse(db, courseId, {
+            status: req.query.status,
+            studentId: req.query.studentId,
+            conversationId: req.query.conversationId,
+            limit: Number.parseInt(req.query.limit, 10) || 1000
+        });
+
+        const anonymizedResponses = responses.map(response => {
+            const clone = { ...response };
+            clone.studentId = pseudonymByStudentId.get(response.studentId) || response.studentId;
+            delete clone.studentName;
+            return clone;
+        });
+
+        const csv = ChatSurveyResponse.surveyResponsesToCsv(anonymizedResponses, { anonymized: true });
+        const safeCourseId = String(courseId).replace(/[^A-Za-z0-9_-]/g, '_');
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename="chat-survey-responses-anonymized-${safeCourseId}.csv"`);
+        return res.send(csv);
+    } catch (error) {
+        console.error('Error exporting anonymized chat survey responses:', error);
+        return res.status(500).json({ success: false, message: 'Internal server error while exporting anonymized survey responses' });
     }
 });
 

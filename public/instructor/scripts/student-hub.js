@@ -270,8 +270,28 @@ function initializeStudentHub() {
 
     const downloadSurveyButton = document.getElementById('download-survey-responses');
     if (downloadSurveyButton) {
-        downloadSurveyButton.addEventListener('click', downloadChatSurveyResponses);
+        downloadSurveyButton.addEventListener('click', toggleSurveyDownloadMenu);
     }
+    document.getElementById('download-survey-responses-csv')?.addEventListener('click', () => {
+        closeSurveyDownloadMenu();
+        downloadChatSurveyResponses();
+    });
+    const downloadSurveyAnonymizedButton = document.getElementById('download-survey-responses-anonymized-csv');
+    if (downloadSurveyAnonymizedButton) {
+        if (typeof isSystemAdmin === 'function' && isSystemAdmin()) {
+            downloadSurveyAnonymizedButton.hidden = false;
+        }
+        downloadSurveyAnonymizedButton.addEventListener('click', () => {
+            closeSurveyDownloadMenu();
+            downloadChatSurveyResponsesAnonymized();
+        });
+    }
+    document.addEventListener('click', (event) => {
+        const menu = document.getElementById('download-menu-survey-responses');
+        if (menu && menu.classList.contains('open') && !menu.parentElement.contains(event.target)) {
+            closeSurveyDownloadMenu();
+        }
+    });
 
     const providerSelect = document.getElementById('lms-grade-provider');
     if (providerSelect) {
@@ -1194,6 +1214,100 @@ async function downloadChatSurveyResponses() {
         if (downloadButton) {
             downloadButton.disabled = false;
             downloadButton.textContent = previousText || 'Download CSV';
+        }
+    }
+}
+
+function toggleSurveyDownloadMenu(event) {
+    event.stopPropagation();
+    const menu = document.getElementById('download-menu-survey-responses');
+    if (!menu) return;
+    const isOpen = menu.classList.toggle('open');
+    document.getElementById('download-survey-responses')?.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+}
+
+function closeSurveyDownloadMenu() {
+    const menu = document.getElementById('download-menu-survey-responses');
+    if (!menu) return;
+    menu.classList.remove('open');
+    document.getElementById('download-survey-responses')?.setAttribute('aria-expanded', 'false');
+}
+
+async function downloadChatSurveyResponsesAnonymized() {
+    if (!currentSurveyCourseId) {
+        showNotification('No course selected for survey export.', 'warning');
+        return;
+    }
+
+    // Anonymized exports must reuse the exact codes shown in "Manage
+    // anonymization IDs" - check completeness first instead of letting the
+    // server mint something new the admin screen wouldn't know about.
+    try {
+        const statusResponse = await authenticatedFetch(`/api/student-pseudonyms/course/${encodeURIComponent(currentSurveyCourseId)}`);
+        const statusResult = await statusResponse.json();
+        if (!statusResponse.ok || !statusResult.success) throw new Error(statusResult.message || `HTTP ${statusResponse.status}`);
+
+        if (!statusResult.data.complete) {
+            const count = statusResult.data.missingStudentIds.length;
+            const openManager = confirm(
+                `Anonymized download blocked: ${count} student${count === 1 ? '' : 's'} still need a four-character ID. ` +
+                'Generate the missing IDs below before downloading. Open the anonymization ID manager now?'
+            );
+            if (openManager) {
+                const scopeTypeSelect = document.getElementById('pseudonym-scope-type');
+                if (scopeTypeSelect) scopeTypeSelect.value = 'course';
+                populatePseudonymScopeOptions();
+                const scopeIdSelect = document.getElementById('pseudonym-scope-id');
+                if (scopeIdSelect) scopeIdSelect.value = currentSurveyCourseId;
+                loadPseudonymStatus();
+                openPseudonymManager();
+            }
+            return;
+        }
+    } catch (error) {
+        console.error('Could not verify anonymization IDs:', error);
+        showNotification(`Could not verify anonymization IDs: ${error.message}`, 'error');
+        return;
+    }
+
+    const downloadButton = document.getElementById('download-survey-responses-anonymized-csv');
+    const previousText = downloadButton ? downloadButton.textContent : '';
+    if (downloadButton) {
+        downloadButton.disabled = true;
+        downloadButton.textContent = 'Downloading...';
+    }
+
+    try {
+        const statusFilter = document.getElementById('survey-status-filter')?.value || 'all';
+        const params = new URLSearchParams({ limit: '1000' });
+        if (statusFilter !== 'all') {
+            params.set('status', statusFilter);
+        }
+
+        const response = await authenticatedFetch(`/api/chat/survey/course/${encodeURIComponent(currentSurveyCourseId)}/export/anonymized?${params.toString()}`);
+        if (!response.ok) {
+            const result = await response.json().catch(() => null);
+            throw new Error(result?.message || `HTTP ${response.status}`);
+        }
+
+        const csv = await response.blob();
+        const url = URL.createObjectURL(csv);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `chat-survey-responses-anonymized-${currentSurveyCourseId}-${new Date().toISOString().split('T')[0]}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        showNotification('Anonymized survey responses downloaded.', 'success');
+    } catch (err) {
+        console.error('Error downloading anonymized chat survey responses:', err);
+        showNotification(`Failed to download anonymized survey responses: ${err.message}`, 'error');
+    } finally {
+        if (downloadButton) {
+            downloadButton.disabled = false;
+            downloadButton.textContent = previousText || 'Download anonymized CSV';
         }
     }
 }

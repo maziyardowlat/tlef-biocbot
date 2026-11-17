@@ -127,7 +127,15 @@
                             <option value="dismissed">Dismissed</option>
                         </select>
                         <button id="refresh-survey-responses" class="btn-small btn-secondary btn-accent" type="button">Refresh</button>
-                        <button id="download-survey-responses" class="btn-small btn-primary" type="button">Download CSV</button>
+                        <div class="download-dropdown">
+                            <button id="download-survey-responses" class="btn-small btn-primary download-dropdown-toggle" type="button" aria-expanded="false" aria-haspopup="menu">
+                                Download CSV &#9662;
+                            </button>
+                            <div class="download-dropdown-menu" id="download-menu-survey-responses">
+                                <button type="button" id="download-survey-responses-csv">Download CSV</button>
+                                <button type="button" id="download-survey-responses-anonymized-csv" hidden>Download anonymized CSV</button>
+                            </div>
+                        </div>
                     </div>
                 </div>
 

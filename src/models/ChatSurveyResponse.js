@@ -298,14 +298,14 @@ function escapeCsvCell(value) {
     return text;
 }
 
-function surveyResponsesToCsv(responses) {
+function surveyResponsesToCsv(responses, options = {}) {
     const headers = [
         'responseId',
         'courseId',
         'unitName',
         'conversationId',
         'studentId',
-        'studentName',
+        ...(options.anonymized ? [] : ['studentName']),
         'settingsFingerprint',
         'triggerMessageCount',
         'messageCountAtPrompt',
