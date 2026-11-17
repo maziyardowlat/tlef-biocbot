@@ -1563,11 +1563,9 @@ async function handleAgentChat({ req, res, db, course, llmService, qdrant, appro
     const { core, chat } = agentChat.loadFramework();
     const bus = core.createEventBus();
     const runId = randomUUID();
-    const stream = chat.wantsEventStream(req.headers)
-        // The system is built inside the run. The stream reads only its
-        // visibleOutputs, and a student sees no agent's output (decision 37).
-        ? chat.openRunStream(res, { bus, runId, system: { visibleOutputs: [] } })
-        : null;
+    // No visibleOutputs: a student sees what the agents are doing, never what
+    // they said (decision 37).
+    const stream = chat.wantsEventStream(req.headers) ? chat.openRunStream(res, { bus, runId }) : null;
     // Anything that would have called res.status().json() sends the result instead.
     const out = stream ? stream.responder : res;
     try {

@@ -734,6 +734,15 @@ describeWithFramework('the chat package’s stream (new in R4)', () => {
         expect(await response.text()).toBe(require('fs').readFileSync(require.resolve('@ubc/genai-toolkit-agents-chat/client.global.js'), 'utf8'));
     });
 
+    test('a request that fails is an error the page shows, not a stop', async () => {
+        const page = await openPage(await listen());
+        page.fetch = () => Promise.reject(new TypeError('Failed to fetch'));
+
+        const got = await sendAsThePage(page, { mode: 'tutor' });
+
+        expect(got).toEqual({ shown: [], error: 'Error' });
+    });
+
     test('where the client doesn’t load, the page asks for JSON and gets the same reply, with no statuses', async () => {
         ai();
         const base = await listen();

@@ -34,9 +34,9 @@ async function requestChatReply(requestBody, { signal = null, onStatus }) {
         onActivity: activity => onStatus(activity.status)
     });
     if ('failure' in result) {
-        // A request the student stopped fails the way fetch does, with the
-        // abort's reason, so the page still says it was stopped.
-        if (signal && signal.aborted) throw signal.reason || new DOMException('The request was stopped.', 'AbortError');
+        // A request the student stopped fails as an AbortError, the way fetch
+        // does, so the page still says it was stopped.
+        if (result.failure.code === 'aborted') throw new DOMException(result.failure.message, 'AbortError');
         throw new Error(result.failure.message);
     }
     return { status: result.status, data: result.body || {} };
