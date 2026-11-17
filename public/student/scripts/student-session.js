@@ -679,8 +679,9 @@ function updateLastActivityTimestamp() {
 /**
  * Load the current session data into the chat interface
  * This is used for auto-continue to restore the session without creating a new one
+ * @param {Function} [onLoaded] Called once the saved messages are on the page.
  */
-async function loadCurrentSessionIntoInterface() {
+async function loadCurrentSessionIntoInterface(onLoaded) {
     try {
         // Fetch current struggle state first
         if (typeof fetchCurrentStruggleState === 'function') {
@@ -708,7 +709,7 @@ async function loadCurrentSessionIntoInterface() {
 
 
         // Load the chat data using the existing function
-        loadChatData(chatData);
+        loadChatData(chatData, onLoaded);
 
 
 

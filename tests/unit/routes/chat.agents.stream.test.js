@@ -44,6 +44,7 @@ const User = require('../../../src/models/User');
 const MentalHealthFlag = require('../../../src/models/MentalHealthFlag');
 const { resolveCourseAi } = require('../../../src/routes/llmKeyMiddleware');
 const agentChat = require('../../../src/services/agentChat');
+const pendingChatReplies = require('../../../src/services/pendingChatReplies');
 const router = require('../../../src/routes/chat');
 const vendorRoutes = require('../../../src/routes/vendor');
 
@@ -537,7 +538,8 @@ describeWithFramework('the stream itself', () => {
 });
 
 describeWithFramework('a slow, hanging or closed browser', () => {
-    test('a student who leaves mid-reply doesn’t stop the run, and its writes are still saved', async () => {
+    test('a student who leaves mid-reply doesn’t stop the run, its writes are still saved, and the reply is kept', async () => {
+        pendingChatReplies.clear();
         const leave = new AbortController();
         let shownFirst;
         const firstShown = new Promise(resolve => { shownFirst = resolve; });
@@ -566,6 +568,12 @@ describeWithFramework('a slow, hanging or closed browser', () => {
         expect(outcome.run.usedFallback).toBe(false);
         expect(User.updateUserStruggleState).toHaveBeenCalledWith(expect.anything(), 's1', expect.objectContaining({ topic: 'Glycolysis' }), 'C1');
         expect(MentalHealthFlag.createMentalHealthFlag).toHaveBeenCalledTimes(1);
+        // The streamed result is kept for the conversation, so the page shows
+        // the reply when the student comes back (GET /api/chat/pending-reply).
+        await eventually(() => expect(pendingChatReplies.get({ userId: 's1', courseId: 'C1', conversationId: 'conversation-1' })).toMatchObject({
+            state: 'ready',
+            body: expect.objectContaining({ success: true, message: 'An agent reply.', messageId: expect.stringMatching(/^msg_/) })
+        }));
     });
 
     test('a browser that stops reading doesn’t hold up the run, and gets the whole result once it reads', async () => {

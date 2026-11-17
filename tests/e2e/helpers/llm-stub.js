@@ -55,6 +55,7 @@ async function addLlmStubRule(api, rule) {
     if (rule.matchSystemPrompt !== undefined) payload.matchSystemPrompt = String(rule.matchSystemPrompt);
     if (rule.matchMessage !== undefined) payload.matchMessage = String(rule.matchMessage);
     payload.content = typeof rule.content === 'string' ? rule.content : JSON.stringify(rule.content);
+    if (rule.delayMs !== undefined) payload.delayMs = Number(rule.delayMs);
     const res = await api.post('/api/test/llm-stub/rule', {
         data: payload,
         failOnStatusCode: false,

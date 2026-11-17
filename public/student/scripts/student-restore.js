@@ -114,8 +114,10 @@ function renderRestoredModeToggleResult(messageData) {
 /**
  * Load chat data into the current chat interface
  * @param {Object} chatData - The chat data to load
+ * @param {Function} [onLoaded] - Called once the messages are on the page and
+ *   the chat data is saved back
  */
-function loadChatData(chatData) {
+function loadChatData(chatData, onLoaded) {
     try {
 
 
@@ -483,9 +485,7 @@ function loadChatData(chatData) {
             localStorage.setItem(autoSaveKey, JSON.stringify(chatData));
             scheduleChatSessionExpiration(chatData);
 
-
-
-
+            if (typeof onLoaded === 'function') onLoaded();
         }, 500); // Small delay to show loading message
 
     } catch (error) {

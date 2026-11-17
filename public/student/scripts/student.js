@@ -157,8 +157,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             // Add a small delay to ensure DOM is fully ready
             setTimeout(() => {
                 try {
-
-                    loadCurrentSessionIntoInterface();
+                    // Then show a reply that was still being written when
+                    // the page went away.
+                    loadCurrentSessionIntoInterface(resumePendingReply);
                 } catch (error) {
                     console.error('🔄 [AUTO-CONTINUE] Error loading session into interface:', error);
                 }
@@ -1094,98 +1095,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 // Remove typing indicator
                 removeTypingIndicator();
 
-                // Add real bot response
-                // Add real bot response
-
-
-
-
-                // Check if we should append the Protege prompt
-                const currentMode = localStorage.getItem('studentMode') || 'tutor';
-                const isTutorMode = currentMode === 'tutor';
-                const promptAlreadyShown = hasProtegePromptShown();
-                
-                // We initially check messageCountBefore (e.g. 12).
-                // User adds message -> Total messages = 13 (assuming 1-based index or however countMessagesFromFirstStudent works).
-                // If countMessagesFromFirstStudent returns the count of HISTORY, and we just added a user message:
-                // If history was 12. New count is 13.
-                // The bot response will be the 14th message.
-                // So we want to trigger when `messageCountBefore` is 12 (or 13 to be safe).
-                const shouldShowProtegePrompt = !promptAlreadyShown && isTutorMode && (messageCountBefore === 12 || messageCountBefore === 13);
-                
-                if (shouldShowProtegePrompt) {
-                     response.message += '\n\n----------------\nDo you want to try and explain our chat above to me?';
-                }
-
-                if (response.struggleDebug) {
-                    console.log('🕵️ [FRONTEND_DEBUG_V2] Backend Debug Info:', response.struggleDebug);
-                }
-
-                // Update Struggle UI if available
-                if (response.struggleState) {
-                    console.log('🕵️ [FRONTEND_DEBUG] Struggle State received:', response.struggleState);
-                    updateStruggleUI(response.struggleState);
-                    
-                    // Check for active struggle topic to pass to addMessage
-                    let activeTopic = null;
-                    if (response.struggleState.topics && Array.isArray(response.struggleState.topics)) {
-                        activeTopic = response.struggleState.topics.find(t => t.isActive);
-                    } else if (response.struggleState.topic && response.struggleState.isActive) {
-                        activeTopic = response.struggleState;
-                    }
-
-                    if (activeTopic) {
-                        lastActiveStruggleTopic = activeTopic.topic;
-                    } else {
-                        // If we received a state where isActive is explicitly false, clear the topic
-                        if (response.struggleState.isActive === false) {
-                            lastActiveStruggleTopic = null;
-                        } else if (response.struggleState.topics) {
-                            // If we have a topics array and none are active, clear it
-                            const anyActive = response.struggleState.topics.some(t => t.isActive);
-                            if (!anyActive) lastActiveStruggleTopic = null;
-                        }
-                    }
-                } else {
-                    console.log('🕵️ [FRONTEND_DEBUG] No struggle state in response');
-                }
-
-                // Extract detected topic (even if not active yet) for "Explain" button
-                // Priority: active topic -> latest detected topic in state -> simple topic string if passed (unlikely)
-                let detectedTopic = null;
-                if (response.struggleState) {
-                    // 1. Try to find the topic that was just analyzed/updated
-                    if (response.struggleDebug && response.struggleDebug.identifiedTopic) {
-                        detectedTopic = response.struggleDebug.identifiedTopic;
-                    } 
-                    // 2. Fallback to extracting from topics array if active
-                    else if (response.struggleState.topics && response.struggleState.topics.length > 0) {
-                        // We might want the most recently updated one, but for now let's use the active one if any
-                        const active = response.struggleState.topics.find(t => t.isActive);
-                        if (active) detectedTopic = active.topic;
-                    }
-                    // 3. Simple topic property if it exists at top level (depends on backend structure)
-                    else if (response.struggleState.topic) {
-                        detectedTopic = response.struggleState.topic;
-                    }
-                }
-
-                // If this bot response will hit the cap, append the session-closed notice
-                if (willHitCap) {
-                    response.message += '\n\n----------------\nThis chat session has been exhausted. Please start a new session to continue.';
-                }
-
-                // Only show "I understand X now" button when directive mode is active for this response
-                const showStruggleReset = response.struggleDebug?.directiveModeActive ? lastActiveStruggleTopic : null;
-                addMessage(response.message, 'bot', true, false, response.sourceAttribution, false, showStruggleReset, detectedTopic, response.messageId);
-                if (typeof maybeShowChatSurvey === 'function') {
-                    maybeShowChatSurvey();
-                }
-
-                // Disable chat input if session is now capped
-                if (willHitCap) {
-                    disableChatInputForCap();
-                }
+                showBotReply(response, { messageCountBefore, willHitCap });
 
             } catch (error) {
                 // Remove typing indicator
@@ -1204,6 +1114,210 @@ document.addEventListener('DOMContentLoaded', async () => {
                 addMessage('Sorry, I encountered an error processing your message. Please try again.', 'bot', false, true, null);
             }
         });
+    }
+
+    /**
+     * Show BiocBot's reply to a student message: the struggle state it carries,
+     * the Protege prompt and session-cap notice the page appends, and the
+     * message itself (saved like every chat message).
+     * @param {Object} response The body POST /api/chat responded with
+     * @param {{ messageCountBefore: number, willHitCap: boolean }} counts The
+     *   chat's message count before the student's message, and whether this
+     *   reply reaches the session cap
+     */
+    function showBotReply(response, { messageCountBefore, willHitCap }) {
+        // Check if we should append the Protege prompt
+        const currentMode = localStorage.getItem('studentMode') || 'tutor';
+        const isTutorMode = currentMode === 'tutor';
+        const promptAlreadyShown = hasProtegePromptShown();
+        
+        // We initially check messageCountBefore (e.g. 12).
+        // User adds message -> Total messages = 13 (assuming 1-based index or however countMessagesFromFirstStudent works).
+        // If countMessagesFromFirstStudent returns the count of HISTORY, and we just added a user message:
+        // If history was 12. New count is 13.
+        // The bot response will be the 14th message.
+        // So we want to trigger when `messageCountBefore` is 12 (or 13 to be safe).
+        const shouldShowProtegePrompt = !promptAlreadyShown && isTutorMode && (messageCountBefore === 12 || messageCountBefore === 13);
+        
+        if (shouldShowProtegePrompt) {
+             response.message += '\n\n----------------\nDo you want to try and explain our chat above to me?';
+        }
+
+        if (response.struggleDebug) {
+            console.log('🕵️ [FRONTEND_DEBUG_V2] Backend Debug Info:', response.struggleDebug);
+        }
+
+        // Update Struggle UI if available
+        if (response.struggleState) {
+            console.log('🕵️ [FRONTEND_DEBUG] Struggle State received:', response.struggleState);
+            updateStruggleUI(response.struggleState);
+            
+            // Check for active struggle topic to pass to addMessage
+            let activeTopic = null;
+            if (response.struggleState.topics && Array.isArray(response.struggleState.topics)) {
+                activeTopic = response.struggleState.topics.find(t => t.isActive);
+            } else if (response.struggleState.topic && response.struggleState.isActive) {
+                activeTopic = response.struggleState;
+            }
+
+            if (activeTopic) {
+                lastActiveStruggleTopic = activeTopic.topic;
+            } else {
+                // If we received a state where isActive is explicitly false, clear the topic
+                if (response.struggleState.isActive === false) {
+                    lastActiveStruggleTopic = null;
+                } else if (response.struggleState.topics) {
+                    // If we have a topics array and none are active, clear it
+                    const anyActive = response.struggleState.topics.some(t => t.isActive);
+                    if (!anyActive) lastActiveStruggleTopic = null;
+                }
+            }
+        } else {
+            console.log('🕵️ [FRONTEND_DEBUG] No struggle state in response');
+        }
+
+        // Extract detected topic (even if not active yet) for "Explain" button
+        // Priority: active topic -> latest detected topic in state -> simple topic string if passed (unlikely)
+        let detectedTopic = null;
+        if (response.struggleState) {
+            // 1. Try to find the topic that was just analyzed/updated
+            if (response.struggleDebug && response.struggleDebug.identifiedTopic) {
+                detectedTopic = response.struggleDebug.identifiedTopic;
+            } 
+            // 2. Fallback to extracting from topics array if active
+            else if (response.struggleState.topics && response.struggleState.topics.length > 0) {
+                // We might want the most recently updated one, but for now let's use the active one if any
+                const active = response.struggleState.topics.find(t => t.isActive);
+                if (active) detectedTopic = active.topic;
+            }
+            // 3. Simple topic property if it exists at top level (depends on backend structure)
+            else if (response.struggleState.topic) {
+                detectedTopic = response.struggleState.topic;
+            }
+        }
+
+        // If this bot response will hit the cap, append the session-closed notice
+        if (willHitCap) {
+            response.message += '\n\n----------------\nThis chat session has been exhausted. Please start a new session to continue.';
+        }
+
+        // Only show "I understand X now" button when directive mode is active for this response
+        const showStruggleReset = response.struggleDebug?.directiveModeActive ? lastActiveStruggleTopic : null;
+        addMessage(response.message, 'bot', true, false, response.sourceAttribution, false, showStruggleReset, detectedTopic, response.messageId);
+        if (typeof maybeShowChatSurvey === 'function') {
+            maybeShowChatSurvey();
+        }
+
+        // Disable chat input if session is now capped
+        if (willHitCap) {
+            disableChatInputForCap();
+        }
+    }
+
+    // How often, and for how long, a reloaded page checks on a reply that is
+    // still being written.
+    const PENDING_REPLY_POLL_MS = 2000;
+    const PENDING_REPLY_MAX_WAIT_MS = 5 * 60 * 1000;
+
+    /**
+     * The latest chat request's outcome in a conversation, as the server kept
+     * it: { state: 'pending' | 'ready' | 'failed' | 'none', reply, isExplanationRequest }.
+     * @returns {Promise<Object|null>}
+     */
+    async function fetchPendingReply(courseId, conversationId) {
+        const query = new URLSearchParams({ courseId, conversationId });
+        const response = await fetch(`/api/chat/pending-reply?${query}`, { credentials: 'include', cache: 'no-store' });
+        if (!response.ok) return null;
+        const data = await response.json();
+        return data && data.success ? data : null;
+    }
+
+    /**
+     * Show a reply the server finished after this page lost the request: the
+     * student reloaded (or left) while BiocBot was writing it. While the server
+     * is still writing, show the typing dots and check back.
+     */
+    async function resumePendingReply() {
+        const current = () => {
+            const chatData = getCurrentChatData();
+            return {
+                chatData,
+                courseId: chatData && chatData.metadata && chatData.metadata.courseId,
+                conversationId: chatData && chatData.sessionInfo && chatData.sessionInfo.sessionId
+            };
+        };
+        const { courseId, conversationId } = current();
+        if (!courseId || !conversationId || currentController || document.getElementById('typing-indicator')) return;
+
+        const giveUpAt = Date.now() + PENDING_REPLY_MAX_WAIT_MS;
+        let typingIndicator = null;
+        const stopWaiting = () => {
+            // Only the dots this function added: a new request may have its own.
+            if (typingIndicator && document.getElementById('typing-indicator') === typingIndicator) removeTypingIndicator();
+            typingIndicator = null;
+        };
+        try {
+            for (;;) {
+                const outcome = await fetchPendingReply(courseId, conversationId);
+                const now = current();
+                // Nothing kept, or the student has moved on to a new session.
+                if (!outcome || now.conversationId !== conversationId) return;
+
+                if (outcome.state === 'ready' && outcome.reply) {
+                    stopWaiting();
+                    const reply = outcome.reply;
+                    const messages = (now.chatData && now.chatData.messages) || [];
+                    if (messages.some(message => message.messageId && message.messageId === reply.messageId)) return;
+                    showRestoredReply(reply, outcome.isExplanationRequest, messages);
+                    return;
+                }
+                if (outcome.state === 'failed' && typingIndicator) {
+                    stopWaiting();
+                    addMessage('Sorry, I encountered an error processing your message. Please try again.', 'bot', false, true, null);
+                    return;
+                }
+                if (outcome.state !== 'pending' || Date.now() > giveUpAt) return;
+
+                if (!typingIndicator) {
+                    showTypingIndicator();
+                    typingIndicator = document.getElementById('typing-indicator');
+                }
+                await new Promise(resolve => setTimeout(resolve, PENDING_REPLY_POLL_MS));
+            }
+        } catch (error) {
+            console.warn('Could not check for a reply that was still being written:', error);
+        } finally {
+            stopWaiting();
+        }
+    }
+
+    /**
+     * Show a kept reply the way it would have been shown when it arrived.
+     * @param {Object} reply The body POST /api/chat responded with
+     * @param {boolean} isExplanationRequest Whether it answered an Explain click
+     * @param {Object[]} messages The saved chat's messages
+     */
+    function showRestoredReply(reply, isExplanationRequest, messages) {
+        if (isExplanationRequest) {
+            addMessage(reply.message, 'bot', true, false, reply.sourceAttribution, false, null, null, reply.messageId, null, {
+                triggeredBy: 'explain_button',
+                actionStatus: 'success'
+            });
+            if (typeof maybeShowChatSurvey === 'function') {
+                maybeShowChatSurvey();
+            }
+            return;
+        }
+        // The counts the send handler took: before the student's message, and
+        // after it (with any warnings), plus this reply.
+        const regular = messages.filter(message =>
+            (message.type === 'user' || message.type === 'bot') && message.messageType === 'regular-chat'
+        );
+        const firstStudent = regular.findIndex(message => message.type === 'user');
+        const lastStudent = regular.map(message => message.type).lastIndexOf('user');
+        const messageCountBefore = firstStudent === -1 ? 0 : lastStudent - firstStudent;
+        const willHitCap = (countMessagesFromFirstStudent() + 1) >= MAX_MESSAGES;
+        showBotReply(reply, { messageCountBefore, willHitCap });
     }
 
     // Note: addMessage function is defined globally below with auto-save functionality
