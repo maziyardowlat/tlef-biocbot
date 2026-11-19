@@ -236,4 +236,97 @@ describe('chat survey routes', () => {
         expect(exported.text).toContain('responseId,courseId,unitName');
         expect(exported.text).toContain('"A, Student"');
     });
+
+    describe('GET /survey/course/:courseId/export/anonymized', () => {
+        const systemAdmin = { userId: 'admin1', role: 'instructor', permissions: { systemAdmin: true } };
+        const mapping = (studentId, pseudonym) => ({ scopeType: 'course', scopeId: 'C1', studentId, pseudonym });
+        const surveyResponse = (responseId, studentId, studentName) => ({
+            responseId,
+            courseId: 'C1',
+            studentId,
+            studentName,
+            conversationId: `session-${responseId}`,
+            ratingAccuracy: 5,
+            ratingSatisfaction: 4,
+            comment: 'Useful',
+            shownAt: new Date('2026-01-01'),
+            submittedAt: new Date('2026-01-02'),
+            updatedAt: new Date('2026-01-02')
+        });
+        const parseCsv = text => {
+            const [headerLine, ...lines] = text.split('\n');
+            const headers = headerLine.split(',');
+            return {
+                headers,
+                rows: lines.map(line => Object.fromEntries(line.split(',').map((cell, i) => [headers[i], cell])))
+            };
+        };
+
+        test('is refused for anyone who is not a system admin', async () => {
+            const db = seededDb({
+                student_pseudonyms: [mapping('s1', 'AB12'), mapping('blocked', 'CD34')],
+                [ChatSurveyResponse.COLLECTION_NAME]: [surveyResponse('r1', 's1', 'Student One')]
+            });
+
+            const asInstructor = await request(app(db, instructor)).get('/survey/course/C1/export/anonymized');
+            expect(asInstructor.status).toBe(403);
+            expect(asInstructor.text).not.toContain('s1');
+
+            const asStudent = await request(app(db, student)).get('/survey/course/C1/export/anonymized');
+            expect(asStudent.status).toBe(403);
+        });
+
+        test('is blocked while a student in the course has no anonymization ID', async () => {
+            const db = seededDb({
+                student_pseudonyms: [mapping('s1', 'AB12')],
+                [ChatSurveyResponse.COLLECTION_NAME]: [surveyResponse('r1', 's1', 'Student One')]
+            });
+
+            const res = await request(app(db, systemAdmin)).get('/survey/course/C1/export/anonymized');
+            expect(res.status).toBe(409);
+            expect(res.body.missingStudentIds).toEqual(['blocked']);
+        });
+
+        test('replaces student IDs with their codes and drops the name column', async () => {
+            const db = seededDb({
+                student_pseudonyms: [mapping('s1', 'AB12'), mapping('blocked', 'CD34')],
+                [ChatSurveyResponse.COLLECTION_NAME]: [surveyResponse('r1', 's1', 'Student One')]
+            });
+
+            const res = await request(app(db, systemAdmin)).get('/survey/course/C1/export/anonymized');
+            expect(res.status).toBe(200);
+            expect(res.headers['content-type']).toMatch(/text\/csv/);
+            expect(res.headers['content-disposition']).toContain('chat-survey-responses-anonymized-C1.csv');
+            expect(res.headers['x-omitted-survey-responses']).toBe('0');
+
+            const { headers, rows } = parseCsv(res.text);
+            expect(headers).toContain('studentId');
+            expect(headers).not.toContain('studentName');
+            expect(rows).toHaveLength(1);
+            expect(rows[0]).toMatchObject({ responseId: 'r1', studentId: 'AB12' });
+            expect(res.text).not.toContain('Student One');
+        });
+
+        test('leaves out a response whose student has no code instead of exporting the real ID', async () => {
+            // "ghost" answered a survey but is not enrolled, has no saved chat
+            // and no course preference, so the scope check above never sees
+            // them and reports the course as complete.
+            const db = seededDb({
+                student_pseudonyms: [mapping('s1', 'AB12'), mapping('blocked', 'CD34')],
+                [ChatSurveyResponse.COLLECTION_NAME]: [
+                    surveyResponse('r1', 's1', 'Student One'),
+                    surveyResponse('r2', 'ghost-puid-999', 'Ghost Student')
+                ]
+            });
+
+            const res = await request(app(db, systemAdmin)).get('/survey/course/C1/export/anonymized');
+            expect(res.status).toBe(200);
+            expect(res.headers['x-omitted-survey-responses']).toBe('1');
+
+            const { rows } = parseCsv(res.text);
+            expect(rows.map(row => row.responseId)).toEqual(['r1']);
+            expect(res.text).not.toContain('ghost-puid-999');
+            expect(res.text).not.toContain('Ghost Student');
+        });
+    });
 });
