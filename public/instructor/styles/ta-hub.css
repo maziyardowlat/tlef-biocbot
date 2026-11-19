@@ -6,7 +6,7 @@
 /* Dashboard Sections */
 .dashboard-section {
     background: white;
-    border-radius: 8px;
+    border-radius: var(--bb-radius);
     padding: var(--bb-gap-loose);
     margin-bottom: var(--bb-gap-loose);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
@@ -22,7 +22,7 @@
 /* Add TA Form */
 .add-ta-form {
     background: var(--bb-ground);
-    border-radius: 6px;
+    border-radius: var(--bb-radius);
     padding: 20px;
     border: 1px solid var(--bb-ink-16);
 }
@@ -49,9 +49,9 @@
 .form-group select {
     padding: 12px;
     border: 1px solid var(--bb-ink-16);
-    border-radius: 4px;
+    border-radius: var(--bb-radius);
     font-size: var(--bb-text-card-kicker);
-    transition: border-color 0.2s;
+    transition: border-color 0.2s var(--bb-ease-reveal);
 }
 
 /* Shared padding above is too tight for the global select chevron (#643). */
@@ -97,7 +97,7 @@
     background: #e3f2fd;
     color: #1976d2;
     padding: 4px 8px;
-    border-radius: 4px;
+    border-radius: var(--bb-radius);
     font-size: var(--bb-text-card-kicker);
     font-weight: 500;
 }
@@ -117,7 +117,7 @@
     margin: 16px 0;
     padding: 16px;
     background: var(--bb-ground);
-    border-radius: 6px;
+    border-radius: var(--bb-radius);
     border: 1px solid var(--bb-ink-16);
 }
 
@@ -148,8 +148,8 @@
     gap: 8px;
     cursor: pointer;
     padding: 8px;
-    border-radius: 4px;
-    transition: background-color 0.2s;
+    border-radius: var(--bb-radius);
+    transition: background-color 0.2s var(--bb-ease-reveal);
 }
 
 .permission-toggle:hover {
@@ -183,7 +183,7 @@
 .role-preset-picker select {
     padding: 4px 30px 4px 8px;
     border: 1px solid #ced4da;
-    border-radius: 4px;
+    border-radius: var(--bb-radius);
     font-size: 0.85rem;
     background-color: #fff;
 }
@@ -193,7 +193,7 @@
     margin-bottom: 20px;
     padding: 16px;
     background: #e3f2fd;
-    border-radius: 6px;
+    border-radius: var(--bb-radius);
     border-left: 4px solid #2196f3;
 }
 
@@ -278,7 +278,7 @@
 .course-ta-item {
     background: var(--bb-ground);
     border: 1px solid var(--bb-ink-16);
-    border-radius: 6px;
+    border-radius: var(--bb-radius);
     padding: 16px;
     display: flex;
     justify-content: space-between;
@@ -338,7 +338,7 @@
 
 .modal-content {
     background: white;
-    border-radius: 8px;
+    border-radius: var(--bb-radius);
     width: 90%;
     max-width: 500px;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);

@@ -10,7 +10,7 @@
   width: 100%;
   height: 8px;
   background-color: var(--bb-ground-alt);
-  border-radius: 4px;
+  border-radius: var(--bb-radius);
   overflow: hidden;
   margin-bottom: 1rem;
 }
@@ -18,7 +18,7 @@
 .progress-fill {
   height: 100%;
   background: linear-gradient(90deg, #4caf50, #45a049);
-  transition: width 0.3s ease;
+  transition: width 0.3s var(--bb-ease-reveal);
   width: 25%; /* Start at 25% for step 1 */
 }
 
@@ -33,8 +33,8 @@
   color: var(--bb-ink-70);
   position: relative;
   padding: 0.5rem 1rem;
-  border-radius: 20px;
-  transition: all 0.3s ease;
+  border-radius: var(--bb-radius);
+  transition: all 0.3s var(--bb-ease-reveal);
 }
 
 .step-indicator.active {
@@ -62,7 +62,7 @@
 
 .step-content {
   background: white;
-  border-radius: 12px;
+  border-radius: var(--bb-radius);
   padding: 2rem;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
 }
@@ -220,9 +220,9 @@
 .form-group select {
   padding: 0.75rem;
   border: 2px solid var(--bb-ink-16);
-  border-radius: 6px;
+  border-radius: var(--bb-radius);
   font-size: var(--bb-text-nav);
-  transition: border-color 0.3s ease;
+  transition: border-color 0.3s var(--bb-ease-reveal);
 }
 
 /* Shared padding above is too tight for the global select chevron (#643). */
@@ -275,7 +275,7 @@
   align-items: start;
   padding: 0.85rem;
   border: 2px solid var(--bb-ink-16);
-  border-radius: 6px;
+  border-radius: var(--bb-radius);
   background: var(--bb-white);
 }
 
@@ -325,9 +325,9 @@
   align-items: center;
   padding: 1rem;
   border: 2px solid var(--bb-ink-16);
-  border-radius: 6px;
+  border-radius: var(--bb-radius);
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all 0.3s var(--bb-ease-reveal);
   background: white;
 }
 
@@ -440,7 +440,7 @@
   flex: 1;
   padding: 0.75rem;
   border: 2px solid var(--bb-ink-16);
-  border-radius: 6px;
+  border-radius: var(--bb-radius);
   font-size: var(--bb-text-nav);
 }
 
@@ -455,13 +455,13 @@
   background: #4caf50;
   color: white;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--bb-radius);
   font-size: var(--bb-text-h3-group);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background-color 0.3s ease;
+  transition: background-color 0.3s var(--bb-ease-reveal);
 }
 
 .add-objective-btn:hover {
@@ -471,7 +471,7 @@
 .tip-box {
   background: #e8f5e8;
   border: 1px solid #4caf50;
-  border-radius: 6px;
+  border-radius: var(--bb-radius);
   padding: 1rem;
   font-size: var(--bb-text-card-body);
   color: #2e7d32;
@@ -491,7 +491,7 @@
   justify-content: space-between;
   padding: 0.75rem;
   background: var(--bb-ground);
-  border-radius: 6px;
+  border-radius: var(--bb-radius);
   border-left: 4px solid #4caf50;
 }
 
@@ -533,8 +533,8 @@
   padding: var(--bb-gap-loose);
   background: white;
   border: 2px solid var(--bb-ink-16);
-  border-radius: 8px;
-  transition: all 0.3s ease;
+  border-radius: var(--bb-radius);
+  transition: all 0.3s var(--bb-ease-reveal);
 }
 
 .material-item.required {
@@ -575,7 +575,7 @@
 .status-badge {
   display: inline-block;
   padding: 0.25rem 0.5rem;
-  border-radius: 4px;
+  border-radius: var(--bb-radius);
   font-size: var(--bb-text-card-kicker);
   font-weight: 500;
 }
@@ -600,10 +600,10 @@
   color: white;
   border: none;
   padding: 0.75rem 1.5rem;
-  border-radius: 6px;
+  border-radius: var(--bb-radius);
   cursor: pointer;
   font-size: var(--bb-text-card-body);
-  transition: background-color 0.3s ease;
+  transition: background-color 0.3s var(--bb-ease-reveal);
 }
 
 .upload-btn:hover {
@@ -621,7 +621,7 @@
   text-align: center;
   padding: var(--bb-gap-loose);
   background: var(--bb-ground);
-  border-radius: 8px;
+  border-radius: var(--bb-radius);
   border: 2px dashed var(--bb-ink-16);
 }
 
@@ -630,10 +630,10 @@
   color: white;
   border: none;
   padding: 1rem 2rem;
-  border-radius: 6px;
+  border-radius: var(--bb-radius);
   font-size: var(--bb-text-nav);
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all 0.3s var(--bb-ease-reveal);
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -659,7 +659,7 @@
   flex: 1;
   padding: 0.75rem;
   border: 2px solid var(--bb-ink-16);
-  border-radius: 6px;
+  border-radius: var(--bb-radius);
   font-size: var(--bb-text-nav);
 }
 
@@ -674,13 +674,13 @@
   background: #4caf50;
   color: white;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--bb-radius);
   font-size: var(--bb-text-h3-group);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background-color 0.3s ease;
+  transition: background-color 0.3s var(--bb-ease-reveal);
 }
 
 .add-question-btn:hover {
@@ -700,7 +700,7 @@
   padding: 0.75rem;
   border-left: 3px solid #007bff;
   margin-bottom: 1rem;
-  border-radius: 4px;
+  border-radius: var(--bb-radius);
 }
 
 .threshold-setting {
@@ -710,14 +710,14 @@
   margin-bottom: var(--bb-gap-loose);
   padding: 0.75rem;
   background: var(--bb-ground-alt);
-  border-radius: 6px;
+  border-radius: var(--bb-radius);
 }
 
 .threshold-input {
   width: 60px;
   padding: 0.25rem 0.5rem;
   border: 1px solid var(--bb-ink-16);
-  border-radius: 4px;
+  border-radius: var(--bb-radius);
   text-align: center;
 }
 
@@ -736,13 +736,13 @@
   padding: 2rem 1rem;
   color: #6c757d;
   background: var(--bb-ground);
-  border-radius: 6px;
+  border-radius: var(--bb-radius);
   border: 2px dashed var(--bb-ink-16);
 }
 
 .question-item {
   border: 1px solid var(--bb-ink-16);
-  border-radius: 6px;
+  border-radius: var(--bb-radius);
   margin-bottom: 1rem;
   background: white;
   overflow: hidden;
@@ -760,7 +760,7 @@
 
 .question-type-badge {
   padding: 0.25rem 0.5rem;
-  border-radius: 12px;
+  border-radius: var(--bb-radius);
   font-size: var(--bb-text-kicker);
   font-weight: 600;
   text-transform: uppercase;
@@ -787,41 +787,9 @@
   color: #495057;
 }
 
-.question-action-buttons {
-  display: flex;
-  gap: 0.5rem;
-  margin-left: auto;
-}
-
-.edit-question-btn,
-.delete-question-btn {
-  color: white;
-  border: none;
-  border-radius: 50%;
-  width: 24px;
-  height: 24px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  font-size: var(--bb-text-card-kicker);
-}
-
-.edit-question-btn {
-  background: #0d6efd;
-}
-
-.edit-question-btn:hover {
-  background: #0b5ed7;
-}
-
-.delete-question-btn {
-  background: #dc3545;
-}
-
-.delete-question-btn:hover {
-  background: #c82333;
-}
+/* .question-action-buttons/.edit-question-btn/.delete-question-btn:
+   shared definition now lives in components.css, loaded on this page
+   too - this page used to carry its own near-identical copy. */
 
 .question-content {
   padding: 1rem;
@@ -867,7 +835,7 @@
   margin-top: 0.5rem;
   padding: 0.5rem;
   background: var(--bb-ground);
-  border-radius: 4px;
+  border-radius: var(--bb-radius);
   font-size: var(--bb-text-card-body);
 }
 
@@ -878,7 +846,7 @@
 .mcq-option-preview {
   padding: 0.25rem 0.5rem;
   margin: 0.25rem 0;
-  border-radius: 4px;
+  border-radius: var(--bb-radius);
   font-size: var(--bb-text-card-body);
 }
 
@@ -895,67 +863,10 @@
   flex-wrap: wrap;
 }
 
-.add-question-btn,
-.generate-ai-btn,
-.auto-link-btn {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.75rem 1rem;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  font-weight: 500;
-  font-size: var(--bb-text-card-body);
-  transition: all 0.2s ease;
-}
-
-.add-question-btn {
-  background: var(--bb-ground);
-  border: 1px dashed var(--bb-ink-16);
-  color: var(--bb-ink-70);
-  display: flex;
-  visibility: visible;
-  opacity: 1;
-  width: 100%;
-  justify-content: center;
-}
-
-.add-question-btn:hover {
-  background-color: var(--bb-ground-alt);
-  border-color: var(--bb-ink-20);
-  color: var(--bb-ink);
-}
-
-.auto-link-btn {
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
-  color: #1d4ed8;
-}
-
-.auto-link-btn:hover {
-  background: #dbeafe;
-}
-
-.auto-link-btn.is-loading,
-.auto-link-btn:disabled {
-  opacity: 0.7;
-  cursor: not-allowed;
-}
-
-.generate-ai-btn {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-}
-
-.generate-ai-btn:hover:not(:disabled) {
-  background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
-}
-
-.generate-ai-btn:disabled {
-  background: #6c757d;
-  cursor: not-allowed;
-}
+/* .add-question-btn/.generate-ai-btn/.auto-link-btn: shared definition
+   now lives in components.css, loaded on this page too - this page
+   used to carry its own copy (now identical to the one documents.css
+   had drifted away from). */
 
 .btn-icon {
   font-size: var(--bb-text-nav);
@@ -965,21 +876,8 @@
   text-align: center;
 }
 
-.save-btn {
-  background: #28a745;
-  color: white;
-  border: none;
-  padding: 0.75rem 1.5rem;
-  border-radius: 6px;
-  font-size: var(--bb-text-card-body);
-  font-weight: 500;
-  cursor: pointer;
-  transition: background-color 0.3s ease;
-}
-
-.save-btn:hover {
-  background: #218838;
-}
+/* .save-btn: shared definition now lives in components.css, loaded on
+   this page too - this page used to carry its own copy. */
 
 /* Question Modal Styling */
 #question-modal .modal-content {
@@ -1004,14 +902,14 @@
   width: 100%;
   padding: 0.75rem;
   border: 1px solid var(--bb-ink-16);
-  border-radius: 4px;
+  border-radius: var(--bb-radius);
   font-size: var(--bb-text-nav);
 }
 
 .learning-objective-note {
   margin: 0.5rem 0 0;
   padding: 0.65rem 0.8rem;
-  border-radius: 6px;
+  border-radius: var(--bb-radius);
   background: #eff6ff;
   color: #1d4ed8;
   font-size: var(--bb-text-card-kicker);
@@ -1020,7 +918,7 @@
 .edit-learning-objective-question-text {
   margin: 0;
   padding: 0.85rem 1rem;
-  border-radius: 8px;
+  border-radius: var(--bb-radius);
   background: var(--bb-ground);
   color: var(--bb-ink);
   line-height: 1.5;
@@ -1059,8 +957,8 @@ fieldset.radio-group-fieldset {
   gap: 0.5rem;
   cursor: pointer;
   padding: 0.5rem;
-  border-radius: 4px;
-  transition: background-color 0.2s ease;
+  border-radius: var(--bb-radius);
+  transition: background-color 0.2s var(--bb-ease-reveal);
 }
 
 .radio-option:hover {
@@ -1084,7 +982,7 @@ fieldset.radio-group-fieldset {
   gap: 1rem;
   padding: 0.75rem;
   border: 1px solid var(--bb-ink-16);
-  border-radius: 4px;
+  border-radius: var(--bb-radius);
   background: var(--bb-ground);
 }
 
@@ -1205,7 +1103,7 @@ fieldset.radio-group-fieldset {
   background-color: white;
   margin: 2rem;
   padding: 0;
-  border-radius: 12px;
+  border-radius: var(--bb-radius);
   width: 90%;
   max-width: 600px;
   max-height: 90vh;
@@ -1278,10 +1176,10 @@ fieldset.radio-group-fieldset {
   width: 100%;
   padding: 2rem;
   border: 2px dashed var(--bb-ink-16);
-  border-radius: 8px;
+  border-radius: var(--bb-radius);
   background: white;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all 0.3s var(--bb-ease-reveal);
 }
 
 .upload-file-btn:hover {
@@ -1309,9 +1207,9 @@ fieldset.radio-group-fieldset {
 .input-section textarea {
   padding: 0.75rem;
   border: 2px solid var(--bb-ink-16);
-  border-radius: 6px;
+  border-radius: var(--bb-radius);
   font-size: var(--bb-text-nav);
-  transition: border-color 0.3s ease;
+  transition: border-color 0.3s var(--bb-ease-reveal);
 }
 
 .input-section input:focus,
@@ -1326,7 +1224,7 @@ fieldset.radio-group-fieldset {
   gap: 0.25rem;
   padding: 1rem;
   background: var(--bb-ground);
-  border-radius: 6px;
+  border-radius: var(--bb-radius);
   margin-top: 1rem;
 }
 
@@ -1359,9 +1257,9 @@ fieldset.radio-group-fieldset {
   flex: 1;
   padding: 0.75rem;
   border: 2px solid var(--bb-ink-16);
-  border-radius: 8px;
+  border-radius: var(--bb-radius);
   font-size: var(--bb-text-nav);
-  transition: border-color 0.3s ease;
+  transition: border-color 0.3s var(--bb-ease-reveal);
 }
 
 .objectives-input-section .objective-input:focus {
@@ -1373,11 +1271,11 @@ fieldset.radio-group-fieldset {
   background: #4caf50;
   color: white;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--bb-radius);
   padding: 0.75rem 1.5rem;
   font-size: var(--bb-text-h3-group);
   cursor: pointer;
-  transition: background-color 0.3s ease;
+  transition: background-color 0.3s var(--bb-ease-reveal);
 }
 
 .objectives-input-section .add-objective-btn:hover {
@@ -1394,7 +1292,7 @@ fieldset.radio-group-fieldset {
   align-items: center;
   background: var(--bb-ground);
   border: 1px solid var(--bb-ink-16);
-  border-radius: 6px;
+  border-radius: var(--bb-radius);
   padding: 0.75rem 1rem;
   margin-bottom: 0.5rem;
 }
@@ -1408,7 +1306,7 @@ fieldset.radio-group-fieldset {
   background: #dc3545;
   color: white;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--bb-radius);
   padding: 0.25rem 0.5rem;
   cursor: pointer;
   font-size: var(--bb-text-nav);
@@ -1422,7 +1320,7 @@ fieldset.radio-group-fieldset {
 .tip-box {
   background: #e3f2fd;
   border: 1px solid #2196f3;
-  border-radius: 6px;
+  border-radius: var(--bb-radius);
   padding: 1rem;
   margin-top: 1rem;
 }
@@ -1460,7 +1358,7 @@ fieldset.radio-group-fieldset {
 .onboarding-complete .completion-message {
   background: rgba(255, 255, 255, 0.1);
   border: 2px solid rgba(255, 255, 255, 0.3);
-  border-radius: 8px;
+  border-radius: var(--bb-radius);
   padding: var(--bb-gap-loose);
   margin-bottom: 2rem;
 }
@@ -1482,10 +1380,10 @@ fieldset.radio-group-fieldset {
 .completion-actions .btn-primary,
 .completion-actions .btn-secondary {
   padding: 1rem 2rem;
-  border-radius: 8px;
+  border-radius: var(--bb-radius);
   text-decoration: none;
   font-weight: 600;
-  transition: all 0.3s ease;
+  transition: all 0.3s var(--bb-ease-reveal);
   min-width: 200px;
 }
 
@@ -1516,7 +1414,7 @@ fieldset.radio-group-fieldset {
 .join-course-info {
   background: var(--bb-ground);
   border: 2px solid var(--bb-ink-16);
-  border-radius: 8px;
+  border-radius: var(--bb-radius);
   padding: var(--bb-gap-loose);
   margin: 1rem 0;
 }
@@ -1536,7 +1434,7 @@ fieldset.radio-group-fieldset {
 .course-details {
   background: white;
   border: 1px solid var(--bb-ink-16);
-  border-radius: 6px;
+  border-radius: var(--bb-radius);
   padding: 1rem;
   margin-top: 1rem;
 }
@@ -1572,7 +1470,7 @@ fieldset.radio-group-fieldset {
     margin: 0 0 4px;
     padding: 8px 12px;
     border: 1px solid var(--bb-ink-16);
-    border-radius: 6px;
+    border-radius: var(--bb-radius);
 }
 
 .llm-platform-choice legend {

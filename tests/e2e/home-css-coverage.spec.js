@@ -536,7 +536,7 @@ test.describe('home.css harness coverage', () => {
         await expect(page.locator('.stat-card').first()).toHaveCSS('padding', '15px');
         await expect(page.locator('.stat-card .stat-value').first()).toHaveCSS('font-size', '24px');
         await expect(page.locator('.mode-bar-item').first()).toHaveCSS('flex-direction', 'column');
-        await expect(page.locator('.mode-bar').first()).toHaveCSS('border-radius', '6px');
+        await expect(page.locator('.mode-bar').first()).toHaveCSS('border-radius', '8px');
         await expect(page.locator('.mode-count').first()).toHaveCSS('text-align', 'left');
         await expect(page.locator('.live-struggle-table-container .table-header')).toHaveCSS('flex-direction', 'column');
         await expect(page.locator('.table-controls')).toHaveCSS('justify-content', 'space-between');

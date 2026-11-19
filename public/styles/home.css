@@ -20,7 +20,7 @@
 .course-selection-container {
   padding: 20px;
   background-color: var(--bb-ground);
-  border-radius: 8px;
+  border-radius: var(--bb-radius);
   border: 1px solid var(--bb-ink-16);
 }
 
@@ -137,13 +137,13 @@
   max-width: 470px;
   box-sizing: border-box;
   padding: 10px 15px;
-  border-radius: 6px;
+  border-radius: var(--bb-radius);
   border: 1px solid var(--bb-ink-16);
   font-size: 1rem;
   background-color: white;
   color: var(--bb-ink);
   cursor: pointer;
-  transition: border-color 0.3s ease;
+  transition: border-color 0.3s var(--bb-ease-reveal);
   /* Shared padding above is too tight for the global select chevron (#643). */
   padding-right: 34px;
 }
@@ -161,7 +161,7 @@
 .selected-course-details {
   padding: 15px;
   background-color: white;
-  border-radius: 6px;
+  border-radius: var(--bb-radius);
   border: 1px solid var(--bb-ink-16);
 }
 
@@ -199,7 +199,7 @@
 /* Section Styles */
 .home-section {
   background: white;
-  border-radius: 12px;
+  border-radius: var(--bb-radius);
   padding: 30px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   border: 1px solid var(--bb-ink-16);
@@ -314,9 +314,9 @@
   align-items: center;
   gap: 15px;
   padding: 15px;
-  border-radius: 8px;
+  border-radius: var(--bb-radius);
   background-color: var(--bb-ground);
-  transition: background-color 0.3s ease;
+  transition: background-color 0.3s var(--bb-ease-reveal);
 }
 
 .activity-item:hover {
@@ -345,11 +345,11 @@
 /* Button Styles */
 .action-btn {
   padding: 10px 20px;
-  border-radius: 6px;
+  border-radius: var(--bb-radius);
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.3s ease;
+  transition: all 0.3s var(--bb-ease-reveal);
   border: 1px solid var(--bb-ink-16);
   background-color: white;
   color: var(--bb-ink);
@@ -561,7 +561,7 @@
 
 .missing-item {
   padding: 15px;
-  border-radius: 8px;
+  border-radius: var(--bb-radius);
   background-color: #fff3cd;
   border: 1px solid #ffc107;
 }
@@ -651,7 +651,7 @@
 
 .disclaimer-item {
   padding: 20px;
-  border-radius: 8px;
+  border-radius: var(--bb-radius);
   background-color: var(--bb-ground);
   border-left: 3px solid #6c757d;
 }
@@ -686,13 +686,13 @@
 
 .stat-card {
   padding: 20px;
-  border-radius: 8px;
+  border-radius: var(--bb-radius);
   background-color: var(--bb-ground);
   border: 1px solid var(--bb-ink-16);
   text-align: center;
   transition:
-    transform 0.2s ease,
-    box-shadow 0.2s ease;
+    transform 0.2s var(--bb-ease-reveal),
+    box-shadow 0.2s var(--bb-ease-reveal);
 }
 
 .stat-card:hover {
@@ -722,7 +722,7 @@
 
 .mode-distribution {
   padding: 20px;
-  border-radius: 8px;
+  border-radius: var(--bb-radius);
   background-color: var(--bb-ground);
   border: 1px solid var(--bb-ink-16);
 }
@@ -757,15 +757,15 @@
   flex: 1;
   height: 30px;
   background-color: var(--bb-ground-alt);
-  border-radius: 6px;
+  border-radius: var(--bb-radius);
   overflow: hidden;
   position: relative;
 }
 
 .mode-bar-fill {
   height: 100%;
-  border-radius: 6px;
-  transition: width 0.5s ease;
+  border-radius: var(--bb-radius);
+  transition: width 0.5s var(--bb-ease-reveal);
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -868,7 +868,7 @@
   margin-top: 30px;
   padding: 20px;
   background-color: white;
-  border-radius: 8px;
+  border-radius: var(--bb-radius);
   border: 1px solid var(--bb-ink-16);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
@@ -919,7 +919,7 @@
   max-height: 500px; /* ~10 rows */
   overflow-x: auto;
   overflow-y: auto;
-  border-radius: 6px;
+  border-radius: var(--bb-radius);
   border: 1px solid #e0e0e0;
 }
 
@@ -946,7 +946,7 @@
 
 .live-struggle-table tbody tr {
   border-bottom: 1px solid var(--bb-ink-16);
-  transition: background-color 0.15s ease;
+  transition: background-color 0.15s var(--bb-ease-reveal);
 }
 
 .live-struggle-table tbody tr:hover {
@@ -975,7 +975,7 @@
 .state-badge {
   display: inline-block;
   padding: 4px 12px;
-  border-radius: 12px;
+  border-radius: var(--bb-radius);
   font-size: 0.85rem;
   font-weight: 600;
   text-transform: uppercase;
@@ -998,11 +998,11 @@
   color: white;
   border: none;
   padding: 8px 16px;
-  border-radius: 6px;
+  border-radius: var(--bb-radius);
   font-size: 0.9rem;
   font-weight: 500;
   cursor: pointer;
-  transition: background-color 0.2s ease;
+  transition: background-color 0.2s var(--bb-ease-reveal);
 }
 
 .action-btn.secondary:hover {
@@ -1036,7 +1036,7 @@
   margin-top: 30px;
   padding: 20px;
   background-color: white;
-  border-radius: 8px;
+  border-radius: var(--bb-radius);
   border: 1px solid var(--bb-ink-16);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
@@ -1067,7 +1067,7 @@
 .chart-nav-btn {
   padding: 6px var(--bb-gap-dense) !important;
   font-size: 0.85rem !important;
-  border-radius: 6px;
+  border-radius: var(--bb-radius);
   min-width: auto;
 }
 
@@ -1114,7 +1114,7 @@
   max-width: min(340px, 90%);
   max-height: min(300px, 60vh);
   padding: 10px 12px;
-  border-radius: 8px;
+  border-radius: var(--bb-radius);
   background-color: rgba(33, 37, 41, 0.95);
   color: #fff;
   font-size: 0.82rem;
@@ -1122,7 +1122,7 @@
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.15s ease;
+  transition: opacity 0.15s var(--bb-ease-reveal);
 }
 
 .chart-tooltip-title {
@@ -1155,7 +1155,7 @@
   flex: 0 0 auto;
   width: 10px;
   height: 10px;
-  border-radius: 2px;
+  border-radius: var(--bb-radius);
 }
 
 .chart-tooltip-footer {
@@ -1171,7 +1171,7 @@
 
 .chart-tooltip-body::-webkit-scrollbar-thumb {
   background-color: rgba(255, 255, 255, 0.35);
-  border-radius: 3px;
+  border-radius: var(--bb-radius);
 }
 
 .chart-legend-note {
@@ -1242,7 +1242,7 @@
    COLLAPSIBLE TOPIC CARDS
    =========================== */
 .struggle-topic-item {
-  transition: all 0.3s ease;
+  transition: all 0.3s var(--bb-ease-reveal);
   overflow: hidden; /* Ensure smooth collapse */
   padding-bottom: 0 !important; /* Managed by content padding */
 }
@@ -1269,7 +1269,7 @@
 
 .toggle-icon {
   display: inline-block;
-  transition: transform 0.3s ease;
+  transition: transform 0.3s var(--bb-ease-reveal);
   font-size: 0.8em;
   color: var(--bb-ink-70);
   margin-right: 5px;
@@ -1298,7 +1298,7 @@
 .section-header.clickable {
     cursor: pointer;
     user-select: none;
-    transition: opacity 0.2s;
+    transition: opacity 0.2s var(--bb-ease-reveal);
 }
 
 .section-header.clickable:hover {
@@ -1314,7 +1314,7 @@
     display: inline-block;
     margin-right: 10px;
     font-size: 0.8em;
-    transition: transform 0.3s ease;
+    transition: transform 0.3s var(--bb-ease-reveal);
     color: var(--bb-ink-70);
 }
 
@@ -1343,7 +1343,7 @@
     background-color: var(--bb-ink);
     color: #fff;
     padding: 8px 12px;
-    border-radius: 6px;
+    border-radius: var(--bb-radius);
     font-size: 0.85rem;
     white-space: normal;
     min-width: 200px;
@@ -1351,7 +1351,7 @@
     text-align: center;
     visibility: hidden;
     opacity: 0;
-    transition: opacity 0.2s, visibility 0.2s;
+    transition: opacity 0.2s var(--bb-ease-reveal), visibility 0.2s var(--bb-ease-reveal);
     z-index: 1000;
     pointer-events: none;
     box-shadow: 0 4px 6px rgba(0,0,0,0.1);
@@ -1369,7 +1369,7 @@
     border-top-color: var(--bb-ink);
     visibility: hidden;
     opacity: 0;
-    transition: opacity 0.2s, visibility 0.2s;
+    transition: opacity 0.2s var(--bb-ease-reveal), visibility 0.2s var(--bb-ease-reveal);
     z-index: 1000;
 }
 
@@ -1404,7 +1404,7 @@
     font-size: 0.9em;
     font-weight: 600;
     line-height: 1.2;
-    transition: background 0.15s, box-shadow 0.15s;
+    transition: background 0.15s var(--bb-ease-reveal), box-shadow 0.15s var(--bb-ease-reveal);
 }
 
 .approved-topic-chip:hover {
@@ -1482,7 +1482,7 @@
     padding: 0;
     line-height: 1;
     opacity: 0.45;
-    transition: opacity 0.15s, background 0.15s, color 0.15s;
+    transition: opacity 0.15s var(--bb-ease-reveal), background 0.15s var(--bb-ease-reveal), color 0.15s var(--bb-ease-reveal);
 }
 
 .topic-chip-remove:hover {
@@ -1520,11 +1520,11 @@
     box-sizing: border-box;
     padding: 8px var(--bb-gap-dense);
     border: 1px solid #d0d5dd;
-    border-radius: 8px;
+    border-radius: var(--bb-radius);
     font-size: 0.9em;
     font-family: inherit;
     outline: none;
-    transition: border-color 0.15s, box-shadow 0.15s;
+    transition: border-color 0.15s var(--bb-ease-reveal), box-shadow 0.15s var(--bb-ease-reveal);
 }
 
 .approved-topic-unit-select,
@@ -1534,7 +1534,7 @@
     box-sizing: border-box;
     padding: 8px 12px;
     border: 1px solid #d0d5dd;
-    border-radius: 8px;
+    border-radius: var(--bb-radius);
     /* background-color, not the background shorthand - the latter resets
        background-image too, silently dropping the global select chevron
        (#643). Same reasoning for the explicit padding-right below instead
@@ -1556,7 +1556,7 @@
 
 .approved-topic-add-btn {
     padding: 8px 16px;
-    border-radius: 8px;
+    border-radius: var(--bb-radius);
     border: 1px solid #2f6fb3;
     background: #2f6fb3;
     color: #fff;
@@ -1564,7 +1564,7 @@
     font-weight: 600;
     cursor: pointer;
     white-space: nowrap;
-    transition: background 0.15s;
+    transition: background 0.15s var(--bb-ease-reveal);
 }
 
 .approved-topic-add-btn:hover {
@@ -1588,7 +1588,7 @@
 
 .clickable-topic-card {
     cursor: pointer;
-    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    transition: transform 0.15s var(--bb-ease-reveal), box-shadow 0.15s var(--bb-ease-reveal);
 }
 
 .clickable-topic-card:hover,
@@ -1620,7 +1620,7 @@
 .topic-unit-modal-card {
     width: min(440px, 100%);
     background: #fff;
-    border-radius: 16px;
+    border-radius: var(--bb-radius);
     box-shadow: 0 24px 60px rgba(15, 23, 42, 0.24);
     overflow: hidden;
 }
