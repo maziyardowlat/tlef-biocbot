@@ -1120,15 +1120,27 @@ router.get('/survey/course/:courseId/export/anonymized', async (req, res) => {
             limit: Number.parseInt(req.query.limit, 10) || 1000
         });
 
-        const anonymizedResponses = responses.map(response => {
-            const clone = { ...response };
-            clone.studentId = pseudonymByStudentId.get(response.studentId) || response.studentId;
+        // A respondent can sit outside the pseudonym scope (the scope is built
+        // from enrollment, saved chats and course preference), and such a
+        // student can't be given a code from the admin screen either. Leave
+        // their rows out rather than ever writing a real ID into this file,
+        // and report how many were left out so the gap isn't silent.
+        const anonymizedResponses = [];
+        let omittedCount = 0;
+        for (const response of responses) {
+            const pseudonym = pseudonymByStudentId.get(response.studentId);
+            if (!pseudonym) {
+                omittedCount += 1;
+                continue;
+            }
+            const clone = { ...response, studentId: pseudonym };
             delete clone.studentName;
-            return clone;
-        });
+            anonymizedResponses.push(clone);
+        }
 
         const csv = ChatSurveyResponse.surveyResponsesToCsv(anonymizedResponses, { anonymized: true });
         const safeCourseId = String(courseId).replace(/[^A-Za-z0-9_-]/g, '_');
+        res.setHeader('X-Omitted-Survey-Responses', String(omittedCount));
         res.setHeader('Content-Type', 'text/csv; charset=utf-8');
         res.setHeader('Content-Disposition', `attachment; filename="chat-survey-responses-anonymized-${safeCourseId}.csv"`);
         return res.send(csv);

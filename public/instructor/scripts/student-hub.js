@@ -1300,7 +1300,17 @@ async function downloadChatSurveyResponsesAnonymized() {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
 
-        showNotification('Anonymized survey responses downloaded.', 'success');
+        // The server leaves out any response whose student has no
+        // anonymization ID instead of exporting their real one.
+        const omittedCount = Number.parseInt(response.headers.get('X-Omitted-Survey-Responses'), 10) || 0;
+        if (omittedCount > 0) {
+            showNotification(
+                `Anonymized survey responses downloaded. ${omittedCount} response${omittedCount === 1 ? ' was' : 's were'} left out because the student has no anonymization ID.`,
+                'warning'
+            );
+        } else {
+            showNotification('Anonymized survey responses downloaded.', 'success');
+        }
     } catch (err) {
         console.error('Error downloading anonymized chat survey responses:', err);
         showNotification(`Failed to download anonymized survey responses: ${err.message}`, 'error');
