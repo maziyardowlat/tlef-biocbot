@@ -5,6 +5,7 @@
 
 let instructorCourses = [];
 let currentStudents = [];
+let topicDashboardTimeByUserId = {}; // userId -> cumulative ms spent on the Topic Dashboard
 let currentTAs = []; // Store TAs for the current course
 let anonymizeStudentsEnabled = false;
 let currentSurveyCourseId = null;
@@ -435,7 +436,17 @@ async function loadStudents(courseId) {
         // Let's put TAs at the top for visibility, or sort alphabetically.
         // Let's just combine them.
         currentStudents = [...currentTAs, ...uniqueStudents];
-        
+
+        // 4. Fetch cumulative Topic Dashboard time per student (#706)
+        try {
+            const timeResponse = await authenticatedFetch(`/api/topic-dashboard-time/${courseId}`);
+            const timeResult = timeResponse.ok ? await timeResponse.json() : null;
+            topicDashboardTimeByUserId = timeResult?.data || {};
+        } catch (timeErr) {
+            console.error('Error loading topic dashboard time:', timeErr);
+            topicDashboardTimeByUserId = {};
+        }
+
         renderStudents(courseId);
         await loadLmsGrades(courseId);
         await loadChatSurveyResponses(courseId);
@@ -1257,6 +1268,7 @@ function renderStudents(courseId) {
                     <p><strong>Username:</strong> ${escapeHTML(s.username || '—')}</p>
                     <p><strong>Email:</strong> ${escapeHTML(s.email || '—')}</p>
                     <p><strong>Last Login:</strong> ${s.lastLogin ? new Date(s.lastLogin).toLocaleString() : '—'}</p>
+                    ${isTA ? '' : `<p><strong>Topic Dashboard time:</strong> ${formatDashboardDuration(topicDashboardTimeByUserId[s.userId])}</p>`}
                     ${isTA ? '' : renderStudentGrades(s.userId)}
                     ${struggleTopicsSection}
                 </div>
@@ -1414,6 +1426,18 @@ window.saveEnrollment = async function(courseId, studentId) {
         showNotification('Failed to save enrollment. Please try again.', 'error');
     }
 };
+
+function formatDashboardDuration(ms) {
+    const totalMs = Number(ms);
+    if (!Number.isFinite(totalMs) || totalMs <= 0) return '—';
+    const totalSeconds = Math.round(totalMs / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    if (hours > 0) return `${hours}h ${minutes}m`;
+    if (minutes > 0) return `${minutes}m ${seconds}s`;
+    return `${seconds}s`;
+}
 
 function escapeHTML(str) {
     if (str === null || str === undefined) return '';
